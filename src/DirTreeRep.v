@@ -62,7 +62,7 @@ Set Implicit Arguments.
     (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    selN (BFILE.BFData f) off ($0, nil) = selN m bn ($0, nil).
+    selN (DFData f) off ($0, nil) = selN m bn ($0, nil).
   Proof.
     intros.
 
@@ -79,11 +79,18 @@ Set Implicit Arguments.
     simpl in H3.
     apply eq_sym.
     eapply BFILE.rep_used_block_eq_Some_helper.
-    rewrite <- list2nmem_sel_inb.
 
-    eapply ptsto_valid. pred_apply; cancel.
-    eapply list2nmem_inbound.
-    pred_apply; cancel.
+    destruct_lift H3.
+    assert (inum < Datatypes.length dummy) as Hlt by ( eapply list2nmem_inbound; pred_apply; cancel ).
+
+    pose proof (list2nmem_sel_inb dummy BFILE.bfile0 Hlt) as Hx.
+    eapply pimpl_trans in H2; [ | apply pimpl_refl | ].
+    eapply ptsto_valid in H2.
+    rewrite Hx in H2; clear Hx.
+    2: cancel.
+    inversion H2; clear H2.
+    rewrite H4; simpl.
+    auto.
   Qed.
 
   Lemma tree_pred_ino_goodSize : forall F Fm xp tree m d frees prd allocc,
@@ -109,5 +116,19 @@ Set Implicit Arguments.
     simpl in H0; destruct_lift H0; auto.
   Qed.
 
+  Theorem mscs_same_except_log_rep' : forall mscs1 mscs2 fsxp F tree ilist frees,
+    BFILE.mscs_same_except_log mscs1 mscs2 ->
+    rep fsxp F tree ilist frees mscs1 =p=> rep fsxp F tree ilist frees mscs2.
+  Proof.
+    unfold BFILE.mscs_same_except_log; unfold rep; intros.
+    intuition msalloc_eq.
+    apply pimpl_refl.
+  Qed.
 
- 
+  Theorem mscs_same_except_log_rep : forall mscs1 mscs2 fsxp F tree ilist frees,
+    BFILE.mscs_same_except_log mscs1 mscs2 ->
+    rep fsxp F tree ilist frees mscs1 <=p=> rep fsxp F tree ilist frees mscs2.
+  Proof.
+    split; eapply mscs_same_except_log_rep'; eauto.
+    unfold BFILE.mscs_same_except_log in *; intuition eauto.
+  Qed.

@@ -34,6 +34,7 @@ Module CacheOneDir.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSCache := BFILE.MSCache.
   Notation MSAllocC := BFILE.MSAllocC.
+  Notation MSIAllocC := BFILE.MSIAllocC.
 
   Definition empty_cache : Dcache_type := Dcache.empty _.
 
@@ -139,6 +140,7 @@ Module CacheOneDir.
   Proof.
     unfold rep; intuition.
     apply SDIR.bfile0_empty.
+    cbn in *. congruence.
   Qed.
 
   Theorem crash_rep : forall f f' m,
@@ -148,12 +150,8 @@ Module CacheOneDir.
   Proof.
     unfold rep; intuition.
     eapply SDIR.crash_rep; eauto.
-    inversion H; intuition subst; simpl.
-    intuition auto.
-    eapply SDIR.crash_rep; eauto.
-    cbv [BFILE.file_crash] in *.
-    repeat deex.
-    intuition auto.
+    inversion H; intuition subst; cbn in *.
+    congruence.
   Qed.
 
   Hint Resolve Dcache.find_2.
@@ -232,7 +230,8 @@ Module CacheOneDir.
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ BFILE.BFCache f' = Some cache ]] *
            [[ MSAlloc ms' = MSAlloc ms ]] *
-           [[ MSAllocC ms' = MSAllocC ms ]]
+           [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
     >} init_cache lxp ixp dnum ms.
@@ -256,6 +255,7 @@ Module CacheOneDir.
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
@@ -278,9 +278,10 @@ Module CacheOneDir.
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
-           [[ r = Some (inum, isdir) /\
+           [[ r = Some (inum, isdir) /\ inum <> 0 /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]]) *
            [[ True ]]
     CRASH:hm'
@@ -290,13 +291,18 @@ Module CacheOneDir.
     unfold lookup.
     hoare.
 
-    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
     subst_cache.
     denote (Dcache.find) as Hf.
     denote (BFILE.BFCache _ = _) as Hb.
     erewrite Hf in * by eauto.
-    destruct (dmap name) eqn:?; [ or_r | or_l ]; cancel; eauto.
+    destruct (dmap name) eqn:?; [ or_r | or_l ].
+    assert (fst p <> 0).
+      destruct p; cbn in *.
+      intro; subst; eauto using SDIR.rep_no_0_inum.
+    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
+    cancel.
     eauto using any_sep_star_ptsto.
+    cancel.
   Unshelve.
     all: repeat (solve [eauto] || constructor).
   Qed.
@@ -308,18 +314,24 @@ Module CacheOneDir.
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
     POST:hm' RET:^(ms', r)
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' *
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
              [[ listpred SDIR.readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
              [[ True ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.
   Proof.
-    unfold readdir.
-    hoare.
+    unfold readdir, rep_macro, rep.
+    intros. ProgMonad.monad_simpl_one.
+    eapply pimpl_ok2. eauto with prog.
+    unfold SDIR.rep_macro.
+    cancel; eauto.
+    step.
   Qed.
 
   Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
@@ -334,6 +346,7 @@ Module CacheOneDir.
              [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
              [[ True ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
@@ -371,9 +384,11 @@ Module CacheOneDir.
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
              [[ notindomain name dmap ]] *
-             [[ goodSize addrlen inum ]]
+             [[ goodSize addrlen inum ]] *
+             [[ inum <> 0 ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
@@ -399,6 +414,7 @@ Module CacheOneDir.
     rewrite DcacheDefs.MapFacts.add_o.
     repeat destruct string_dec; (congruence || eauto).
   Unshelve.
+    all : try exact Balloc.BALLOCC.Alloc.freelist0.
     all : eauto.
   Qed.
 
@@ -408,9 +424,11 @@ Module CacheOneDir.
     {< F Fm Fi m0 m dmap ilist frees f,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
-             [[ goodSize addrlen inum ]]
+             [[ goodSize addrlen inum ]] *
+             [[ inum <> 0 ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *

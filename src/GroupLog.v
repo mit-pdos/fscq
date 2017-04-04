@@ -732,7 +732,7 @@ Module GLog.
     rep xp (Cached (ds!!, nil)) ms hm =p=> rep xp (Cached ds) ms hm.
   Proof.
     unfold rep; intros.
-    norml; unfold stars; simpl; clear_norm_goal.
+    norml; unfold stars; simpl.
     assert (MSTxns ms = nil) as Heq.
     apply dset_match_length in H2; simpl in H2.
     apply length_nil; auto.

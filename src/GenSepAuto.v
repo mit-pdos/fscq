@@ -60,7 +60,6 @@ Ltac filldef :=
 Ltac rewrite_ignore H :=
   match type of H with
   | forall _, corr2 _ _ => idtac
-  | norm_goal _ => idtac
   end.
 
 Ltac simplen_rewrite_hyp H := try progress (

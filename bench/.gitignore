@@ -4,3 +4,5 @@
 /atomic-create
 /filesync
 /filewrite
+/largefile
+/smallfile

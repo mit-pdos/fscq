@@ -90,7 +90,9 @@ Set Implicit Arguments.
 
   Fixpoint tree_pred ibxp e := (
     match e with
-    | TreeFile inum f => inum |-> f * [[ IAlloc.ino_valid ibxp inum ]]
+    | TreeFile inum f =>
+      exists cache,
+      inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
     | TreeDir inum s => tree_dir_names_pred ibxp inum s * dirlist_pred (tree_pred ibxp) s
     end)%pred.
 
@@ -99,7 +101,9 @@ Set Implicit Arguments.
     | nil => emp
     | fn :: suffix =>
       match e with
-      | TreeFile inum f => inum |-> f * [[ IAlloc.ino_valid ibxp inum ]]
+      | TreeFile inum f =>
+        exists cache,
+        inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
       | TreeDir inum s => tree_dir_names_pred ibxp inum s *
                           dirlist_pred_except (tree_pred ibxp) (tree_pred_except ibxp suffix) fn s
       end
@@ -109,7 +113,7 @@ Set Implicit Arguments.
   Fixpoint dirtree_update_inode t inum off v :=
     match t with
     | TreeFile inum' f => if (addr_eq_dec inum inum') then
-          let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) (BFILE.BFCache f) in (TreeFile inum f')
+          let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) in (TreeFile inum f')
           else (TreeFile inum' f)
     | TreeDir inum' ents =>
       TreeDir inum' (dirlist_update (fun t' => dirtree_update_inode t' inum off v) ents)
@@ -161,7 +165,6 @@ Set Implicit Arguments.
       eapply ptsto_conflict_F with (a := s). pred_apply' H.
       rewrite tree_dir_names_pred'_app. simpl.
       destruct d; cancel.
-      cancel.
     - constructor; [| eapply IHl; pred_apply' H; cancel ].
       intro Hin.
       apply in_map_iff in Hin. repeat deex. destruct x.
@@ -383,6 +386,7 @@ Set Implicit Arguments.
       apply sep_star_assoc_2 in H1.
       apply ptsto_valid' in H1. apply ptsto_valid' in H2.
       rewrite H1 in H2. inversion H2. subst; auto.
+      destruct d; destruct bfsub; simpl in *; congruence.
       simpl in H0; congruence.
     - simpl in *.
       eapply IHdlist. exact inum.

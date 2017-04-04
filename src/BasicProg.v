@@ -190,12 +190,35 @@ Qed.
 
 Hint Extern 1 ({{_}} Bind (Hash _) _) => apply hash_ok : prog.
 
+Theorem hash2_ok:
+  forall sz1 sz2 (buf1 : word sz1) (buf2 : word sz2),
+  {< (_: unit),
+  PRE:hm    emp
+  POST:hm'
+    RET:h     emp *
+              [[ hash_safe hm h (Word.combine buf1 buf2) ]] *
+              [[ h = hash_fwd (Word.combine buf1 buf2) ]] *
+              [[ hm' = upd_hashmap' hm h (Word.combine buf1 buf2) ]]
+  CRASH:hm' emp * [[ hm' = hm ]]
+  >} Hash2 buf1 buf2.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_exec' H10.
+    eapply H4; eauto.
+    pred_apply; cancel.
+    eauto.
+Qed.
+
+Hint Extern 1 ({{_}} Bind (Hash2 _ _) _) => apply hash2_ok : prog.
+
 Theorem rdtsc_ok:
   {< (_: unit),
   PRE:hm    emp
   POST:hm'
-    RET:t     emp * [[ hm' = hm ]]
-  CRASH:hm' emp * [[ hm' = hm ]]
+    RET:t   emp * [[ hm' = hm ]]
+  CRASH:hm' emp * [[ False ]]
   >} Rdtsc.
 Proof.
   unfold corr2; intros.

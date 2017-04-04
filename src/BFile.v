@@ -66,14 +66,6 @@ Module BFILE.
     MSCache : BFcache_type
   }.
 
-  Ltac msalloc_eq :=
-    repeat match goal with
-    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSAllocC _ = MSAllocC _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSIAllocC _ = MSIAllocC _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
-    end.
-
   Definition ms_empty sz := mk_memstate
     true
     (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 sz))
@@ -355,6 +347,14 @@ Module BFILE.
     pred_apply; cancel.
   Qed.
 
+  Theorem rep_clear_icache: forall bxps ixp flist ilist frees allocc mscache icache,
+    rep bxps ixp flist ilist frees allocc mscache icache =p=>
+    rep bxps ixp flist ilist frees allocc mscache INODE.IRec.cache0.
+  Proof.
+    unfold BFILE.rep. cancel.
+    apply INODE.rep_clear_cache.
+  Qed.
+
   Definition block_belong_to_file ilist bn inum off :=
     off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
@@ -382,36 +382,36 @@ Module BFILE.
     unfold BALLOCC.Alloc.rep in H; destruct_lift H.
     unfold BALLOCC.Alloc.Alloc.rep in H; destruct_lift H.
     destruct flag; simpl in *.
-    - destruct H20 as [H20 _]. rewrite listpred_pick in H20 by eauto.
-      rewrite H20 in H.
-      destruct_lift H.
-      rewrite locked_eq in H3.
-      rewrite <- H3 in H; clear H3.
+    - denote (locked _ = _) as Hl.
+      rewrite locked_eq in Hl.
+      rewrite <- Hl in H; clear Hl.
+      match goal with H: context [ptsto bn ?a], Hl: _ <=p=> _ |- _ =>
+        rewrite Hl, listpred_pick in H by eauto; destruct_lift H
+      end.
       eapply ptsto_conflict_F with (m := m) (a := bn).
       pred_apply.
-      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
       cancel.
-    - destruct H23 as [H23 _]. rewrite listpred_pick in H23 by eauto.
-      rewrite H23 in H.
-      destruct_lift H.
-      rewrite locked_eq in H3.
-      rewrite <- H3 in H; clear H3.
+      rewrite <- surjective_pairing. cancel.
+    - denote (locked _ = _) as Hl.
+      rewrite locked_eq in Hl.
+      rewrite <- Hl in H; clear Hl.
+      match goal with H: context [ptsto bn ?a], Hl: _ <=p=> _ |- _ =>
+        rewrite Hl, listpred_pick in H by eauto; destruct_lift H
+      end.
       eapply ptsto_conflict_F with (m := m) (a := bn).
       pred_apply.
-      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
       cancel.
+      rewrite <- surjective_pairing. cancel.
     - erewrite listmatch_length_r; eauto.
       destruct (lt_dec inum (length ilist)); eauto.
-      rewrite selN_oob in H2 by omega.
+      rewrite selN_oob in * by omega.
       unfold INODE.inode0 in H2; simpl in *; omega.
     - destruct (lt_dec inum (length ilist)); eauto.
-      rewrite selN_oob in H2 by omega.
-      unfold INODE.inode0 in H2; simpl in *; omega.
-
-    Grab Existential Variables.
-    exact ($0, nil).
-    exact bfile0.
-    exact 0.
+      rewrite selN_oob in * by omega.
+      unfold INODE.inode0 in *; simpl in *; omega.
+  Grab Existential Variables.
+    all: eauto.
+    all: solve [exact ($0, nil) | exact bfile0].
   Qed.
 
   Definition ilist_safe ilist1 free1 ilist2 free2 :=
@@ -713,6 +713,43 @@ Module BFILE.
   Qed.
 
   Local Hint Resolve odd_nonzero.
+
+  Definition mscs_same_except_log mscs1 mscs2 :=
+    (MSAlloc mscs1 = MSAlloc mscs2) /\
+    (MSAllocC mscs1 = MSAllocC mscs2) /\
+    (MSIAllocC mscs1 = MSIAllocC mscs2) /\
+    (MSICache mscs1 = MSICache mscs2) /\
+    (MSCache mscs1 = MSCache mscs2).
+
+  Lemma mscs_same_except_log_comm : forall mscs1 mscs2,
+    mscs_same_except_log mscs1 mscs2 ->
+    mscs_same_except_log mscs2 mscs1.
+  Proof.
+    firstorder.
+  Qed.
+
+  Lemma mscs_same_except_log_refl : forall mscs,
+    mscs_same_except_log mscs mscs.
+  Proof.
+    firstorder.
+  Qed.
+
+  Ltac destruct_ands :=
+    repeat match goal with
+    | [ H: _ /\ _ |- _ ] => destruct H
+    end.
+
+  Ltac msalloc_eq :=
+    repeat match goal with
+    | [ H: mscs_same_except_log _ _ |- _ ] =>
+      unfold BFILE.mscs_same_except_log in H; destruct_ands
+    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSAllocC _ = MSAllocC _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSIAllocC _ = MSIAllocC _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSICache _ = MSICache _ |- _ ] => rewrite H in *; clear H
+    end.
+
 
   (**** automation **)
 
@@ -1209,6 +1246,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[ r = BFAttr f ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSCache ms = MSCache ms' ]]
@@ -2586,7 +2624,8 @@ Module BFILE.
            [[ f' = mk_bfile (BFData f) (BFAttr f) (Some c) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
-           [[ MSAllocC ms = MSAllocC ms' ]]
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSLL ms = MSLL ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} cache_put inum c ms.
   Proof.

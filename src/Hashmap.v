@@ -135,6 +135,18 @@ Proof.
   eapply IHhkl; eauto.
 Qed.
 
+Lemma hashmap_get_fwd_safe_eq: forall hm sz (x : word sz),
+  hash_safe hm (hash_fwd x) x ->
+  hashmap_get (upd_hashmap' hm (hash_fwd x) x) (hash_fwd x) = Some (existT _ _ x).
+Proof.
+  unfold upd_hashmap'. cbn; intuition.
+  repeat destruct weq; try congruence.
+  rewrite e in *.
+  unfold hash_safe in *.
+  rewrite hashmap_get_default in *.
+  intuition congruence.
+Qed.
+
 Theorem hash_list_injective : forall l1 l2 hv hm,
   hash_list_rep l1 hv hm -> hash_list_rep l2 hv hm -> l1 = l2.
 Proof.
@@ -323,24 +335,31 @@ Qed.
 (** Chains together hashmap_subset patterns until it solves the goal.
   If the goal's larger hashmap isn't instantiated yet, try to match
   it to the largest possible hashmap. *)
-Ltac solve_hashmap_subset_trans :=
+Ltac solve_hashmap_subset_trans_step :=
   match goal with
+  | [ H: hashmap_subset _ ?hm ?hm |- _] =>
+    clear H (* reflexive hypotheses cause infinite loops *)
   | [ H: hashmap_subset _ ?hm ?hm2, H2: hashmap_subset _ ?hm2 _ |- hashmap_subset _ ?hm _ ]
-    => eapply hashmap_subset_trans;
-        [ exact H | try solve_hashmap_subset_trans ]
+    => eapply hashmap_subset_trans; [ exact H | ]
   | [ |- hashmap_subset _ _ _ ]
     => eauto
   end.
 
-Ltac solve_hashmap_subset :=
+Ltac solve_hashmap_subset_trans :=
+  repeat solve_hashmap_subset_trans_step.
+
+Ltac solve_hashmap_subset_step :=
   match goal with
   | [ H: exists l, hashmap_subset l _ _ |- _ ]
-    => inversion H; clear H; solve_hashmap_subset
+    => inversion H; clear H
   | [ |- exists _, hashmap_subset _ _ _ ]
-    => eexists; solve_hashmap_subset
+    => eexists
   | [ |- hashmap_subset _ _ _ ]
     => try subst; solve [ solve_hashmap_subset_trans | repeat (eauto; econstructor) ]
   end.
+
+Ltac solve_hashmap_subset :=
+  repeat solve_hashmap_subset_step.
 
 Ltac solve_hashmap_subset' :=
   repeat match goal with

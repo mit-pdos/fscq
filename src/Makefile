@@ -28,7 +28,8 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
 	      TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
-	      DirSep ProgMetatheory TreeSeq ## BACHelper
+	      DirSep ProgMetatheory TreeSeq \
+	      AtomicCp
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
@@ -38,7 +39,7 @@ VS_ML      := codegen/AsyncFS.ml
 VS_JSON    := codegen/AsyncFS.json
 GHC 	   := ghc
 HSC2HS	   := hsc2hs
-ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
+ifeq (,$(shell $(GHC) --version 2>/dev/null | grep 'version 8.0' 2>/dev/null))
 	GHC := /opt/ghc/8.0.1/bin/ghc
 	HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
 endif

@@ -49,50 +49,24 @@ Theorem hash_list_ok : forall h values,
 Proof.
   unfold hash_list.
   step.
+  rewrite app_nil_l; reflexivity.
+  rewrite app_nil_l; eassumption.
   step; try apply HL_nil; auto.
-
-  assert (Hlength: length (rev (firstn (m + 1) values)) = S m).
-    rewrite rev_length.
-    rewrite firstn_length.
-    rewrite min_l; omega.
-
   step.
 
   (* Loop invariant. *)
-  - destruct (rev (firstn (m + 1) values)) eqn:Hrev_values.
-    + simpl in Hlength. inversion Hlength.
-    + destruct values.
-      cbn in *. omega.
-
-      assert (Hvalues: rev (w0 :: firstn m values) = selN (w0 :: values) m default_valu :: rev (firstn m (w0 :: values))).
-        rewrite <- rev_unit.
-        rewrite <- firstn_plusone_selN; try omega.
-        destruct (m + 1) eqn:Hm; try omega.
-        simpl.
-        replace m with n; try omega.
-        auto.
-
-      rewrite Hvalues.
-      solve_hash_list_rep.
-      solve_hash_list_rep.
-      auto.
-      apply upd_hashmap'_eq.
-      intuition.
-      unfold hash_safe in *.
-      denote! (hash_fwd _ = default_hash) as Hd0.
-      denote! (hashmap_get _ _ = None \/ _) as He0.
-      rewrite Hd0 in He0.
-      inversion He0 as [ Hdef | Hdef ];
-      contradict_hashmap_get_default Hdef hm0.
-
+  - rewrite <- cons_nil_app. eauto.
+  - rewrite rev_unit. cbn [app].
+    econstructor; eauto using hash_list_rep_upd.
+    eauto using hashmap_get_fwd_safe_eq.
+  - repeat eexists.
+    rewrite firstn_app_r, firstn_O.
+    rewrite app_nil_r. eauto.
   (* Loop invariant implies post-condition. *)
   - step.
-    denote! (hash_list_rep (rev (firstn _ _) ++ _) _ _) as Hl.
-    rewrite firstn_oob in Hl; try omega.
-    auto.
-
-  - exists 0; eexists. simpl. solve_hash_list_rep.
-
+    rewrite app_nil_r. eauto.
+  - repeat eexists.
+    rewrite firstn_O. cbn. solve_hash_list_rep.
   Grab Existential Variables.
   all: eauto.
   all: try ( exact tt || exact 0 || exact False ).

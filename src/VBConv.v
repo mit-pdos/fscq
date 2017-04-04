@@ -682,9 +682,158 @@ Lemma valuset2bytesets_rec_cons_merge_bs: forall k a l,
 		reflexivity.
 	Qed.
 
+(* alterantive definitions that are easier to induct over *)
+Definition valuset2byteset (vs : list (list byte)) :=
+  map (fun i => selN_each vs i byte0) (seq 0 valubytes).
 
-Lemma valuset2bytesets2valuset: forall vs, bytesets2valuset (valuset2bytesets vs) = vs.
-Proof. Admitted.
+Definition valuset2bytesets' (vs: valuset): list byteset :=
+  combine (valu2list (fst vs)) (valuset2byteset (map valu2list (snd vs))).
+
+Definition bytesets2valuset' (l : list byteset) i :=
+  let sets := split l in
+  (list2valu (fst sets), map (fun i => list2valu (selN_each (snd sets) i byte0)) (seq 0 i)).
+
+Lemma valuset2bytesets_rec_eq_valuset2bytesets: forall vs,
+  length vs > 0 ->
+  valuset2bytesets_rec vs valubytes = valuset2byteset vs.
+Proof.
+  unfold valuset2byteset.
+  generalize valubytes.
+  induction n; intros; subst; auto.
+  destruct vs; cbn [length] in *.
+  omega.
+  cbn -[skipn selN_each].
+  f_equal.
+  rewrite <- seq_shift.
+  rewrite map_map.
+  rewrite IHn by (cbn; omega).
+  apply map_ext. intros.
+  rewrite selN_each_S. reflexivity.
+Qed.
+
+Lemma valuset2bytesets_eq_valuset2bytesets': forall vs,
+  valuset2bytesets vs = valuset2bytesets' vs.
+Proof.
+  unfold valuset2bytesets, valuset2bytesets'.
+  intros.
+  setoid_rewrite valuset2bytesets_rec_eq_valuset2bytesets.
+  destruct vs; cbn.
+  unfold valuset2byteset at 1.
+  rewrite map_map.
+  cbn.
+
+  rewrite combine_map.
+  f_equal.
+  rewrite map_selN_seq; auto.
+  rewrite valu2list_len; auto.
+  autorewrite with list.
+  destruct vs; cbn. omega.
+Qed.
+
+Lemma bytesets2valuset_rec_eq_map: forall n bs,
+  length bs > 0 ->
+  bytesets2valuset_rec bs n = map (fun i => selN_each bs i byte0) (seq 0 n).
+Proof.
+  unfold bytesets2valuset.
+  induction n; intros; subst; auto.
+  cbn -[skipn].
+  destruct bs; cbn [length] in *.
+  omega.
+  f_equal.
+  rewrite <- seq_shift.
+  rewrite map_map.
+  rewrite IHn by (cbn; omega).
+  apply map_ext. intros.
+  rewrite selN_each_S. reflexivity.
+Qed.
+
+Lemma selN_each_fst_list2byteset: forall T (l : list (T * _)) def,
+  selN_each (map byteset2list l) 0 def = fst (split l).
+Proof.
+  unfold selN_each.
+  induction l; cbn; intros; auto.
+  rewrite surjective_pairing with (p := split l).
+  destruct a; cbn.
+  f_equal.
+  eauto.
+Qed.
+
+Lemma selN_each_snd_list2byteset: forall T (l : list (T * _)) a def,
+  selN_each (map byteset2list l) (S a) def = selN_each (snd (split l)) a def.
+Proof.
+  unfold selN_each.
+  induction l; cbn; intros; auto.
+  rewrite surjective_pairing with (p := split l).
+  destruct a; cbn.
+  f_equal.
+  eauto.
+Qed.
+
+
+Lemma bytesets2valuset_eq_bytesets2valuset': forall bs n,
+  Forall (fun b => length (snd b) = n) bs ->
+  length bs = valubytes ->
+  bytesets2valuset bs = bytesets2valuset' bs n.
+Proof.
+  unfold bytesets2valuset, bytesets2valuset'.
+  intros.
+  setoid_rewrite bytesets2valuset_rec_eq_map.
+  cbn.
+  repeat f_equal.
+  apply selN_each_fst_list2byteset.
+  rewrite <- seq_shift.
+  repeat rewrite map_map.
+  eapply Forall_selN in H as H'.
+  rewrite H'.
+  apply map_ext. intros.
+  rewrite selN_each_snd_list2byteset. auto.
+  rewrite Valulen.valubytes_is in H0. omega.
+  autorewrite with list.
+  rewrite Valulen.valubytes_is in H0. omega.
+Qed.
+
+Lemma valuset2bytesets2valuset: forall vs,
+  bytesets2valuset (valuset2bytesets vs) = vs.
+Proof.
+  intros.
+  rewrite valuset2bytesets_eq_valuset2bytesets'.
+  destruct vs; cbn.
+  erewrite bytesets2valuset_eq_bytesets2valuset' with (n := length l).
+  cbv [bytesets2valuset' valuset2bytesets'].
+  rewrite combine_split. cbn.
+  rewrite valu2list2valu.
+  f_equal.
+  induction l; cbn; auto.
+  f_equal.
+  unfold valuset2byteset.
+  rewrite map_map. cbn.
+  rewrite map_selN_seq.
+  apply valu2list2valu.
+  rewrite valu2list_len. auto.
+  rewrite <- seq_shift.
+  rewrite map_map.
+  cbn.
+  rewrite <- IHl at 2.
+  apply map_ext. intros.
+  f_equal.
+  unfold valuset2byteset, selN_each.
+  repeat rewrite map_map.
+  reflexivity.
+  rewrite valu2list_len.
+  unfold valuset2byteset.
+  autorewrite with list. auto.
+  unfold valuset2bytesets', valuset2byteset. cbn.
+  apply Forall_forall. intros x H.
+  destruct x; cbn in *.
+  apply in_combine_r in H.
+  rewrite in_map_iff in *. deex.
+  autorewrite with lists. auto.
+  unfold valuset2bytesets', valuset2byteset. cbn.
+  autorewrite with lists.
+  rewrite seq_length.
+  rewrite valu2list_len.
+  apply Nat.min_id.
+Qed.
 
 Fact updN_list_nil: forall l2 l1 a,
   l1 <> nil -> updN_list l1 a l2 = nil -> l2 = nil.

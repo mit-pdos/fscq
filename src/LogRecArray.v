@@ -699,6 +699,13 @@ Module LogRecArrayCache (RA : RASig).
     intro; auto.
   Qed.
 
+  Lemma rep_clear_cache: forall xp items cache,
+    rep xp items cache =p=> rep xp items cache0.
+  Proof.
+    unfold rep. cancel.
+    apply cache_rep_empty.
+  Qed.
+
   Lemma arrayN_cache_ptsto_oob: forall l i m x,
     arrayN (cache_ptsto) x l m -> i >= length l + x \/ i < x -> m i = None.
   Proof.

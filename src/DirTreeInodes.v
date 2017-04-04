@@ -155,8 +155,8 @@ Import ListNotations.
     tree_inodes_distinct tree ->
     tree_names_distinct tree ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
-    off < length (BFILE.BFData f) ->
-    let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) (BFILE.BFCache f) in
+    off < length (DFData f) ->
+    let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) in
     dirtree_update_inode tree inum off v =
     update_subtree pathname (TreeFile inum f') tree.
   Proof.
@@ -187,7 +187,7 @@ Import ListNotations.
     tree_inodes_distinct tree ->
     tree_names_distinct tree ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
-    ~ off < length (BFILE.BFData f) ->
+    ~ off < length (DFData f) ->
     dirtree_update_inode tree inum off v = tree.
   Proof.
     induction pathname; simpl; intros.
@@ -1648,21 +1648,27 @@ Import ListNotations.
     remember H3 as H3'; clear HeqH3'.
     erewrite dirtree_update_inode_update_subtree; eauto.
     rewrite <- subtree_absorb; eauto; simpl in *.
-    eapply pimpl_apply. 2: eapply list2nmem_updN; pred_apply; cancel.
-    eapply pimpl_apply in H3. eapply list2nmem_sel with (i := inum) in H3. 2: cancel.
-    rewrite <- H3.
+    eapply pimpl_apply. 2: destruct_lift H3'; eapply list2nmem_updN; pred_apply; cancel.
+    destruct_lift H3.
+    eapply pimpl_apply in H2. eapply list2nmem_sel with (i := inum) in H2. 2: cancel.
+    rewrite <- H2.
     cancel.
 
-    destruct_lift H3'; eauto.
-
     simpl in *.
-    eapply pimpl_apply in H3'.
-    eapply list2nmem_sel with (i := inum) in H3'.
+    destruct_lift H3'.
+    eapply pimpl_apply in H2.
+    eapply list2nmem_sel with (i := inum) in H2.
     2: cancel.
-    rewrite H3'.
+
+    match goal with
+    | [ H : _ = selN dummy inum ?def |- _ ] =>
+      replace (DFData f) with (BFILE.BFData (selN dummy inum def)); [ | destruct (selN dummy inum def) ]
+    end.
 
     eapply BFILE.block_belong_to_file_bfdata_length; eauto.
     eapply pimpl_apply; [ | apply H ]. cancel.
+
+    inversion H2. subst. simpl. congruence.
   Qed.
 
 

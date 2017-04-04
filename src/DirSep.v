@@ -19,13 +19,13 @@ Set Implicit Arguments.
 
 Inductive flatmem_entry :=
 | Nothing
-| Dir
-| File : forall (inum : addr) (f : BFILE.bfile), flatmem_entry.
+| Dir : forall (inum : addr), flatmem_entry
+| File : forall (inum : addr) (f : dirfile), flatmem_entry.
 
 Definition dir2flatmem2 (d : dirtree) : @mem _ (list_eq_dec string_dec) _ :=
   fun pn => match find_subtree pn d with
   | Some (TreeFile inum f) => Some (File inum f)
-  | Some (TreeDir _ _) => Some Dir
+  | Some (TreeDir inum _) => Some (Dir inum)
   | None => Some Nothing
   end.
 
@@ -52,13 +52,14 @@ Proof.
   destruct d; inversion H0; subst; auto; congruence.
 Qed.
 
-Lemma dir2flatmem2_find_subtree_dir : forall fnlist tree,
+Lemma dir2flatmem2_find_subtree_dir : forall fnlist tree inum,
   tree_names_distinct tree ->
-  dir2flatmem2 tree fnlist = Some Dir ->
-  exists inum d, find_subtree fnlist tree = Some (TreeDir inum d).
+  dir2flatmem2 tree fnlist = Some (Dir inum) ->
+  exists d, find_subtree fnlist tree = Some (TreeDir inum d).
 Proof.
   unfold dir2flatmem2; intros.
   destruct (find_subtree fnlist tree); [ destruct d | ]; try congruence.
+  inversion H0; subst.
   eauto.
 Qed.
 
@@ -85,10 +86,10 @@ Proof.
   eapply dir2flatmem2_find_subtree_none in H0; eauto.
 Qed.
 
-Lemma dir2flatmem2_find_subtree_ptsto_dir : forall fnlist tree F,
+Lemma dir2flatmem2_find_subtree_ptsto_dir : forall fnlist tree F inum,
   tree_names_distinct tree ->
-  (F * fnlist |-> Dir)%pred (dir2flatmem2 tree) ->
-  exists inum d, find_subtree fnlist tree = Some (TreeDir inum d).
+  (F * fnlist |-> Dir inum)%pred (dir2flatmem2 tree) ->
+  exists d, find_subtree fnlist tree = Some (TreeDir inum d).
 Proof.
   intros.
   eapply ptsto_valid' in H0.

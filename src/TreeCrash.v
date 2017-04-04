@@ -36,7 +36,8 @@ Set Implicit Arguments.
 Module DTCrash.
 
   Inductive tree_crash : dirtree -> dirtree -> Prop :=
-    | TCFile : forall inum f f', BFILE.file_crash f f' ->
+    | TCFile : forall inum f f' c c',
+               BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) c) (BFILE.mk_bfile (DFData f') (DFAttr f') c') ->
                tree_crash (TreeFile inum f) (TreeFile inum f')
     | TCDir  : forall inum st st',
                map fst st = map fst st' ->
@@ -49,7 +50,7 @@ Module DTCrash.
     tree_crash t1 t3.
   Proof.
     induction t1 using dirtree_ind2; simpl; intros.
-    inversion H; subst. inversion H0; subst. constructor. eapply file_crash_trans; eauto.
+    inversion H; subst. inversion H0; subst. econstructor. eapply file_crash_trans; eauto.
     inversion H0; subst. inversion H1; subst. constructor. congruence.
     generalize dependent st'. generalize dependent st'0.
     induction tree_ents; simpl; intros.
@@ -113,8 +114,8 @@ Module DTCrash.
       tree_dir_names_pred xp inum tree_ents'.
   Proof.
     unfold tree_dir_names_pred; intros.
-    rewrite flist_crash_xform_exists. norml; unfold stars; simpl; clear_norm_goal.
-    rewrite flist_crash_xform_exists. norml; unfold stars; simpl; clear_norm_goal.
+    rewrite flist_crash_xform_exists. norml; unfold stars; simpl.
+    rewrite flist_crash_xform_exists. norml; unfold stars; simpl.
     repeat rewrite flist_crash_xform_sep_star.
     repeat rewrite flist_crash_xform_lift_empty.
     rewrite flist_crash_xform_ptsto.
@@ -142,12 +143,13 @@ Module DTCrash.
     flist_crash_xform (tree_pred xp t) =p=> exists t', [[ tree_crash t t' ]] * tree_pred xp t'.
   Proof.
     induction t using dirtree_ind2; simpl; intros.
-    - rewrite flist_crash_xform_sep_star.
-      rewrite flist_crash_xform_lift_empty.
-      rewrite flist_crash_xform_ptsto.
-      cancel.
-      2: constructor; eauto.
-      simpl; cancel.
+    - rewrite flist_crash_xform_exists.
+      setoid_rewrite flist_crash_xform_sep_star.
+      setoid_rewrite flist_crash_xform_ptsto.
+      setoid_rewrite flist_crash_xform_lift_empty.
+      norml. destruct f'. cancel.
+      instantiate (t' := TreeFile inum (mk_dirfile _ _)). cbn. cancel.
+      econstructor; eauto.
     - rewrite flist_crash_xform_sep_star.
       rewrite flist_crash_xform_dirlist_pred by eauto.
       cancel.
@@ -159,16 +161,19 @@ Module DTCrash.
       constructor; eauto.
   Qed.
 
-  Lemma flist_crash_xform_freelist : forall (FP : BFILE.bfile -> Prop) xp frees freepred,
+  Lemma flist_crash_xform_freelist : forall (FP : BFILE.bfile -> Prop) xp frees freepred ms,
     (forall f f', BFILE.file_crash f f' -> FP f -> FP f') ->
-    IAlloc.Alloc.rep FP xp frees freepred =p=>
-      IAlloc.Alloc.rep FP xp frees freepred *
+    IAlloc.Alloc.rep FP xp frees freepred ms =p=>
+      IAlloc.Alloc.rep FP xp frees freepred ms *
       [[ flist_crash_xform freepred =p=> freepred ]].
   Proof.
-    unfold IAlloc.Alloc.rep; intros.
+    unfold IAlloc.Alloc.rep, IAlloc.Alloc.Alloc.rep; intros.
     cancel.
-    rewrite H2.
-    clear H2 H3 blist.
+    match goal with H: _ <=p=> _ |- _ => rewrite H end.
+    repeat match goal with
+      Hb: context [BFILE.file_crash],
+      Hother: _ |- _ => clear Hother
+    end.
     induction frees; simpl.
     rewrite flist_crash_xform_emp; auto.
     rewrite flist_crash_xform_sep_star. rewrite flist_crash_xform_exists.
@@ -177,7 +182,6 @@ Module DTCrash.
     rewrite flist_crash_xform_sep_star.
     rewrite flist_crash_xform_lift_empty.
     rewrite flist_crash_xform_ptsto. cancel. eauto.
-    inversion H4; eauto.
   Qed.
 
   Lemma xform_tree_rep : forall xp F t ilist frees ms sz,
@@ -189,7 +193,7 @@ Module DTCrash.
     rewrite BFILE.xform_rep.
     rewrite IAlloc.xform_rep.
     rewrite flist_crash_xform_freelist.
-    norml; unfold stars; simpl; clear_norm_goal.
+    norml; unfold stars; simpl.
     eapply flist_crash_flist_crash_xform in H0; eauto.
     apply flist_crash_xform_sep_star in H0. rewrite flist_crash_xform_sep_star in H0.
     rewrite flist_crash_xform_tree_pred in H0.
@@ -197,6 +201,8 @@ Module DTCrash.
     unfold IAlloc.rep; cancel.
     rewrite <- BFILE.rep_clear_freelist.
     rewrite <- BFILE.rep_clear_bfcache.
+    rewrite <- BFILE.rep_clear_icache.
+    rewrite <- IAlloc.rep_clear_cache.
     cancel.
     eauto.
     erewrite BFILE.flist_crash_clear_caches by eauto.
@@ -295,7 +301,9 @@ Module DTCrash.
     tree_crash tree tree'.
   Proof.
     induction tree using dirtree_ind2; intros.
-    edestruct file_crash_exists; eexists; constructor; eauto.
+    edestruct file_crash_exists as [ [] H].
+    eexists (TreeFile _ (mk_dirfile _ _)).
+    econstructor; cbn. eauto.
     induction tree_ents.
     eexists; constructor; eauto. constructor.
     destruct a; simpl in *.
@@ -306,6 +314,8 @@ Module DTCrash.
     exists (TreeDir inum ((s, tree') :: st')).
     constructor. simpl; f_equal; auto.
     constructor; auto.
+  Unshelve.
+    exact None.
   Qed.
 
   Theorem tree_crash_update_subtree' :
@@ -316,7 +326,7 @@ Module DTCrash.
   Proof.
     induction pn; simpl; intros; eauto.
     destruct tree; simpl in *.
-    - inversion H; subst. constructor; eauto.
+    - inversion H; subst. eauto.
     - inversion H; subst. constructor; eauto.
       + generalize dependent st'.
         induction l; simpl; intros; destruct st'; simpl in *; try congruence.
