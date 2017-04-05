@@ -5,7 +5,9 @@ module ConcurInterp where
 import CCLProg
 import qualified Disk
 import Word
-import qualified Crypto.Hash.SHA256 as SHA256
+import Data.Word
+-- import qualified Crypto.Hash.SHA256 as SHA256
+import qualified Data.Digest.CRC32 as CRC32
 import Control.Monad (when)
 import Control.Concurrent.MVar
 import Data.IORef
@@ -45,6 +47,13 @@ interp_wtxn (WCons (NewVal i v) txn) h =
 interp_wtxn (WCons (AbsUpd _ _) txn) h = interp_wtxn txn h
 interp_wtxn (WCons (AbsMemUpd _ _ _) txn) h = interp_wtxn txn h
 
+crc32_word_update :: Word32 -> Integer -> Coq_word -> IO Word32
+crc32_word_update c sz (W w) = do
+  bs <- Word.i2bs w $ fromIntegral $ (sz + 7) `div` 8
+  crc32_word_update c sz (WBS bs)
+crc32_word_update c sz (W64 w) = crc32_word_update c sz $ W $ fromIntegral w
+crc32_word_update c _ (WBS bs) = return $ CRC32.crc32Update c bs
+
 run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
@@ -71,14 +80,10 @@ run_dcode s (Write a v) = do
   debugmsg $ "Write " ++ show a ++ " " ++ show v
   Disk.write_disk (disk s) a v
   return $ unsafeCoerce ()
-run_dcode ds (Hash sz (W64 w)) = run_dcode ds (Hash sz (W $ fromIntegral w))
-run_dcode ds (Hash sz (W w)) = do
-  debugmsg $ "Hash " ++ (show sz) ++ " W " ++ (show w)
-  bs <- Word.i2bs w $ fromIntegral $ (sz + 7) `div` 8
-  run_dcode ds $ Hash sz (WBS bs)
-run_dcode _ (Hash sz (WBS bs)) = do
-  debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
-  return $ unsafeCoerce $ WBS $ SHA256.hash bs
+run_dcode _ (Hash sz w) = do
+  debugmsg $ "Hash " ++ (show sz)
+  c <- crc32_word_update 0 sz w
+  return $ unsafeCoerce $ W $ fromIntegral c
 run_dcode s (SetLock l l') = do
   debugmsg $ "SetLock " ++ show l ++ " " ++ show l'
   case (l, l') of
