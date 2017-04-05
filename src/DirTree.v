@@ -569,6 +569,7 @@ Module DIRTREE.
     match goal with a: IAlloc.Alloc.memstate |- _
       => destruct a; cbn in *; subst
     end.
+    msalloc_eq.
     or_r; cancel.
     eapply dirname_not_in; eauto.
 
