@@ -1944,6 +1944,7 @@ Module BFILE.
            [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free allocc (MSCache ms') (MSICache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSCache ms = MSCache ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->

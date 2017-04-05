@@ -1046,7 +1046,10 @@ Module AFS.
       [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs')
       exists ds' tree' al,
-        [[ BFILE.mscs_same_except_log mscs mscs' ]] *
+        [[ MSAlloc mscs = MSAlloc mscs' ]] *
+        [[ MSCache mscs = MSCache mscs' ]] *
+        [[ MSAllocC mscs = MSAllocC mscs' ]] *
+        [[ MSIAllocC mscs = MSIAllocC mscs' ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ ds' = dssync_vecs ds al]] *
         [[ length al = length (DFData f) /\ forall i, i < length al ->
@@ -1069,26 +1072,13 @@ Module AFS.
     step.
     step.
     step.
-    admit.
 
     - xcrash_solve.
       rewrite <- crash_xform_idem.
       rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
       rewrite SB.crash_xform_rep; auto.
     - xcrash_solve.
-      rewrite <- crash_xform_idem.
-      rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
-      rewrite SB.crash_xform_rep; auto.
-    - cancel.
-      xcrash_solve.
       rewrite LOG.recover_any_idempred.
-      cancel.
-    - (* This is [xcrash_solve] spelled out because [eauto] hangs. *)
-      eapply pimpl_trans; [ | eapply H1 ].
-      norm. cancel. intuition idtac. eexists; eassumption.
-
-      rewrite LOG.notxn_intact.
-      rewrite LOG.intact_idempred.
       cancel.
     - xcrash_solve.
       rewrite LOG.intact_idempred.
