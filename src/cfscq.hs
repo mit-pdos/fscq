@@ -264,7 +264,7 @@ fscqGetFileStat fr fsP (_:path)
   -- putStrLn $ show tid ++ " capability: " ++ show processor ++
   --   if bound then " (bound)" else ""
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) nameparts
+  (r, ()) <- fr $ CFS.lookup fsP nameparts
   debugMore r
   case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
@@ -282,7 +282,7 @@ fscqOpenDirectory :: FSrunner -> FsParams -> FilePath -> IO Errno
 fscqOpenDirectory fr fsP (_:path) = do
   debugStart "OPENDIR" path
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) nameparts
+  (r, ()) <- fr $ CFS.lookup fsP nameparts
   debugMore r
   case r of
     Errno.Err e -> return $ errnoToPosix e
@@ -296,7 +296,7 @@ fscqReadDirectory fr fsP (_:path) = do
   debugStart "READDIR" path
   ctx <- getFuseContext
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) nameparts
+  (r, ()) <- fr $ CFS.lookup fsP nameparts
   debugMore r
   case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
@@ -323,7 +323,7 @@ fscqOpen fr fsP (_:path) _ _
   | otherwise = timeAction $ do
   debugStart "OPEN" path
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) nameparts
+  (r, ()) <- fr $ CFS.lookup fsP nameparts
   debugMore r
   case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
@@ -340,7 +340,7 @@ fscqCreate :: FSrunner -> FsParams -> FilePath -> EntryType -> FileMode -> Devic
 fscqCreate fr fsP (_:path) entrytype _ _ = do
   debugStart "CREATE" path
   (dirparts, filename) <- return $ splitDirsFile path
-  (rd, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) dirparts
+  (rd, ()) <- fr $ CFS.lookup fsP dirparts
   debugMore rd
   case rd of
     Errno.Err e -> return $ errnoToPosix e
@@ -361,7 +361,7 @@ fscqCreateDir :: FSrunner -> FsParams -> FilePath -> FileMode -> IO Errno
 fscqCreateDir fr fsP (_:path) _ = do
   debugStart "MKDIR" path
   (dirparts, filename) <- return $ splitDirsFile path
-  (rd, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) dirparts
+  (rd, ()) <- fr $ CFS.lookup fsP dirparts
   debugMore rd
   case rd of
     Errno.Err e -> return $ errnoToPosix e
@@ -379,7 +379,7 @@ fscqUnlink :: FSrunner -> FsParams -> FilePath -> IO Errno
 fscqUnlink fr fsP (_:path) = do
   debugStart "UNLINK" path
   (dirparts, filename) <- return $ splitDirsFile path
-  (rd, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) dirparts
+  (rd, ()) <- fr $ CFS.lookup fsP dirparts
   debugMore rd
   case rd of
     Errno.Err e -> return $ errnoToPosix e
@@ -506,7 +506,7 @@ fscqSetFileSize :: FSrunner -> FsParams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr fsP (_:path) size = do
   debugStart "SETSIZE" (path, size)
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) nameparts
+  (r, ()) <- fr $ CFS.lookup fsP nameparts
   debugMore r
   case r of
     Errno.Err e -> return $ errnoToPosix e
@@ -559,7 +559,7 @@ fscqSyncFile :: FSrunner -> FsParams -> FilePath -> SyncType -> IO Errno
 fscqSyncFile fr fsP (_:path) syncType = do
   debugStart "SYNC FILE" path
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP (coq_FSXPRootInum (fsxp fsP)) nameparts
+  (r, ()) <- fr $ CFS.lookup fsP nameparts
   debugMore r
   case r of
     Errno.Err e -> return $ errnoToPosix e
