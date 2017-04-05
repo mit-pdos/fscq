@@ -1123,12 +1123,75 @@ Section ConcurrentFS.
     eapply GenSepN.list2nmem_updN; eauto.
   Qed.
 
-  Definition rename dnum srcpath srcname dstpath dstname :=
-    write_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
-                  (fun _ tree => tree).
-
   Definition delete dnum name :=
     write_syscall (fun mscs => OptFS.delete (fsxp P) dnum name mscs)
+                  (fun '(r, _) tree =>
+                     match r with
+                     | OK _ => alter_inum
+                                dnum (fun d => delete_from_dir name d)
+                                tree
+                     | Err _ => tree
+                     end).
+
+  Theorem delete_ok : forall tid dnum name,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, homedir, pathname, tree_elem) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         homedir_disjoint homedirs tid /\
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree pathname homedir = Some (TreeDir dnum tree_elem);
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (r, _) =>
+                               match r with
+                               | OK _ =>
+                                 let homedir' := update_subtree pathname
+                                                                (delete_from_dir name (TreeDir dnum tree_elem)) homedir in
+                                 find_subtree (homedirs tid) tree' = Some homedir'
+                               | Err _ => find_subtree (homedirs tid) tree' = Some homedir
+                               end
+                             | TryAgain => False
+                             | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
+                             end |})
+                 (delete dnum name).
+  Proof.
+    unfold delete; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply write_syscall_ok;
+        eauto using opt_delete_ok | ];
+      simplify; finish.
+    unfold precondition_stable; simplify; simpl.
+    intuition eauto.
+    eapply homedir_rely_preserves_subtrees; eauto.
+
+    unfold same_fs_update; intros.
+    destruct_goal_matches.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
+    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
+    erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
+
+    eapply is_allowed_fs_update; intros.
+    destruct_goal_matches.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
+    eapply homedir_guarantee_alter; eauto.
+
+    step; finish.
+    destruct r; intuition eauto.
+    destruct_goal_matches; subst; eauto.
+    eapply homedir_rely_preserves_homedir in H6; eauto.
+    erewrite find_subtree_update_subtree_child; eauto.
+    subst; eauto.
+  Qed.
+
+  Definition rename dnum srcpath srcname dstpath dstname :=
+    write_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
                   (fun _ tree => tree).
 
   (* wrap unverified syscalls *)
