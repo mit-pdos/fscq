@@ -231,6 +231,7 @@ Qed.
 
 Hint Extern 1 ({{_}} Bind (Rdtsc) _) => apply rdtsc_ok : prog.
 
+
 (** program equivalence and monad laws *)
 
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=

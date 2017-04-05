@@ -334,15 +334,23 @@ Module AFS.
 
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.setattr fsxp inum attr (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
-    let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), ok).
+    ams' <- DIRTREE.setattr fsxp inum attr (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ms', ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
+    If (bool_dec ok true) {
+      Ret ^((BFILE.mk_memstate (MSAlloc ams') ms' (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
+    } else {
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms' (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+    }.
 
   Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), ok).
+    If (bool_dec ok true) {
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+    } else {
+      Ret ^(ams, Err ELOGOVERFLOW)
+    }.
 
   Definition read_fblock fsxp inum off ams :=
     t1 <- Rdtsc ;
@@ -725,7 +733,7 @@ Module AFS.
     step.
     step.
     step.
-    Unshelve. all: exact tt.    
+    Unshelve. all: exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
@@ -833,10 +841,15 @@ Module AFS.
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      ([[ ok = false ]] *
+      ([[ isError ok  ]] *
        (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+        [[ MSAlloc mscs' = MSAlloc mscs ]] *
+        [[ MSAllocC mscs' = MSAllocC mscs ]] *
+        [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+        [[ MSICache mscs' = MSICache mscs ]] *
+        [[ MSCache mscs' = MSCache mscs ]] *
         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]) \/
-      ([[ ok = true  ]] * exists d tree' f' ilist',
+      ([[ ok = OK tt  ]] * exists d tree' f' ilist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
@@ -863,6 +876,11 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
+    step.
+    xcrash_solve.
     xcrash_solve.
     {
       rewrite LOG.recover_any_idempred; cancel.
@@ -1297,11 +1315,11 @@ Module AFS.
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
       [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs', ok)
-      [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ isError ok ]] *
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm' *
+                [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] \/
       [[ ok = OK tt ]] * exists d tree' ilist' frees',
+        [[ MSAlloc mscs' = MSAlloc mscs ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[ tree' = update_subtree pathname
                       (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
@@ -1334,6 +1352,8 @@ Module AFS.
     step.
     step.
     step.
+    step.
+
     xcrash. or_r. cancel.
     xform_norm; cancel.
     xform_norm; cancel.
