@@ -1060,7 +1060,68 @@ Section ConcurrentFS.
 
   Definition update_fblock_d inum off b :=
     write_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
-                  (fun _ tree => tree).
+                  (fun _ tree =>
+                     dirtree_alter_file
+                       inum (fun f =>
+                               let vs := ListUtils.selN (DFData f) off (Word.natToWord _ 0, nil) in
+                               mk_dirfile (ListUtils.updN (DFData f) off (b, AsyncDisk.vsmerge vs)) (DFAttr f))
+                       tree).
+
+  Theorem update_fblock_d_ok : forall tid inum off b,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, homedir, pathname, f, Fd, vs) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         homedir_disjoint homedirs tid /\
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree pathname homedir = Some (TreeFile inum f) /\
+                         (Fd * off |-> vs)%pred (GenSepN.list2nmem (DFData f));
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done _ =>
+                               exists f',
+                               let homedir' := update_subtree pathname (TreeFile inum f') homedir in
+                               find_subtree (homedirs tid) tree' = Some homedir' /\
+                               DFAttr f' = DFAttr f /\
+                               (Fd * off |-> (b, AsyncDisk.vsmerge vs))%pred (GenSepN.list2nmem (DFData f'))
+                             | TryAgain => False
+                             | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
+                             end |})
+                 (update_fblock_d inum off b).
+  Proof.
+    unfold update_fblock_d; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply write_syscall_ok;
+        eauto using opt_update_fblock_d_ok | ];
+      simplify; finish.
+    unfold precondition_stable; simplify; simpl.
+    intuition eauto.
+    eapply homedir_rely_preserves_subtrees; eauto.
+
+    unfold same_fs_update; intros.
+    unfold dirtree_alter_file.
+    eapply homedir_rely_preserves_subtrees in H5; eauto.
+    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
+    erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
+    erewrite <- GenSepN.list2nmem_sel; eauto.
+
+    eapply is_allowed_fs_update; intros.
+    eapply homedir_rely_preserves_subtrees in H5; eauto.
+    unfold dirtree_alter_file.
+    eapply homedir_guarantee_alter; eauto.
+
+    step; finish.
+    destruct r; intuition (subst; eauto).
+    erewrite find_subtree_update_subtree_child; eauto.
+    descend; intuition eauto; simpl.
+    eapply GenSepN.list2nmem_updN; eauto.
+  Qed.
 
   Definition rename dnum srcpath srcname dstpath dstname :=
     write_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)

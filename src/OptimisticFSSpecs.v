@@ -307,4 +307,56 @@ Section FsSpecs.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
+  Hint Extern 1 {{ OptFS.update_fblock_d _ _ _ _ _ _ _; _ }} => apply OptFS.update_fblock_d_ok : prog.
+
+  Lemma list2nmem_ptsto_arrayN_frame : forall V (l:list V) off v F (def:V),
+      (F * off |-> v)%pred (GenSepN.list2nmem l) ->
+      (GenSepN.arrayN_ex (ptsto (V:=V)) l off * off |-> v)%pred (GenSepN.list2nmem l).
+  Proof.
+    intros.
+    pose proof (GenSepN.list2nmem_ptsto_bound H).
+    eapply GenSepN.list2nmem_sel with (def:=def) in H; subst.
+    apply GenSepN.list2nmem_array_pick; auto.
+  Qed.
+
+  Theorem opt_update_fblock_d_ok : forall G inum off v mscs l tid c,
+      cprog_spec G tid
+                 (fs_spec (fun '(pathname, f, Fd, vs) =>
+                             {| fs_pre :=
+                                  fun homedir tree =>
+                                    (exists path, pathname = (homedir ++ path)%list) /\
+                                    find_subtree pathname tree = Some (TreeFile inum f) /\
+                                    (Fd * off |-> vs)%pred (GenSepN.list2nmem (DFData f));
+                                fs_post :=
+                                  fun _ => True;
+                                fs_dirup :=
+                                  fun _ tree =>
+                                    let f' := mk_dirfile (ListUtils.updN (DFData f) off (v, AsyncDisk.vsmerge vs)) (DFAttr f) in
+                                    update_subtree pathname (TreeFile inum f') tree
+                             |}) tid mscs l c)
+                 (OptFS.update_fblock_d (fsxp P) inum off v mscs l c).
+  Proof using Type.
+    unfold fs_spec; intros.
+    step; simpl in *; safe_intuition.
+    unfold Prog.pair_args_helper in *.
+    match goal with
+    | [ H: fs_rep _ _ _ _ _ |- _ ] =>
+      unfold fs_rep in H; simplify
+    end.
+    apply list2nmem_ptsto_arrayN_frame in H7; auto.
+    destruct frees; finish.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+
+    step; finish.
+
+    destruct_goal_matches; SepAuto.destruct_lifts; finish.
+    assert (DFData dummy0 = ListUtils.updN (DFData f) off (v, AsyncDisk.vsmerge vs)).
+    apply GenSepN.list2nmem_array_updN; auto.
+    eapply GenSepN.list2nmem_ptsto_bound; eauto.
+    destruct dummy0; simpl in *; subst.
+    unfold fs_rep; finish.
+
+    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+  Qed.
+
 End FsSpecs.
