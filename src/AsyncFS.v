@@ -1083,6 +1083,8 @@ Module AFS.
     - xcrash_solve.
       rewrite LOG.intact_idempred.
       cancel.
+    Unshelve.
+      all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_sync _ _ _) _) => apply file_sync_ok : prog.
@@ -1175,6 +1177,8 @@ Module AFS.
     cancel. apply LOG.notxn_idempred.
     cancel. apply LOG.intact_idempred.
     cancel. apply LOG.notxn_idempred.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (lookup _ _ _ _) _) => apply lookup_ok : prog.
