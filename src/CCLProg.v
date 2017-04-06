@@ -130,7 +130,7 @@ Section CCL.
     fun tid =>
       clos_refl_trans _ (fun sigma sigma' =>
                            exists tid', tid <> tid' /\
-                                   Guarantee tid sigma sigma').
+                                   Guarantee tid' sigma sigma').
 
   Global Instance Rely_trans tid : Transitive (Rely tid).
   Proof.
