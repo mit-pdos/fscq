@@ -2328,6 +2328,13 @@ Module IAlloc.
     apply ino_valid_roundtrip'; auto.
   Qed.
 
+  Lemma rep_clear_cache: forall V FP xp freelist freepred ms mslog,
+    @rep V FP xp freelist freepred ms =p=>
+    rep FP xp freelist freepred (mk_memstate mslog Alloc.freelist0).
+  Proof.
+    auto using Alloc.rep_clear_cache.
+  Qed.
+
   Hint Extern 0 (okToUnify (rep _ ?xp _ _ _) _) => unfold rep; trivial with okToUnify : okToUnify.
   Hint Extern 0 (okToUnify _ (rep _ ?xp _ _ _)) => unfold rep; trivial with okToUnify : okToUnify.
 
