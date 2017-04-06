@@ -33,8 +33,13 @@ Section MemCache.
   Definition add_entry f c a v : Cache :=
     Map.add a (Present v f) c.
 
+  Definition delete_entry c a : Cache :=
+    Map.remove a c.
+
   Hint Rewrite MapFacts.add_eq_o using (solve [ auto ]).
   Hint Rewrite MapFacts.add_neq_o using (solve [ auto ]).
+  Hint Rewrite MapFacts.remove_eq_o using (solve [ auto ]).
+  Hint Rewrite MapFacts.remove_neq_o using (solve [ auto ]).
 
   Theorem cache_get_add_eq : forall c a v f,
       cache_get (add_entry f c a v) a = Present v f.
@@ -66,9 +71,26 @@ Section MemCache.
     autorewrite with core; auto.
   Qed.
 
+  Theorem cache_get_delete_eq : forall c a,
+      cache_get (delete_entry c a) a = Missing.
+  Proof.
+    unfold cache_get, delete_entry; intros.
+    autorewrite with core; auto.
+  Qed.
+
+  Theorem cache_get_delete_neq : forall c a a',
+      a <> a' ->
+      cache_get (delete_entry c a) a' = cache_get c a'.
+  Proof.
+    unfold cache_get, delete_entry; intros.
+    autorewrite with core; auto.
+  Qed.
+
 End MemCache.
 
 Hint Rewrite cache_get_add_eq : cache.
 Hint Rewrite cache_get_add_neq using (solve [ auto ] ) : cache.
 Hint Rewrite cache_get_pending_eq : cache.
 Hint Rewrite cache_get_pending_neq using (solve [ auto ] ) : cache.
+Hint Rewrite cache_get_delete_eq : cache.
+Hint Rewrite cache_get_delete_neq using (solve [ auto ] ) : cache.

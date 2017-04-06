@@ -529,6 +529,133 @@ Section OptimisticCache.
     hoare finish.
   Qed.
 
+  Definition CacheEvict cs a :=
+    match cache_get (cache cs) a with
+    | Present v Dirty =>
+      _ <- Write a v;
+        Ret (caches (delete_entry (old_cache cs) a)
+                    (delete_entry (cache cs) a))
+    | Present v Clean =>
+      Ret (caches (delete_entry (old_cache cs) a)
+                  (delete_entry (cache cs) a))
+    | Invalid => Ret cs
+    | Missing => Ret cs
+    end.
+
+  Lemma cache_dirty_disk_val : forall d c vd a v v',
+      cache_rep d c vd ->
+      cache_get c a = Present v Dirty ->
+      vd a = Some v' ->
+      exists v0, d a = Some (v0, NoReader) /\
+            v = v'.
+  Proof.
+    solve_cache.
+    deex; eauto.
+  Qed.
+
+  Lemma cache_clean_disk_val : forall d c vd a v v',
+      cache_rep d c vd ->
+      cache_get c a = Present v Clean ->
+      vd a = Some v' ->
+      d a = Some (v, NoReader) /\
+      v = v'.
+  Proof.
+    solve_cache.
+  Qed.
+
+  Lemma cache_rep_clean_delete:
+    forall c (a : addr) (vd0 vd : Disk) (v0 : valu) d,
+      vd a = Some v0 ->
+      cache_rep d c vd ->
+      d a = Some (v0, NoReader) ->
+      cache_rep d (delete_entry c a) vd.
+  Proof.
+    solve_cache.
+  Qed.
+
+  Hint Resolve cache_rep_clean_delete.
+
+  Lemma caches_consistent_delete:
+    forall (a : addr) (c0 c : Cache), caches_consistent c0 c ->
+                                 caches_consistent (delete_entry c0 a) (delete_entry c a).
+  Proof.
+    unfold caches_consistent; intuition;
+      addrs_cases; auto.
+    specialize (H0 a0); eauto.
+    specialize (H1 a0); eauto.
+  Qed.
+
+  Hint Resolve caches_consistent_delete.
+
+  Lemma cache_rep_writeback:
+    forall (a : addr) (vd : Disk) (v0 : valu) (d : DISK) (c : Cache),
+      cache_rep d c vd ->
+      cache_get c a <> Invalid ->
+      vd a = Some v0 ->
+      cache_rep (upd d a (v0, NoReader)) c vd.
+  Proof.
+    solve_cache.
+    destruct_goal_matches; intuition eauto.
+  Qed.
+
+  Lemma cache_consistent_not_invalid : forall c0 c a v f,
+      cache_get c a = Present v f ->
+      caches_consistent c0 c ->
+      cache_get c0 a <> Invalid.
+  Proof.
+    unfold caches_consistent; intuition;
+      repeat specific_addr;
+      repeat simpl_match;
+      congruence.
+  Qed.
+
+  Hint Resolve cache_rep_writeback cache_consistent_not_invalid.
+
+  Theorem CacheEvict_ok : forall tid cs a,
+      cprog_spec G tid
+                 (fun '(F, vd, v0) sigma =>
+                    {| precondition :=
+                         F (Sigma.mem sigma) /\
+                         (* eviction is only supported if the caches are in sync
+                         (the virtual disks are the same) *)
+                         CacheRep (Sigma.disk sigma) cs vd vd /\
+                         vd a = Some v0 /\
+                         Sigma.l sigma = Owned tid;
+                       postcondition :=
+                         fun sigma' cs' =>
+                           F (Sigma.mem sigma') /\
+                           CacheRep (Sigma.disk sigma') cs' vd vd /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
+                 (CacheEvict cs a).
+  Proof.
+    unfold CacheEvict.
+    intros.
+    destruct (cache_get (cache cs) a) eqn:?; hoare finish.
+    destruct b eqn:?; hoare finish; simpl in *; simplify.
+    match goal with
+    | [ H: cache_get _ _ = Present _ Dirty |- _ ] =>
+      pose proof H;
+        eapply cache_dirty_disk_val in H; eauto;
+          repeat deex
+    end.
+    finish.
+
+    step.
+    replace (Sigma.disk st0).
+    eapply CacheRep_fold; eauto.
+    eapply cache_rep_clean_delete; autorewrite with upd; eauto.
+    eapply cache_rep_clean_delete; autorewrite with upd; eauto.
+
+    match goal with
+    | [ H: cache_get _ _ = Present _ Clean |- _ ] =>
+      pose proof H;
+        eapply cache_clean_disk_val in H; eauto;
+          intuition eauto
+    end.
+  Qed.
+
   Definition CacheInit c :=
     Ret (caches c c).
 
