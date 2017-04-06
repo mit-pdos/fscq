@@ -415,7 +415,7 @@ Module CacheOneDir.
     all : eauto.
   Qed.
 
-  Hint Extern 0 ({{ _ }} Bind (link' _ _ _ _ _ _ _ _) _) => apply link'_ok.
+  Hint Extern 0 ({{ _ }} Bind (link' _ _ _ _ _ _ _ _) _) => apply link'_ok : prog.
 
   Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
     {< F Fm Fi m0 m dmap ilist frees f,

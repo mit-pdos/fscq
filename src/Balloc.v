@@ -1392,7 +1392,7 @@ Module BmapAllocCache (Sig : AllocSig).
     auto using permutation_comm.
   Qed.
 
-  Hint Extern 0 ({{ _ }} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok.
+  Hint Extern 0 ({{ _ }} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok : prog.
 
   Theorem alloc_ok : forall V FP lxp xp ms,
     {< F Fm m0 m freelist freepred,
