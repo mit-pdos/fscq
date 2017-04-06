@@ -855,11 +855,7 @@ Module AFS.
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
       ([[ isError ok  ]] *
        (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-        [[ MSAlloc mscs' = MSAlloc mscs ]] *
-        [[ MSAllocC mscs' = MSAllocC mscs ]] *
-        [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-        [[ MSICache mscs' = MSICache mscs ]] *
-        [[ MSCache mscs' = MSCache mscs ]] *
+        [[ BFILE.mscs_same_except_log mscs mscs' ]] *
         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]) \/
       ([[ ok = OK tt  ]] * exists d tree' f' ilist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
@@ -892,6 +888,8 @@ Module AFS.
     step.
     step.
     step.
+    or_l; cancel.
+    unfold BFILE.mscs_same_except_log; intuition.
     xcrash_solve.
     xcrash_solve.
     {

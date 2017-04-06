@@ -740,6 +740,63 @@ Module TREESEQ.
            | [ H: crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => rewrite H; xform_norm
            end.
 
+
+  Lemma mscs_same_except_log_tree_rep_latest : forall mscs mscs' F Ftop fsxp t,
+    BFILE.mscs_same_except_log mscs mscs' ->
+    tree_rep_latest F Ftop fsxp t mscs =p=>
+    tree_rep_latest F Ftop fsxp t mscs'.
+  Proof.
+    unfold tree_rep_latest; intros.
+    rewrite mscs_same_except_log_rep by eassumption.
+    cancel.
+  Qed.
+
+  Lemma mscs_parts_eq_tree_rep_latest : forall mscs mscs' F Ftop fsxp t,
+    MSCache mscs' = MSCache mscs ->
+    MSICache mscs' = MSICache mscs ->
+    MSAllocC mscs' = MSAllocC mscs ->
+    MSIAllocC mscs' = MSIAllocC mscs ->
+    tree_rep_latest F Ftop fsxp t mscs =p=>
+    tree_rep_latest F Ftop fsxp t mscs'.
+  Proof.
+    unfold tree_rep_latest; intros.
+    unfold rep. unfold Balloc.IAlloc.rep. unfold Balloc.IAlloc.Alloc.rep; simpl.
+    msalloc_eq.
+    apply pimpl_refl.
+  Qed.
+
+  Lemma mscs_same_except_log_treeseq_one_safe : forall mscs mscs' t t',
+    BFILE.mscs_same_except_log mscs mscs' ->
+    treeseq_one_safe t t' mscs ->
+    treeseq_one_safe t t' mscs'.
+  Proof.
+    unfold BFILE.mscs_same_except_log, treeseq_one_safe; intuition msalloc_eq.
+    eauto.
+  Qed.
+
+  Lemma mscs_same_except_log_rep_treeseq_in_ds : forall F Ftop fsxp mscs mscs' ts ds,
+    BFILE.mscs_same_except_log mscs mscs' ->
+    treeseq_in_ds F Ftop fsxp mscs ts ds ->
+    treeseq_in_ds F Ftop fsxp mscs' ts ds.
+  Proof.
+    unfold treeseq_in_ds.
+    intuition eauto.
+    eapply NEforall2_impl; eauto.
+    intuition. intuition. intuition.
+    eapply mscs_same_except_log_treeseq_one_safe; eauto.
+    eapply mscs_same_except_log_tree_rep_latest; eauto.
+  Qed.
+
+  Lemma treeseq_in_ds_eq: forall Fm Ftop fsxp mscs a ts ds,
+    BFILE.mscs_same_except_log a mscs ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds <->
+    treeseq_in_ds Fm Ftop fsxp a ts ds.
+  Proof.
+    split; eapply mscs_same_except_log_rep_treeseq_in_ds; eauto.
+    apply BFILE.mscs_same_except_log_comm; eauto.
+  Qed.
+
+
   Theorem treeseq_file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -788,7 +845,8 @@ Module TREESEQ.
     eassumption.
     step.
     or_l. cancel.
-    admit. (* AsyncFS must promise a bit more *)
+    eapply treeseq_in_ds_eq; eauto.
+    unfold BFILE.mscs_same_except_log; intuition.
     or_r.
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
@@ -1161,61 +1219,6 @@ Module TREESEQ.
     eapply treeseq_one_safe_refl.
   Qed.
 
-
-  Lemma mscs_same_except_log_tree_rep_latest : forall mscs mscs' F Ftop fsxp t,
-    BFILE.mscs_same_except_log mscs mscs' ->
-    tree_rep_latest F Ftop fsxp t mscs =p=>
-    tree_rep_latest F Ftop fsxp t mscs'.
-  Proof.
-    unfold tree_rep_latest; intros.
-    rewrite mscs_same_except_log_rep by eassumption.
-    cancel.
-  Qed.
-
-  Lemma mscs_parts_eq_tree_rep_latest : forall mscs mscs' F Ftop fsxp t,
-    MSCache mscs' = MSCache mscs ->
-    MSICache mscs' = MSICache mscs ->
-    MSAllocC mscs' = MSAllocC mscs ->
-    MSIAllocC mscs' = MSIAllocC mscs ->
-    tree_rep_latest F Ftop fsxp t mscs =p=>
-    tree_rep_latest F Ftop fsxp t mscs'.
-  Proof.
-    unfold tree_rep_latest; intros.
-    unfold rep. unfold Balloc.IAlloc.rep. unfold Balloc.IAlloc.Alloc.rep; simpl.
-    msalloc_eq.
-    apply pimpl_refl.
-  Qed.
-
-  Lemma mscs_same_except_log_treeseq_one_safe : forall mscs mscs' t t',
-    BFILE.mscs_same_except_log mscs mscs' ->
-    treeseq_one_safe t t' mscs ->
-    treeseq_one_safe t t' mscs'.
-  Proof.
-    unfold BFILE.mscs_same_except_log, treeseq_one_safe; intuition msalloc_eq.
-    eauto.
-  Qed.
-
-  Lemma mscs_same_except_log_rep_treeseq_in_ds : forall F Ftop fsxp mscs mscs' ts ds,
-    BFILE.mscs_same_except_log mscs mscs' ->
-    treeseq_in_ds F Ftop fsxp mscs ts ds ->
-    treeseq_in_ds F Ftop fsxp mscs' ts ds.
-  Proof.
-    unfold treeseq_in_ds.
-    intuition eauto.
-    eapply NEforall2_impl; eauto.
-    intuition. intuition. intuition.
-    eapply mscs_same_except_log_treeseq_one_safe; eauto.
-    eapply mscs_same_except_log_tree_rep_latest; eauto.
-  Qed.
-
-  Lemma treeseq_in_ds_eq: forall Fm Ftop fsxp mscs a ts ds,
-    BFILE.mscs_same_except_log a mscs ->
-    treeseq_in_ds Fm Ftop fsxp mscs ts ds <->
-    treeseq_in_ds Fm Ftop fsxp a ts ds.
-  Proof.
-    split; eapply mscs_same_except_log_rep_treeseq_in_ds; eauto.
-    apply BFILE.mscs_same_except_log_comm; eauto.
-  Qed.
 
   Theorem treeseq_in_ds_upd : forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
