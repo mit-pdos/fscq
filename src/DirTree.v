@@ -956,7 +956,10 @@ Module DIRTREE.
     POST:hm' RET:mscs'
            LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn (ds!!, nil)) (MSLL mscs') hm' *
            [[ MSCache mscs' = MSCache mscs ]] *
-           [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
+           [[ MSAlloc mscs' = negb (MSAlloc mscs) ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSICache mscs' = MSICache mscs ]]
     XCRASH:hm'
            LOG.recover_any fsxp.(FSXPLog) F ds hm'
      >} sync fsxp mscs.

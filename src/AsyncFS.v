@@ -1106,17 +1106,14 @@ Module AFS.
   Proof.
     unfold tree_sync; intros.
     step.
+    step using auto.
     step.
     step.
-    step.
-    admit.
-    admit.
-    admit.
-
-
     xcrash_solve.
     rewrite LOG.recover_any_idempred.
     cancel.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (tree_sync _ _) _) => apply tree_sync_ok : prog.
