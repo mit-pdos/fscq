@@ -422,15 +422,15 @@ Module AFS.
   Definition create fsxp dnum name ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     r <- match oi with
       | Err e =>
-          ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
+          ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
           Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
       | OK inum =>
-        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
         match ok with
-          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK inum)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK inum)
           | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
         end
      end;
@@ -1213,20 +1213,23 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
     xcrash_solve.
     or_r; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
+    repeat (cancel; progress xform_norm).
+    safecancel.
     2: reflexivity. cancel.
-    rewrite LOG.recover_any_idempred; cancel. pred_apply; cancel.
+    rewrite LOG.recover_any_idempred; cancel.
+    pred_apply; cancel.
+    step.
     step.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (create _ _ _ _ ) _) => apply create_ok : prog.
@@ -1282,8 +1285,8 @@ Module AFS.
     step.
     xcrash. or_r. cancel.
     repeat (cancel; progress xform_norm).
-    xform_norm; safecancel.
-    rewrite LOG.recover_any_idempred.  cancel. 
+    safecancel.
+    rewrite LOG.recover_any_idempred. cancel.
     2: pred_apply; cancel.
     all: eauto.
     step.
