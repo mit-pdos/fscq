@@ -82,11 +82,10 @@ Module ATOMICCP.
       Ret ^(mscs, false)
     | OK _ =>
       let^ (mscs, ok) <- copydata fsxp src_inum tinum mscs;
-      If (bool_dec ok true) {
-        Ret ^(mscs, ok)
-      } else {
-        Ret ^(mscs, ok)
-      }
+      match ok with
+      | Err _ => Ret ^(mscs, false)
+      | OK _ => Ret ^(mscs, true)
+      end
     end.
 
 
@@ -453,11 +452,11 @@ Module ATOMICCP.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ MSAlloc mscs = MSAlloc mscs' ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
-        (([[ r = false ]] *
+        (([[ isError r ]] *
           exists tfile' dstinum,
             [[ (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum tfile' *
                 nil |-> Dir the_dnum * (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred (dir2flatmem2 (TStree ts'!!)) ]])
-         \/ ([[ r = true ]] *
+         \/ ([[ r = OK tt ]] *
             [[ (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum (synced_dirfile file) *
                 nil |-> Dir the_dnum * (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
