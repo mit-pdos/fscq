@@ -112,8 +112,7 @@ Module AFS.
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     ms <- BFILE.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp) fsxp (FSXPInode fsxp) mscs;
-    ialloc_ms <- IAlloc.init (FSXPLog fsxp) fsxp (MSLL ms);
-    let^ (ialloc_ms, r) <- IAlloc.alloc (FSXPLog fsxp) fsxp ialloc_ms;
+    let^ (ialloc_ms, r) <- IAlloc.alloc (FSXPLog fsxp) fsxp (BFILE.MSIAlloc ms);
     let mscs := IAlloc.MSLog ialloc_ms in
     match r with
     | None =>
@@ -129,7 +128,7 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs (MSAllocC ms) (IAlloc.MSCache ialloc_ms) INODE.IRec.cache0 (MSCache ms)), fsxp))
+          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs (MSAllocC ms) (IAlloc.MSCache ialloc_ms) (MSICache ms) (MSCache ms)), fsxp))
         } else {
           Ret (Err ELOGOVERFLOW)
         }
@@ -156,9 +155,19 @@ Module AFS.
   Ltac equate_log_rep :=
     match goal with
     | [ r : BFILE.memstate,
+        H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ],
+        Hi: context [IAlloc.Alloc.rep _ _ _ _ ?x_]
+        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] => idtac H;
+        equate d d'; equate ms' (MSLL (
+        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.MSCache x_) (MSICache r) (MSCache r)
+        ));
+        equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
+    | [ r : BFILE.memstate,
         H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ]
-        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
-        equate d d'; equate ms' (MSLL (BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (MSCache r)));
+        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] => idtac H;
+        equate d d'; equate ms' (MSLL (
+        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.Alloc.freelist0) (MSICache r) (MSCache r)
+        ));
         equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
     end.
 
@@ -249,9 +258,9 @@ Module AFS.
 
     rewrite latest_pushd.
     equate_log_rep.
-    cancel. simpl.
-    unfold rep, IAlloc.rep; or_r.
-    cancel.
+    cancel. or_r.
+    unfold rep. cancel.
+
     denote (_ =p=> freeinode_pred) as Hy.
     denote (freeinode_pred =p=> _) as Hz.
 
@@ -300,7 +309,9 @@ Module AFS.
     substl (length disk).
     apply gt_Sn_O.
 
-    Unshelve. all: eauto; try exact ($0, nil).
+  Unshelve.
+    all: try easy.
+    try exact ($0, nil).
   Qed.
 
 
