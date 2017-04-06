@@ -723,8 +723,6 @@ Module DIRTREE.
     destruct_lift Hx.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
     unfold IAlloc.MSLog in *; cancel.
-    change IAlloc.Alloc.rep with IAlloc.rep.
-    cancel.
     match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
       => exists m; solve [pred_apply; cancel]
     end.
@@ -732,9 +730,6 @@ Module DIRTREE.
     (* post conditions *)
     step.
     or_r; safecancel.
-    match goal with |- context [IAlloc.MSCache ?r] =>
-      destruct r; cbn; cancel
-    end.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     rewrite dir_names_delete with (dnum := dnum); eauto.
     rewrite dirlist_pred_except_delete; eauto.
@@ -782,17 +777,14 @@ Module DIRTREE.
     step.
     step.
     step. msalloc_eq.
-    erewrite IAlloc.rep_ignore_mslog_ok.
-    unfold IAlloc.rep. cancel.
-    exists (list2nmem flist'). eexists. pred_apply. cancel.
+    cancel.
+    exists (list2nmem flist'). eexists.
+    pred_apply. cancel.
     unfold IAlloc.MSLog in *.
     step.
 
     (* post conditions *)
     or_r; cancel.
-    match goal with |- context [IAlloc.MSCache ?r] =>
-      destruct r; cbn; cancel
-    end.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     denote (tree_dir_names_pred' _ _) as Hz.
     erewrite (@dlist_is_nil _ _ _ _ _ Hz); eauto.
