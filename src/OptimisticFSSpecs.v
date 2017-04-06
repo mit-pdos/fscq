@@ -34,6 +34,7 @@ Section FsSpecs.
            cache_rep d c vd /\
            (l = Locked -> d = Sigma.disk sigma) /\
            fs_rep P vd (Sigma.hm sigma) mscs tree /\
+           root_inode_rep P tree /\
            fs_pre (fsspec a) homedir tree /\
            local_l tid (Sigma.l sigma) = l;
          postcondition :=
@@ -44,7 +45,9 @@ Section FsSpecs.
                match r with
                | Success _ (mscs', r) =>
                  fs_post (fsspec a) r /\
-                 fs_rep P vd' (Sigma.hm sigma') mscs' (fs_dirup (fsspec a) r tree)
+                 let tree' := fs_dirup (fsspec a) r tree in
+                 fs_rep P vd' (Sigma.hm sigma') mscs' tree' /\
+                 root_inode_rep P tree'
                | Failure e =>
                  (l = Locked -> e <> WriteRequired) /\
                  vd = vd' /\
@@ -97,6 +100,8 @@ Section FsSpecs.
 
   Hint Extern 1 {{ OptFS.file_set_attr _ _ _ _ _ _; _ }} => apply OptFS.file_set_attr_ok : prog.
 
+  Hint Resolve root_inode_rep_file.
+
   Theorem opt_file_set_attr_ok : forall G inum attr mscs l tid c,
       cprog_spec G tid
                  (fs_spec (fun '(pathname, f) =>
@@ -131,12 +136,15 @@ Section FsSpecs.
     unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
     unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
     unfold fs_rep; finish.
+
     unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
     unfold fs_rep; finish.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.create _ _ _ _ _ _; _ }} => apply OptFS.create_ok : prog.
+
+  Hint Extern 2 (root_inode_rep _ _) => eapply root_inode_rep_dir.
 
   Theorem opt_create_ok : forall G dnum name mscs l tid c,
       cprog_spec G tid
@@ -168,7 +176,7 @@ Section FsSpecs.
 
     step; finish.
     destruct_goal_matches; SepAuto.destruct_lifts;
-      unfold or in *; intuition;
+      unfold or in *; intuition eauto;
         repeat match goal with
                | [ H: isError _ |- _ ] =>
                  inversion H; subst; clear H
@@ -217,7 +225,7 @@ Section FsSpecs.
 
     step; finish.
     destruct_goal_matches; SepAuto.destruct_lifts;
-      unfold or in *; intuition;
+      unfold or in *; intuition eauto;
         repeat match goal with
                | [ H: isError _ |- _ ] =>
                  inversion H; subst; clear H
@@ -235,14 +243,13 @@ Section FsSpecs.
 
   Hint Extern 1 {{ OptFS.lookup _ _ _ _ _ _; _ }} => apply OptFS.lookup_ok : prog.
 
-  Theorem opt_lookup_ok : forall G dnum pathname mscs l tid c,
+  Theorem opt_lookup_ok : forall G pathname dnum mscs l tid c,
       cprog_spec G tid
                  (fs_spec (fun res =>
                              {| fs_pre :=
                                   fun homedir tree =>
                                     find_name pathname tree = res /\
-                                    dirtree_inum tree = dnum /\
-                                    dirtree_isdir tree = true;
+                                    dnum = FSLayout.FSXPRootInum (fsxp P);
                                 fs_post :=
                                     fun '(r, _) => match r with
                                                 | OK v => res = Some v
@@ -260,6 +267,7 @@ Section FsSpecs.
       unfold fs_rep in H; simplify
     end.
     destruct frees; finish.
+    unfold root_inode_rep in *.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
@@ -343,7 +351,10 @@ Section FsSpecs.
     | [ H: fs_rep _ _ _ _ _ |- _ ] =>
       unfold fs_rep in H; simplify
     end.
-    apply list2nmem_ptsto_arrayN_frame in H7; auto.
+    match goal with
+      | [ H: (_ * _ |-> _)%pred _ |- _ ] =>
+        apply list2nmem_ptsto_arrayN_frame in H; auto
+    end.
     destruct frees; finish.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
@@ -392,7 +403,7 @@ Section FsSpecs.
 
     step; finish.
     destruct_goal_matches; SepAuto.destruct_lifts;
-      unfold or in *; intuition;
+      unfold or in *; intuition eauto;
         repeat match goal with
                | [ H: isError _ |- _ ] =>
                  inversion H; subst; clear H
@@ -464,7 +475,7 @@ Section FsSpecs.
     step; finish.
     unfold AsyncFS.AFS.rename_rep, AsyncFS.AFS.rename_rep_inner in *.
     destruct a; simplify; SepAuto.destruct_lifts; [ destruct r0 | ];
-      unfold or in *; intuition;
+      unfold or in *; intuition eauto;
         repeat match goal with
                | [ H: isError _ |- _ ] =>
                  inversion H; subst; clear H
@@ -478,6 +489,8 @@ Section FsSpecs.
     finish.
     repeat simpl_match.
     unfold fs_rep; finish.
+    repeat simpl_match.
+    eapply root_inode_rep_rename; eauto.
     unfold fs_rep; finish.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.

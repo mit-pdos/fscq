@@ -36,8 +36,13 @@ Section FilesystemProtocol.
       (DirTreeRep.rep (fsxp P) Pred.emp tree ilist frees mscs)
         (list2nmem (ds!!)).
 
+  Definition root_inode_rep tree :=
+    dirtree_inum tree = FSXPRootInum (fsxp P) /\
+    dirtree_isdir tree = true.
+
   Definition fs_invariant l d_i d hm tree (homedirs: thread_homes) : heappred :=
     (fstree P |-> abs tree *
+     [[ root_inode_rep tree ]] *
      fshomedirs P |-> abs homedirs *
      exists c vd mscs,
        ccache P |-> val c *
@@ -54,7 +59,8 @@ Section FilesystemProtocol.
          fsmem P |-> val mscs)%pred h /\
         (cache_rep d c vd \/ cache_rep d_i c vd) /\
         (l = Free -> d_i = d) /\
-        fs_rep vd hm mscs tree.
+        fs_rep vd hm mscs tree /\
+        root_inode_rep tree.
   Proof.
     unfold fs_invariant; intros.
     SepAuto.destruct_lifts.
@@ -68,7 +74,8 @@ Section FilesystemProtocol.
          ccache P |-> val c *
          fsmem P |-> val mscs)%pred h /\
         (cache_rep d c vd) /\
-        fs_rep vd hm mscs tree.
+        fs_rep vd hm mscs tree /\
+        root_inode_rep tree.
   Proof.
     unfold fs_invariant; intros.
     SepAuto.destruct_lifts.
@@ -87,25 +94,93 @@ Section FilesystemProtocol.
          ccache P |-> val c *
          fsmem P |-> val mscs)%pred h /\
         (cache_rep d c vd) /\
-        fs_rep vd hm mscs tree.
+        fs_rep vd hm mscs tree /\
+        root_inode_rep tree.
   Proof.
     intros; subst.
     edestruct fs_invariant_unfold; repeat deex; descend;
       intuition (subst; eauto).
   Qed.
 
-  (* this isn't used yet, so it's statement might not be a useful variant *)
-  Theorem fs_invariant_refold1 : forall tree homedirs l d_i d c vd hm mscs h,
-      (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
-       ccache P |-> val c *
-       fsmem P |-> val mscs)%pred h ->
-      cache_rep d_i c vd ->
-      fs_rep vd hm mscs tree ->
-      (l = Free -> d_i = d) ->
-      fs_invariant l d_i d hm tree homedirs h.
+  Lemma root_inode_rep_update : forall tree path subtree,
+      root_inode_rep tree ->
+      (path = nil -> root_inode_rep subtree) ->
+      root_inode_rep (update_subtree path subtree tree).
   Proof.
-    unfold fs_invariant; intros.
-    SepAuto.pred_apply; SepAuto.cancel; eauto.
+    unfold root_inode_rep; intros.
+    destruct path; simpl; auto.
+    destruct tree; simpl; intuition; subst.
+  Qed.
+
+  Lemma root_inode_rep_file : forall tree path subtree inum f,
+      root_inode_rep tree ->
+      find_subtree path tree = Some (TreeFile inum f) ->
+      root_inode_rep (update_subtree path subtree tree).
+  Proof.
+    intros.
+    apply root_inode_rep_update; auto.
+    intros; subst; simpl in *.
+    exfalso.
+    inversion H0; subst.
+    unfold root_inode_rep in *.
+    intuition.
+  Qed.
+
+  Lemma root_inode_rep_dir : forall tree path subtree dnum elems,
+      root_inode_rep tree ->
+      find_subtree path tree = Some (TreeDir dnum elems) ->
+      dirtree_inum subtree = dnum ->
+      dirtree_isdir subtree = true ->
+      root_inode_rep (update_subtree path subtree tree).
+  Proof.
+    intros.
+    apply root_inode_rep_update; auto.
+    intros; subst; simpl in *.
+    inversion H0; subst.
+    unfold root_inode_rep in *; intuition.
+  Qed.
+
+  Local Lemma root_inode_rep_refold : forall tree,
+      dirtree_inum tree = FSLayout.FSXPRootInum (fsxp P) ->
+      dirtree_isdir tree = true ->
+      root_inode_rep tree.
+  Proof.
+    unfold root_inode_rep; intuition.
+  Qed.
+
+  Hint Resolve root_inode_rep_refold.
+
+  Ltac simp :=
+    repeat match goal with
+           | _ => solve [ auto ]
+           | _ => progress intros
+           | [ H: Some _ = Some _ |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: TreeDir _ _ = TreeDir _ _ |- _ ] =>
+             inversion H; subst; clear H
+           | _ => progress subst
+           | _ => progress simpl in *
+           end.
+
+  Lemma root_inode_rep_rename:
+    forall (dnum : nat) (srcpath dstpath : list string) (tree : dirtree)
+      (tree_elem : list (string * dirtree)),
+      root_inode_rep tree ->
+      forall (srcnum : nat) (srcents : list (string * dirtree)) (dstnum : nat)
+        (dstents : list (string * dirtree)),
+        find_subtree srcpath (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+        forall (cwd : list string) (tree_ents'' tree_ents' : list (string * dirtree)),
+          find_subtree dstpath (update_subtree srcpath (TreeDir srcnum tree_ents') (TreeDir dnum tree_elem)) =
+          Some (TreeDir dstnum dstents) ->
+          find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
+          root_inode_rep (update_subtree cwd
+                                         (update_subtree dstpath (TreeDir dstnum tree_ents'')
+                                                         (update_subtree srcpath (TreeDir srcnum tree_ents') (TreeDir dnum tree_elem))) tree).
+  Proof.
+    intros.
+    unfold root_inode_rep in *|-; intuition.
+    eapply root_inode_rep_update; simp.
+    destruct dstpath, srcpath; simp.
   Qed.
 
   Notation "'fs_inv' ( sigma , tree , homedirs )" :=
@@ -211,6 +286,22 @@ Section FilesystemProtocol.
     eapply fs_rely_invariant; eauto.
   Qed.
 
+  Theorem homedir_guarantee_rely : forall tid homedirs tree tree',
+      Relation_Operators.clos_refl_trans
+        _ (fun tree tree' =>
+             exists tid', tid <> tid' /\
+                     homedir_guarantee tid' homedirs tree tree') tree tree' ->
+      homedir_rely tid homedirs tree tree'.
+  Proof.
+    intros.
+    apply Operators_Properties.clos_rt_rt1n in H.
+    induction H.
+    unfold homedir_rely; auto.
+    deex.
+    specialize (H2 tid); intuition.
+    unfold homedir_rely in *; congruence.
+  Qed.
+
   Theorem fs_homedir_rely : forall tid sigma sigma' tree homedirs tree',
       fs_inv(sigma, tree, homedirs) ->
       Rely fs_guarantee tid sigma sigma' ->
@@ -225,7 +316,7 @@ Section FilesystemProtocol.
     - reflexivity.
     - match goal with
       | [ H: homedir_guarantee _ _ _ _ |- _ ] =>
-        specialize (H _ ltac:(eauto))
+        specialize (H _ ltac:(intuition eauto))
       end.
       specialize (IHclos_refl_trans_1n _ ltac:(eauto) _ ltac:(eauto)).
       unfold homedir_rely in *; congruence.

@@ -192,6 +192,16 @@ Section ConcurrentFS.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
   Qed.
 
+  Lemma fs_invariant_root_inode : forall l d_i d hm tree homedirs h,
+      fs_invariant P l d_i d hm tree homedirs h ->
+      root_inode_rep P tree.
+  Proof.
+    unfold fs_invariant; intros.
+    SepAuto.destruct_lifts; auto.
+  Qed.
+
+  Hint Resolve fs_invariant_root_inode.
+
   Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A
                                   (fsspec: FsSpec A T) tid,
       (forall mscs c, cprog_spec G tid
@@ -280,6 +290,7 @@ Section ConcurrentFS.
                               ccache P |-> val c * fsmem P |-> val mscs)%pred (Sigma.mem sigma') /\
                              cache_rep (Sigma.disk sigma') c vd' /\
                              fs_rep P vd' (Sigma.hm sigma') mscs tree' /\
+                             root_inode_rep P tree' /\
                              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
@@ -335,6 +346,7 @@ Section ConcurrentFS.
                          (* new cache is for the new disk, at the same virtual disk *)
                          cache_rep (Sigma.disk sigma) c vd /\
                          fs_rep P vd (Sigma.hm sigma) mscs tree /\
+                         root_inode_rep P tree /\
                          local_l tid (Sigma.l sigma) = Locked;
                        postcondition :=
                          fun sigma' _ =>
@@ -508,6 +520,10 @@ Section ConcurrentFS.
         norm_eq; exfalso; eauto.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
           [ SepAuto.cancel | intuition eauto ].
+        match goal with
+        | [ H: same_fs_update _ _ _ _ _ |- _ ] =>
+          erewrite H; eauto
+        end.
         norm_eq.
         exfalso; eauto.
         match goal with
