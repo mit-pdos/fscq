@@ -879,6 +879,9 @@ Module DIRTREE.
            [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
            [[ BFILE.block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
            (* spec about files on the latest diskset *)
            [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs') ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *

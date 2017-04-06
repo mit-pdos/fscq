@@ -982,7 +982,10 @@ Module AFS.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
        [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       [[ BFILE.mscs_same_except_log mscs mscs' ]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
        (* spec about files on the latest diskset *)
        [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs') ]]] *
        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
@@ -998,6 +1001,7 @@ Module AFS.
   Proof.
     unfold update_fblock_d; intros.
     step.
+    step.
     prestep.
     (* extract dset_match from (rep ds), this is useful for proving crash condition *)
     rewrite LOG.active_dset_match_pimpl at 1.
@@ -1009,6 +1013,7 @@ Module AFS.
     eauto.
     eauto.
     safestep.
+    step.
     step.
     cancel.
     xcrash_solve.
@@ -1033,6 +1038,8 @@ Module AFS.
       xform_norm; cancel.
       rewrite LOG.notxn_intact, LOG.intact_idempred.
       xform_normr; cancel.
+    Unshelve.
+      all: easy.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.

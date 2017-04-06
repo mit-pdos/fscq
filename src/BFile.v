@@ -1859,6 +1859,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (MSLL ms') hm' *
            [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
            [[ block_belong_to_file ilist bn inum off ]] *
+           [[ MSCache ms = MSCache ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
