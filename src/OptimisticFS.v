@@ -386,7 +386,8 @@ Module OptFS.
                      [[ find_subtree cwd tree = Some (TreeDir dnum tree_elem) ]]
                        POST:hm' RET:^(mscs', ok)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                            ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+                            ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
                              [[ ok = OK tt ]] *
                              rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
                               XCRASH:hm'

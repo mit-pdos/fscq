@@ -1192,7 +1192,95 @@ Section ConcurrentFS.
 
   Definition rename dnum srcpath srcname dstpath dstname :=
     write_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
-                  (fun _ tree => tree).
+                  (fun '(r, _) tree =>
+                     match r with
+                     | OK _ => alter_inum
+                                dnum (fun d => match d with
+                                            | TreeDir _ tree_elem =>
+                                              match find_subtree srcpath (TreeDir dnum tree_elem) with
+                                              | Some (TreeDir srcnum srcents) =>
+                                                match find_dirlist srcname srcents with
+                                                | Some subtree =>
+                                                  let pruned := tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem) in
+                                                  match find_subtree dstpath pruned with
+                                                  | Some (TreeDir dstnum dstents) =>
+                                                    let renamed := tree_graft dstnum dstents dstpath dstname subtree pruned in
+                                                    renamed
+                                                  | _ => d
+                                                  end
+                                                | _ => d
+                                                end
+                                              | _ => d
+                                              end
+                                            | _ => d
+                                            end) tree
+                     | Err _ => tree
+                     end).
+
+  Theorem rename_ok : forall tid dnum srcpath srcname dstpath dstname,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, homedir, cwd, tree_elem) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         homedir_disjoint homedirs tid /\
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree cwd homedir = Some (TreeDir dnum tree_elem);
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (r, _) =>
+                               match r with
+                               | OK _ =>
+                                 exists srcnum srcents subtree dstnum dstents,
+                                 find_subtree srcpath (TreeDir dnum tree_elem) =
+                                 Some (TreeDir srcnum srcents) /\
+                                 let pruned := tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem) in
+                                 find_subtree dstpath pruned = Some (TreeDir dstnum dstents) /\
+                                 let renamed := tree_graft dstnum dstents dstpath dstname subtree pruned in
+                                 let homedir' := update_subtree cwd renamed homedir in
+                                 find_subtree (homedirs tid) tree' = Some homedir'
+                               | Err _ => find_subtree (homedirs tid) tree' = Some homedir
+                               end
+                             | TryAgain => False
+                             | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
+                             end |})
+                 (rename dnum srcpath srcname dstpath dstname).
+  Proof.
+    unfold rename; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply write_syscall_ok;
+        eauto using opt_rename_ok | ];
+      simplify; finish.
+    unfold precondition_stable; simplify; simpl.
+    intuition eauto.
+    eapply homedir_rely_preserves_subtrees; eauto.
+
+    unfold same_fs_update; intros.
+    destruct r; simpl.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
+    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
+    erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
+    destruct_goal_matches; eauto using DirTreeInodes.update_subtree_same.
+
+    eapply is_allowed_fs_update; intros.
+    destruct_goal_matches.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
+    eapply homedir_guarantee_alter; eauto.
+
+    step; finish.
+    destruct r; intuition eauto.
+    destruct_goal_matches; simplify; repeat simpl_match.
+    descend; intuition eauto.
+    eapply homedir_rely_preserves_homedir in H6; eauto.
+
+    erewrite find_subtree_update_subtree_child; eauto.
+    subst; eauto.
+  Qed.
 
   (* wrap unverified syscalls *)
 

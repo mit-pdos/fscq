@@ -369,7 +369,7 @@ Section FsSpecs.
                                     (exists path, pathname = (homedir ++ path)%list) /\
                                     find_subtree pathname tree = Some (TreeDir dnum tree_elem);
                                 fs_post :=
-                                  fun '(_, _) => True;
+                                  fun _ => True;
                                 fs_dirup :=
                                   fun '(r, _) tree =>
                                     match r with
@@ -403,6 +403,80 @@ Section FsSpecs.
                | _ => unfold exis in *; deex
                | _ => progress SepAuto.destruct_lifts
                end.
+    unfold fs_rep; finish.
+    unfold fs_rep; finish.
+    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+  Qed.
+
+  Hint Extern 1 {{ OptFS.rename _ _ _ _ _ _ _ _ _; _ }} => apply OptFS.rename_ok : prog.
+
+  Theorem opt_rename_ok : forall G dnum srcpath srcname dstpath dstname mscs l tid c,
+      cprog_spec G tid
+                 (fs_spec (fun '(pwd, tree_elem) =>
+                             {| fs_pre :=
+                                  fun homedir tree =>
+                                    (exists path, pwd = (homedir ++ path)%list) /\
+                                    find_subtree pwd tree = Some (TreeDir dnum tree_elem);
+                                fs_post :=
+                                  fun '(r, _) => match r with
+                                              | OK _ =>
+                                                exists srcnum srcents subtree dstnum dstents,
+                                                find_subtree srcpath (TreeDir dnum tree_elem) =
+                                                Some (TreeDir srcnum srcents) /\
+                                                find_dirlist srcname srcents = Some subtree /\
+                                                let pruned := tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem) in
+                                                find_subtree dstpath pruned = Some (TreeDir dstnum dstents)
+                                              | Err _ => True
+                                              end;
+                                fs_dirup :=
+                                  fun '(r, _) tree =>
+                                    match r with
+                                    | OK _ =>
+                                      match find_subtree srcpath (TreeDir dnum tree_elem) with
+                                      | Some (TreeDir srcnum srcents) =>
+                                        match find_dirlist srcname srcents with
+                                        | Some subtree =>
+                                          let pruned := tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem) in
+                                          match find_subtree dstpath pruned with
+                                          | Some (TreeDir dstnum dstents) =>
+                                            let renamed := tree_graft dstnum dstents dstpath dstname subtree pruned in
+                                            update_subtree pwd renamed tree
+                                          | _ => tree
+                                          end
+                                        | _ => tree
+                                        end
+                                      | _ => tree
+                                      end
+                                    | Err _ => tree
+                                    end; |}) tid mscs l c)
+                 (OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs l c).
+  Proof using Type.
+    unfold fs_spec; intros.
+    step; simpl in *; safe_intuition.
+    unfold Prog.pair_args_helper in *.
+    match goal with
+    | [ H: fs_rep _ _ _ _ _ |- _ ] =>
+      unfold fs_rep in H; simplify
+    end.
+    destruct frees; finish.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+
+    step; finish.
+    unfold AsyncFS.AFS.rename_rep, AsyncFS.AFS.rename_rep_inner in *.
+    destruct a; simplify; SepAuto.destruct_lifts; [ destruct r0 | ];
+      unfold or in *; intuition;
+        repeat match goal with
+               | [ H: isError _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: OK _ = OK _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: Err _ = OK _ |- _ ] =>
+                 exfalso; inversion H
+               | _ => unfold exis in *; deex
+               | _ => progress SepAuto.destruct_lifts
+               end.
+    finish.
+    repeat simpl_match.
     unfold fs_rep; finish.
     unfold fs_rep; finish.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
