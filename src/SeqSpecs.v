@@ -65,6 +65,8 @@ Proof.
   inversion 1; intros; repeat (subst; inj_pair2); eauto using hashmap_le_refl.
   unfold hashmap_le.
   eauto using HS_nil, HS_cons.
+  unfold hashmap_le.
+  eauto using HS_nil, HS_cons.
 Qed.
 
 Theorem exec_hashmap_le : forall T m vm hm (p: prog T) out,
