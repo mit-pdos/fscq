@@ -44,23 +44,37 @@ Section ConcurrentCopy.
                  simpl in *; subst;
                  (intuition (try eassumption; eauto)); try congruence.
 
+  Hint Resolve DirTreeNames.find_subtree_tree_names_distinct.
+
   Lemma update_graft_to_single_graft:
     forall (dnum : nat) (dstname : string) (homedir : dirtree)
       (dpath : list string) (dents : list (string * dirtree))
       (f' f0 : dirtree),
       find_subtree dpath homedir = Some (TreeDir dnum dents) ->
+      DirTreeNames.tree_names_distinct homedir ->
+      DirTreeNames.tree_names_distinct (tree_graft dnum dents dpath dstname f0 homedir) ->
       update_subtree (dpath ++ dstname :: nil) f'
                      (tree_graft dnum dents dpath dstname f0 homedir) =
       tree_graft dnum dents dpath dstname f' homedir.
   Proof.
-    intros.
-    unfold tree_graft.
+    unfold tree_graft; intros.
     simpl.
     erewrite DirTreeNames.update_subtree_app; swap 1 3; swap 2 3.
     erewrite find_update_subtree; eauto.
     rewrite update_update_subtree_same.
     simpl.
-  Admitted.
+    f_equal.
+    f_equal.
+    assert (DirTreeNames.tree_names_distinct (TreeDir dnum dents)) by eauto.
+    clear H H0 H1.
+    induction dents; simpl; intuition.
+    destruct_goal_matches.
+    destruct_goal_matches; simpl; repeat simpl_match.
+    f_equal.
+    erewrite DirTreeNames.update_subtree_helper_already_found; eauto.
+    f_equal; eauto.
+    eauto.
+  Qed.
 
   Theorem copy_ok : forall inum dnum dstname tid,
       cprog_spec (fs_guarantee P) tid
@@ -94,7 +108,6 @@ Section ConcurrentCopy.
   Proof.
     unfold copy, bind.
     step; finish.
-
     destruct r; destruct_goal_matches; try (step; finish).
 
     destruct r; destruct_goal_matches; try (step; finish).
@@ -104,6 +117,11 @@ Section ConcurrentCopy.
     replace (find_subtree (homedirs tid) tree'1).
     f_equal.
     apply update_graft_to_single_graft; auto.
+    eapply DirTreeNames.find_subtree_tree_names_distinct; eauto.
+    eapply fs_invariant_tree_names_distinct; eauto.
+
+    eapply DirTreeNames.find_subtree_tree_names_distinct; eauto.
+    eapply fs_invariant_tree_names_distinct; eauto.
 
     Grab Existential Variables.
     all: auto.

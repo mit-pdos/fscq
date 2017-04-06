@@ -414,6 +414,15 @@ Section ConcurrentFS.
     apply pimpl_star_emp; eauto.
   Qed.
 
+  Lemma fs_invariant_tree_names_distinct : forall l d_i d hm tree homedirs h,
+      fs_invariant P l d_i d hm tree homedirs h ->
+      DirTreeNames.tree_names_distinct tree.
+  Proof.
+    unfold fs_invariant; intuition.
+    SepAuto.destruct_lifts.
+    eapply fs_rep_tree_names_distinct; eauto.
+  Qed.
+
   Lemma fs_rep_tree_inodes_distinct : forall vd hm mscs tree,
       fs_rep P vd hm mscs tree ->
       DirTreeInodes.tree_inodes_distinct tree.
