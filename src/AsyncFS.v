@@ -365,14 +365,15 @@ Module AFS.
   Definition file_truncate fsxp inum sz ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     r <- match ok with
     | Err e =>
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+        ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
     | OK _ =>
-      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
       If (bool_dec ok true) {
-        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
       } else {
         Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
       }
@@ -942,20 +943,18 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
     xcrash_solve.
     {
       or_r; cancel.
       rewrite LOG.recover_any_idempred.
-      cancel. 
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; safecancel.
-      2: reflexivity.
+      xform_normr.
+      safecancel.
       eauto.
     }
+    step.
     step.
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.
@@ -963,6 +962,8 @@ Module AFS.
     rewrite LOG.intact_idempred. xform_norm. cancel.
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.
+  Unshelve.
+    all: easy.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
