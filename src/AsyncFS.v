@@ -472,16 +472,16 @@ Module AFS.
   Definition delete fsxp dnum name ams :=
     t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     res <- match ok with
     | OK _ =>
-       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
        match ok with
-       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
        | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
        end
     | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
     end;
     t2 <- Rdtsc;
@@ -1306,8 +1306,8 @@ Module AFS.
       [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs', ok)
      ([[ isError ok ]] *
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm' *
-                [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] \/
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
       [[ ok = OK tt ]] * exists d tree' ilist' frees',
         [[ MSAlloc mscs' = MSAlloc mscs ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
@@ -1342,15 +1342,9 @@ Module AFS.
     step.
     step.
     step.
-    step.
-
-    xcrash. or_r. cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
-    rewrite LOG.recover_any_idempred. cancel.
+    xcrash. or_r.
+    repeat (cancel; progress xform_norm).
+    safecancel. rewrite LOG.recover_any_idempred. cancel.
     3: pred_apply; cancel.
     all: eauto.
     step.
