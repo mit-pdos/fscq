@@ -501,16 +501,16 @@ Module AFS.
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     res <- match r with
     | OK _ =>
-      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
       match ok with
-      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
       end
     | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
     end;
     t2 <- Rdtsc;
