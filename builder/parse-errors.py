@@ -34,6 +34,12 @@ for l in f.readlines():
     continue
   if l.startswith("File "):
     err_file = l.split(" ")[1].split(":")[0]
+    if err_file.startswith('"'):
+      err_file = err_file.split('"')[1]
+    if err_file.startswith("./"):
+      err_file = err_file[2:]
+    if err_file.endswith(".v"):
+      err_file = err_file[:-2]
     current_error = []
     errors[err_file].append(current_error)
   if l.startswith("Error: File "):
