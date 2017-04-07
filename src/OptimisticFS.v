@@ -7,7 +7,7 @@ Require Import Omega.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred PredCrash.
-Require Import DirName.
+Require Import DirCache.
 Require Import Hoare.
 Require Import GenSepN.
 Require Import ListPred.
@@ -242,10 +242,11 @@ Module OptFS.
                      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
                        POST:hm' RET:^(mscs', ok)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                            ([[ ok = false ]] *
+                            ([[ isError ok  ]] *
                              (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                              [[ BFILE.mscs_same_except_log mscs mscs' ]] *
                               [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]) \/
-                             ([[ ok = true  ]] * exists d tree' f' ilist',
+                             ([[ ok = OK tt  ]] * exists d tree' f' ilist',
                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
                                  [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
                                  [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
@@ -324,7 +325,10 @@ Module OptFS.
                                   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
                                   [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
                                   [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-                                  [[ BFILE.mscs_same_except_log mscs mscs' ]] *
+                                  [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                                  [[ MSCache mscs' = MSCache mscs ]] *
+                                  [[ MSAllocC mscs' = MSAllocC mscs ]] *
+                                  [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
                                   (* spec about files on the latest diskset *)
                                   [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs') ]]] *
                                   [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *

@@ -473,11 +473,10 @@ fscqWrite fr fsP path inum bs offset = do
             (ok, _) <- fr $ CFS.file_set_sz fsP inum (W endpos)
             return ok
           else
-            return True
-          if okspc2 then
-              return $ Right c
-            else
-              return $ Left eNOSPC
+            return $ (Errno.OK ())
+          case okspc2 of
+            Errno.OK _ -> return $ Right c
+            Errno.Err _ -> return $ Left eNOSPC
         WriteErr c ->
           if c == 0 then
             return $ Left eIO
@@ -516,10 +515,9 @@ fscqSetFileSize fr fsP (_:path) size = do
       | isdir -> return eISDIR
       | otherwise -> do
         (ok, ()) <- fr $ CFS.file_set_sz fsP inum (W64 $ fromIntegral size)
-        if ok then
-          return eOK
-        else
-          return eIO
+        case ok of
+          Errno.OK _ -> return eOK
+          Errno.Err e -> return $ errnoToPosix e
 fscqSetFileSize _ _ _ _ = return eIO
 
 fscqGetFileSystemStats :: FSrunner -> I.ConcurState -> FsParams -> String -> IO (Either Errno FileSystemStats)

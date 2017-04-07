@@ -802,10 +802,10 @@ Section ConcurrentFS.
     write_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
                   (fun '(b, _) tree =>
                      match b with
-                     | true => dirtree_alter_file
+                     | OK _ => dirtree_alter_file
                                 inum (fun f => mk_dirfile (DFData f) attr)
                                 tree
-                     | false => tree
+                     | Err _ => tree
                      end).
 
 
@@ -826,13 +826,13 @@ Section ConcurrentFS.
                              fs_inv(P, sigma', tree', homedirs) /\
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
-                             | Done (b, _) =>
-                               match b with
-                               | true =>
+                             | Done (r, _) =>
+                               match r with
+                               | OK _ =>
                                  let f' := mk_dirfile (DFData f) attr in
                                  let homedir' := update_subtree pathname (TreeFile inum f') homedir in
                                  find_subtree (homedirs tid) tree' = Some homedir'
-                               | false => find_subtree (homedirs tid) tree' = Some homedir
+                               | Err _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
                              | TryAgain => False
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir

@@ -114,10 +114,10 @@ Section FsSpecs.
                                 fs_dirup :=
                                   fun '(b, _) tree =>
                                     match b with
-                                    | true =>
+                                    | OK _ =>
                                       let f' := mk_dirfile (DFData f) attr in
                                       update_subtree pathname (TreeFile inum f') tree
-                                    | false => tree
+                                    | Err _ => tree
                                     end; |}) tid mscs l c)
                  (OptFS.file_set_attr (fsxp P) inum attr mscs l c).
   Proof using Type.
@@ -132,12 +132,19 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts; finish.
-    unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
-    unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
+    destruct_goal_matches; SepAuto.destruct_lifts;
+      unfold or in *; intuition eauto;
+        repeat match goal with
+               | [ H: isError _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: OK _ = OK _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: Err _ = OK _ |- _ ] =>
+                 exfalso; inversion H
+               | _ => unfold exis in *; deex
+               | _ => progress SepAuto.destruct_lifts
+               end.
     unfold fs_rep; finish.
-
-    unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
     unfold fs_rep; finish.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
