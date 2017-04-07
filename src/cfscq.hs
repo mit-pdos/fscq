@@ -256,7 +256,8 @@ fscqGetFileStat fr fsP (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
-  | otherwise = timeAction $ do
+  -- | otherwise = timeAction $ do
+  | otherwise = do
   debugStart "STAT" path
   -- tid <- myThreadId
   -- (processor, _) <- threadCapability tid
@@ -320,7 +321,8 @@ fscqReadDirectory _ _ _ = return (Left (eNOENT))
 fscqOpen :: FSrunner -> FsParams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr fsP (_:path) _ _
   | path == "stats" = return $ Right 0
-  | otherwise = timeAction $ do
+  -- | otherwise = timeAction $ do
+  | otherwise = do
   debugStart "OPEN" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ CFS.lookup fsP nameparts
