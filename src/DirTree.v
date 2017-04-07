@@ -569,6 +569,7 @@ Module DIRTREE.
     match goal with a: IAlloc.Alloc.memstate |- _
       => destruct a; cbn in *; subst
     end.
+    msalloc_eq.
     or_r; cancel.
     eapply dirname_not_in; eauto.
 
@@ -722,8 +723,6 @@ Module DIRTREE.
     destruct_lift Hx.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
     unfold IAlloc.MSLog in *; cancel.
-    change IAlloc.Alloc.rep with IAlloc.rep.
-    cancel.
     match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
       => exists m; solve [pred_apply; cancel]
     end.
@@ -731,9 +730,6 @@ Module DIRTREE.
     (* post conditions *)
     step.
     or_r; safecancel.
-    match goal with |- context [IAlloc.MSCache ?r] =>
-      destruct r; cbn; cancel
-    end.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     rewrite dir_names_delete with (dnum := dnum); eauto.
     rewrite dirlist_pred_except_delete; eauto.
@@ -781,17 +777,14 @@ Module DIRTREE.
     step.
     step.
     step. msalloc_eq.
-    erewrite IAlloc.rep_ignore_mslog_ok.
-    unfold IAlloc.rep. cancel.
-    exists (list2nmem flist'). eexists. pred_apply. cancel.
+    cancel.
+    exists (list2nmem flist'). eexists.
+    pred_apply. cancel.
     unfold IAlloc.MSLog in *.
     step.
 
     (* post conditions *)
     or_r; cancel.
-    match goal with |- context [IAlloc.MSCache ?r] =>
-      destruct r; cbn; cancel
-    end.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     denote (tree_dir_names_pred' _ _) as Hz.
     erewrite (@dlist_is_nil _ _ _ _ _ Hz); eauto.
@@ -878,6 +871,9 @@ Module DIRTREE.
            [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
            [[ BFILE.block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
            (* spec about files on the latest diskset *)
            [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs') ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
@@ -920,6 +916,9 @@ Module DIRTREE.
            [[ ds' = dssync_vecs ds al ]] *
            [[[ ds'!! ::: (Fm * rep fsxp Ftop tree' ilist frees mscs') ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
            [[ length al = length (DFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
            [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
@@ -952,7 +951,10 @@ Module DIRTREE.
     POST:hm' RET:mscs'
            LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn (ds!!, nil)) (MSLL mscs') hm' *
            [[ MSCache mscs' = MSCache mscs ]] *
-           [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
+           [[ MSAlloc mscs' = negb (MSAlloc mscs) ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSICache mscs' = MSICache mscs ]]
     XCRASH:hm'
            LOG.recover_any fsxp.(FSXPLog) F ds hm'
      >} sync fsxp mscs.

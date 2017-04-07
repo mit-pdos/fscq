@@ -113,8 +113,7 @@ Module AFS.
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     ms <- BFILE.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp) fsxp (FSXPInode fsxp) mscs;
-    ialloc_ms <- IAlloc.init (FSXPLog fsxp) fsxp (MSLL ms);
-    let^ (ialloc_ms, r) <- IAlloc.alloc (FSXPLog fsxp) fsxp ialloc_ms;
+    let^ (ialloc_ms, r) <- IAlloc.alloc (FSXPLog fsxp) fsxp (BFILE.MSIAlloc ms);
     let mscs := IAlloc.MSLog ialloc_ms in
     match r with
     | None =>
@@ -130,7 +129,7 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs (MSAllocC ms) (IAlloc.MSCache ialloc_ms) INODE.IRec.cache0 (MSCache ms)), fsxp))
+          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs (MSAllocC ms) (IAlloc.MSCache ialloc_ms) (MSICache ms) (MSCache ms)), fsxp))
         } else {
           Ret (Err ELOGOVERFLOW)
         }
@@ -157,9 +156,19 @@ Module AFS.
   Ltac equate_log_rep :=
     match goal with
     | [ r : BFILE.memstate,
+        H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ],
+        Hi: context [IAlloc.Alloc.rep _ _ _ _ ?x_]
+        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
+        equate d d'; equate ms' (MSLL (
+        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.MSCache x_) (MSICache r) (MSCache r)
+        ));
+        equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
+    | [ r : BFILE.memstate,
         H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ]
         |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
-        equate d d'; equate ms' (MSLL (BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (MSCache r)));
+        equate d d'; equate ms' (MSLL (
+        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.Alloc.freelist0) (MSICache r) (MSCache r)
+        ));
         equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
     end.
 
@@ -250,9 +259,9 @@ Module AFS.
 
     rewrite latest_pushd.
     equate_log_rep.
-    cancel. simpl.
-    unfold rep, IAlloc.rep; or_r.
-    cancel.
+    cancel. or_r.
+    unfold rep. cancel.
+
     denote (_ =p=> freeinode_pred) as Hy.
     denote (freeinode_pred =p=> _) as Hz.
 
@@ -301,7 +310,9 @@ Module AFS.
     substl (length disk).
     apply gt_Sn_O.
 
-    Unshelve. all: eauto; try exact ($0, nil).
+  Unshelve.
+    all: try easy.
+    try exact ($0, nil).
   Qed.
 
 
@@ -335,15 +346,23 @@ Module AFS.
 
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.setattr fsxp inum attr (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
-    let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), ok).
+    ams' <- DIRTREE.setattr fsxp inum attr (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ms', ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
+    If (bool_dec ok true) {
+      Ret ^((BFILE.mk_memstate (MSAlloc ams') ms' (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
+    } else {
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms' (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+    }.
 
   Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), ok).
+    If (bool_dec ok true) {
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+    } else {
+      Ret ^(ams, Err ELOGOVERFLOW)
+    }.
 
   Definition read_fblock fsxp inum off ams :=
     t1 <- Rdtsc ;
@@ -358,14 +377,15 @@ Module AFS.
   Definition file_truncate fsxp inum sz ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     r <- match ok with
     | Err e =>
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+        ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
     | OK _ =>
-      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
       If (bool_dec ok true) {
-        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
       } else {
         Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
       }
@@ -415,15 +435,15 @@ Module AFS.
   Definition create fsxp dnum name ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     r <- match oi with
       | Err e =>
-          ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
+          ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
           Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
       | OK inum =>
-        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
         match ok with
-          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK inum)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK inum)
           | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
         end
      end;
@@ -465,16 +485,16 @@ Module AFS.
   Definition delete fsxp dnum name ams :=
     t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     res <- match ok with
     | OK _ =>
-       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
        match ok with
-       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
        | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
        end
     | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
     end;
     t2 <- Rdtsc;
@@ -494,16 +514,16 @@ Module AFS.
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     res <- match r with
     | OK _ =>
-      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
       match ok with
-      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
       end
     | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
     end;
     t2 <- Rdtsc;
@@ -728,7 +748,7 @@ Module AFS.
     step.
     step.
     step.
-    Unshelve. all: exact tt.    
+    Unshelve. all: exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
@@ -836,10 +856,11 @@ Module AFS.
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      ([[ ok = false ]] *
+      ([[ isError ok  ]] *
        (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+        [[ BFILE.mscs_same_except_log mscs mscs' ]] *
         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]) \/
-      ([[ ok = true  ]] * exists d tree' f' ilist',
+      ([[ ok = OK tt  ]] * exists d tree' f' ilist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
@@ -866,6 +887,13 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
+    step.
+    or_l; cancel.
+    unfold BFILE.mscs_same_except_log; intuition.
+    xcrash_solve.
     xcrash_solve.
     {
       rewrite LOG.recover_any_idempred; cancel.
@@ -927,20 +955,18 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
     xcrash_solve.
     {
       or_r; cancel.
       rewrite LOG.recover_any_idempred.
-      cancel. 
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; cancel.
-      xform_norm; safecancel.
-      2: reflexivity.
+      xform_normr.
+      safecancel.
       eauto.
     }
+    step.
     step.
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.
@@ -948,6 +974,8 @@ Module AFS.
     rewrite LOG.intact_idempred. xform_norm. cancel.
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.
+  Unshelve.
+    all: easy.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
@@ -967,7 +995,10 @@ Module AFS.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
        [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       [[ BFILE.mscs_same_except_log mscs mscs' ]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
        (* spec about files on the latest diskset *)
        [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs') ]]] *
        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
@@ -983,6 +1014,7 @@ Module AFS.
   Proof.
     unfold update_fblock_d; intros.
     step.
+    step.
     prestep.
     (* extract dset_match from (rep ds), this is useful for proving crash condition *)
     rewrite LOG.active_dset_match_pimpl at 1.
@@ -994,6 +1026,7 @@ Module AFS.
     eauto.
     eauto.
     safestep.
+    step.
     step.
     cancel.
     xcrash_solve.
@@ -1018,6 +1051,8 @@ Module AFS.
       xform_norm; cancel.
       rewrite LOG.notxn_intact, LOG.intact_idempred.
       xform_normr; cancel.
+    Unshelve.
+      all: easy.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
@@ -1031,7 +1066,10 @@ Module AFS.
       [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs')
       exists ds' tree' al,
-        [[ BFILE.mscs_same_except_log mscs mscs' ]] *
+        [[ MSAlloc mscs = MSAlloc mscs' ]] *
+        [[ MSCache mscs = MSCache mscs' ]] *
+        [[ MSAllocC mscs = MSAllocC mscs' ]] *
+        [[ MSIAllocC mscs = MSIAllocC mscs' ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ ds' = dssync_vecs ds al]] *
         [[ length al = length (DFData f) /\ forall i, i < length al ->
@@ -1054,30 +1092,19 @@ Module AFS.
     step.
     step.
     step.
-    admit.
 
     - xcrash_solve.
       rewrite <- crash_xform_idem.
       rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
       rewrite SB.crash_xform_rep; auto.
     - xcrash_solve.
-      rewrite <- crash_xform_idem.
-      rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
-      rewrite SB.crash_xform_rep; auto.
-    - cancel.
-      xcrash_solve.
       rewrite LOG.recover_any_idempred.
       cancel.
-    - (* This is [xcrash_solve] spelled out because [eauto] hangs. *)
-      eapply pimpl_trans; [ | eapply H1 ].
-      norm. cancel. intuition idtac. eexists; eassumption.
-
-      rewrite LOG.notxn_intact.
-      rewrite LOG.intact_idempred.
-      cancel.
     - xcrash_solve.
       rewrite LOG.intact_idempred.
       cancel.
+    Unshelve.
+      all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_sync _ _ _) _) => apply file_sync_ok : prog.
@@ -1101,17 +1128,14 @@ Module AFS.
   Proof.
     unfold tree_sync; intros.
     step.
+    step using auto.
     step.
     step.
-    step.
-    admit.
-    admit.
-    admit.
-
-
     xcrash_solve.
     rewrite LOG.recover_any_idempred.
     cancel.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (tree_sync _ _) _) => apply tree_sync_ok : prog.
@@ -1173,6 +1197,8 @@ Module AFS.
     cancel. apply LOG.notxn_idempred.
     cancel. apply LOG.intact_idempred.
     cancel. apply LOG.notxn_idempred.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (lookup _ _ _ _) _) => apply lookup_ok : prog.
@@ -1208,20 +1234,23 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
     xcrash_solve.
     or_r; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
+    repeat (cancel; progress xform_norm).
+    safecancel.
     2: reflexivity. cancel.
-    rewrite LOG.recover_any_idempred; cancel. pred_apply; cancel.
+    rewrite LOG.recover_any_idempred; cancel.
+    pred_apply; cancel.
+    step.
     step.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (create _ _ _ _ ) _) => apply create_ok : prog.
@@ -1277,8 +1306,8 @@ Module AFS.
     step.
     xcrash. or_r. cancel.
     repeat (cancel; progress xform_norm).
-    xform_norm; safecancel.
-    rewrite LOG.recover_any_idempred.  cancel. 
+    safecancel.
+    rewrite LOG.recover_any_idempred. cancel.
     2: pred_apply; cancel.
     all: eauto.
     step.
@@ -1300,7 +1329,7 @@ Module AFS.
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
       [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs', ok)
-      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+     [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ isError ok ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
                 [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
@@ -1337,13 +1366,9 @@ Module AFS.
     step.
     step.
     step.
-    xcrash. or_r. cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
-    rewrite LOG.recover_any_idempred. cancel.
+    xcrash. or_r.
+    repeat (cancel; progress xform_norm).
+    safecancel. rewrite LOG.recover_any_idempred. cancel.
     3: pred_apply; cancel.
     all: eauto.
     step.

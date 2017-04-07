@@ -1392,7 +1392,7 @@ Module BmapAllocCache (Sig : AllocSig).
     auto using permutation_comm.
   Qed.
 
-  Hint Extern 0 ({{ _ }} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok.
+  Hint Extern 0 ({{ _ }} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok : prog.
 
   Theorem alloc_ok : forall V FP lxp xp ms,
     {< F Fm m0 m freelist freepred,
@@ -1518,6 +1518,23 @@ Module BmapAllocCache (Sig : AllocSig).
     unfold rep; intros.
     cancel.
   Qed.
+
+  Lemma rep_ignore_mslog_ok: forall V (FP : V -> _) xp freelist freepred log log' cache,
+    rep FP xp freelist freepred (mk_memstate log cache) =
+    rep FP xp freelist freepred (mk_memstate log' cache).
+  Proof.
+    cbv; auto.
+  Qed.
+
+  Lemma rep_clear_cache: forall V FP xp freelist freepred ms mslog,
+    @rep V FP xp freelist freepred ms =p=>
+    rep FP xp freelist freepred (mk_memstate mslog freelist0).
+  Proof.
+    unfold rep, Alloc.rep.
+    cancel.
+  Qed.
+
+  Hint Extern 0 (okToUnify (rep _ ?xp _ _ _) (rep _ ?xp _ _ _)) => apply rep_ignore_mslog_ok : okToUnify.
 
 End BmapAllocCache.
 
@@ -2311,25 +2328,14 @@ Module IAlloc.
     apply ino_valid_roundtrip'; auto.
   Qed.
 
-  Lemma rep_ignore_mslog_ok: forall V (FP : V -> _) xp freelist freepred log log' cache,
-    rep FP xp freelist freepred (mk_memstate log cache) =
-    rep FP xp freelist freepred (mk_memstate log' cache).
-  Proof.
-    cbv; auto.
-  Qed.
-
   Lemma rep_clear_cache: forall V FP xp freelist freepred ms mslog,
     @rep V FP xp freelist freepred ms =p=>
     rep FP xp freelist freepred (mk_memstate mslog Alloc.freelist0).
   Proof.
-    unfold IAlloc.rep, IAlloc.Alloc.rep.
-    cancel.
+    auto using Alloc.rep_clear_cache.
   Qed.
 
-  Hint Extern 0 (okToUnify (rep _ ?xp _ _ (mk_memstate _ ?c)) (rep _ ?xp _ _ (mk_memstate _ ?c)))
-    => apply rep_ignore_mslog_ok : okToUnify.
-
-  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (Alloc.rep _ _ _ _ _)) => change Alloc.rep with rep.
-  Hint Extern 0 (okToUnify (Alloc.rep _ _ _ _ _) (rep _ _ _ _ _)) => change Alloc.rep with rep.
+  Hint Extern 0 (okToUnify (rep _ ?xp _ _ _) _) => unfold rep; trivial with okToUnify : okToUnify.
+  Hint Extern 0 (okToUnify _ (rep _ ?xp _ _ _)) => unfold rep; trivial with okToUnify : okToUnify.
 
 End IAlloc.
