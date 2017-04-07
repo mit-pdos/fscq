@@ -524,8 +524,10 @@ Module AFS.
 
   Definition umount fsxp ams :=
     ams <- DIRTREE.sync fsxp ams;
+    ms <- LOG.flushsync (FSXPLog fsxp) (MSLL ams);
     ms <- LOG.sync_cache (FSXPLog fsxp) (MSLL ams);
     Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams))).
+
 
   Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
