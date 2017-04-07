@@ -1,6 +1,7 @@
 # compiled binaries
 /fsops
 /timeres
+/large_small
 *.prof
 perf.data
 disk.img
