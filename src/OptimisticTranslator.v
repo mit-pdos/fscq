@@ -52,6 +52,8 @@ Section OptimisticTranslator.
            | Prog.Sync => Ret (Success NoChange tt, cs)
            | Prog.Hash buf => v <- Hash buf;
                                Ret (Success NoChange v, cs)
+           | Prog.Hash2 buf1 buf2 => v <- Hash (Word.combine buf1 buf2);
+                                      Ret (Success NoChange v, cs)
            | Prog.Bind p1 p2 => do '(r, cs) <- translate' p1 l cs;
                                  match r with
                                  | Success f v =>
@@ -328,6 +330,20 @@ Section OptimisticTranslator.
         * (* error write *)
           CCLTactics.inv_bind; eauto.
       + CCLTactics.inv_ret; left; descend; intuition eauto using hashmap_le_refl.
+    - CCLTactics.inv_bind;
+        match goal with
+        | [ H: exec _ _ _ (Hash _) _ |- _ ] =>
+          apply_spec H Hash_ok
+        end; simpl in *; intuition eauto.
+      intuition (subst; eauto).
+      left.
+
+      destruct (local_l tid (Sigma.l sigma)); simpl in *; intuition subst;
+        CCLTactics.inv_ret; descend; (intuition eauto); try congruence.
+      replace (Sigma.disk sigma'); eauto.
+      replace (Sigma.hm sigma'); eauto.
+      eapply Prog.XStep; eauto.
+      replace (Sigma.hm sigma'); eauto.
     - CCLTactics.inv_bind;
         match goal with
         | [ H: exec _ _ _ (Hash _) _ |- _ ] =>
