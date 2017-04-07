@@ -453,7 +453,7 @@ data WriteState =
  | WriteErr !ByteCount
 
 fscqWrite :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
-fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
+fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
@@ -474,7 +474,7 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
             return $ (Errno.OK ())
           case okspc2 of
             Errno.OK _ -> return $ Right c
-            Errno.Err e -> return $ Left eNOSPC
+            Errno.Err _ -> return $ Left eNOSPC
         WriteErr c ->
           if c == 0 then
             return $ Left eIO
@@ -525,8 +525,8 @@ fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
       | otherwise -> do
         (ok, ()) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W64 $ fromIntegral size)
         case ok of
-	  Errno.OK _ -> return eOK
-          Errno.Err e -> return eIO
+          Errno.OK _ -> return eOK
+          Errno.Err e -> return $ errnoToPosix e
 fscqSetFileSize _ _ _ _ = return eIO
 
 fscqGetFileSystemStats :: FSrunner -> MVar Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
