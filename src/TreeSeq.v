@@ -1574,7 +1574,10 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
        [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
-       [[ BFILE.mscs_same_except_log mscs mscs' ]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
        [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 (TStree ts' !!)) ]] *
        [[[ (DFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ DFAttr f' = DFAttr f ]]
@@ -1616,6 +1619,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eassumption.
 
     eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
+
     eapply NEforall_d_in'; intros.
     apply d_in_d_map in H6; deex; intuition.
     eapply NEforall_d_in in H7 as H7'; try eassumption.
@@ -2929,6 +2933,8 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eassumption.
     distinct_names'.
 
+    unfold BFILE.mscs_same_except_log; intuition.
+
     unfold ts_file_sync.
     rewrite d_map_latest.
 
@@ -3414,8 +3420,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
     eassumption.
     step.
-    or_r.
-    cancel.
+    or_r. cancel.
 
     - eapply treeseq_in_ds_pushd; eauto.
       unfold treeseq_one_safe; simpl.

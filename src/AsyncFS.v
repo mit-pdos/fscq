@@ -1326,11 +1326,11 @@ Module AFS.
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
       [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs', ok)
+     [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ isError ok ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
                 [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
       [[ ok = OK tt ]] * exists d tree' ilist' frees',
-        [[ MSAlloc mscs' = MSAlloc mscs ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[ tree' = update_subtree pathname
                       (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
