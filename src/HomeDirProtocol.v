@@ -45,6 +45,16 @@ Proof.
   congruence.
 Qed.
 
+Lemma homedir_rely_preserves_homedir_missing : forall (homes : thread_homes) (tid : TID)
+                                                 (tree tree' : dirtree),
+    find_subtree (homes tid) tree = None ->
+    homedir_rely tid homes tree tree' ->
+    find_subtree (homes tid) tree' = None.
+Proof.
+  unfold homedir_rely; intros.
+  congruence.
+Qed.
+
 Lemma homedir_rely_preserves_subtrees : forall homes tid path tree tree' f,
     find_subtree (homes tid ++ path) tree = Some f ->
     homedir_rely tid homes tree tree' ->

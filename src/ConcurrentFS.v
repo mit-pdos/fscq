@@ -1008,10 +1008,11 @@ Section ConcurrentFS.
 
   Theorem lookup_ok : forall tid pathname,
       cprog_spec G tid
-                 (fun '(tree, homedirs, homedir) sigma =>
+                 (fun '(tree, homedirs, homedir, path) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
+                         pathname = (homedirs tid ++ path)%list /\
                          find_subtree (homedirs tid) tree = Some (homedir) /\
                          dirtree_inum tree = FSLayout.FSXPRootInum (fsxp P) /\
                          dirtree_isdir tree = true;
@@ -1039,10 +1040,19 @@ Section ConcurrentFS.
       simplify; finish.
 
     unfold precondition_stable; simplify; simpl in *.
-    admit. (* oops, root inode having correct inode and being a directory is never made stable *)
+    intuition eauto; repeat deex.
+    match goal with
+    | [ H: (?l ++ _)%list = (?l ++ _)%list |- _ ] =>
+      apply List.app_inv_head in H; subst
+    end.
+    unfold find_name.
+    case_eq (find_subtree (homedirs tid) tree0); intros.
+    erewrite ?find_subtree_app by eauto; auto.
+    pose proof (homedir_rely_preserves_homedir_missing H2 ltac:(eauto)).
+    erewrite ?find_subtree_app_none by eauto; auto.
 
     step; finish.
-  Abort.
+  Qed.
 
   Definition read_fblock inum off :=
     retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).

@@ -255,6 +255,7 @@ Section FsSpecs.
                  (fs_spec (fun res =>
                              {| fs_pre :=
                                   fun homedir tree =>
+                                    (exists path, pathname = (homedir ++ path)%list) /\
                                     find_name pathname tree = res /\
                                     dnum = FSLayout.FSXPRootInum (fsxp P);
                                 fs_post :=
