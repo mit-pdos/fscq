@@ -452,6 +452,7 @@ Module ATOMICCP.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ MSAlloc mscs = MSAlloc mscs' ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
+       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts' ]] *
         (([[ isError r ]] *
           exists tfile' dstinum,
             [[ (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum tfile' *
@@ -491,18 +492,35 @@ Module ATOMICCP.
     step.
 
     safestep.
-    2: msalloc_eq; reflexivity.
     2: eauto.
     or_l.
     cancel.
-    2: msalloc_eq; reflexivity.
-    2: eauto.
+
+    eapply treeseq_tssync_tree_rep.
+    eapply treeseq_upd_tree_rep.
+    eauto.
+
     or_r.
     cancel.
+    2: eauto.
+    simpl.
+    pred_apply. cancel.
     unfold synced_dirfile.
     erewrite ptsto_0_list2nmem_mem_eq with (d := (DFData file)) by eauto.
     erewrite ptsto_0_list2nmem_mem_eq with (d := (DFData f')) by eauto.
     simpl.
+    cancel.
+
+    eapply treeseq_pred_pushd.
+    2: eapply treeseq_tssync_tree_rep.
+    2: eapply treeseq_upd_tree_rep.
+    2: eauto.
+
+    unfold tree_rep; simpl; intuition.
+    distinct_names.
+    left.
+    unfold tree_with_tmp.
+    pred_apply.
     cancel.
 
     (* crashed during setattr  *)
@@ -574,7 +592,9 @@ Module ATOMICCP.
     step.
     admit. (* eapply list2nmem_inbound in H5. *)
     destruct a0.
-    step.
+    prestep. norm.
+
+    safestep.
     specialize (H20 tmppath H8).
     msalloc_eq; eauto.
 
