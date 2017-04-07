@@ -208,6 +208,8 @@ Module DTCrash.
     erewrite BFILE.flist_crash_clear_caches by eauto.
     pred_apply; cancel. eauto.
     intros; eapply BFILE.freepred_file_crash; eauto.
+  Grab Existential Variables.
+    all: exact (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 1)).
   Qed.
 
 
