@@ -1,4 +1,7 @@
 #!/bin/bash
+# vim: et:ts=2:sw=2
+
+set -e
 
 img="$1"
 mnt=/tmp/fscq
@@ -9,9 +12,11 @@ if [ -z "$img" ]; then
 fi
 
 mkfs $img
-fscq $img "$mnt"
+fscq $img "$mnt" -f &
+sleep 1
 
 dd if=/dev/urandom of="$mnt/small-4k" bs=4k count=1
+dd if=/dev/urandom of="$mnt/large-10m" bs=1k count=10000
 mkdir "$mnt/dir1"
 mkdir "$mnt/dir2"
 
@@ -32,3 +37,4 @@ for file in $mnt/**; do
 done
 
 fusermount -u /tmp/fscq
+wait
