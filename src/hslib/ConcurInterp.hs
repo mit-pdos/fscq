@@ -9,6 +9,7 @@ import Data.Word
 -- import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Digest.CRC32 as CRC32
 import Control.Monad (when)
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
 import Data.IORef
 import qualified Data.Map.Strict as Map
@@ -26,6 +27,7 @@ type Heap = Map.Map Coq_ident Any
 data ConcurState = ConcurState
   { disk :: Disk.DiskState
   , memory :: IORef Heap
+  , pendingReads :: IORef (Map.Map Integer (MVar Coq_word))
   , lock :: MVar () }
 
 instance Show LocalLock where
@@ -53,6 +55,35 @@ crc32_word_update c sz (W w) = do
   crc32_word_update c sz (WBS bs)
 crc32_word_update c sz (W64 w) = crc32_word_update c sz $ W $ fromIntegral w
 crc32_word_update c _ (WBS bs) = return $ CRC32.crc32Update c bs
+
+schedule_read :: ConcurState -> Integer -> IO ()
+schedule_read s a = do
+  m <- newEmptyMVar
+  _ <- forkIO $ do
+    val <- Disk.read_disk (disk s) a
+    putMVar m val
+  modifyIORef (pendingReads s) (Map.insert a m)
+  return ()
+
+get_read :: ConcurState -> Integer -> IO Coq_word
+get_read s a = do
+  rds <- readIORef (pendingReads s)
+  case Map.lookup a rds of
+    Nothing -> error $ "did not start read for " ++ show a
+    Just m -> do
+      val <- readMVar m
+      modifyIORef (pendingReads s) (Map.delete a)
+      return val
+
+wait_for_read :: ConcurState -> Integer -> IO ()
+wait_for_read s a = do
+  rds <- readIORef (pendingReads s)
+  case Map.lookup a rds of
+    -- should be safe regardless of pending reads
+    Nothing -> return ()
+    Just m -> do
+      _ <- readMVar m
+      return ()
 
 run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
@@ -91,17 +122,17 @@ run_dcode s (SetLock l l') = do
     (Locked, Unacquired) -> putMVar (lock s) ()
     (_, _) -> error $ "SetLock used incorrectly: " ++ show l ++ " " ++ show l'
   return $ unsafeCoerce l'
-run_dcode _ (BeginRead _) = do
-  -- TODO: implement efficiently
+run_dcode s (BeginRead a) = do
   debugmsg $ "BeginRead"
+  schedule_read s a
   return $ unsafeCoerce ()
 run_dcode s (WaitForRead a) = do
   debugmsg $ "WaitForRead " ++ show a
-  val <- Disk.read_disk (disk s) a
+  val <- get_read s a
   return $ unsafeCoerce val
-run_dcode _ (YieldTillReady a) = do
+run_dcode s (YieldTillReady a) = do
   debugmsg $ "YieldTillReady " ++ show a
-  -- TODO: integrate with background reads from BeginRead
+  wait_for_read s a
   return $ unsafeCoerce ()
 run_dcode ds (Bind p1 p2) = do
   r1 <- run_dcode ds p1
@@ -112,6 +143,7 @@ newState :: Disk.DiskState -> IO ConcurState
 newState ds = pure ConcurState
     <*> return ds
     <*> newIORef (Map.fromList [(0, unsafeCoerce ())])
+    <*> newIORef Map.empty
     <*> newMVar ()
 
 run :: ConcurState -> CCLProg.Coq_cprog a -> IO a
