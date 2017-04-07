@@ -4,12 +4,17 @@ set -e
 
 fs="$1"
 if [ -z "$fs" ]; then
-  echo "Usage: $0 (fscq|cfscq)"
+  echo "Usage: $0 <fscq|cfscq> [disk.img]"
   exit 1
 fi
 shift
 
-$fs disk.img /tmp/fscq +RTS -N4 -qg -RTS -f &
+img="$1"
+if [ -z "$img" ]; then
+  img="disk.img"
+fi
+
+$fs "$img" /tmp/fscq +RTS -N4 -qg -RTS -f &
 sleep 1
 
 out=$(./large_small)
