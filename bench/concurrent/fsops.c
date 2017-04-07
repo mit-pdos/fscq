@@ -4,26 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <time.h>
-#include <stdint.h>
 
-typedef struct {
-  struct timespec start;
-} measurement;
-
-measurement init_measurement() {
-  measurement m;
-  clock_gettime(CLOCK_MONOTONIC, &m.start);
-  return m;
-}
-
-void finish_measurement(const measurement m) {
-  struct timespec finish;
-  clock_gettime(CLOCK_MONOTONIC, &finish);
-  int64_t ns = (int64_t) (finish.tv_sec - m.start.tv_sec)*1e9 +
-    (int64_t) (finish.tv_nsec - m.start.tv_nsec);
-  printf("%ld\n", ns);
-}
+#include "timing.h"
 
 int main(int argc, char *argv[]) {
   if (argc < 5) {
