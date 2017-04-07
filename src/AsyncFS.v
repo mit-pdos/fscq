@@ -157,14 +157,14 @@ Module AFS.
     | [ r : BFILE.memstate,
         H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ],
         Hi: context [IAlloc.Alloc.rep _ _ _ _ ?x_]
-        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] => idtac H;
+        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
         equate d d'; equate ms' (MSLL (
         BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.MSCache x_) (MSICache r) (MSCache r)
         ));
         equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
     | [ r : BFILE.memstate,
         H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ]
-        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] => idtac H;
+        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
         equate d d'; equate ms' (MSLL (
         BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.Alloc.freelist0) (MSICache r) (MSCache r)
         ));
