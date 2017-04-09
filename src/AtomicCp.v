@@ -555,6 +555,8 @@ Module ATOMICCP.
 
   Hint Extern 1 ({{_}} Bind (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
+  Hint Extern 0 (okToUnify (tree_with_tmp _ _ _ _ _ _ _ _ _) (tree_with_tmp _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
+
   Theorem copy2temp_ok : forall fsxp srcinum tinum mscs,
     {< Fm Ftop Ftree ds ts tmppath srcpath file tfile v0 dstbase dstname dstfile,
     PRE:hm
@@ -587,11 +589,17 @@ Module ATOMICCP.
   Proof.
     unfold copy2temp; intros.
     step.
+    eassign (Ftree).
+    unfold tree_with_tmp; cancel.
+    admit.
     admit. (* eapply list2nmem_inbound in H5. *)
+
     destruct a0.
     prestep. norm.
 
     safestep.
+    intuition.
+
     specialize (H20 tmppath H8).
     msalloc_eq; eauto.
 
@@ -631,7 +639,7 @@ Module ATOMICCP.
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_safe [temp_fn] (MSAlloc mscs) (ts !!)) ts ]] *
       [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts ]] *
-      [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum 
+      [[ tree_with_tmp Ftree srcpath [temp_fn] srcinum file tinum 
                 tfile dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ DFData file ::: (Off0 |-> v0) ]]] *
       [[ dirtree_inum (TStree ts!!) = the_dnum ]]
@@ -642,10 +650,10 @@ Module ATOMICCP.
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts' ]] *
        (([[r = false ]] *
         (exists f',
-         [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum 
+         [[ tree_with_tmp Ftree srcpath [temp_fn] srcinum file tinum 
                 f' dstbase dstname dstfile (dir2flatmem2 (TStree ts'!!)) ]])) \/
        ([[r = true ]] *
-          [[ tree_with_dst Ftree srcpath tmppath srcinum file dstbase dstname (dir2flatmem2 (TStree ts'!!)) ]]))
+          [[ tree_with_dst Ftree srcpath [temp_fn] srcinum file dstbase dstname (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
       exists ds' ts' mscs',
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
@@ -655,7 +663,24 @@ Module ATOMICCP.
   Proof.
     unfold copy_and_rename; intros.
     step.
+    step.
+
+    admit.
     unfold tree_with_tmp; cancel.
+    admit.
+
+    step.
+    step.
+
+    edestruct dir2flatmem2_find_subtree_ptsto_dir with (tree := TStree ts' !!) (fnlist := @nil string).
+    distinct_names'.
+    pred_apply; cancel.
+
+    admit.
+    eassumption.
+
+
+
     prestep; norml; unfold stars; simpl.
 
     edestruct dir2flatmem2_find_subtree_ptsto_dir with (tree := TStree ts' !!) (fnlist := @nil string).
