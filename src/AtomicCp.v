@@ -628,7 +628,7 @@ Module ATOMICCP.
   Hint Extern 1 ({{_}} Bind (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
   Theorem copy_and_rename_ok : forall fsxp srcinum tinum (dstbase: list string) (dstname:string) mscs,
-    {< Fm Ftop Ftree ds ts srcpath file tfile v0 dstinum dstfile,
+    {< Fm Ftop Ftree ds ts srcpath tmppath file tfile v0 dstinum dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
@@ -642,6 +642,7 @@ Module ATOMICCP.
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
+       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts' ]] *
       (([[r = false ]] *
         (exists f',
           [[ (Ftree * srcpath |-> File srcinum file * [temp_fn]%list |-> File tinum f' *
@@ -659,6 +660,7 @@ Module ATOMICCP.
   Proof.
     unfold copy_and_rename; intros.
     step.
+    eassign (dstinum).
     unfold tree_with_tmp; cancel.
     prestep; norml; unfold stars; simpl.
 
