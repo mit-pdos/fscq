@@ -796,6 +796,19 @@ Module TREESEQ.
     apply BFILE.mscs_same_except_log_comm; eauto.
   Qed.
 
+  Lemma treeseq_in_ds_mscs' : forall Fm Ftop fsxp mscs mscs' ts ds,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    (Fm * rep fsxp Ftop (TStree ts !!) (TSilist ts !!) (TSfree ts !!) mscs')%pred (list2nmem ds !!) ->
+    MSAlloc mscs = MSAlloc mscs' ->
+    treeseq_in_ds Fm Ftop fsxp mscs' ts ds.
+  Proof.
+    unfold treeseq_in_ds, tree_rep_latest; intuition.
+    eapply NEforall2_impl; eauto.
+    intros; intuition.
+    intuition.
+    unfold treeseq_one_safe in *; intuition msalloc_eq.
+    eauto.
+  Qed.
 
   Theorem treeseq_file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds ts pathname Fm Ftop Ftree f,
@@ -3222,7 +3235,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
                 * (cwd ++ dstbase ++ [dstname]) |-> File dstnum dstfile)%pred (dir2flatmem2 (TStree ts !!)) ]]
     POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      ([[ isError ok ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts ds ]] \/
        [[ ok = OK tt ]] * exists d ds' ts' ilist' frees' tree',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
@@ -3261,6 +3276,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
     eassumption.
     step.
+
+    or_l. cancel. eapply treeseq_in_ds_mscs'; eauto.
+
     unfold AFS.rename_rep, AFS.rename_rep_inner.
     cancel.
     or_r.
