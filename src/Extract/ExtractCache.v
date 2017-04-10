@@ -163,25 +163,7 @@ Proof.
                        [ cancel_go | .. ]))
         end
   end.
-  match goal with
-  | |- EXTRACT Ret (?a_, ?b_)
-       {{ ?pre }}
-          _
-       {{ ?post }} // _ =>
-        match find_val a_ pre with
-        | Some ?ka =>
-            match var_mapping_to_ret with
-            | ?kp =>
-                let A_ := type of a_ in
-                let B_ := type of b_ in
-                match find_val b_ pre with
-                | Some ?kb =>
-                    eapply hoare_weaken;
-                        [ apply CompileJoin with (A := A_) (B := B_) (avar := ka) (bvar := kb) (pvar := kp) | cancel_go.. ]
-                end
-            end
-        end
-  end.
+  compile_step.
   solve [repeat a].
   solve [repeat a].
   solve [repeat a].

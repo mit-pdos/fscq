@@ -236,7 +236,9 @@ Module PaddedLog.
 
   (****************** Log contents and states *)
 
-  Definition entry := (addr * valu)%type.
+  Definition immut_valu := immut_word valulen.
+
+  Definition entry := (addr * immut_valu)%type.
   Definition contents := list entry.
 
   Inductive state :=

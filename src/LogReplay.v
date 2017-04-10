@@ -35,7 +35,7 @@ Qed.
 
 Module LogReplay.
 
-  Definition replay_mem (log : DLog.contents) init : valumap :=
+  Definition replay_mem (log : DLog.contents) (init : valumap) : valumap :=
     fold_left (fun m e => Map.add (fst e) (snd e) m) log init.
 
   Definition replay_disk (log : DLog.contents) (m : diskstate) : diskstate:=
