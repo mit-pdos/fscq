@@ -611,11 +611,12 @@ Ltac compile_join := match goal with
       let A_ := type of a_ in
       eapply CompileBefore; [
         do_declare A_ ltac:(fun x_ =>
-          eapply CompileRet with (v := a_) (var0 := x_);
+          eapply CompileRet with (T := A_) (v := a_) (var0 := x_);
           simpl decls_pre) |]
     | Some ?ka =>
       match var_mapping_to_ret with
       | ?kp =>
+        let A_ := type of a_ in
         let B_ := type of b_ in
         match B_ with
         | unit => eapply hoare_weaken;
@@ -626,11 +627,11 @@ Ltac compile_join := match goal with
           | None =>
             eapply CompileBefore; [
               do_declare B_ ltac:(fun x_ =>
-              eapply CompileRet with (v := b_) (var0 := x_);
+              eapply CompileRet with (T := B_) (v := b_) (var0 := x_);
               simpl decls_pre) |]
           | Some ?kb =>
               eapply hoare_weaken;
-              [ apply CompileJoin with (avar := ka) (bvar := kb) (pvar := kp)
+              [ apply CompileJoin with (A := A_) (B := B_) (avar := ka) (bvar := kb) (pvar := kp)
               | cancel_go..]
           end
         end
