@@ -119,8 +119,6 @@ Set Implicit Arguments.
       TreeDir inum' (dirlist_update (fun t' => dirtree_update_inode t' inum off v) ents)
     end.
 
-  Hint Extern 0 (okToUnify (tree_pred _ _) (tree_pred _ _)) => constructor : okToUnify.
-
   (**
    * Theorems about extracting and folding back subtrees from a tree.
    *)
