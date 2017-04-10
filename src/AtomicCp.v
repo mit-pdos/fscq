@@ -606,10 +606,13 @@ Module ATOMICCP.
 
     destruct a0.
     prestep. norm.
+    inv_option_eq.
+    inv_option_eq.
 
-    safestep.
- 
-    msalloc_eq; eauto.
+    cancel.
+    intuition.
+    eassumption.
+    msalloc_eq. eauto.
 
     eapply treeseq_pred_pushd; eauto.
     unfold tree_rep; intuition.
@@ -617,20 +620,25 @@ Module ATOMICCP.
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
 
+    rewrite latest_pushd; simpl.
+    unfold tree_with_tmp; pred_apply; cancel.
+
+    eassumption.
+
     instantiate (1 := ($ (0), [])).
     admit. (* XXX need list2nmem_setlen? *)
 
     step.
-    step.
-    step.
-    step.
-    step.
+    or_l. unfold tree_with_tmp in *; cancel.
 
-    xcrash; eauto.
+    xcrash.
 
     step.
 
-    xcrash; eauto.
+    xcrash.
+    eassumption.
+    eauto.
+    eassumption.
     eapply treeseq_pred_pushd; eauto.
     unfold tree_rep; intuition.
     distinct_names.
