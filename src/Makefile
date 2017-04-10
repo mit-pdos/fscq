@@ -1,3 +1,5 @@
+MAKEFLAGS += --no-builtin-rules
+
 OCAMLBUILD := ocamlbuild \
 	      -lib str -lib nums
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
