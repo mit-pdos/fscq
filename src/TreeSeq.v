@@ -925,7 +925,9 @@ Module TREESEQ.
      [[ newlen >= Datatypes.length (DFData f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-     ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+     ([[ isError ok ]] *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs' ts ds ]] \/
       [[ ok = OK tt ]] * exists d ds' ts' ilist' frees' tree' f',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
@@ -964,6 +966,10 @@ Module TREESEQ.
     distinct_names'.
     eassumption.
     step.
+
+    or_l. cancel.
+    eapply treeseq_in_ds_mscs'; eauto.
+
     or_r.
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
