@@ -40,6 +40,7 @@ Require Import DirSep.
 Require Import Rounding.
 Require Import TreeSeq.
 Require Import BACHelper.
+Require Import AtomicCp.
 
 Import DIRTREE.
 Import DTCrash.
@@ -49,7 +50,7 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
-
+Notation tree_rep := ATOMICCP.tree_rep.
 Hint Resolve valubytes_ne_O.
 Hint Resolve valubytes_ge_O.
 
@@ -3171,8 +3172,8 @@ Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _ _) _) => apply dwrite_ok : prog.
 
   Definition copydata fsxp src_inum tinum mscs :=
   let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
-  let^ (mscs, data) <- BytefileSpecs.read fsxp src_inum mscs 0 #(INODE.ABytes attr);
-  let^ (mscs) <- BytefileSpecs.dwrite fsxp tinum mscs 0 data;
+  let^ (mscs, data) <- read fsxp src_inum mscs 0 #(INODE.ABytes attr);
+  let^ (mscs) <- dwrite fsxp tinum mscs 0 data;
   Ret ^(mscs).
   
   
