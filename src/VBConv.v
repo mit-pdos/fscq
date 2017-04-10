@@ -682,6 +682,7 @@ Lemma valuset2bytesets_rec_cons_merge_bs: forall k a l,
 		reflexivity.
 	Qed.
 
+
 (* alterantive definitions that are easier to induct over *)
 Definition valuset2byteset (vs : list (list byte)) :=
   map (fun i => selN_each vs i byte0) (seq 0 valubytes).
