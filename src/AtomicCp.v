@@ -442,7 +442,11 @@ Module ATOMICCP.
     left.
     eexists (synced_dirfile x1).
     eapply treeseq_one_file_sync_tree_rep_tmp; eauto.
-    right.
+    right. left.
+    rewrite H2.
+    eapply treeseq_one_file_sync_tree_rep_src; eauto.
+    exact BFILE.bfile0.
+    right. right.
     rewrite H2.
     eapply treeseq_one_file_sync_tree_rep_src; eauto.
     exact BFILE.bfile0.
