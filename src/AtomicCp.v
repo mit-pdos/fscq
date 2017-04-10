@@ -807,96 +807,96 @@ Module ATOMICCP.
 
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
-Lemma rep_tree_crash: forall Fm fsxp Ftop d t ilist frees ms d',
-  (Fm * rep fsxp Ftop t ilist frees ms)%pred (list2nmem d) ->
-  crash_xform (diskIs (list2nmem d)) (list2nmem d') ->
-  (exists t', [[ tree_crash t t' ]] * (crash_xform Fm) * rep fsxp Ftop t' ilist frees ms)%pred (list2nmem d').
-Proof.
-  intros.
-  eapply crash_xform_pimpl_proper in H0; [ | apply diskIs_pred; eassumption ].
-  apply crash_xform_sep_star_dist in H0.
-  rewrite xform_tree_rep in H0.
-  destruct_lift H0.
-  exists dummy.
-  pred_apply.
-  cancel.
-Qed.
-
-Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d ms,
-  let t := (nthd n ts) in
-  treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
-  crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-  (exists t', [[ tree_crash (TStree t) t' ]] *  (crash_xform Fm) * rep fsxp Ftop t' (TSilist t) (TSfree t) ms)%pred (list2nmem d).
-Proof.
-  intros.
-  unfold treeseq_in_ds in H.
-  eapply NEforall2_d_in in H.
-  2: instantiate (1 := n).
-  2: instantiate (1 := (nthd n ts)); eauto.
-  2: instantiate (1 := (nthd n ds)); eauto.
-  intuition.
-  eapply rep_tree_crash.
-  unfold tree_rep in H1.
-  instantiate (1 := (nthd n ds)).
-  pred_apply.
-  cancel.
-  eassumption.
-Qed.
-
-Lemma tree_rep_treeseq: forall Fm Ftop fsxp  d t a,
-  TREESEQ.tree_rep Fm Ftop fsxp t (list2nmem d) ->
-  treeseq_in_ds Fm Ftop fsxp a (t, []) (d, []).
-Proof.
-  intros.
-  unfold treeseq_in_ds.
-  constructor; simpl.
-  intuition.
-  unfold treeseq_one_safe; simpl.
-  eapply dirtree_safe_refl.
-  constructor.
-Qed.
-
-Lemma find_name_dirtree_inum: forall t inum,
-  find_name [] t = Some (inum, true) ->
-  dirtree_inum t = inum.
-Proof.
-  intros.
-  eapply find_name_exists in H.
-  destruct H.
-  intuition.
-  unfold find_subtree in H0.
-  inversion H0; eauto.
-Qed.
-
-Lemma find_name_dirtree_isdir: forall t inum,
-  find_name [] t = Some (inum, true) ->
-  dirtree_isdir t = true.
-Proof.
-  intros.
-  eapply find_name_exists in H.
-  destruct H.
-  intuition.
-  unfold find_subtree in H0.
-  inversion H0; eauto.
-Qed.
-
-(*
-Theorem tree_crash_find_name : forall F fnlist t t' f f' inum,
-  tree_crash t t' ->
-  BFILE.file_crash f f' ->
-  (F * fnlist |-> Some (inum, f))%pred (dir2flatmem2 t) ->
-  (F * fnlist |-> Some (inum, f'))%pred (dir2flatmem2 t').
-Proof.
-  (* XXX use treecrash.v version *)
-Admitted.
-*)
-
-Lemma find_dir_exists: forall pathname t inum,
-  find_name pathname t = Some (inum, true) ->
-  exists tree_elem, find_subtree pathname t = Some (TreeDir inum tree_elem).
-Proof.
+  Lemma rep_tree_crash: forall Fm fsxp Ftop d t ilist frees ms d',
+    (Fm * rep fsxp Ftop t ilist frees ms)%pred (list2nmem d) ->
+    crash_xform (diskIs (list2nmem d)) (list2nmem d') ->
+    (exists t', [[ tree_crash t t' ]] * (crash_xform Fm) * rep fsxp Ftop t' ilist frees ms)%pred (list2nmem d').
+  Proof.
     intros.
-Admitted.
+    eapply crash_xform_pimpl_proper in H0; [ | apply diskIs_pred; eassumption ].
+    apply crash_xform_sep_star_dist in H0.
+    rewrite xform_tree_rep in H0.
+    destruct_lift H0.
+    exists dummy.
+    pred_apply.
+    cancel.
+  Qed.
+
+  Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d ms,
+    let t := (nthd n ts) in
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+    (exists t', [[ tree_crash (TStree t) t' ]] *  (crash_xform Fm) * rep fsxp Ftop t' (TSilist t) (TSfree t) ms)%pred (list2nmem d).
+  Proof.
+    intros.
+    unfold treeseq_in_ds in H.
+    eapply NEforall2_d_in in H.
+    2: instantiate (1 := n).
+    2: instantiate (1 := (nthd n ts)); eauto.
+    2: instantiate (1 := (nthd n ds)); eauto.
+    intuition.
+    eapply rep_tree_crash.
+    unfold tree_rep in H1.
+    instantiate (1 := (nthd n ds)).
+    pred_apply.
+    cancel.
+    eassumption.
+  Qed.
+
+  Lemma tree_rep_treeseq: forall Fm Ftop fsxp  d t a,
+    TREESEQ.tree_rep Fm Ftop fsxp t (list2nmem d) ->
+    treeseq_in_ds Fm Ftop fsxp a (t, []) (d, []).
+  Proof.
+    intros.
+    unfold treeseq_in_ds.
+    constructor; simpl.
+    intuition.
+    unfold treeseq_one_safe; simpl.
+    eapply dirtree_safe_refl.
+    constructor.
+  Qed.
+
+  Lemma find_name_dirtree_inum: forall t inum,
+    find_name [] t = Some (inum, true) ->
+    dirtree_inum t = inum.
+  Proof.
+    intros.
+    eapply find_name_exists in H.
+    destruct H.
+    intuition.
+    unfold find_subtree in H0.
+    inversion H0; eauto.
+  Qed.
+
+  Lemma find_name_dirtree_isdir: forall t inum,
+    find_name [] t = Some (inum, true) ->
+    dirtree_isdir t = true.
+  Proof.
+    intros.
+    eapply find_name_exists in H.
+    destruct H.
+    intuition.
+    unfold find_subtree in H0.
+    inversion H0; eauto.
+  Qed.
+
+  (*
+  Theorem tree_crash_find_name : forall F fnlist t t' f f' inum,
+    tree_crash t t' ->
+    BFILE.file_crash f f' ->
+    (F * fnlist |-> Some (inum, f))%pred (dir2flatmem2 t) ->
+    (F * fnlist |-> Some (inum, f'))%pred (dir2flatmem2 t').
+  Proof.
+    (* XXX use treecrash.v version *)
+  Admitted.
+  *)
+
+  Lemma find_dir_exists: forall pathname t inum,
+    find_name pathname t = Some (inum, true) ->
+    exists tree_elem, find_subtree pathname t = Some (TreeDir inum tree_elem).
+  Proof.
+      intros.
+  Admitted.
 
   Ltac nthtree :=
     repeat match goal with 
@@ -915,10 +915,7 @@ Admitted.
     PRE:hm
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ NEforall (fun t => exists tfile,
-        find_name [] (TStree t) = Some (the_dnum, true) /\
-        ((tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile dstbase dstname dstfile (dir2flatmem2 (TStree t))) \/
-        (tree_with_dst Ftree srcpath tmppath srcinum file dstbase dstname (dir2flatmem2 (TStree t)))))%type ts ]]
+      [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ]]
     POST:hm' RET:r
       exists n d t mscs',
       [[ r = OK (mscs', fsxp) ]] *
@@ -929,16 +926,14 @@ Admitted.
          (Ftree * tmppath |-> Nothing)%pred (dir2flatmem2 (TStree t)) ]]
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      exists n d t,
+      exists d t,
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
       [[ treeseq_in_ds Fm Ftop fsxp mscs (t, nil) (d, nil) ]] *
-      [[ forall Ftree f,
-         (Ftree * tmppath |-> f)%pred (dir2flatmem2 (TStree (nthd n ts))) ->
-         (Ftree * tmppath |-> Nothing)%pred (dir2flatmem2 (TStree t)) ]]
+      [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ]]
     >} atomic_cp_recover.
   Proof.
     unfold atomic_cp_recover; intros.
-    prestep. norml.  (* XXX slow! *)
+    prestep. norml.
     safecancel.
 
     denote! (NEforall _ _) as Tpred.
