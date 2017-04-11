@@ -606,7 +606,10 @@ Module ATOMICCP.
   Proof.
     unfold copy2temp, tree_with_tmp; intros.
     step.
-    admit. (* eapply list2nmem_inbound in H5. *)
+
+    denote! (_ (list2nmem (DFData file))) as Hf.
+    eapply ptsto_a_list2nmem_mem_eq in Hf.
+    admit. (* need to know that the temp file was never bigger than 1 block *)
 
     destruct a0.
     prestep. norm.
