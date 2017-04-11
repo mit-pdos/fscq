@@ -810,7 +810,9 @@ Module ATOMICCP.
   Lemma rep_tree_crash: forall Fm fsxp Ftop d t ilist frees ms d',
     (Fm * rep fsxp Ftop t ilist frees ms)%pred (list2nmem d) ->
     crash_xform (diskIs (list2nmem d)) (list2nmem d') ->
-    (exists t', [[ tree_crash t t' ]] * (crash_xform Fm) * rep fsxp Ftop t' ilist frees ms)%pred (list2nmem d').
+    (exists t' mscs', [[ tree_crash t t' ]] * 
+      (crash_xform Fm) * 
+      rep fsxp (BFileCrash.flist_crash_xform Ftop) t' ilist frees mscs')%pred (list2nmem d').
   Proof.
     intros.
     eapply crash_xform_pimpl_proper in H0; [ | apply diskIs_pred; eassumption ].
@@ -820,13 +822,17 @@ Module ATOMICCP.
     exists dummy.
     pred_apply.
     cancel.
-  Admitted.
+  Grab Existential Variables.
+    all: exact 0.
+  Qed.
 
-  Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d ms,
+  Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d,
     let t := (nthd n ts) in
     treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
     crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-    (exists t', [[ tree_crash (TStree t) t' ]] *  (crash_xform Fm) * rep fsxp Ftop t' (TSilist t) (TSfree t) ms)%pred (list2nmem d).
+    (exists t' mscs', [[ tree_crash (TStree t) t' ]] *  
+     (crash_xform Fm) * 
+     rep fsxp (BFileCrash.flist_crash_xform Ftop) t' (TSilist t) (TSfree t) mscs')%pred (list2nmem d).
   Proof.
     intros.
     unfold treeseq_in_ds in H.
@@ -836,15 +842,15 @@ Module ATOMICCP.
     2: instantiate (1 := (nthd n ts)); eauto.
     2: instantiate (1 := (nthd n ds)); eauto.
     intuition.
+    unfold TREESEQ.tree_rep in H2.
+    destruct H2.
     eapply rep_tree_crash.
     unfold tree_rep in H1.
     instantiate (1 := (nthd n ds)).
     pred_apply.
-    unfold TREESEQ.tree_rep.
-    (* XXX something about the cache not mattering? *)
     cancel.
-    2: eassumption.
-  Admitted.
+    eassumption.
+  Qed.
 
   Lemma tree_rep_treeseq: forall Fm Ftop fsxp  d t a,
     TREESEQ.tree_rep Fm Ftop fsxp t (list2nmem d) ->
@@ -943,12 +949,12 @@ Module ATOMICCP.
     prestep. norml.
     safecancel.
 
-
     (* need to apply treeseq_tree_crash_exists before
      * creating evars in postcondition *)
     prestep. norm'l. 
 
     denote! (crash_xform _ _) as Hcrash.
+
     eapply treeseq_tree_crash_exists in Hcrash; eauto.
     destruct Hcrash.
     destruct_lift H.
