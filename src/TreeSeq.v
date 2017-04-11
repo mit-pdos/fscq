@@ -3554,6 +3554,94 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
   Qed.
 
+  Theorem treeseq_create_ok : forall fsxp dnum name mscs,
+    {< ds ts pathname Fm Ftop Ftree tree_elem,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ find_subtree pathname (TStree ts !!) = Some (TreeDir dnum tree_elem) ]] *
+      [[ (Ftree * ((pathname++[name])%list) |-> Nothing)%pred (dir2flatmem2 (TStree ts !!)) ]]
+    POST:hm RET:^(mscs', ok)
+     [[ MSAlloc mscs' = MSAlloc mscs ]] *
+     ([[ isError ok ]] *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] \/
+      exists d ds' ts' tree' ilist' frees' inum, [[ ok = OK inum ]] *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           ~ pathname_prefix (pathname ++ [name]) pathname' ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
+        [[ ds' = pushd d ds ]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs') ]]] *
+        [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum dirfile0) (TStree ts !!) ]] *
+        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+        [[ (Ftree * (pathname ++ [name]) |-> File inum dirfile0)%pred (dir2flatmem2 (TStree ts' !!)) ]])
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists d ds' ts' mscs' tree' ilist' frees',
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+        [[ MSAlloc mscs' = MSAlloc mscs ]] *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           ~ pathname_prefix (pathname ++ [name]) pathname' ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
+        [[ ds' = pushd d ds ]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs') ]]] *
+        [[ tree' = update_subtree pathname
+                      (delete_from_dir name (TreeDir dnum tree_elem)) (TStree ts !!) ]] *
+        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+        [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]]
+    >} AFS.create fsxp dnum name mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.delete_ok.
+    cancel.
+    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
+    eassumption.
+    step.
+    or_r. cancel.
+
+    - eapply treeseq_in_ds_pushd; eauto.
+      unfold treeseq_one_safe; simpl.
+      rewrite H in H13.
+      eassumption.
+
+    - eapply treeseq_safe_delete; eauto.
+      distinct_names'.
+      distinct_inodes'.
+      rewrite H in *.
+      eauto.
+
+    - eapply dir2flatmem2_delete_file; eauto; distinct_names'.
+
+    - xcrash_solve.
+      or_l. cancel. xform_normr. cancel.
+      or_r. cancel. repeat (progress xform_norm; safecancel).
+      eassumption.
+      3: reflexivity.
+      4: reflexivity.
+      4: reflexivity.
+      3: pred_apply; cancel.
+      clear H1. clear H2. clear H.
+
+      + eapply treeseq_in_ds_pushd; eauto.
+        unfold treeseq_one_safe; simpl.
+        rewrite <- surjective_pairing in H11.
+        rewrite H5 in *; eauto.
+
+      + eapply treeseq_safe_delete; eauto.
+        distinct_names'.
+        distinct_inodes'.
+        rewrite H5 in *; eauto.
+
+      + eapply dir2flatmem2_delete_file; eauto; distinct_names'.
+
+  Qed.
+
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.lookup _ _ _ _) _) => apply treeseq_lookup_ok : prog.
@@ -3565,6 +3653,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
   Hint Extern 1 ({{_}} Bind (AFS.tree_sync _ _ ) _) => apply treeseq_tree_sync_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.rename _ _ _ _ _ _ _) _) => apply treeseq_rename_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.delete _ _ _ _) _) => apply treeseq_delete_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.create _ _ _ _) _) => apply treeseq_create_ok : prog.
 
 End TREESEQ.
 
