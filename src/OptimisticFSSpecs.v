@@ -8,11 +8,6 @@ Import Errno.
 Import BFile.
 Import OptimisticCache.
 
-(* TODO: FsSpecs must allow the precondition to refer to the homedirs/tid, so
-that the pathnames can be restricted to fall within the current thread's home
-directory; it might be good enough to give them access to only (homedirs
-tid). *)
-
 Record FsSpecParams T :=
   { fs_pre : list string -> dirtree -> Prop;
     fs_post : T -> Prop;
@@ -64,10 +59,33 @@ Section FsSpecs.
 
   Hint Resolve translated_post_hashmap_le.
 
-  Ltac finish :=
+  Ltac finish' :=
     repeat (split; [ | solve [ trivial ] ]);
     descend; simpl in *; subst;
-    intuition (try eassumption; eauto).
+    repeat match goal with
+           | [ H: isError _ |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: OK _ = OK _ |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: Err _ = OK _ |- _ ] =>
+             exfalso; inversion H
+           | _ => unfold exis in *; deex
+           | _ => progress subst
+           | _ => progress unfold or in *
+           | _ => progress SepAuto.destruct_lifts
+           | _ => intuition (try eassumption; eauto)
+           end.
+
+  Ltac solve_fs_rep t :=
+    match goal with
+    | [ H: Log.LOG.rep _ _ _ _ ?hm (add_buffers ?vd) |- fs_rep _ ?vd ?hm' _ _ ] =>
+      first [ constr_eq hm hm' |
+              eapply fs_rep_hashmap_incr; [ | now eauto ] ];
+      unfold fs_rep; t
+    | _ => idtac
+    end.
+
+  Ltac finish := finish'; solve_fs_rep finish.
 
   Hint Extern 1 {{ OptFS.file_get_attr _ _ _ _ _; _ }} => apply OptFS.file_get_attr_ok : prog.
 
@@ -93,9 +111,7 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts; finish.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    destruct_goal_matches; finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.file_set_attr _ _ _ _ _ _; _ }} => apply OptFS.file_set_attr_ok : prog.
@@ -132,21 +148,7 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts;
-      unfold or in *; intuition eauto;
-        repeat match goal with
-               | [ H: isError _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: OK _ = OK _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: Err _ = OK _ |- _ ] =>
-                 exfalso; inversion H
-               | _ => unfold exis in *; deex
-               | _ => progress SepAuto.destruct_lifts
-               end.
-    unfold fs_rep; finish.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    destruct_goal_matches; finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.create _ _ _ _ _ _; _ }} => apply OptFS.create_ok : prog.
@@ -182,21 +184,7 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts;
-      unfold or in *; intuition eauto;
-        repeat match goal with
-               | [ H: isError _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: OK _ = OK _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: Err _ = OK _ |- _ ] =>
-                 exfalso; inversion H
-               | _ => unfold exis in *; deex
-               | _ => progress SepAuto.destruct_lifts
-               end.
-    unfold fs_rep; finish.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    destruct_goal_matches; finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.file_truncate _ _ _ _ _ _; _ }} => apply OptFS.file_truncate_ok : prog.
@@ -231,21 +219,7 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts;
-      unfold or in *; intuition eauto;
-        repeat match goal with
-               | [ H: isError _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: OK _ = OK _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: Err _ = OK _ |- _ ] =>
-                 exfalso; inversion H
-               | _ => unfold exis in *; deex
-               | _ => progress SepAuto.destruct_lifts
-               end.
-    unfold fs_rep; finish.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    destruct_goal_matches; finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.lookup _ _ _ _ _ _; _ }} => apply OptFS.lookup_ok : prog.
@@ -279,17 +253,7 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts; finish;
-      simplify;
-      try match goal with
-          | [ H: isError (OK _) |- _ ] => exfalso; solve [ inversion H ]
-          | [ H: OK _ = OK _ |- _ ] =>
-            inversion H; subst; clear H
-          end;
-      try congruence.
-    unfold fs_rep; finish.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    destruct_goal_matches; finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.read_fblock _ _ _ _ _ _; _ }} => apply OptFS.read_fblock_ok : prog.
@@ -318,9 +282,13 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts; finish.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    destruct_goal_matches; finish.
+    match goal with
+    | [ H: _ (add_buffers vd') |- _ ] => SepAuto.destruct_lift H11; auto
+    end.
+    match goal with
+    | [ H: _ (add_buffers vd') |- _ ] => SepAuto.destruct_lift H11; finish
+    end.
   Qed.
 
   Hint Extern 1 {{ OptFS.update_fblock_d _ _ _ _ _ _ _; _ }} => apply OptFS.update_fblock_d_ok : prog.
@@ -367,15 +335,18 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
+    destruct_goal_matches; finish.
+    match goal with
+    | [ H: _ (add_buffers vd') |- _ ] =>
+      SepAuto.destruct_lift H
+    end.
 
-    destruct_goal_matches; SepAuto.destruct_lifts; finish.
     assert (DFData dummy0 = ListUtils.updN (DFData f) off (v, AsyncDisk.vsmerge vs)).
     apply GenSepN.list2nmem_array_updN; auto.
     eapply GenSepN.list2nmem_ptsto_bound; eauto.
     destruct dummy0; simpl in *; subst.
-    unfold fs_rep; finish.
 
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.delete _ _ _ _ _ _; _ }} => apply OptFS.delete_ok : prog.
@@ -410,21 +381,7 @@ Section FsSpecs.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     step; finish.
-    destruct_goal_matches; SepAuto.destruct_lifts;
-      unfold or in *; intuition eauto;
-        repeat match goal with
-               | [ H: isError _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: OK _ = OK _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: Err _ = OK _ |- _ ] =>
-                 exfalso; inversion H
-               | _ => unfold exis in *; deex
-               | _ => progress SepAuto.destruct_lifts
-               end.
-    unfold fs_rep; finish.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+    destruct_goal_matches; finish.
   Qed.
 
   Hint Extern 1 {{ OptFS.rename _ _ _ _ _ _ _ _ _; _ }} => apply OptFS.rename_ok : prog.
@@ -483,24 +440,10 @@ Section FsSpecs.
     step; finish.
     unfold AsyncFS.AFS.rename_rep, AsyncFS.AFS.rename_rep_inner in *.
     destruct a; simplify; SepAuto.destruct_lifts; [ destruct r0 | ];
-      unfold or in *; intuition eauto;
-        repeat match goal with
-               | [ H: isError _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: OK _ = OK _ |- _ ] =>
-                 inversion H; subst; clear H
-               | [ H: Err _ = OK _ |- _ ] =>
-                 exfalso; inversion H
-               | _ => unfold exis in *; deex
-               | _ => progress SepAuto.destruct_lifts
-               end.
-    finish.
-    repeat simpl_match.
-    unfold fs_rep; finish.
-    repeat simpl_match.
+      finish';
+      repeat simpl_match;
+      finish.
     eapply root_inode_rep_rename; eauto.
-    unfold fs_rep; finish.
-    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
 End FsSpecs.
