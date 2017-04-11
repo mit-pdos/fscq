@@ -2,14 +2,15 @@
 
 set -e
 
-fs="$1"
-if [ -z "$fs" ]; then
-  echo "Usage: $0 <fscq|cfscq> [disk.img]"
+par="$1"
+fs="$2"
+img="$3"
+
+if [ -z "$par" -o -z "$fs" ]; then
+  echo "Usage: $0 <seq|par> <fscq|cfscq> [disk.img]"
   exit 1
 fi
-shift
 
-img="$1"
 if [ -z "$img" ]; then
   img="disk.img"
 fi
@@ -17,7 +18,7 @@ fi
 $fs "$img" /tmp/fscq +RTS -N4 -qg -RTS -f &
 sleep 1
 
-out=$(./large_small)
+out=$(./large_small "$par")
 
 fusermount -u /tmp/fscq
 wait
