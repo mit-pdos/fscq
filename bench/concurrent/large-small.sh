@@ -15,10 +15,10 @@ if [ -z "$img" ]; then
   img="disk.img"
 fi
 
-$fs "$img" /tmp/fscq +RTS -N4 -qg -RTS -f &
+taskset -c '0' $fs "$img" /tmp/fscq +RTS -N1 -qg -RTS -f &
 sleep 1
 
-out=$(./large_small "$par")
+out=$(taskset -c 1 ./large_small "$par")
 
 fusermount -u /tmp/fscq
 wait
