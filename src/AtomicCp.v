@@ -820,7 +820,7 @@ Module ATOMICCP.
     exists dummy.
     pred_apply.
     cancel.
-  Qed.
+  Admitted.
 
   Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d ms,
     let t := (nthd n ts) in
@@ -830,6 +830,7 @@ Module ATOMICCP.
   Proof.
     intros.
     unfold treeseq_in_ds in H.
+    destruct H.
     eapply NEforall2_d_in in H.
     2: instantiate (1 := n).
     2: instantiate (1 := (nthd n ts)); eauto.
@@ -839,9 +840,11 @@ Module ATOMICCP.
     unfold tree_rep in H1.
     instantiate (1 := (nthd n ds)).
     pred_apply.
+    unfold TREESEQ.tree_rep.
+    (* XXX something about the cache not mattering? *)
     cancel.
-    eassumption.
-  Qed.
+    2: eassumption.
+  Admitted.
 
   Lemma tree_rep_treeseq: forall Fm Ftop fsxp  d t a,
     TREESEQ.tree_rep Fm Ftop fsxp t (list2nmem d) ->
@@ -850,11 +853,15 @@ Module ATOMICCP.
     intros.
     unfold treeseq_in_ds.
     constructor; simpl.
+    split.
     intuition.
     unfold treeseq_one_safe; simpl.
     eapply dirtree_safe_refl.
     constructor.
-  Qed.
+    unfold tree_rep_latest.
+    pred_apply. unfold TREESEQ.tree_rep.
+    (* XXX something about the cache not mattering? *)
+  Admitted.
 
   Lemma find_name_dirtree_inum: forall t inum,
     find_name [] t = Some (inum, true) ->
@@ -900,13 +907,13 @@ Module ATOMICCP.
 
   Ltac nthtree :=
     repeat match goal with 
-    | [ H : NEforall _ _ |- _ ]  => 
+    | [ H : NEforall _ _ |- _ ]  => idtac "forall";
       eapply NEforall_d_in in H; [|eapply nthd_in_ds]; destruct H; intuition; simpl
-    | [ H: find_name _ (TStree (nthd _ _ )) = _ |- _ ]=>
+    | [ H: find_name _ (TStree (nthd _ _ )) = _ |- _ ]=> idtac "find_name";
       eapply DTCrash.tree_crash_root in H; eauto 
-    | [ H: find_name [] ?x = Some (_, _) |- dirtree_inum ?x = _ ] =>
+    | [ H: find_name [] ?x = Some (_, _) |- dirtree_inum ?x = _ ] => idtac "inum x";
       eapply find_name_dirtree_inum; eauto
-    | [ H: find_name [] ?x = Some (_, _) |- dirtree_isdir ?x = _ ] =>
+    | [ H: find_name [] ?x = Some (_, _) |- dirtree_isdir ?x = _ ] => idtac "isdir";
       eapply find_name_dirtree_isdir; eauto
     end.
 
@@ -936,70 +943,42 @@ Module ATOMICCP.
     prestep. norml.
     safecancel.
 
-    denote! (NEforall _ _) as Tpred.
 
     (* need to apply treeseq_tree_crash_exists before
      * creating evars in postcondition *)
-    prestep. norm'l.
+    prestep. norm'l. 
 
     denote! (crash_xform _ _) as Hcrash.
-
     eapply treeseq_tree_crash_exists in Hcrash; eauto.
     destruct Hcrash.
     destruct_lift H.
     cancel.
-    instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])); simpl in *.
+    cancel.
 
+    admit.  (* where is SB.rep coming from? should recover promise it? *)
+
+    eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
     eapply tree_rep_treeseq; eauto.
 
-    nthtree.
-    nthtree.
+    pred_apply. unfold TREESEQ.tree_rep; cancel.
+    simpl.  (* eapply tree_crash_preserves_dirtree_inum. *) admit.
+    simpl. admit.
 
-    destruct a1; subst; simpl.
+    prestep; norm'l.
+    cancel.
+    instantiate (pathname0 := []).
+    admit. (* follows from h9 *)
+    admit. (* variant of eapply dir2flatmem2_find_name_ptsto. *)
 
-    - (* tmp exists in x *)
-      step.  (* delete *)
+    prestep; norm'l.
+    cancel.
 
-      instantiate (ts1 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
-      eapply tree_rep_treeseq; eauto.
-      instantiate (pathname0 := []).
-      nthtree.
-      admit. admit. (* XXX create x's direlems earlier *)
-      simpl.
-      eapply tree_crash_find_name; eauto.
-      admit.  (* XXX fix tree_crash_find_name not to require file_crash? *)
-      admit. (* follow from Tpred *)
+    eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
+    eapply tree_rep_treeseq; eauto.
 
-      step.  (* sync *)
+    pred_apply. unfold TREESEQ.tree_rep; cancel.
 
-      (* two cases: delete succeeded or not *)
-
-      (* ts1 is x with temp deleted, or is this case where rename fails *)
-      admit.
-      step.
-      admit.
-      admit.
-      admit.
-
-      step.  (* delete succeeded *)
-
-      admit.
-      admit.
-      admit.
-      admit.
-      admit.
-
-    - (* tmp doesn't exist *)
-
-      step.
-      instantiate (t0 := (mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)))).
-      eapply tree_rep_treeseq; eauto.
-      admit. (* H, but what do we know about crash_xform Fm *)
-      simpl.
-      admit. (* H7 and a version of tree_crash_find_name? *)
-
-   - (* crash conditions *)
-
+    step.  (* return *)
 
   Admitted.
 
