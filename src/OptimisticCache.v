@@ -2,7 +2,6 @@ Require Import CCL.
 
 Require Import Mem AsyncDisk.
 Require Import FunctionalExtensionality.
-Require Import UpdList.
 
 (* re-export MemCache since Cache appears in external type signatures *)
 Require Export MemCache.
