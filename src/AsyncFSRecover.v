@@ -304,7 +304,7 @@ Module AFS_RECOVER.
     (* follows one of the earlier recover proofs but isn't used by atomiccp. *)
   Admitted.
 
-  Hint Extern 0 (okToUnify (tree_pred _ _) (tree_pred _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (DirTreePred.tree_pred _ _) (DirTreePred.tree_pred _ _)) => constructor : okToUnify.
 
   Theorem file_sync_recover_ok : forall fsxp inum mscs,
     {<< ds Fm Ftop tree pathname f frees ilist,
