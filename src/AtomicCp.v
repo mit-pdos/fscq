@@ -76,15 +76,21 @@ Module ATOMICCP.
 
 
   Definition copy2temp fsxp src_inum tinum mscs :=
-    let^ (mscs, ok) <- AFS.file_truncate fsxp tinum 1 mscs;  (* XXX type error when passing sz *)
+    let^ (mscs, ok) <- AFS.create fsxp the_dnum temp_fn mscs;
     match ok with
     | Err e =>
       Ret ^(mscs, false)
     | OK _ =>
-      let^ (mscs, ok) <- copydata fsxp src_inum tinum mscs;
+      let^ (mscs, ok) <- AFS.file_truncate fsxp tinum 1 mscs;  (* XXX type error when passing sz *)
       match ok with
-      | Err _ => Ret ^(mscs, false)
-      | OK _ => Ret ^(mscs, true)
+      | Err e =>
+        Ret ^(mscs, false)
+      | OK _ =>
+        let^ (mscs, ok) <- copydata fsxp src_inum tinum mscs;
+        match ok with
+        | Err _ => Ret ^(mscs, false)
+        | OK _ => Ret ^(mscs, true)
+        end
       end
     end.
 
@@ -573,16 +579,17 @@ Module ATOMICCP.
   Hint Extern 1 ({{_}} Bind (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
   Hint Extern 0 (okToUnify (tree_with_tmp _ _ _ _ _ _ _ _ _) (tree_with_tmp _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (tree_with_src _ _ _ _ _ _ _ _ _) (tree_with_src _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
 
   Theorem copy2temp_ok : forall fsxp srcinum tinum mscs,
-    {< Fm Ftop Ftree ds ts tmppath srcpath file tfile v0 dstbase dstname dstfile,
+    {< Fm Ftop Ftree ds ts tmppath srcpath file v0 dstbase dstname dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ tmppath = [temp_fn]%list ]] *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_safe tmppath (MSAlloc mscs) (ts !!)) ts ]] *
       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ]] *
-      [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum 
-                tfile dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
+      [[ tree_with_src Ftree srcpath tmppath srcinum file dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ DFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
@@ -605,6 +612,14 @@ Module ATOMICCP.
     >} copy2temp fsxp srcinum tinum mscs.
   Proof.
     unfold copy2temp, tree_with_tmp; intros.
+    step.
+
+    eassign (@nil string).
+    admit. (* root directory; evar issue *)
+
+    unfold tree_with_src. cancel.
+    admit. (* evar issue *)
+
     step.
 
     denote! (_ (list2nmem (DFData file))) as Hf.
