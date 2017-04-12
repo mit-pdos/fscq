@@ -188,7 +188,7 @@ Module BFILE.
     Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache cache).
 
   Definition shuffle_allocs lxp bxps ms cms :=
-    let^ (ms, cms) <- ForN i < (BmapNBlocks (fst bxps) * valulen)
+    let^ (ms, cms) <- ForN 1 <= i < (BmapNBlocks (fst bxps) * valulen / 2)
     Hashmap hm
     Ghost [ F Fm crash m0 ]
     Loopvar [ ms cms ]
@@ -201,13 +201,9 @@ Module BFILE.
              -> In bn (fst frees) ]]
     OnCrash crash
     Begin
-      If (bool_dec (Nat.odd i) true) {
-        fcms <- BALLOCC.steal lxp (fst bxps) i (BALLOCC.mk_memstate ms (fst cms));
-        scms <- BALLOCC.free lxp (snd bxps) i (BALLOCC.mk_memstate (BALLOCC.MSLog fcms) (snd cms));
-        Ret ^((BALLOCC.MSLog scms), ((BALLOCC.MSCache fcms), (BALLOCC.MSCache scms)))
-      } else {
-        Ret ^(ms, cms)
-      }
+      fcms <- BALLOCC.steal lxp (fst bxps) i (BALLOCC.mk_memstate ms (fst cms));
+      scms <- BALLOCC.free lxp (snd bxps) i (BALLOCC.mk_memstate (BALLOCC.MSLog fcms) (snd cms));
+      Ret ^((BALLOCC.MSLog scms), ((BALLOCC.MSCache fcms), (BALLOCC.MSCache scms)))
     Rof ^(ms, cms);
     Ret ^(ms, cms).
 
@@ -1039,6 +1035,7 @@ Module BFILE.
 
   (*** specification *)
 
+  Local Opaque Nat.div.
 
   Theorem shuffle_allocs_ok : forall lxp bxps ms cms,
     {< F Fm m0 m frees,
@@ -1056,19 +1053,34 @@ Module BFILE.
     >} shuffle_allocs lxp bxps ms cms.
   Proof.
     unfold shuffle_allocs.
-    step.
-    step.
+    intros.
+    eapply pimpl_ok2.
+    ProgMonad.monad_simpl.
+    eapply forN_ok'.
+    cancel.
     step.
     unfold BALLOCC.bn_valid; split; auto.
+    denote (lt m1) as Hm.
+    rewrite Nat.sub_add in Hm by omega.
+    apply Rounding.lt_div_mul_lt in Hm; omega.
+    denote In as Hb.
+    eapply Hb.
+    unfold BALLOCC.bn_valid; split; auto.
+    denote (lt m1) as Hm.
+    rewrite Nat.sub_add in Hm by omega.
+    apply Rounding.lt_div_mul_lt in Hm; omega.
     step.
     unfold BALLOCC.bn_valid; split; auto.
     substl (BmapNBlocks bxps_2); auto.
+    denote (lt m1) as Hm.
+    rewrite Nat.sub_add in Hm by omega.
+    apply Rounding.lt_div_mul_lt in Hm; omega.
     step.
     apply remove_other_In.
     omega.
     intuition.
     step.
-    step.
+    cancel.
     eapply LOG.intact_hashmap_subset.
     eauto.
     Unshelve. exact tt.

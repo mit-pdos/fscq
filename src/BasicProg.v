@@ -691,6 +691,25 @@ Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 
    l1 closed binder, l2 closed binder,
    body at level 9).
 
+Notation "'ForN' x <= i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForN_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        x (n - x)
+        (pair_args_helper (fun vm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun vm hm => ([[ vm = vm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
+        (pair_args_helper (fun vm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun hm => crashed%pred)) .. )))))
+  (at level 9, i at level 0, n at level 0, x at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
 
 Fixpoint ForEach_ (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> prog L)
