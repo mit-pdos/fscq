@@ -50,6 +50,7 @@ Module CacheOneDir.
     let^ (ms, files) <- SDIR.readdir lxp ixp dnum ms;
     let ocache := fill_cache files in
     ms <- BFILE.cache_put dnum (ocache, 0) ms;
+    AlertModified;;
     Ret ^(ms, (ocache, 0)).
 
   Definition get_dcache' (lxp:FSLayout.log_xparams) (ixp:Inode.INODE.IRecSig.xparams) dnum ms :=
