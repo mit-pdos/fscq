@@ -25,10 +25,10 @@ Section ConcurrentCopy.
                     match r with
                     | Errno.OK inum' =>
                       bind (file_set_attr P inum' attr)
-                           (fun '(b, _) =>
-                              match b with
-                              | true => Ret (Done (Some inum'))
-                              | false => Ret (Done None)
+                           (fun '(r, _) =>
+                              match r with
+                              | Errno.OK _ => Ret (Done (Some inum'))
+                              | Errno.Err _ => Ret (Done None)
                               end)
                     | Errno.Err _ => Ret (Done None)
                     end)).
