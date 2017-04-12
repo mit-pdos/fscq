@@ -119,8 +119,6 @@ Set Implicit Arguments.
       TreeDir inum' (dirlist_update (fun t' => dirtree_update_inode t' inum off v) ents)
     end.
 
-
-
   (**
    * Theorems about extracting and folding back subtrees from a tree.
    *)
@@ -1206,4 +1204,33 @@ Set Implicit Arguments.
     eapply dir_names_distinct' with (m := dsmap').
     pred_apply; cancel.
     apply dir_names_pred_add_delete; auto.
+  Qed.
+
+  Lemma flist_crash_synced_file: forall F fsxp inum dirfile path tree flist flist',
+    (F * tree_pred fsxp (update_subtree path (TreeFile inum (synced_dirfile dirfile)) tree))%pred (list2nmem flist) ->
+    BFILE.flist_crash flist flist' ->
+    find_subtree path tree = Some (TreeFile inum dirfile) ->
+    (arrayN_ex (@ptsto _ _ _) flist' inum * inum |-> BFILE.synced_file (dirfile_to_bfile dirfile None))%pred (list2nmem flist').
+  Proof.
+    intros.
+    rewrite subtree_extract in H by (eauto using find_update_subtree).
+    cbn in *.
+    destruct_lifts.
+    unfold dirfile_to_bfile.
+    eapply pimpl_apply in H; [ eapply list2nmem_sel with (i := inum) in H as Hs | cancel].
+    eapply forall2_selN in H0 as Hf; eauto using list2nmem_inbound.
+    unfold BFILE.file_crash in Hf.
+    rewrite <- Hs in Hf. cbn in Hf.
+    deex.
+    denote Array.possible_crash_list as Hp.
+    apply Array.possible_crash_list_synced_list_eq in Hp. subst.
+    unfold BFILE.synced_file. cbn -[Array.synced_list].
+    denote (selN _ _ _ = _) as Hx.
+    rewrite <- Hx.
+    apply list2nmem_array_pick.
+    erewrite <- forall2_length by eauto.
+    eauto using list2nmem_inbound.
+  Unshelve.
+    all: try exact BFILE.bfile0.
+    all: eauto.
   Qed.

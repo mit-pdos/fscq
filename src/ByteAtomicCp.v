@@ -17,8 +17,7 @@ Require Import Inode.
 Require Import List ListUtils.
 Require Import Balloc.
 Require Import Bytes.
-Require Import DirTree DirTreeDef DirTreeInodes.
-Require Import DirTreePred DirTreeNames DirTreePath DirTreeSafe.
+Require Import DirTree.
 Require Import Rec.
 Require Import Arith.
 Require Import Array.
@@ -40,18 +39,19 @@ Require Import TreeSeq.
 Require Import DirSep.
 Require Import Rounding.
 Require Import BACHelper.
+Require Import BytefileSpecs.
+Require Import DirTreeDef.
+Require Import DirTreeNames.
+Require Import AtomicCp.
 
 Import DIRTREE.
-
 Import DTCrash.
 Import TREESEQ.
 Import ListNotations.
 
 Set Implicit Arguments.
 
-Notation MSLL := BFILE.MSLL.
-Notation MSAlloc := BFILE.MSAlloc.
-Notation BFData := BFILE.BFData.
+Notation tree_rep := ATOMICCP.tree_rep.
 
 Hint Resolve valubytes_ne_O.
 Hint Resolve valubytes_ge_O.
@@ -64,15 +64,18 @@ Hint Resolve valubytes_ge_O.
 
   Definition temp_fn := ".temp"%string.
   Definition Off0 := 0.
+  
+
+  
 
 (* ---------------------------------------------------- *)
  (** Specs and proofs **)
 
   Opaque LOG.idempred.
   Opaque crash_xform.
-  
 
 
+   
 Definition atomic_cp fsxp src_inum dstbase dstname mscs :=
     let^ (mscs, r) <- AFS.create fsxp the_dnum temp_fn mscs;
     match r with

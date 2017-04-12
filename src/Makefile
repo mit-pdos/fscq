@@ -29,7 +29,7 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
 	      DirSep ProgMetatheory TreeSeq \
-	      AtomicCp
+	      AtomicCp BACHelper BytefileSpecs
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

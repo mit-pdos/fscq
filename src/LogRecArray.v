@@ -613,6 +613,7 @@ Module LogRecArrayCache (RA : RASig).
       Ret ^(cache, ms, v)
     | None =>
       let^ (ms, v) <- LRA.get lxp xp ix ms;
+      AlertModified;;
       Ret ^(Cache.add ix v cache, ms, v)
     end.
 

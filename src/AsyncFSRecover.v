@@ -304,7 +304,7 @@ Module AFS_RECOVER.
     (* follows one of the earlier recover proofs but isn't used by atomiccp. *)
   Admitted.
 
-
+  Hint Extern 0 (okToUnify (DirTreePred.tree_pred _ _) (DirTreePred.tree_pred _ _)) => constructor : okToUnify.
 
   Theorem file_sync_recover_ok : forall fsxp inum mscs,
     {<< ds Fm Ftop tree pathname f frees ilist,
@@ -325,7 +325,7 @@ Module AFS_RECOVER.
          exists flist' F',
          [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' ilist frees (BFILE.MSAllocC mscs) (BFILE.MSCache mscs) (BFILE.MSICache mscs)) ]]] *
          [[[ flist' ::: (arrayN_ex (@ptsto _ addr_eq_dec _) flist' inum *
-                         exists c, inum |-> dirfile_to_bfile f c) ]]]
+                         exists c, inum |-> BFILE.synced_file (dirfile_to_bfile f c)) ]]]
        )
    >>} file_sync fsxp inum mscs >> recover cachesize.
   Proof.
@@ -339,16 +339,16 @@ Module AFS_RECOVER.
          (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm
       \/ (exists d tree',
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) hm *
-           [[[ d ::: v0 ✶ DirTreeRep.rep fsxp v1 tree' ]]] *
-           [[ tree' = update_subtree v3 (TreeFile inum (BFILE.synced_file v4)) v2 ]])) ]]))%pred).
+           [[[ d ::: v0 ✶ DirTreeRep.rep fsxp v1 tree' v6 v5 mscs ]]] *
+           [[ tree' = update_subtree v3 (TreeFile inum (synced_dirfile v4)) v2 ]])) ]]))%pred).
     apply pimpl_refl.
-    cancel.
+    cancel. xform_dist. cancel.
     simpl.
     repeat xform_dist.
     repeat xform_deex_l.
     xform_dist.
     rewrite crash_xform_lift_empty.
-    norml. unfold stars; simpl. rewrite H8.
+    norml. unfold stars; simpl. rewrite H9.
     xform_dist. xform_deex_l.
 
     - rewrite LOG.idempred_idem; xform_deex_l;
@@ -358,8 +358,11 @@ Module AFS_RECOVER.
       prestep. norm. cancel.
       recover_ro_ok.
       cancel.
-      destruct v.
+      instantiate (mscs0 := ms).
+      cancel.
       or_l; cancel.
+      setoid_rewrite <- surjective_pairing.
+      cancel.
 
       intuition.
       cancel.
@@ -392,11 +395,12 @@ Module AFS_RECOVER.
       rewrite BFILE.xform_rep, IAlloc.xform_rep in Hx.
       destruct_lift Hx.
       recover_ro_ok. cancel.
+      instantiate (mscs0 := BFILE.mk_memstate _ (MSLL ms) _ _ _ _). cancel.
       or_r; cancel.
 
-      (* XXX: should be able to tell from H8 and H7, though not very interesting.
-         Need to prove (BFILE.synced_file v4) = selN dummy inum _ *)
-      admit.
+      eapply pimpl_apply; [| eapply DirTreePred.flist_crash_synced_file; eauto].
+      cancel.
+      pred_apply; cancel.
 
       simpl_idempred_r.
       or_r; cancel.
@@ -405,8 +409,10 @@ Module AFS_RECOVER.
       eauto.
       auto.
 
-    Unshelve. all: eauto.
-  Admitted.
+    Unshelve.
+      all: eauto.
+      all: try solve [do 5 econstructor].
+  Qed.
 
 (*
   Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,

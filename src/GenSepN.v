@@ -1177,6 +1177,32 @@ Proof.
   destruct a'; try congruence.
 Qed.
 
+Lemma ptsto_a_list2nmem_a0 : forall V v (d : list V) a,
+  (a |-> v)%pred (list2nmem d) -> a = 0.
+Proof.
+  destruct a; eauto.
+  intros; exfalso.
+  unfold list2nmem, ptsto in *; intuition.
+  destruct d.
+  {
+    simpl in *.
+    congruence.
+  }
+  {
+    assert (S a = 0 -> False) by omega.
+    specialize (H1 0 H); simpl in *.
+    congruence.
+  }
+Qed.
+
+Lemma ptsto_a_list2nmem_mem_eq : forall V v (d : list V) a,
+  (a |-> v)%pred (list2nmem d) -> d = [v].
+Proof.
+  intros.
+  eapply ptsto_a_list2nmem_a0 in H as H'; subst.
+  eapply ptsto_0_list2nmem_mem_eq; eauto.
+Qed.
+
 Theorem arrayN_pimpl : forall V m (F : @pred addr addr_eq_dec V) l,
   F m ->
   arrayN (@ptsto _ _ _) 0 l m ->
