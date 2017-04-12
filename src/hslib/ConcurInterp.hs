@@ -17,6 +17,9 @@ import qualified Data.Map.Strict as Map
 verbose :: Bool
 verbose = False
 
+showDebugs :: Bool
+showDebugs = True
+
 debugmsg :: String -> IO ()
 debugmsg s = when verbose $ putStrLn s
 
@@ -88,6 +91,9 @@ wait_for_read s a = do
 run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
+run_dcode _ (Debug s) = do
+  when showDebugs $ putStrLn $ "debug: " ++ s;
+  return $ unsafeCoerce ()
 run_dcode s (Alloc v) = do
   i <- atomicModifyIORef (memory s) $ \h ->
     let (maxIdent,_) = Map.findMax h
