@@ -34,6 +34,8 @@ Ltac monad_simpl :=
            rewrite_equiv monad_right_id
          | [ |- cprog_ok _ _ _ (Bind (Ret _) _) ] =>
            rewrite_equiv monad_left_id
+         | [ |- cprog_ok _ _ _ (Bind (Debug _) _) ] =>
+           rewrite_equiv monad_debug_left_id
          | [ |- cprog_ok _ _ _ (Bind (Bind _ _) _) ] =>
            rewrite_equiv monad_assoc
          end.

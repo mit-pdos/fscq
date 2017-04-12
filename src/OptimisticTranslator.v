@@ -37,7 +37,8 @@ Section OptimisticTranslator.
     fun l cs => match p with
            | Prog.Ret v => Ret (Success NoChange v, cs)
            | Prog.AlertModified => Ret (Success Modified tt, cs)
-           | Prog.Debug _ _ => Ret (Success NoChange tt, cs)
+           | Prog.Debug s _ => _ <- Debug (String.append "fscq: " s);
+                                Ret (Success NoChange tt, cs)
            | Prog.Rdtsc => Ret (Success NoChange 0, cs)
            | Prog.Read a => do '(v, cs) <- CacheRead cs a l;
                              match v with
@@ -330,6 +331,11 @@ Section OptimisticTranslator.
         * (* error write *)
           CCLTactics.inv_bind; eauto.
       + CCLTactics.inv_ret; left; descend; intuition eauto using hashmap_le_refl.
+
+    - CCLTactics.inv_bind; CCLTactics.inv_debug.
+      CCLTactics.inv_ret.
+      destruct (local_l tid (Sigma.l sigma')); intuition subst;
+        left; descend; intuition eauto.
     - CCLTactics.inv_bind;
         match goal with
         | [ H: exec _ _ _ (Hash _) _ |- _ ] =>

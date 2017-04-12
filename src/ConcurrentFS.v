@@ -32,6 +32,13 @@ Section ConcurrentFS.
   Definition readCacheMem : cprog (Cache * memstate) :=
     Read2 Cache (ccache P) memstate (fsmem P).
 
+  Definition reportBailout T (r: Result T) : cprog unit :=
+    match r with
+    | Success Modified _ =>
+       Debug "readonly bailout"
+    | _ => Ret tt
+    end.
+
   (* Execute p assuming it is read-only. This program could distinguish between
   failures that require filling the cache [Failure (CacheMiss a)] and failures
   that require upgrading to a write lock [Failure WriteRequired], but currently
@@ -42,6 +49,7 @@ Section ConcurrentFS.
       (* for read-only syscalls, the returned cache is always the same
        as the input *)
       do '(r, _) <- p mscs Unacquired c;
+      _ <- reportBailout r;
       (* while slightly more awkward to write, this exposes the structure
       without having to destruct r or f, helping factor out the common parts of
       the proof *)
@@ -77,7 +85,8 @@ Section ConcurrentFS.
 
   Definition yieldOnMiss (e:OptimisticException) : cprog unit :=
     match e with
-    | CacheMiss a => YieldTillReady a
+    | CacheMiss a =>
+      YieldTillReady a
     | _ => Ret tt
     end.
 
@@ -201,6 +210,23 @@ Section ConcurrentFS.
 
   Hint Resolve fs_invariant_root_inode.
 
+  Theorem reportBailout_ok : forall tid T (r: Result T),
+      cprog_spec G tid
+                 (fun (_:unit) sigma =>
+                    {| precondition := True;
+                       postcondition :=
+                         fun sigma' u => sigma' = sigma /\ u = tt; |})
+                 (reportBailout r).
+  Proof.
+    unfold reportBailout; intros.
+    destruct r; try solve [ step; finish ].
+    destruct f; try solve [ step; finish ].
+    unfold cprog_spec; intros.
+    eapply cprog_ok_weaken; [ apply Debug_ok | ]; finish.
+  Qed.
+
+  Hint Extern 1 {{ reportBailout _; _ }} => apply reportBailout_ok : prog.
+
   Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A
                                   (fsspec: FsSpec A T) tid,
       (forall mscs c, cprog_spec G tid
@@ -234,6 +260,9 @@ Section ConcurrentFS.
     monad_simpl.
     eapply cprog_ok_weaken;
       [ eapply H | ]; simplify; finish.
+
+    (* skip over reportBailout *)
+    step; simpl in *; intuition.
 
     step.
     unfold translated_postcondition in *; simplify.
