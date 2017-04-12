@@ -477,6 +477,19 @@ Section Primitives.
     prim.
   Qed.
 
+  Theorem Debug_ok : forall tid s,
+      cprog_spec G tid
+                 (fun (_:unit) sigma =>
+                    {| precondition := True;
+                       postcondition :=
+                         fun sigma' r =>
+                           sigma' = sigma /\
+                           r = tt; |})
+                 (Debug s).
+  Proof.
+    prim.
+  Qed.
+
   Theorem YieldTillReady_ok : forall tid a,
       cprog_spec G tid
                  (fun (_:unit) sigma =>
