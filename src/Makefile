@@ -68,7 +68,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: vio proof clean
 
-all: cfscq fscq mkfs
+all: cfscq fscq mkfs parstat
 
 -include $(OCAMLFUSE_DEP)
 
