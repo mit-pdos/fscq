@@ -18,7 +18,7 @@ verbose :: Bool
 verbose = False
 
 showDebugs :: Bool
-showDebugs = True
+showDebugs = False
 
 debugmsg :: String -> IO ()
 debugmsg s = when verbose $ putStrLn s
@@ -92,7 +92,7 @@ run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
 run_dcode _ (Debug s) = do
-  when showDebugs $ putStrLn $ "debug: " ++ s;
+  when (showDebugs || verbose) $ putStrLn $ "debug: " ++ s;
   return $ unsafeCoerce ()
 run_dcode s (Alloc v) = do
   i <- atomicModifyIORef (memory s) $ \h ->

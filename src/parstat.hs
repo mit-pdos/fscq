@@ -8,6 +8,7 @@ import Control.Monad
 import Options
 import System.Exit
 import Control.Concurrent
+import Data.IORef
 
 import Disk
 import Interpreter as SeqI
@@ -52,8 +53,7 @@ init_fs disk_fn = do
   return (s, fsP)
 
 fscqGetFileStat :: I.ConcurState -> FsParams -> FilePath -> IO (Maybe Rec.Rec__Coq_data)
-fscqGetFileStat s fsP (_:path)
-  | otherwise = do
+fscqGetFileStat s fsP (_:path) = do
   nameparts <- return $ splitDirectories path
   (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
   case r of
@@ -64,6 +64,10 @@ fscqGetFileStat s fsP (_:path)
         (attr, ()) <- doFScall s $ CFS.file_get_attr fsP inum
         return $ Just attr
 fscqGetFileStat _ _ _ = return $ Nothing
+
+readMem :: I.ConcurState -> IO Heap
+readMem s = do
+  readIORef (I.memory s)
 
 elapsedMicros :: TimeSpec -> IO Float
 elapsedMicros start = do
@@ -77,6 +81,7 @@ data StatOptions = StatOptions
   , optFileToStat :: String
   , optIters :: Int
   , optN :: Int
+  , optReadMem :: Bool
   }
 
 instance Options StatOptions where
@@ -89,12 +94,13 @@ instance Options StatOptions where
          "number of iterations of stat to run"
     <*> simpleOption "n" 1
          "number of parallel threads to issue stats from"
+    <*> simpleOption "readmem" False
+         "rather than stat, just read memory"
 
-repeatOp :: Int -> IO a -> IO ()
-repeatOp n act = do
-  replicateM_ n $ do
-    v <- act
-    return $! v
+evalAndDiscard :: IO a -> IO ()
+evalAndDiscard act = do
+  v <- act
+  _ <- return $! v
   return ()
 
 runInThread :: IO a -> IO (MVar a)
@@ -112,10 +118,14 @@ main = runCommand $ \opts args -> do
     exitWith (ExitFailure 1)
   else do
     (s, fsP) <- init_fs $ optDiskImg opts
+    statOp <- return $
+      if optReadMem opts then evalAndDiscard $ readMem s
+      else evalAndDiscard $ fscqGetFileStat s fsP (optFileToStat opts)
     iters <- return $ optIters opts
     par <- return $ optN opts
+    _ <- replicateM_ 10 $ statOp
     start <- getTime Monotonic
-    ms <- replicateM par . runInThread . repeatOp iters $ fscqGetFileStat s fsP (optFileToStat opts)
+    ms <- replicateM par . runInThread . replicateM_ iters $ statOp
     forM_ ms takeMVar
     totalTime <- elapsedMicros start
     timePerOp <- return $ totalTime/(fromIntegral $ iters * par)
