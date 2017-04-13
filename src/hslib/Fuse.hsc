@@ -591,6 +591,7 @@ withStructFuse pFuseChan pArgs ops handler f =
                  let append    = (#const O_APPEND)   .&. flags == (#const O_APPEND)
                      noctty    = (#const O_NOCTTY)   .&. flags == (#const O_NOCTTY)
                      nonBlock  = (#const O_NONBLOCK) .&. flags == (#const O_NONBLOCK)
+                     trunc     = (#const O_TRUNC)    .&. flags == (#const O_TRUNC)
                      how | (#const O_RDWR) .&. flags == (#const O_RDWR) = ReadWrite
                          | (#const O_WRONLY) .&. flags == (#const O_WRONLY) = WriteOnly
                          | otherwise = ReadOnly
@@ -598,7 +599,7 @@ withStructFuse pFuseChan pArgs ops handler f =
                                                    , exclusive = False
                                                    , noctty = noctty
                                                    , nonBlock = nonBlock
-                                                   , trunc = False
+                                                   , trunc = trunc
                                                    }
                  result <- (fuseOpen ops) filePath how openFileFlags
                  case result of

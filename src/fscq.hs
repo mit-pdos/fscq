@@ -319,7 +319,7 @@ fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen fr m_fsxp (_:path) _ _
+fscqOpen fr m_fsxp (_:path) _ flags
   | path == "stats" = return $ Right 0
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPEN" path
@@ -330,7 +330,14 @@ fscqOpen fr m_fsxp (_:path) _ _
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (inum, isdir)
       | isdir -> return $ Left eISDIR
-      | otherwise -> return $ Right $ inum
+      | otherwise -> do
+        if trunc flags then do
+          (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum 0
+          case ok of
+            Errno.OK _ -> return $ Right inum
+            Errno.Err e -> return $ Left $ errnoToPosix e
+        else do
+          return $ Right inum
 fscqOpen _ _ _ _ _ = return $ Left eIO
 
 splitDirsFile :: String -> ([String], String)
