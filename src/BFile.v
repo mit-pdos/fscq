@@ -74,6 +74,13 @@ Module BFILE.
     INODE.IRec.cache0
     (BFcache.empty _).
 
+  Definition MSinitial ms :=
+    MSAlloc ms = true /\
+    MSAllocC ms = (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) /\
+    MSIAllocC ms = IAlloc.Alloc.freelist0 /\
+    MSICache ms = INODE.IRec.cache0 /\
+    MSCache ms = (BFcache.empty _).
+
   Definition MSIAlloc ms :=
     IAlloc.mk_memstate (MSLL ms) (MSIAllocC ms).
 
@@ -2593,13 +2600,15 @@ Module BFILE.
     PRE:hm  LOG.rep lxp F (LOG.NoTxn ds) ms hm
     POST:hm' RET:ms'
       LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') hm' *
-      [[ ms = (MSLL ms') ]]
+      [[ ms = (MSLL ms') ]] *
+      [[ BFILE.MSinitial ms' ]]
     CRASH:hm' LOG.rep lxp F (LOG.NoTxn ds) ms hm'
     >} recover ms.
   Proof.
     unfold recover; intros.
     step.
     step.
+    unfold MSinitial; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (recover _ ) _) => apply recover_ok : prog.
