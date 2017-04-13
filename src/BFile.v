@@ -66,9 +66,9 @@ Module BFILE.
     MSCache : BFcache_type
   }.
 
-  Definition ms_empty sz := mk_memstate
+  Definition ms_empty msll := mk_memstate
     true
-    (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 sz))
+    msll
     (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0)
     IAlloc.Alloc.freelist0
     INODE.IRec.cache0

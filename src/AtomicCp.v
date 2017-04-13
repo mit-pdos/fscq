@@ -825,12 +825,12 @@ Module ATOMICCP.
 
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
-  Lemma rep_tree_crash: forall Fm fsxp Ftop d t ilist frees ms d',
-    (Fm * rep fsxp Ftop t ilist frees ms)%pred (list2nmem d) ->
+  Lemma rep_tree_crash: forall Fm fsxp Ftop d t ilist frees mscs d' msll',
+    (Fm * rep fsxp Ftop t ilist frees mscs)%pred (list2nmem d) ->
     crash_xform (diskIs (list2nmem d)) (list2nmem d') ->
-    (exists t' mscs', [[ tree_crash t t' ]] * 
-      (crash_xform Fm) * 
-      rep fsxp (BFileCrash.flist_crash_xform Ftop) t' ilist frees mscs')%pred (list2nmem d').
+    (exists t', [[ tree_crash t t' ]] * (crash_xform Fm) *
+      rep fsxp (BFileCrash.flist_crash_xform Ftop) t' ilist frees (BFILE.ms_empty msll')
+    )%pred (list2nmem d').
   Proof.
     intros.
     eapply crash_xform_pimpl_proper in H0; [ | apply diskIs_pred; eassumption ].
@@ -840,17 +840,17 @@ Module ATOMICCP.
     exists dummy.
     pred_apply.
     cancel.
-  Grab Existential Variables.
-    all: exact 0.
   Qed.
 
-  Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d,
+
+  Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d msll',
     let t := (nthd n ts) in
     treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
     crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-    (exists t' mscs', [[ tree_crash (TStree t) t' ]] *  
+    (exists t', [[ tree_crash (TStree t) t' ]] *
      (crash_xform Fm) * 
-     rep fsxp (BFileCrash.flist_crash_xform Ftop) t' (TSilist t) (TSfree t) mscs')%pred (list2nmem d).
+     rep fsxp (BFileCrash.flist_crash_xform Ftop) t' (TSilist t) (TSfree t) (BFILE.ms_empty msll')
+    )%pred (list2nmem d).
   Proof.
     intros.
     unfold treeseq_in_ds in H.
@@ -863,29 +863,43 @@ Module ATOMICCP.
     unfold TREESEQ.tree_rep in H2.
     destruct H2.
     eapply rep_tree_crash.
-    unfold tree_rep in H1.
     instantiate (1 := (nthd n ds)).
     pred_apply.
     cancel.
     eassumption.
   Qed.
 
-  Lemma tree_rep_treeseq: forall Fm Ftop fsxp  d t a,
-    TREESEQ.tree_rep Fm Ftop fsxp t (list2nmem d) ->
-    treeseq_in_ds Fm Ftop fsxp a (t, []) (d, []).
+  Lemma treeseq_in_ds_crash: forall Fm Ftop fsxp d (t: dirtree)  n ts ms,
+    BFILE.MSinitial ms ->
+    (crash_xform Fm
+      ✶ rep fsxp Ftop t (TSilist (nthd n ts))
+          (TSfree (nthd n ts)) (BFILE.ms_empty (MSLL ms)))%pred (list2nmem d) ->
+    treeseq_in_ds (crash_xform Fm) Ftop fsxp ms 
+        ({| TStree := t; TSilist := TSilist (nthd n ts); TSfree := TSfree (nthd n ts) |}, []) 
+        (d, []).
   Proof.
     intros.
     unfold treeseq_in_ds.
     constructor; simpl.
     split.
-    intuition.
+    unfold TREESEQ.tree_rep.
+    intuition; simpl.
+    pred_apply; safecancel.
     unfold treeseq_one_safe; simpl.
     eapply dirtree_safe_refl.
     constructor.
-    unfold tree_rep_latest.
-    pred_apply. unfold TREESEQ.tree_rep.
-    (* XXX something about the cache not mattering? *)
-  Admitted.
+    unfold tree_rep_latest; simpl.
+    pred_apply; cancel.
+
+    replace ms with (BFILE.ms_empty (MSLL ms)).
+    cancel.
+    destruct ms.
+    unfold ATOMICCP.MSLL.
+    unfold BFILE.MSinitial in *.
+    intuition. simpl in *. subst.
+    unfold BFILE.ms_empty; simpl.
+    reflexivity.
+  Qed.
 
   Lemma find_name_dirtree_inum: forall t inum,
     find_name [] t = Some (inum, true) ->
@@ -968,23 +982,28 @@ Module ATOMICCP.
     safecancel.
 
     (* need to apply treeseq_tree_crash_exists before
-     * creating evars in postcondition *)
+     * creating evars in postcondition to create a
+     * treeseq_in_ds on crashed disk. *)
     prestep. norm'l. 
 
     denote! (crash_xform _ _) as Hcrash.
 
-    eapply treeseq_tree_crash_exists in Hcrash; eauto.
+    eapply treeseq_tree_crash_exists with (msll' := (MSLL ms)) in Hcrash; eauto.
     destruct Hcrash.
-    destruct_lift H.
+    destruct_lift H0.
+    safecancel.
+    eassign ((d, @nil (list valuset))).
     cancel.
-    cancel.
-
-    admit.  (* where is SB.rep coming from? should recover promise it? *)
 
     eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
-    eapply tree_rep_treeseq; eauto.
 
-    pred_apply. unfold TREESEQ.tree_rep; cancel.
+
+
+    eapply treeseq_in_ds_crash; eauto.
+
+
+    (* other preconditions of lookup *)
+
     simpl.  (* eapply tree_crash_preserves_dirtree_inum. *) admit.
     simpl. admit.
 

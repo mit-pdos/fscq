@@ -184,9 +184,11 @@ Module DTCrash.
     rewrite flist_crash_xform_ptsto. cancel. eauto.
   Qed.
 
-  Lemma xform_tree_rep : forall xp F t ilist frees ms sz,
-    crash_xform (rep xp F t ilist frees ms) =p=> exists t',
-      [[ tree_crash t t' ]] * rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty sz).
+  Lemma xform_tree_rep : forall xp F t ilist frees ms msll',
+     crash_xform (rep xp F t ilist frees ms) =p=> 
+     exists t',
+      [[ tree_crash t t' ]] * 
+      rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty msll').
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -211,7 +213,6 @@ Module DTCrash.
   Grab Existential Variables.
     all: exact (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 1)).
   Qed.
-
 
   Theorem tree_crash_find_name :
     forall fnlist t t' subtree,
