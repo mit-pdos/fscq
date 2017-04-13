@@ -1205,7 +1205,7 @@ Module BFILE.
     cbv; omega.
     unfold INODE.IRecSig.items_per_val.
     rewrite valulen_is.
-    compute; omega.
+    vm_compute; omega.
 
     denote (_ =p=> freepred0) as Hx; apply Hx.
     substl (length dl); substl (IXLen ixp).
@@ -1215,7 +1215,7 @@ Module BFILE.
     unfold INODE.IRecSig.items_per_val.
     apply Nat.mod_divide; auto.
     rewrite valulen_is.
-    compute; auto.
+    vm_compute; auto.
 
     all: auto; cancel.
     Unshelve. eauto.
