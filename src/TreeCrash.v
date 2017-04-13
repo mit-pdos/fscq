@@ -263,7 +263,30 @@ Module DTCrash.
           apply H3.
   Qed.
 
-  Lemma tree_crash_root: forall t t' inum,
+  Lemma tree_crash_find_subtree_root: forall t t' inum,
+    tree_crash t t' ->
+    (exists elem, find_subtree [] t = Some (TreeDir inum elem)) ->
+    (exists elem', find_subtree [] t' = Some (TreeDir inum elem')).
+  Proof.
+    intros.
+    destruct t.
+    - destruct H0.
+      inversion H0.
+    - destruct H0.
+      unfold find_subtree in *. simpl in *.
+      destruct t'.
+      inversion H0.
+      inversion H0.
+      subst; simpl.
+      exfalso.
+      inversion H.
+      inversion H0.
+      subst; simpl.
+      inversion H.
+      subst; simpl; eauto.
+  Qed.
+
+  Lemma tree_crash_find_name_root: forall t t' inum,
     tree_crash t t' ->
     find_name [] t = Some (inum, true) ->
     find_name [] t' = Some (inum, true).

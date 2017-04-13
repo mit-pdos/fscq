@@ -910,29 +910,42 @@ Module ATOMICCP.
     inversion H0; eauto.
   Qed.
 
-  Lemma tree_rep_find_root: forall Frest Ftree t,
+
+  Lemma tree_rep_find_subtree_root: forall Frest Ftree t,
     tree_names_distinct t ->
     (Frest * (Ftree ✶ [] |-> Dir the_dnum))%pred (dir2flatmem2 t) ->
-    find_name [] t = Some (the_dnum , true).
+    (exists elem, find_subtree [] t = Some (TreeDir the_dnum elem)).
   Proof.
     intros.
     assert (exists d, find_subtree [] t = Some (TreeDir the_dnum d)).
     eapply dir2flatmem2_find_subtree_ptsto_dir; eauto.
     pred_apply; cancel.
-    destruct H1.
+    eauto.
+  Qed.
+
+
+  Lemma tree_rep_find_name_root: forall Frest Ftree t,
+    tree_names_distinct t ->
+    (Frest * (Ftree ✶ [] |-> Dir the_dnum))%pred (dir2flatmem2 t) ->
+    find_name [] t = Some (the_dnum , true).
+  Proof.
+    intros.
+    eapply tree_rep_find_subtree_root in H0.
+    destruct H0.
     unfold find_name.
     destruct (find_subtree [] t).
     destruct d; congruence.
     congruence.
+    eauto.
   Qed.
 
-  Lemma tree_pred_crash_root: forall Ftree srcpath tmppath srcinum file tinum dstbase 
+  Lemma tree_pred_crash_find_subtree_root: forall Ftree srcpath tmppath srcinum file tinum dstbase 
       dstname dstfile ts n t',
     let t := (nthd n ts) in
     treeseq_pred
      (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ->
     tree_crash (TStree t) t' ->
-    find_name [] t' = Some (the_dnum, true).
+    (exists elem, find_subtree [] t' = Some (TreeDir the_dnum elem)).
   Proof.
     intros; subst t.
     unfold treeseq_in_ds in H; intuition.
@@ -941,26 +954,45 @@ Module ATOMICCP.
     2: eapply nthd_in_ds.
     unfold tree_rep in H.
     intuition.
-  
-    destruct H.
-    unfold tree_with_tmp in *.
 
     destruct H.
-    eapply tree_crash_root with (t := TStree (nthd n ts)); eauto.
-    eapply tree_rep_find_root with (Ftree:= Ftree); eauto.
+    unfold tree_with_tmp in *. 
+    destruct H.
+    eapply tree_crash_find_subtree_root with (t := TStree (nthd n ts)); eauto.
+    eapply tree_rep_find_subtree_root with (Ftree := Ftree); eauto.
     pred_apply; cancel.
 
-    unfold tree_with_src in *.
+    unfold tree_with_src in *. 
     destruct H2.
-    eapply tree_crash_root with (t := TStree (nthd n ts)); eauto.
-    eapply tree_rep_find_root with (Ftree:= Ftree); eauto.
+    eapply tree_crash_find_subtree_root with (t := TStree (nthd n ts)); eauto.
+    eapply tree_rep_find_subtree_root with (Ftree := Ftree); eauto.
     pred_apply; cancel.
 
-    unfold tree_with_dst in *.
+    unfold tree_with_dst in *. 
     destruct H2.
-    eapply tree_crash_root with (t := TStree (nthd n ts)); eauto.
-    eapply tree_rep_find_root with (Ftree:= Ftree); eauto.
+    eapply tree_crash_find_subtree_root with (t := TStree (nthd n ts)); eauto.
+    eapply tree_rep_find_subtree_root with (Ftree := Ftree); eauto.
     pred_apply; cancel.
+  Qed.
+
+
+  Lemma tree_pred_crash_find_name_root: forall Ftree srcpath tmppath srcinum file tinum dstbase 
+      dstname dstfile ts n t',
+    let t := (nthd n ts) in
+    treeseq_pred
+     (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ->
+    tree_crash (TStree t) t' ->
+    find_name [] t' = Some (the_dnum, true).
+  Proof.
+    intros; subst t.
+    eapply tree_pred_crash_findsubtree_root in H; eauto.
+    destruct H.
+    unfold find_name.
+    destruct (find_subtree [] t').
+    destruct d.
+    inversion H.
+    inversion H; subst; eauto.
+    inversion H.
   Qed.
 
   Theorem atomic_cp_recover_ok :
@@ -1005,24 +1037,45 @@ Module ATOMICCP.
     eapply treeseq_in_ds_crash; eauto.
 
     (* other preconditions of lookup *)      
-    eapply tree_pred_crash_root in H5 as Hroot; eauto.
+    eapply tree_pred_crash_find_name_root in H5 as Hroot; eauto.
     eapply find_name_dirtree_inum; eauto.
-    eapply tree_pred_crash_root in H5 as Hroot; eauto.
+    eapply tree_pred_crash_find_name_root in H5 as Hroot; eauto.
     eapply find_name_dirtree_isdir; eauto.
 
-    prestep; norm'l.
-    cancel.
+    destruct a0.
+    prestep; norm'l.   
+
+    eapply tree_pred_crash_find_subtree_root in H5 as Hx; eauto.
+    destruct Hx.
+
+    safecancel.
+
     instantiate (pathname0 := []).
-    admit. (* follows from h9 *)
-    admit. (* variant of eapply dir2flatmem2_find_name_ptsto. *)
+    simpl. reflexivity.
+    simpl. 
+
+    Search dir2flatmem2 find_name.
+
+Lemma dir2flatmem2_ptsto_find_name : forall fnlist tree inum f F,
+  tree_names_distinct tree ->
+  find_name fnlist tree = Some (inum, false) ->
+  (F * fnlist |-> File inum f)%pred (dir2flatmem2 tree).
+Proof.
+  intros.
+Admitted.
+
+    eapply dir2flatmem2_ptsto_find_name; eauto.
+    admit.
+    rewrite <- H12.
+    admit.
 
     prestep; norm'l.
     cancel.
 
-    eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
-    eapply treeseq_in_ds_crash; eauto.
-
-    pred_apply. unfold TREESEQ.tree_rep; cancel.
+    eassign (BFileCrash.flist_crash_xform Ftop).
+    eapply treeseq_in_ds_eq with (a := a).
+    admit.
+    eapply H16.
 
     step.  (* return *)
 
