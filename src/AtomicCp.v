@@ -76,21 +76,15 @@ Module ATOMICCP.
 
 
   Definition copy2temp fsxp src_inum tinum mscs :=
-    let^ (mscs, ok) <- AFS.create fsxp the_dnum temp_fn mscs;
+    let^ (mscs, ok) <- AFS.file_truncate fsxp tinum 1 mscs;  (* XXX type error when passing sz *)
     match ok with
     | Err e =>
       Ret ^(mscs, false)
     | OK _ =>
-      let^ (mscs, ok) <- AFS.file_truncate fsxp tinum 1 mscs;  (* XXX type error when passing sz *)
+      let^ (mscs, ok) <- copydata fsxp src_inum tinum mscs;
       match ok with
-      | Err e =>
-        Ret ^(mscs, false)
-      | OK _ =>
-        let^ (mscs, ok) <- copydata fsxp src_inum tinum mscs;
-        match ok with
-        | Err _ => Ret ^(mscs, false)
-        | OK _ => Ret ^(mscs, true)
-        end
+      | Err _ => Ret ^(mscs, false)
+      | OK _ => Ret ^(mscs, true)
       end
     end.
 
@@ -158,6 +152,7 @@ Module ATOMICCP.
 
   Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) tinum tfile dstbase dstname dstfile:  @pred _ (list_eq_dec string_dec) _ :=
    (exists dstinum,
+    [[ Datatypes.length (DFData tfile) <= 1 ]] *
     Ftree * nil |-> Dir the_dnum * 
             srcpath |-> File srcinum file * 
             tmppath |-> File tinum tfile *
@@ -207,11 +202,11 @@ Module ATOMICCP.
     intros.
     unfold tree_with_tmp in *.
     destruct_lift H0. eexists.
-    eapply sep_star_comm.
-    eapply sep_star_assoc.
-    eapply dirents2mem2_treeseq_one_upd_tmp; eauto.
-    pred_apply.
+    eapply pimpl_apply.
+    2: eapply dirents2mem2_treeseq_one_upd_tmp; eauto.
     cancel.
+    rewrite length_updN; eauto.
+    pred_apply; cancel.
   Qed.
 
   Lemma dirents2mem2_treeseq_one_upd_src : forall (F: @pred _ (@list_eq_dec string string_dec) _) F1 tree tmppath srcpath inum f off v,
@@ -352,11 +347,13 @@ Module ATOMICCP.
     intros.
     unfold tree_with_tmp in *.
     destruct_lift H0. eexists.
-    eapply sep_star_comm.
-    eapply sep_star_assoc.
-    eapply dirents2mem2_treeseq_one_file_sync_tmp; eauto.
-    pred_apply.
+    eapply pimpl_apply.
+    2: eapply dirents2mem2_treeseq_one_file_sync_tmp; eauto.
     cancel.
+    2: pred_apply; cancel.
+    unfold synced_list, datatype.
+    rewrite combine_length_eq; rewrite map_length; eauto.
+    rewrite repeat_length; eauto.
   Qed.
 
   Lemma tssync_d_in_exists: forall ts t tmppath,
@@ -582,14 +579,14 @@ Module ATOMICCP.
   Hint Extern 0 (okToUnify (tree_with_src _ _ _ _ _ _ _ _ _) (tree_with_src _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
 
   Theorem copy2temp_ok : forall fsxp srcinum tinum mscs,
-    {< Fm Ftop Ftree ds ts tmppath srcpath file v0 dstbase dstname dstfile,
+    {< Fm Ftop Ftree ds ts tmppath srcpath file tfile v0 dstbase dstname dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ tmppath = [temp_fn]%list ]] *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_safe tmppath (MSAlloc mscs) (ts !!)) ts ]] *
       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ]] *
-      [[ tree_with_src Ftree srcpath tmppath srcinum file dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
+      [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ DFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
@@ -613,13 +610,6 @@ Module ATOMICCP.
   Proof.
     unfold copy2temp, tree_with_tmp; intros.
     step.
-
-    eassign (@nil string).
-    admit. (* root directory; evar issue *)
-
-    unfold tree_with_src. cancel.
-    admit. (* evar issue *)
-
     step.
 
     denote! (_ (list2nmem (DFData file))) as Hf.
