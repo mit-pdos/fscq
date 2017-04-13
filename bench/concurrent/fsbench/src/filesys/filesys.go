@@ -26,7 +26,7 @@ var fscqMnt = "/tmp/fscq"
 
 func fscqFs(name string) FileSystem {
 	var filenames []string
-	for num := 0; num < 20; num++ {
+	for num := 1; num < 20; num++ {
 		filenames = append(filenames,
 			path.Join(fscqMnt, fmt.Sprintf("dir%d/file1", num)))
 	}
