@@ -17,13 +17,12 @@ sleep 1
 
 dd if=/dev/urandom of="$mnt/small-4k" bs=4k count=1
 dd if=/dev/urandom of="$mnt/large-10m" bs=1k count=10000
-mkdir "$mnt/dir1"
-mkdir "$mnt/dir2"
 
-touch "$mnt/dir1/file1"
-touch "$mnt/dir1/file2"
-touch "$mnt/dir2/file1"
-touch "$mnt/dir2/file2"
+for num in $(seq 1 20); do
+  mkdir "$mnt/dir$num"
+  touch "$mnt/dir$num/file1"
+  touch "$mnt/dir$num/file2"
+done
 
 path1="a/b/c/d/e/f"
 path2="a____/b____/c____/d____/e____/f____"
