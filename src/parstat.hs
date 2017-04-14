@@ -8,6 +8,7 @@ import Control.Monad
 import Options
 import System.Exit
 import Control.Concurrent
+import Control.Monad (when)
 import Data.IORef
 
 -- FFI
@@ -45,13 +46,11 @@ init_fs :: String -> IO (I.ConcurState, FsParams)
 init_fs disk_fn = do
   ds <- init_disk disk_fn
   (mscs0, fsxp_val) <- do
-      putStrLn $ "Recovering file system"
       res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
       case res of
         Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
         Errno.OK (mscs0, fsxp_val) -> do
           return (mscs0, fsxp_val)
-  putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp_val) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp_val)
   s <- I.newState ds
   fsP <- I.run s (CFS.init fsxp_val mscs0)
   return (s, fsP)
@@ -92,6 +91,7 @@ data StatOptions = StatOptions
   , optFileToStat :: String
   , optIters :: Int
   , optN :: Int
+  , optMeasureSpeedup :: Bool
   , optReadMem :: Bool
   , optPthreads :: Bool
   }
@@ -106,6 +106,8 @@ instance Options StatOptions where
          "number of iterations of stat to run"
     <*> simpleOption "n" 1
          "number of parallel threads to issue stats from"
+    <*> simpleOption "speedup" False
+         "run with n=1 and compare performance"
     <*> simpleOption "readmem" False
          "rather than stat, just read memory"
     <*> simpleOption "pthreads" False
@@ -136,23 +138,40 @@ replicateInParallelC n act = do
   parallel (fromIntegral n) cAct
   freeHaskellFunPtr cAct
 
+statOp :: StatOptions -> (ConcurState, FsParams) -> IO ()
+statOp opts (s, fsP) = do
+  if optReadMem opts then evalAndDiscard $ readMem s
+    else evalAndDiscard $ fscqGetFileStat s fsP (optFileToStat opts)
+
+timeParallel :: StatOptions -> Int -> IO () -> IO Float
+timeParallel opts par op = do
+  start <- getTime Monotonic
+  replicatePar <- return $ if optPthreads opts then replicateInParallelC else replicateInParallel
+  replicatePar par . replicateM_ (optIters opts) $ op
+  totalTime <- elapsedMicros start
+  return totalTime
+
+parallelIters :: StatOptions -> Int
+parallelIters opts = optIters opts * optN opts
+
+seqIters :: StatOptions -> Int
+seqIters opts = optIters opts
+
 main :: IO ()
 main = runCommand $ \opts args -> do
   if length args > 0 then do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
   else do
-    (s, fsP) <- init_fs $ optDiskImg opts
-    statOp <- return $
-      if optReadMem opts then evalAndDiscard $ readMem s
-      else evalAndDiscard $ fscqGetFileStat s fsP (optFileToStat opts)
-    iters <- return $ optIters opts
-    par <- return $ optN opts
-    _ <- replicateM_ 10 $ statOp
-    start <- getTime Monotonic
-    replicatePar <- return $ if optPthreads opts then replicateInParallelC else replicateInParallel
-    replicatePar par . replicateM_ iters $ statOp
-    totalTime <- elapsedMicros start
-    timePerOp <- return $ totalTime/(fromIntegral $ iters * par)
-    putStrLn $ "took " ++ show timePerOp ++ " us/op"
+    fs <- init_fs $ optDiskImg opts
+    op <- return $ statOp opts fs
+    _ <- replicateM_ 10 op
+    parTime <- timeParallel opts (optN opts) op
+    timePerOp <- return $ parTime/(fromIntegral $ parallelIters opts)
+    putStrLn $ show timePerOp ++ " us/op"
+    when (optMeasureSpeedup opts) $ do
+      seqTime <- timeParallel opts 1 op
+      seqTimePerOp <- return $ seqTime/(fromIntegral $ seqIters opts)
+      putStrLn $ "seq time " ++ show seqTimePerOp ++ " us/op"
+      putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
     return ()
