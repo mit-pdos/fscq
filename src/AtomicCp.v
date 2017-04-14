@@ -150,7 +150,7 @@ Module ATOMICCP.
   Definition tree_with_src Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) dstbase dstname dstfile:  @pred _ (list_eq_dec string_dec) _ :=
    (exists dstinum,
     Ftree * nil |-> Dir the_dnum * 
-            srcpath |-> File srcinum (synced_dirfile file) *
+            srcpath |-> File srcinum file *
             tmppath |-> Nothing *
             (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred.
 
@@ -158,19 +158,20 @@ Module ATOMICCP.
    (exists dstinum,
     [[ Datatypes.length (DFData tfile) <= 1 ]] *
     Ftree * nil |-> Dir the_dnum * 
-            srcpath |-> File srcinum (synced_dirfile file) *
+            srcpath |-> File srcinum file *
             tmppath |-> File tinum tfile *
             (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred.
 
   Definition tree_with_dst Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) dstbase dstname :  @pred _ (list_eq_dec string_dec) _ :=
    (exists dstinum,
     Ftree * nil |-> Dir the_dnum *
-            srcpath |-> File srcinum (synced_dirfile file) *
+            srcpath |-> File srcinum file *
             tmppath |-> Nothing *
-            (dstbase ++ [dstname])%list |-> File dstinum (synced_dirfile file))%pred.
+            (dstbase ++ [dstname])%list |-> File dstinum file)%pred.
 
   Definition tree_rep Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) tinum dstbase dstname dstfile t := 
     (tree_names_distinct (TStree t)) /\
+    (file = synced_dirfile file) /\
     ((exists tfile', 
       tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile' dstbase dstname dstfile (dir2flatmem2 (TStree t))) \/
      (tree_with_src Ftree srcpath tmppath srcinum file dstbase dstname dstfile (dir2flatmem2 (TStree t))) \/
@@ -178,6 +179,7 @@ Module ATOMICCP.
 
   Definition tree_rep_recover Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) dstbase dstname dstfile t :=
     (tree_names_distinct (TStree t)) /\
+    (file = synced_dirfile file) /\
     ((exists dstfile',
       tree_with_src Ftree srcpath tmppath srcinum file dstbase dstname dstfile' *
       [[ file_crash dstfile dstfile' ]])%pred (dir2flatmem2 (TStree t)) \/
