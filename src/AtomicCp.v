@@ -131,7 +131,10 @@ Module ATOMICCP.
       | OK (src_inum, isdir) =>
         let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
         let^ (mscs) <- AFS.tree_sync fsxp mscs;
-        Ret (OK (mscs, fsxp))
+        match ok with
+        | Err e => Ret (Err e)
+        | OK _ => Ret (OK (mscs, fsxp))
+        end
       end
     end.
 
@@ -1012,7 +1015,7 @@ Module ATOMICCP.
     find_name [] t' = Some (the_dnum, true).
   Proof.
     intros; subst t.
-    eapply tree_pred_crash_findsubtree_root in H; eauto.
+    eapply tree_pred_crash_find_subtree_root in H; eauto.
     destruct H.
     unfold find_name.
     destruct (find_subtree [] t').
