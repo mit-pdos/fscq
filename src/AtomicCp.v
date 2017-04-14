@@ -455,6 +455,18 @@ Module ATOMICCP.
     exact BFILE.bfile0.
   Qed.
 
+  Lemma length_synced_tmpfile : forall a v f,
+    (a |-> v)%pred (list2nmem (DFData f)) ->
+    Datatypes.length (synced_list (map fst (DFData f))) <= 1.
+  Proof.
+    intros.
+    rewrite synced_list_length. rewrite map_length.
+    eapply ptsto_a_list2nmem_mem_eq in H. rewrite H.
+    simpl; omega.
+  Qed.
+
+  Hint Resolve length_synced_tmpfile.
+
   Theorem copydata_ok : forall fsxp srcinum tmppath tinum mscs,
     {< ds ts Fm Ftop Ftree srcpath file tfile v0 t0 dstbase dstname dstfile,
     PRE:hm
@@ -513,6 +525,7 @@ Module ATOMICCP.
     2: eauto.
     or_l.
     cancel.
+    eauto.
 
     eapply treeseq_tssync_tree_rep.
     eapply treeseq_upd_tree_rep.
@@ -528,6 +541,7 @@ Module ATOMICCP.
     erewrite ptsto_0_list2nmem_mem_eq with (d := (DFData f')) by eauto.
     simpl.
     cancel.
+    eauto.
 
     eapply treeseq_pred_pushd.
     2: eapply treeseq_tssync_tree_rep.
@@ -540,6 +554,7 @@ Module ATOMICCP.
     unfold tree_with_tmp.
     pred_apply.
     cancel.
+    eauto.
 
     (* crashed during setattr  *)
     xcrash; eauto.
@@ -553,6 +568,7 @@ Module ATOMICCP.
     distinct_names.
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
+    eauto.
 
     (* crash during sync *)
     xcrash; eauto.
@@ -560,7 +576,7 @@ Module ATOMICCP.
 
     (* crash during upd *)
     xcrash; eauto.
-    rewrite H19.
+    rewrite H20.
     eapply treeseq_upd_tree_rep.
     eassumption.
 
@@ -609,7 +625,6 @@ Module ATOMICCP.
   Proof.
     unfold copy2temp, tree_with_tmp; intros.
     step.
-    admit. (* eapply list2nmem_inbound in H5. *)
 
     destruct a0.
     prestep. norm.
@@ -626,14 +641,20 @@ Module ATOMICCP.
     distinct_names.
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
+    rewrite setlen_length; omega.
 
     rewrite latest_pushd; simpl.
     unfold tree_with_tmp; pred_apply; cancel.
+    rewrite setlen_length; omega.
 
     eassumption.
 
-    instantiate (1 := ($ (0), [])).
-    admit. (* XXX need list2nmem_setlen? *)
+    simpl.
+    eapply pimpl_apply.
+    2: apply list2nmem_array.
+    rewrite arrayN_ptsto_selN_0.
+    unfold Off0; cancel.
+    rewrite setlen_length; omega.
 
     step.
     or_l. unfold tree_with_tmp in *; cancel.
@@ -651,7 +672,11 @@ Module ATOMICCP.
     distinct_names.
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
-  Admitted.
+    rewrite setlen_length; omega.
+
+  Grab Existential Variables.
+    all: eauto.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
