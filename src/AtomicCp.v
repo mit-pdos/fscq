@@ -788,6 +788,7 @@ Module ATOMICCP.
     step.
     or_l. cancel.
     unfold tree_with_tmp; cancel.
+    eauto.
 
     unfold treeseq_pred, NEforall; simpl.
     intuition.
@@ -798,10 +799,11 @@ Module ATOMICCP.
     left.
     pred_apply. unfold tree_with_tmp.
     cancel.
+    eauto.
 
     xcrash.
     eassumption. eauto.
-     
+
     xcrash.
     eassumption. eauto.
 
@@ -822,7 +824,7 @@ Module ATOMICCP.
     intuition.
     distinct_names'.
     left. eauto.
-   
+
     xcrash.
     eassumption. eauto.
 
