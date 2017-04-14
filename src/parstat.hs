@@ -100,7 +100,7 @@ instance Options StatOptions where
   defineOptions = pure StatOptions
     <*> simpleOption "img" "disk.img"
          "path to FSCQ disk image"
-    <*> simpleOption "file" "/tmp/fscq/dir1/file1"
+    <*> simpleOption "file" "/dir1/file1"
          "path to stat repeatedly"
     <*> simpleOption "iters" 100
          "number of iterations of stat to run"
