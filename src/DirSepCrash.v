@@ -118,6 +118,12 @@ Proof.
     eapply possible_flatmem_crash_union; eauto.
 Qed.
 
+Theorem flatmem_crash_xform_or_dist : forall p q,
+  flatmem_crash_xform (p \/ q) <=p=> flatmem_crash_xform p \/ flatmem_crash_xform q.
+Proof.
+  firstorder.
+Qed.
+
 Lemma flatmem_crash_xform_ptsto : forall a f,
   flatmem_crash_xform (a |-> f) =p=> exists f', a |-> f' * [[ flatmem_entry_crash f f' ]].
 Proof.

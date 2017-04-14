@@ -106,6 +106,15 @@ Proof.
   erewrite dir2flatmem2_find_subtree; eauto.
 Qed.
 
+Lemma dir2flatmem2_find_name_none : forall fnlist tree,
+  tree_names_distinct tree ->
+  dir2flatmem2 tree fnlist = Some Nothing ->
+  find_name fnlist tree = None.
+Proof.
+  unfold find_name; intros.
+  erewrite dir2flatmem2_find_subtree_none; eauto.
+Qed.
+
 (** This should be useful for satisfying the precondition of [lookup_ok].
  *)
 Lemma dir2flatmem2_find_name_ptsto : forall fnlist tree inum f F,
@@ -116,6 +125,16 @@ Proof.
   intros.
   eapply ptsto_valid' in H0.
   eapply dir2flatmem2_find_name; eauto.
+Qed.
+
+Lemma dir2flatmem2_find_name_ptsto_none : forall fnlist tree F,
+  tree_names_distinct tree ->
+  (F * fnlist |-> Nothing)%pred (dir2flatmem2 tree) ->
+  find_name fnlist tree = None.
+Proof.
+  intros.
+  eapply ptsto_valid' in H0.
+  eapply dir2flatmem2_find_name_none; eauto.
 Qed.
 
 Lemma dir2flatmem2_update_subtree_upd : forall fnlist tree inum f f',

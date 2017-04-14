@@ -534,4 +534,13 @@ Module DTCrash.
     }
   Qed.
 
+  Lemma file_crash_data_length : forall f f',
+    file_crash f f' -> length (DFData f) = length (DFData f').
+  Proof.
+    unfold file_crash; intros.
+    repeat deex.
+    eapply BFILE.file_crash_data_length in H; simpl in *.
+    eauto.
+  Qed.
+
 End DTCrash.
