@@ -117,16 +117,11 @@ evalAndDiscard act = do
   _ <- return $! v
   return ()
 
-foreign import ccall "parallelize.h noop"
-  noop :: IO ()
-
 runInThread :: IO a -> IO (MVar a)
 runInThread act = do
   m <- newEmptyMVar
   _ <- forkIO $ do
-    noop
     v <- act
-    noop
     putMVar m v
   return m
 
