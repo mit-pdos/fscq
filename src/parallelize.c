@@ -8,6 +8,10 @@ void* call_action(void *arg) {
   return NULL;
 }
 
+void noop() {
+  return;
+}
+
 void parallel(int n, action act) {
   pthread_t *threads = (pthread_t*) calloc(n, sizeof(pthread_t *));
 
