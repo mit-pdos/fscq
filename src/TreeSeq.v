@@ -3473,13 +3473,13 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ find_subtree pathname (TStree ts !!) = Some (TreeDir dnum tree_elem) ]] *
       [[ (Ftree * ((pathname++[name])%list) |-> File finum file)%pred (dir2flatmem2 (TStree ts !!)) ]]
-    POST:hm RET:^(mscs', ok)
+    POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
       ([[ isError ok ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts ds ]] \/
        [[ ok = OK tt ]] * exists d ds' ts' tree' ilist' frees',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ forall pathname',
            ~ pathname_prefix (pathname ++ [name]) pathname' ->
