@@ -21,7 +21,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
-	      DirSep ProgMetatheory TreeSeq \
+	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs
 
 VS         := $(MODULES:%=%.v)

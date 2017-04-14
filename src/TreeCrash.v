@@ -35,9 +35,14 @@ Set Implicit Arguments.
 
 Module DTCrash.
 
+  Definition file_crash (f f' : dirfile) : Prop :=
+    exists c c',
+    BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) c)
+                     (BFILE.mk_bfile (DFData f') (DFAttr f') c').
+
   Inductive tree_crash : dirtree -> dirtree -> Prop :=
-    | TCFile : forall inum f f' c c',
-               BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) c) (BFILE.mk_bfile (DFData f') (DFAttr f') c') ->
+    | TCFile : forall inum f f',
+               file_crash f f' ->
                tree_crash (TreeFile inum f) (TreeFile inum f')
     | TCDir  : forall inum st st',
                map fst st = map fst st' ->
@@ -261,6 +266,49 @@ Module DTCrash.
           simpl.
           inversion H4; subst. destruct (string_dec s a); try congruence.
           apply H3.
+  Qed.
+
+  Theorem tree_crash_find_none :
+    forall fnlist t t',
+    tree_crash t t' ->
+    find_subtree fnlist t = None ->
+    find_subtree fnlist t' = None.
+  Proof.
+    induction fnlist.
+    - simpl; intros.
+      congruence.
+    - intros.
+      inversion H0. rewrite H2.
+      destruct t; inversion H; subst.
+      eauto.
+
+      generalize dependent st'.
+      induction l; intros.
+      + destruct st'; simpl in *; try congruence.
+      + destruct st'; try solve [ simpl in *; congruence ].
+        destruct p.
+        unfold find_subtree_helper in H2 at 1.
+        destruct a0.
+        simpl in H2.
+        destruct (string_dec s0 a).
+        * subst.
+          edestruct IHfnlist.
+          2: apply H2.
+          inversion H6; eauto.
+          inversion H4; subst.
+          simpl; destruct (string_dec s s); try congruence.
+        * edestruct IHl.
+
+          eauto.
+          eauto.
+          all: try solve [ inversion H4; exact H5 ].
+          all: try solve [ inversion H6; eauto ].
+
+          constructor. inversion H4; eauto.
+          inversion H. inversion H8; eauto.
+
+          simpl.
+          inversion H4; subst. destruct (string_dec s a); try congruence.
   Qed.
 
   Lemma tree_crash_find_subtree_root: forall t t' inum,

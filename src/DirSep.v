@@ -11,6 +11,7 @@ Require Import FunctionalExtensionality.
 Require Import DirTreePath.
 Require Import DirTreeNames.
 Require Import DirTreeInodes.
+Require Import TreeCrash.
 
 Import DIRTREE.
 Import ListNotations.
@@ -508,7 +509,6 @@ Proof.
   eapply tree_names_distinct_prune_subtree'; eauto.
   eapply tree_names_distinct_subtree; eauto.
 Qed.
-
 
 
 Global Opaque dir2flatmem2.
