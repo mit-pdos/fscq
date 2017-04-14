@@ -111,6 +111,11 @@ runInThread act = do
     putMVar m v
   return m
 
+replicateInParallel :: Int -> IO () -> IO ()
+replicateInParallel n act = do
+  ms <- replicateM n . runInThread $ act
+  forM_ ms takeMVar
+
 main :: IO ()
 main = runCommand $ \opts args -> do
   if length args > 0 then do
@@ -125,8 +130,7 @@ main = runCommand $ \opts args -> do
     par <- return $ optN opts
     _ <- replicateM_ 10 $ statOp
     start <- getTime Monotonic
-    ms <- replicateM par . runInThread . replicateM_ iters $ statOp
-    forM_ ms takeMVar
+    replicateInParallel par . replicateM_ iters $ statOp
     totalTime <- elapsedMicros start
     timePerOp <- return $ totalTime/(fromIntegral $ iters * par)
     putStrLn $ "took " ++ show timePerOp ++ " us/op"
