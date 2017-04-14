@@ -67,6 +67,17 @@ fscqGetFileStat s fsP (_:path) = do
         return $ Just attr
 fscqGetFileStat _ _ _ = return $ Nothing
 
+fscqOpen :: I.ConcurState -> FsParams -> FilePath -> IO (Maybe Integer)
+fscqOpen s fsP (_:path) = do
+  nameparts <- return $ splitDirectories path
+  (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
+  case r of
+    Errno.Err _ -> return $ Nothing
+    Errno.OK (inum, isdir)
+      | isdir -> return $ Nothing
+      | otherwise -> return $ Just inum
+fscqOpen _ _ _  = return $ Nothing
+
 readMem :: I.ConcurState -> IO Heap
 readMem s = do
   readIORef (I.memory s)
@@ -87,7 +98,6 @@ elapsedMicros start = do
 
 data StatOptions = StatOptions
   { optDiskImg :: String
-  , optFileToStat :: String
   , optIters :: Int
   , optN :: Int
   , optMeasureSpeedup :: Bool
@@ -99,8 +109,6 @@ instance Options StatOptions where
   defineOptions = pure StatOptions
     <*> simpleOption "img" "disk.img"
          "path to FSCQ disk image"
-    <*> simpleOption "file" "/dir1/file1"
-         "path to stat repeatedly"
     <*> simpleOption "iters" 100
          "number of iterations of stat to run"
     <*> simpleOption "n" 1
@@ -111,12 +119,6 @@ instance Options StatOptions where
          "rather than stat, just read memory"
     <*> simpleOption "pthreads" False
          "use pthreads for parallelism rather than Concurrent Haskell"
-
-evalAndDiscard :: IO a -> IO ()
-evalAndDiscard act = do
-  v <- act
-  _ <- return $! v
-  return ()
 
 runInThread :: IO a -> IO (MVar a)
 runInThread act = do
@@ -138,9 +140,15 @@ replicateInParallelC n act = do
   freeHaskellFunPtr cAct
 
 statOp :: StatOptions -> (ConcurState, FsParams) -> IO ()
-statOp opts (s, fsP) = do
-  if optReadMem opts then evalAndDiscard $ readMem s
-    else evalAndDiscard $ fscqGetFileStat s fsP (optFileToStat opts)
+statOp opts (s, fsP) =
+  if optReadMem opts then readMem s >> return ()
+    else do
+      _ <- fscqOpen s fsP "/"
+      _ <- fscqGetFileStat s fsP "/"
+      _ <- fscqOpen s fsP "/dir1"
+      _ <- fscqGetFileStat s fsP "/dir1"
+      _ <- fscqGetFileStat s fsP "/dir1/file1"
+      return ()
 
 timeParallel :: StatOptions -> Int -> IO () -> IO Float
 timeParallel opts par op = do
