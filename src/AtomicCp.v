@@ -1176,6 +1176,8 @@ Module ATOMICCP.
     destruct_lift Htc.
     destruct_lift Htc.
 
+    2: distinct_names.
+
     safecancel.
 
     instantiate (pathname := []).
