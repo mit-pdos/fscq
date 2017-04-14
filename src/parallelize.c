@@ -2,20 +2,29 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-void* call_action(void *arg) {
-  action *act = (action *) arg;
-  (*act)();
+typedef struct {
+  action *act;
+  int iters;
+} operation;
+
+void* do_operation(void *arg) {
+  operation *op = (operation *) arg;
+  for (int i = 0; i < op->iters; i++) {
+    op->act();
+  }
   return NULL;
 }
 
-void parallel(int n, action act) {
-  pthread_t *threads = (pthread_t*) calloc(n, sizeof(pthread_t *));
+void parallel(int par, int iters, action act) {
+  pthread_t *threads = (pthread_t*) calloc(par, sizeof(pthread_t *));
 
-  for (int i = 0; i < n; i++) {
-    pthread_create(&threads[i], NULL, call_action, (void*) act);
+  operation op = {act, iters};
+
+  for (int i = 0; i < par; i++) {
+    pthread_create(&threads[i], NULL, do_operation, (void*) &op);
   }
 
-  for (int i = 0; i < n; i++) {
+  for (int i = 0; i < par; i++) {
     pthread_join(threads[i], NULL);
   }
 }

@@ -87,7 +87,7 @@ foreign import ccall safe "wrapper"
 
 type CAction = IO ()
 foreign import ccall "parallelize.h parallel"
-  parallel :: CInt -> FunPtr CAction -> IO ()
+  parallel :: CInt -> CInt -> FunPtr CAction -> IO ()
 
 elapsedMicros :: TimeSpec -> IO Float
 elapsedMicros start = do
@@ -128,15 +128,17 @@ runInThread act = do
     putMVar m v
   return m
 
-replicateInParallel :: Int -> IO () -> IO ()
-replicateInParallel n act = do
-  ms <- replicateM n . runInThread $ act
+-- replicateInParallelIterate par iters op runs (op iters times) in n parallel
+-- copies
+replicateInParallelIterate :: Int -> Int -> IO () -> IO ()
+replicateInParallelIterate par iters act = do
+  ms <- replicateM par . runInThread . replicateM_ iters $ act
   forM_ ms takeMVar
 
-replicateInParallelC :: Int -> IO () -> IO ()
-replicateInParallelC n act = do
+replicateInParallelIterateFFI :: Int -> Int -> IO () -> IO ()
+replicateInParallelIterateFFI n iters act = do
   cAct <- mkAction act
-  parallel (fromIntegral n) cAct
+  parallel (fromIntegral n) (fromIntegral iters) cAct
   freeHaskellFunPtr cAct
 
 statOp :: StatOptions -> (ConcurState, FsParams) -> IO ()
@@ -150,11 +152,12 @@ statOp opts (s, fsP) =
       _ <- fscqGetFileStat s fsP "/dir1/file1"
       return ()
 
-timeParallel :: StatOptions -> Int -> IO () -> IO Float
-timeParallel opts par op = do
+timeParallel :: StatOptions -> Int -> Int -> IO () -> IO Float
+timeParallel opts par iters op = do
   start <- getTime Monotonic
-  replicatePar <- return $ if optPthreads opts then replicateInParallelC else replicateInParallel
-  replicatePar par . replicateM_ (optIters opts) $ op
+  replicatePar <- return $ if optPthreads opts then replicateInParallelIterateFFI
+                           else replicateInParallelIterate
+  replicatePar par iters op
   totalTime <- elapsedMicros start
   return totalTime
 
@@ -172,12 +175,12 @@ main = runCommand $ \opts args -> do
   else do
     fs <- init_fs $ optDiskImg opts
     op <- return $ statOp opts fs
-    _ <- replicateM_ 10 op
-    parTime <- timeParallel opts (optN opts) op
+    _ <- timeParallel opts 1 10 op
+    parTime <- timeParallel opts (optN opts) (optIters opts) op
     timePerOp <- return $ parTime/(fromIntegral $ parallelIters opts)
     putStrLn $ show timePerOp ++ " us/op"
     when (optMeasureSpeedup opts) $ do
-      seqTime <- timeParallel opts 1 op
+      seqTime <- timeParallel opts 1 (optIters opts) op
       seqTimePerOp <- return $ seqTime/(fromIntegral $ seqIters opts)
       putStrLn $ "seq time " ++ show seqTimePerOp ++ " us/op"
       putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
