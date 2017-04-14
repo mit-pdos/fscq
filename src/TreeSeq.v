@@ -3475,8 +3475,10 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       [[ (Ftree * ((pathname++[name])%list) |-> File finum file)%pred (dir2flatmem2 (TStree ts !!)) ]]
     POST:hm RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      [[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm \/
-      [[ ok = OK tt ]] * exists d ds' ts' tree' ilist' frees',
+      ([[ isError ok ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts ds ]] \/
+       [[ ok = OK tt ]] * exists d ds' ts' tree' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ forall pathname',
@@ -3488,7 +3490,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         [[ tree' = update_subtree pathname
                       (delete_from_dir name (TreeDir dnum tree_elem)) (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
-        [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]]
+        [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]])
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d ds' ts' mscs' tree' ilist' frees',
