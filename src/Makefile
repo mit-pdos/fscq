@@ -115,6 +115,14 @@ hscgen/%.hs: hslib/%.hsc
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -lfuse -o $@
 
+parstat: parstat.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_POST) parallelize.c parallelize.h
+	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
+	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
+	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< parallelize.c -ihslib -icodegen -ihscgen -lfuse -o $@
+
 $(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )
 

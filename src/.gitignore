@@ -15,6 +15,7 @@ _build
 /cfscq
 /mkfs
 /parstat
+/parstat_stub.h
 /mlfuse
 /mlmkfs
 /coqbuild

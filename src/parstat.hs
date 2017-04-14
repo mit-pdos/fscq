@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, ForeignFunctionInterface #-}
 
 module Main where
 
@@ -9,6 +9,10 @@ import Options
 import System.Exit
 import Control.Concurrent
 import Data.IORef
+
+-- FFI
+import Foreign.C.Types (CInt(..))
+import Foreign.Ptr (FunPtr, freeHaskellFunPtr)
 
 import Disk
 import Interpreter as SeqI
@@ -69,6 +73,13 @@ readMem :: I.ConcurState -> IO Heap
 readMem s = do
   readIORef (I.memory s)
 
+foreign import ccall safe "wrapper"
+  mkAction :: IO () -> IO (FunPtr (IO ()))
+
+type CAction = IO ()
+foreign import ccall "parallelize.h parallel"
+  parallel :: CInt -> FunPtr CAction -> IO ()
+
 elapsedMicros :: TimeSpec -> IO Float
 elapsedMicros start = do
   end <- getTime Monotonic
@@ -116,6 +127,12 @@ replicateInParallel n act = do
   ms <- replicateM n . runInThread $ act
   forM_ ms takeMVar
 
+replicateInParallelC :: Int -> IO () -> IO ()
+replicateInParallelC n act = do
+  cAct <- mkAction act
+  parallel (fromIntegral n) cAct
+  freeHaskellFunPtr cAct
+
 main :: IO ()
 main = runCommand $ \opts args -> do
   if length args > 0 then do
@@ -130,7 +147,7 @@ main = runCommand $ \opts args -> do
     par <- return $ optN opts
     _ <- replicateM_ 10 $ statOp
     start <- getTime Monotonic
-    replicateInParallel par . replicateM_ iters $ statOp
+    replicateInParallelC par . replicateM_ iters $ statOp
     totalTime <- elapsedMicros start
     timePerOp <- return $ totalTime/(fromIntegral $ iters * par)
     putStrLn $ "took " ++ show timePerOp ++ " us/op"
