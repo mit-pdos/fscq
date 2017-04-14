@@ -8,14 +8,15 @@
 #include "timing.h"
 
 int main(int argc, char *argv[]) {
-  if (argc < 5) {
-    fprintf(stderr, "Usage: fsops <stat|open> <path> <reps> <iters>\n");
+  if (argc < 6) {
+    fprintf(stderr, "Usage: fsops <stat|open> <pwd> <path> <reps> <iters>\n");
     return 1;
   }
   char *op = argv[1];
-  char *path = argv[2];
-  char *reps_s = argv[3];
-  char *iters_s = argv[4];
+  char *desired_wd = argv[2];
+  char *path = argv[3];
+  char *reps_s = argv[4];
+  char *iters_s = argv[5];
 
   int reps = atoi(reps_s);
   int iters = atoi(iters_s);
@@ -23,6 +24,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "reps %s and iters %s should be above 0\n", reps_s, iters_s);
     return 1;
   }
+
+  chdir(desired_wd);
+
 
   if (strcmp(op, "stat") == 0) {
     struct stat buf;

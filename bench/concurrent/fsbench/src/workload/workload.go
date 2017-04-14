@@ -89,7 +89,9 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel int) Results {
 	}
 
 	args := func(i int) []string {
-		return []string{opts.Operation, paths[i], strconv.Itoa(opts.Reps), strconv.Itoa(opts.Iters)}
+		pwd := fs.MountPoint()
+		path := strings.TrimPrefix(paths[i], pwd+"/")
+		return []string{opts.Operation, pwd, path, strconv.Itoa(opts.Reps), strconv.Itoa(opts.Iters)}
 	}
 
 	done := make(chan Results)

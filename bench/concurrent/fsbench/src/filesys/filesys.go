@@ -99,6 +99,10 @@ func (fs FileSystem) isFuse() bool {
 	return fs.ident != "native"
 }
 
+func (fs FileSystem) MountPoint() string {
+	return fs.mntPoint
+}
+
 type Options struct {
 	NameCache    bool
 	AttrCache    bool
