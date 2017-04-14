@@ -995,26 +995,64 @@ Module ATOMICCP.
     inversion H.
   Qed.
 
+  Lemma tree_pred_crash_tmp: forall Ftree srcpath tmppath srcinum file tinum dstbase 
+      dstname dstfile ts n t',
+    let t := (nthd n ts) in
+    treeseq_pred
+     (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ->
+    tree_crash (TStree t) t' ->
+    find_name tmppath (TStree t) = Some (tinum, true) ->
+    (exists tfile' Frest, Frest * tmppath |-> File tinum tfile')%pred (dir2flatmem2 t').
+  Proof.
+    intros; subst t.
+    unfold treeseq_in_ds in H; intuition.
+    unfold treeseq_pred in H.
+    eapply NEforall_d_in with (x := nthd n ts) in H.
+    2: eapply nthd_in_ds.
+    unfold tree_rep in H.
+    intuition.
+
+    eapply find_name_exists in H1 as Hsub.
+    repeat deex.
+    eapply tree_crash_find_name in H4; eauto.
+    deex.
+
+    unfold tree_with_tmp in *. 
+    destruct H.
+    
+  Theorem tree_crash_find_name_ptsto : forall Ftree (path:list string) t t' inum f,
+    tree_crash t t' ->
+    (Ftree * path |-> File inum f)%pred (dir2flatmem2 t) ->
+    (exists f' c c', (Ftree * path |-> File inum f')%pred (dir2flatmem2 t') /\
+      (BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) c)
+        (BFILE.mk_bfile (DFData f') (DFAttr f') c'))).
+  Proof.
+    intros.
+ 
+
+  Admitted.
+
+
   Theorem atomic_cp_recover_ok :
-    {< Fm Ftop Ftree fsxp cs mscs ds ts tmppath srcpath file srcinum tinum dstfile (dstbase: list string) (dstname:string),
+    {< Fm Ftop Ftree fsxp cs mscs ds ts srcpath file srcinum tinum dstfile (dstbase: list string) (dstname:string),
     PRE:hm
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ]]
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts ]]
     POST:hm' RET:r
       exists n d t mscs',
       [[ r = OK (mscs', fsxp) ]] *
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') hm' *
       [[ treeseq_in_ds Fm Ftop fsxp mscs' (t, nil) (d, nil) ]] *
       [[ forall Ftree f,
-         (Ftree * tmppath |-> f)%pred (dir2flatmem2 (TStree (nthd n ts))) ->
-         (Ftree * tmppath |-> Nothing)%pred (dir2flatmem2 (TStree t)) ]]
+         (Ftree * ([temp_fn])%list |-> f)%pred (dir2flatmem2 (TStree (nthd n ts))) ->
+         (Ftree * ([temp_fn])%list |-> Nothing)%pred (dir2flatmem2 (TStree t)) ]]
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d t,
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
       [[ treeseq_in_ds Fm Ftop fsxp mscs (t, nil) (d, nil) ]] *
-      [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ]]
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts ]]
     >} atomic_cp_recover.
   Proof.
     unfold atomic_cp_recover; intros.
@@ -1045,32 +1083,24 @@ Module ATOMICCP.
     destruct a0.
     prestep; norm'l.   
 
-    eapply tree_pred_crash_find_subtree_root in H5 as Hx; eauto.
-    destruct Hx.
+    eapply tree_pred_crash_find_subtree_root in H5 as Hroot; eauto.
+    destruct Hroot.
+
+
+    eapply tree_pred_crash_tmp in H5 as Htmp; eauto.
+    destruct Htmp.
+    destruct H9.
 
     safecancel.
+    intuition.
+
 
     instantiate (pathname0 := []).
     simpl. reflexivity.
-    simpl. 
-
-    Search dir2flatmem2 find_name.
-
-Lemma dir2flatmem2_ptsto_find_name : forall fnlist tree inum f F,
-  tree_names_distinct tree ->
-  find_name fnlist tree = Some (inum, false) ->
-  (F * fnlist |-> File inum f)%pred (dir2flatmem2 tree).
-Proof.
-  intros.
-Admitted.
-
-    eapply dir2flatmem2_ptsto_find_name; eauto.
-    admit.
-    rewrite <- H12.
-    admit.
+    simpl. eassumption.
 
     prestep; norm'l.
-    cancel.
+    safecancel.
 
     eassign (BFileCrash.flist_crash_xform Ftop).
     eapply treeseq_in_ds_eq with (a := a).
