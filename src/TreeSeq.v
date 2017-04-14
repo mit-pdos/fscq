@@ -3517,6 +3517,8 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
     eassumption.
     step.
+    or_l. cancel.
+    eapply treeseq_in_ds_mscs'; eauto.
     or_r. cancel.
 
     - eapply treeseq_in_ds_pushd; eauto.
@@ -3553,7 +3555,6 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         rewrite H5 in *; eauto.
 
       + eapply dir2flatmem2_delete_file; eauto; distinct_names'.
-
   Qed.
 
 
