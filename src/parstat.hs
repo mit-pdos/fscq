@@ -25,7 +25,6 @@ import qualified AsyncFS
 import qualified ConcurrentFS as CFS
 import qualified Rec
 import FSProtocol
-import FSLayout
 import CCLProg
 
 type FSprog a = Coq_cprog a
