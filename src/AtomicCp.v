@@ -1226,8 +1226,66 @@ Module ATOMICCP.
     admit.
 
     xcrash.
-    or_r.
+    eassumption.
 
+    unfold treeseq_pred. constructor.
+    2: constructor.
+    3: constructor.
+    unfold tree_rep; simpl.
+    intuition.
+
+    distinct_names.
+    right.
+    unfold tree_with_tmp.
+    admit.
+    admit.
+    eauto.
+    eauto.
+
+    xcrash.
+    eassumption.
+
+    unfold treeseq_pred. constructor.
+    2: constructor.
+    unfold tree_rep; simpl.
+    intuition.
+    distinct_names.
+    left.
+    eexists.
+    unfold tree_with_tmp.
+    pred_apply.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+    cancel.
+    erewrite <- file_crash_data_length; eauto.
+    eauto.
+    eauto.
+    eassumption.
+
+    unfold treeseq_pred. constructor.
+    2: constructor.
+    3: constructor.
+    unfold tree_rep; simpl.
+    intuition.
+    distinct_names.
+    admit.
+    admit.
+    eauto.
+    eauto.
+
+    step.   (* lookup failed? *)
+    left.
+    admit.
+
+    xcrash.
+    admit.
+    admit.
+    admit.
+    admit.
+
+    step.
+    xcrash.
+ 
   Admitted.
 
 End ATOMICCP.
