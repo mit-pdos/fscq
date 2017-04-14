@@ -93,6 +93,7 @@ data StatOptions = StatOptions
   , optIters :: Int
   , optN :: Int
   , optReadMem :: Bool
+  , optPthreads :: Bool
   }
 
 instance Options StatOptions where
@@ -107,6 +108,8 @@ instance Options StatOptions where
          "number of parallel threads to issue stats from"
     <*> simpleOption "readmem" False
          "rather than stat, just read memory"
+    <*> simpleOption "pthreads" False
+         "use pthreads for parallelism rather than Concurrent Haskell"
 
 evalAndDiscard :: IO a -> IO ()
 evalAndDiscard act = do
@@ -147,7 +150,8 @@ main = runCommand $ \opts args -> do
     par <- return $ optN opts
     _ <- replicateM_ 10 $ statOp
     start <- getTime Monotonic
-    replicateInParallelC par . replicateM_ iters $ statOp
+    replicatePar <- return $ if optPthreads opts then replicateInParallelC else replicateInParallel
+    replicatePar par . replicateM_ iters $ statOp
     totalTime <- elapsedMicros start
     timePerOp <- return $ totalTime/(fromIntegral $ iters * par)
     putStrLn $ "took " ++ show timePerOp ++ " us/op"
