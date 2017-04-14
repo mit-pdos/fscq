@@ -1200,7 +1200,8 @@ Module ATOMICCP.
     2: constructor.
     unfold tree_rep; simpl.
     intuition.
-    admit.
+
+    distinct_names.
 
     left.
     eexists.
