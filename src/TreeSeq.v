@@ -151,6 +151,15 @@ Module TREESEQ.
     rewrite d_map_latest; eauto.
   Qed.
 
+  Theorem treeseq_pred_impl : forall ts (p q : treeseq_one -> Prop),
+    treeseq_pred p ts ->
+    (forall t, p t -> q t) ->
+    treeseq_pred q ts.
+  Proof.
+    unfold treeseq_pred; intros.
+    eapply NEforall_impl; eauto.
+  Qed.
+
   (**
    * [treeseq_safe] helps applications prove their own correctness properties, at
    * the cost of placing some restrictions on how the file system interface should

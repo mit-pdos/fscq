@@ -543,4 +543,30 @@ Module DTCrash.
     eauto.
   Qed.
 
+  Lemma file_crash_synced : forall f f',
+    file_crash (synced_dirfile f) f' ->
+    f' = synced_dirfile f.
+  Proof.
+    unfold file_crash, synced_dirfile; intros.
+    repeat deex.
+    edestruct BFILE.file_crash_synced; eauto.
+    pose proof (BFILE.fsynced_synced_file (BFILE.mk_bfile (DFData f) (DFAttr f) c)).
+    unfold BFILE.synced_file in H0; simpl in *.
+    eauto.
+
+    destruct f'; simpl in *.
+    subst; eauto.
+  Qed.
+
+  Lemma dirfile_crash_exists : forall f, exists f',
+    file_crash f f'.
+  Proof.
+    unfold file_crash; intros.
+    edestruct (file_crash_exists (BFILE.mk_bfile (DFData f) (DFAttr f) None)).
+    destruct x.
+    exists (mk_dirfile BFData BFAttr).
+    do 2 eexists.
+    simpl; eauto.
+  Qed.
+
 End DTCrash.
