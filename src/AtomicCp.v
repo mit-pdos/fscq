@@ -308,21 +308,29 @@ Module ATOMICCP.
     intros.
     eapply NEforall_d_in'.
     intros.
+
     eapply tsupd_d_in_exists in H0.
     destruct H0.
     intuition.
+
     eapply tree_names_distinct_treeseq_one_upd; eauto.
+
     eapply NEforall_d_in in H as Hx.
     2: instantiate (1 := x0); eauto.
     intuition.
-    destruct H4.
+    eapply NEforall_d_in in H as Hx.
+    2: instantiate (1 := x0); eauto.
+    intuition.
+    destruct H3.
     unfold tree_with_tmp in H3.
     rewrite H2.
     left.
+
     eexists {|
              DFData := (DFData x1) ⟦ Off0 := (fst v0, vsmerge t0) ⟧;
              DFAttr := DFAttr x1|}.
     eapply treeseq_one_upd_tree_rep_tmp; eauto.
+    eauto.
 
     right. left.
     rewrite H2.
@@ -452,7 +460,10 @@ Module ATOMICCP.
     eapply NEforall_d_in in H as Hx.
     2: instantiate (1 := x0); eauto.
     intuition.
-    destruct H4.
+    eapply NEforall_d_in in H as Hx.
+    2: instantiate (1 := x0); eauto.
+    intuition.
+    destruct H3.
     unfold tree_with_tmp in H3.
     rewrite H2.
     left.
@@ -479,6 +490,21 @@ Module ATOMICCP.
   Qed.
 
   Hint Resolve length_synced_tmpfile.
+
+  Lemma treerep_synced_dirfile: 
+    forall Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile ts,
+    treeseq_pred
+      (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ->
+    file = synced_dirfile file.
+  Proof.
+    intros.
+    unfold treeseq_pred, NEforall in H.
+    intuition.
+    unfold tree_rep in H0.
+    intuition.
+  Qed.
+
+  Hint Resolve treerep_synced_dirfile.
 
   Theorem copydata_ok : forall fsxp srcinum tmppath tinum mscs,
     {< ds ts Fm Ftop Ftree srcpath file tfile v0 t0 dstbase dstname dstfile,
@@ -561,8 +587,9 @@ Module ATOMICCP.
     2: eapply treeseq_upd_tree_rep.
     2: eauto.
 
-    unfold tree_rep; simpl; intuition.
+    unfold tree_rep; simpl; intuition; eauto.
     distinct_names.
+
     left.
     unfold tree_with_tmp.
     pred_apply.
@@ -577,8 +604,9 @@ Module ATOMICCP.
     eapply treeseq_pred_pushd.
     2: eapply treeseq_tssync_tree_rep; eauto.
     2: eapply treeseq_upd_tree_rep; eauto.
-    unfold tree_rep; intuition.
+    unfold tree_rep; intuition; eauto.
     distinct_names.
+
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
     eauto.
@@ -650,8 +678,9 @@ Module ATOMICCP.
     msalloc_eq. eauto.
 
     eapply treeseq_pred_pushd; eauto.
-    unfold tree_rep; intuition.
+    unfold tree_rep; intuition; eauto.
     distinct_names.
+
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
     rewrite setlen_length; omega.
@@ -681,7 +710,7 @@ Module ATOMICCP.
     eauto.
     eassumption.
     eapply treeseq_pred_pushd; eauto.
-    unfold tree_rep; intuition.
+    unfold tree_rep; intuition; eauto.
     distinct_names.
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
@@ -780,23 +809,26 @@ Module ATOMICCP.
 
     or_r. unfold tree_with_dst.
     safecancel.
+    erewrite <- treerep_synced_dirfile; eauto.
 
     unfold treeseq_pred, NEforall; simpl.
-    intuition.
+    intuition; eauto.
     2: apply Forall_nil.
     unfold tree_rep.
-    intuition.
+    intuition; eauto.
     distinct_names.
     right. right.
     pred_apply. unfold tree_with_dst.
     cancel.
+    erewrite <- treerep_synced_dirfile; eauto.
 
     xcrash; eauto.
     eapply treeseq_pred_pushd; eauto.
-    unfold tree_rep; intuition; simpl.
+    unfold tree_rep; intuition; simpl; eauto.
     distinct_names.
     right. right. 
     unfold tree_with_dst. pred_apply. cancel.
+    erewrite <- treerep_synced_dirfile; eauto.
 
     step.
     or_l. cancel.
@@ -804,15 +836,11 @@ Module ATOMICCP.
     eauto.
 
     unfold treeseq_pred, NEforall; simpl.
-    intuition.
+    intuition; eauto.
     2: apply Forall_nil.
     unfold tree_rep.
-    intuition.
+    intuition; eauto.
     distinct_names'.
-    left.
-    pred_apply. unfold tree_with_tmp.
-    cancel.
-    eauto.
 
     xcrash.
     eassumption. eauto.
@@ -822,21 +850,23 @@ Module ATOMICCP.
 
     eassumption.
     eapply treeseq_pred_pushd; eauto.
-    unfold tree_rep; intuition; simpl.
+    unfold tree_rep; intuition; simpl; eauto.
     distinct_names.
     right. right.
     unfold tree_with_dst. pred_apply; cancel.
 
     cancel.
+    erewrite <- treerep_synced_dirfile; eauto.
+    cancel.
+
     eassumption.
     step.
     unfold treeseq_pred, NEforall; simpl.
-    intuition.
+    intuition; eauto.
     2: apply Forall_nil.
     unfold tree_rep.
-    intuition.
+    intuition; eauto.
     distinct_names'.
-    left. eauto.
 
     xcrash.
     eassumption. eauto.
@@ -993,23 +1023,23 @@ Module ATOMICCP.
     eapply NEforall_d_in with (x := nthd n ts) in H.
     2: eapply nthd_in_ds.
     unfold tree_rep in H.
-    intuition.
+    intuition; eauto.
 
-    destruct H.
+    destruct H2.
     unfold tree_with_tmp in *. 
-    destruct H.
+    destruct H2.
     eapply tree_crash_find_subtree_root with (t := TStree (nthd n ts)); eauto.
     eapply tree_rep_find_subtree_root with (Ftree := Ftree); eauto.
     pred_apply; cancel.
 
     unfold tree_with_src in *. 
-    destruct H2.
+    destruct H3.
     eapply tree_crash_find_subtree_root with (t := TStree (nthd n ts)); eauto.
     eapply tree_rep_find_subtree_root with (Ftree := Ftree); eauto.
     pred_apply; cancel.
 
     unfold tree_with_dst in *. 
-    destruct H2.
+    destruct H3.
     eapply tree_crash_find_subtree_root with (t := TStree (nthd n ts)); eauto.
     eapply tree_rep_find_subtree_root with (Ftree := Ftree); eauto.
     pred_apply; cancel.
@@ -1247,7 +1277,7 @@ Module ATOMICCP.
     unfold treeseq_pred. constructor.
     2: constructor.
     unfold tree_rep; simpl.
-    intuition.
+    intuition; eauto.
 
     distinct_names.
 
@@ -1257,8 +1287,10 @@ Module ATOMICCP.
     pred_apply.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
+
     denote! (file_crash (synced_dirfile _) _) as Hsf.
     eapply file_crash_synced in Hsf as Hsf'. subst.
+
     cancel.
     erewrite <- file_crash_data_length; eauto.
     eauto.
@@ -1559,31 +1591,3 @@ Module ATOMICCP.
 End ATOMICCP.
 
 
-
-Lemma flist_crash_exists: forall flist,
-  exists flist', BFILE.flist_crash flist flist'.
-Proof.
-  intros.
-  induction flist.
-  - eexists [].
-    unfold BFILE.flist_crash; simpl.
-    eapply Forall2_nil.
-  - edestruct file_crash_exists.
-    destruct IHflist.
-    exists (x :: x0).
-    eapply Forall2_cons.
-    eassumption.
-    eassumption.
-Qed.
-
-
-(* this might be provable because possible_crash tells us the vs for each block 
- * on the disk. we should be able to use that vs to construct file_crash. *)
-Lemma possible_crash_flist_crash: forall F bxps ixp d d' ilist frees flist c1 c2 c3,
-  (F * (BFILE.rep bxps ixp flist ilist frees c1 c2 c3))%pred (list2nmem d) ->
-  possible_crash (list2nmem d) (list2nmem d') ->
-  exists flist', BFILE.flist_crash flist flist'.
-Proof.
-  intros.
-  eapply flist_crash_exists.
-Qed.
