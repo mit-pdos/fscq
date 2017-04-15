@@ -1,6 +1,7 @@
 #include "parallelize.h"
 #include <pthread.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct {
   action *act;
@@ -22,6 +23,9 @@ void parallel(int par, int iters, action act) {
 
   for (int i = 0; i < par; i++) {
     pthread_create(&threads[i], NULL, do_operation, (void*) &op);
+    char name[20];
+    snprintf(buf, sizeof(buf), "parallel() %d", i);
+    pthread_setname_np(threads[i], name);
   }
 
   for (int i = 0; i < par; i++) {
