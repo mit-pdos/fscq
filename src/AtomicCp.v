@@ -1288,10 +1288,17 @@ Module ATOMICCP.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
 
-    denote! (file_crash (synced_dirfile _) _) as Hsf.
-    eapply file_crash_synced in Hsf as Hsf'. subst.
-
+    (* clean up, need this a few times *)
     cancel.
+    assert (dummy3 = file).
+    eapply treerep_synced_dirfile in H5 as Hsf.
+    erewrite Hsf in H22.
+    eapply file_crash_synced in H22.
+    rewrite H22.
+    rewrite <- Hsf; eauto.
+    subst.
+    cancel.
+
     erewrite <- file_crash_data_length; eauto.
     eauto.
     eauto.
@@ -1301,14 +1308,17 @@ Module ATOMICCP.
     eassumption.
 
     rewrite latest_pushd. unfold treeseq_pred. constructor; [ | constructor ].
-    unfold tree_rep_recover; simpl. intuition.
+    unfold tree_rep_recover; simpl. intuition; eauto.
     distinct_names.
     left. unfold tree_with_src.
     pred_apply.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
+
+(*
     denote! (file_crash (synced_dirfile _) _) as Hsf.
     eapply file_crash_synced in Hsf as Hsf'. subst.
+*)
     cancel.
 
     xcrash. or_r. cancel.
