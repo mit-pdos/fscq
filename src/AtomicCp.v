@@ -1180,6 +1180,23 @@ Module ATOMICCP.
     eauto.
   Qed.
 
+  Ltac synced_file_eq :=
+    try match goal with
+    | [ H : file_crash ?f ?f |- _ ] => clear H
+    end;
+    match goal with
+    | [ H1 : treeseq_pred (tree_rep _ _ _ _ ?file _ _ _ _) _,
+        H2 : file_crash ?file ?file' |- _ ] =>
+      let Hx := fresh in
+      let Hy := fresh in
+      eapply treerep_synced_dirfile in H1 as Hx;
+      erewrite Hx in H2;
+      eapply file_crash_synced in H2 as Hy;
+      try rewrite Hy in *;
+      try rewrite <- Hx in *;
+      clear Hx; clear Hy
+    end.
+
   Theorem atomic_cp_recover_ok :
     {< Fm Ftop Ftree fsxp cs mscs ds ts srcpath file srcinum tinum dstfile (dstbase: list string) (dstname:string),
     PRE:hm
@@ -1288,17 +1305,7 @@ Module ATOMICCP.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
 
-    (* clean up, need this a few times *)
-    cancel.
-    assert (dummy3 = file).
-    eapply treerep_synced_dirfile in H5 as Hsf.
-    erewrite Hsf in H22.
-    eapply file_crash_synced in H22.
-    rewrite H22.
-    rewrite <- Hsf; eauto.
-    subst.
-    cancel.
-
+    synced_file_eq. cancel.
     erewrite <- file_crash_data_length; eauto.
     eauto.
     eauto.
@@ -1315,11 +1322,7 @@ Module ATOMICCP.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
 
-(*
-    denote! (file_crash (synced_dirfile _) _) as Hsf.
-    eapply file_crash_synced in Hsf as Hsf'. subst.
-*)
-    cancel.
+    synced_file_eq. cancel.
 
     xcrash. or_r. cancel.
     xcrash.
@@ -1330,29 +1333,25 @@ Module ATOMICCP.
     3: constructor.
 
     unfold tree_rep; simpl.
-    intuition.
+    intuition; eauto.
     distinct_names.
     left.
     unfold tree_with_tmp.
     pred_apply.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
-    denote! (file_crash (synced_dirfile _) _) as Hsf.
-    eapply file_crash_synced in Hsf as Hsf'. subst.
-    cancel.
+    synced_file_eq. cancel.
     erewrite <- file_crash_data_length; eauto.
 
     unfold tree_rep; simpl.
-    intuition.
+    intuition; eauto.
     distinct_names.
     right. left.
     unfold tree_with_src.
     pred_apply.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
-    denote! (file_crash (synced_dirfile _) _) as Hsf.
-    eapply file_crash_synced in Hsf as Hsf'. subst.
-    cancel.
+    synced_file_eq. cancel.
     eauto.
 
     xcrash. or_r. cancel.
@@ -1362,7 +1361,7 @@ Module ATOMICCP.
     unfold treeseq_pred. constructor.
     2: constructor.
     unfold tree_rep; simpl.
-    intuition.
+    intuition; eauto.
     distinct_names.
     left.
     eexists.
@@ -1370,9 +1369,7 @@ Module ATOMICCP.
     pred_apply.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
-    denote! (file_crash (synced_dirfile _) _) as Hsf.
-    eapply file_crash_synced in Hsf as Hsf'. subst.
-    cancel.
+    synced_file_eq. cancel.
     erewrite <- file_crash_data_length; eauto.
     eauto.
 
@@ -1384,29 +1381,25 @@ Module ATOMICCP.
     3: constructor.
 
     unfold tree_rep; simpl.
-    intuition.
+    intuition; eauto.
     distinct_names.
     left.
     unfold tree_with_tmp.
     pred_apply.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
-    denote! (file_crash (synced_dirfile _) _) as Hsf.
-    eapply file_crash_synced in Hsf as Hsf'. subst.
-    cancel.
+    synced_file_eq. cancel.
     erewrite <- file_crash_data_length; eauto.
 
     unfold tree_rep; simpl.
-    intuition.
+    intuition; eauto.
     distinct_names.
     right. left.
     unfold tree_with_src.
     pred_apply.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
-    denote! (file_crash (synced_dirfile _) _) as Hsf.
-    eapply file_crash_synced in Hsf as Hsf'. subst.
-    cancel.
+    synced_file_eq. cancel.
     eauto.
 
     step.   (* lookup failed? *)
@@ -1434,14 +1427,11 @@ Module ATOMICCP.
       destruct_lift Htc.
       destruct_lift Htc.
 
-      denote! (file_crash (synced_dirfile _) _) as Hsf.
-      eapply file_crash_synced in Hsf as Hsf'. subst.
-
-      pred_apply; cancel.
+      pred_apply. synced_file_eq. cancel.
       eassumption.
 
       unfold treeseq_pred. constructor. 2: constructor.
-      unfold tree_rep_recover. intuition.
+      unfold tree_rep_recover. intuition; eauto.
       distinct_names.
       simpl.
       left. pred_apply.
@@ -1463,23 +1453,17 @@ Module ATOMICCP.
       destruct_lift Htc.
       destruct_lift Htc.
 
-      denote! (file_crash (synced_dirfile _) _) as Hsf.
-      eapply file_crash_synced in Hsf as Hsf'. subst.
-
-      pred_apply; cancel.
+      pred_apply. synced_file_eq. cancel.
       eassumption.
 
       unfold treeseq_pred. constructor. 2: constructor.
-      unfold tree_rep_recover. intuition.
+      unfold tree_rep_recover. intuition; eauto.
       distinct_names.
       simpl.
       right.
       unfold tree_with_dst. pred_apply.
 
-      denote! (file_crash (synced_dirfile _) dummy1) as Hsf2.
-      eapply file_crash_synced in Hsf2 as Hsf2'. subst.
-
-      cancel.
+      synced_file_eq. cancel.
     }
 
     distinct_names.
@@ -1516,11 +1500,9 @@ Module ATOMICCP.
 
         unfold treeseq_pred, tree_rep; intuition.
         constructor. 2: constructor.
-        intuition. distinct_names.
+        intuition; eauto. distinct_names.
 
-        denote! (file_crash (synced_dirfile _) _) as Hsf.
-        eapply file_crash_synced in Hsf as Hsf'. subst.
-        left. pred_apply. unfold tree_with_tmp. cancel.
+        left. pred_apply. unfold tree_with_tmp. synced_file_eq. cancel.
         erewrite <- file_crash_data_length; eauto.
       }
 
@@ -1548,11 +1530,9 @@ Module ATOMICCP.
 
         unfold treeseq_pred, tree_rep; intuition.
         constructor. 2: constructor.
-        intuition. distinct_names.
+        intuition; eauto. distinct_names.
 
-        denote! (file_crash (synced_dirfile _) _) as Hsf.
-        eapply file_crash_synced in Hsf as Hsf'. subst.
-        right. left. pred_apply. unfold tree_with_src. cancel.
+        right. left. pred_apply. unfold tree_with_src. synced_file_eq. cancel.
       }
 
       {
@@ -1578,13 +1558,10 @@ Module ATOMICCP.
 
         unfold treeseq_pred, tree_rep; intuition.
         constructor. 2: constructor.
-        intuition. distinct_names.
+        intuition; eauto. distinct_names.
 
-        denote! (file_crash (synced_dirfile _) _) as Hsf.
-        eapply file_crash_synced in Hsf as Hsf'. subst.
-        denote! (file_crash (synced_dirfile _) dummy1) as Hsf2.
-        eapply file_crash_synced in Hsf2 as Hsf2'. subst.
-        right. right. pred_apply. unfold tree_with_dst. cancel.
+        right. right. pred_apply. unfold tree_with_dst.
+        synced_file_eq. synced_file_eq. cancel.
         eauto.
       }
     }
@@ -1599,5 +1576,3 @@ Module ATOMICCP.
   Qed.
 
 End ATOMICCP.
-
-
