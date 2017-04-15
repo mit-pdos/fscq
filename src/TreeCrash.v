@@ -55,7 +55,8 @@ Module DTCrash.
     tree_crash t1 t3.
   Proof.
     induction t1 using dirtree_ind2; simpl; intros.
-    inversion H; subst. inversion H0; subst. econstructor. eapply file_crash_trans; eauto.
+    inversion H; subst. inversion H0; subst. econstructor.
+      unfold file_crash in *. repeat deex. do 2 eexists. eapply file_crash_trans; eauto.
     inversion H0; subst. inversion H1; subst. constructor. congruence.
     generalize dependent st'. generalize dependent st'0.
     induction tree_ents; simpl; intros.
@@ -155,6 +156,7 @@ Module DTCrash.
       norml. destruct f'. cancel.
       instantiate (t' := TreeFile inum (mk_dirfile _ _)). cbn. cancel.
       econstructor; eauto.
+      unfold file_crash. do 2 eexists. eauto.
     - rewrite flist_crash_xform_sep_star.
       rewrite flist_crash_xform_dirlist_pred by eauto.
       cancel.
@@ -377,7 +379,7 @@ Module DTCrash.
     induction tree using dirtree_ind2; intros.
     edestruct file_crash_exists as [ [] H].
     eexists (TreeFile _ (mk_dirfile _ _)).
-    econstructor; cbn. eauto.
+    econstructor; cbn. unfold file_crash. do 2 eexists. eauto.
     induction tree_ents.
     eexists; constructor; eauto. constructor.
     destruct a; simpl in *.
