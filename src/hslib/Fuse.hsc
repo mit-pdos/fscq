@@ -737,25 +737,37 @@ foreign import ccall safe "opfuse.h opfuse_run"
 
 startHandlingOps :: forall e fh. Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
 startHandlingOps ops handler = do
-  -- TODO: fork many of these worker threads
-  _ <- forkIO $ forever $ do
-        pOp <- get_op
-        (opcode :: Int32) <- (#peek struct operation, op_type) pOp
-        case opcode of
-          1 -> error "getattr"
-          2 -> error "mknod"
-          3 -> error "mkdir"
-          4 -> error "unlink"
-          _ -> error $ "Unknown opcode " ++ (show opcode)
-        -- pFilePath <- (#peek operation, path) pOp
-        -- filePath <- peekCString pFilePath
-        -- eitherFileStat <- (fuseGetFileStat ops) filePath
-        -- case eitherFileStat of
-        --   Left (Errno errno) -> send_result pOp (-errno)
-        --   Right stat         -> do pRet <- (#peek operation, attr) pOp
-        --                            fileStatToCStat stat pRet
-        --                            send_result pOp okErrno
-  return ()
+    -- TODO: fork many of these worker threads
+    _ <- forkIO $ forever $ do
+          pOp <- get_op
+          opcode <- (#peek struct operation, op_type) pOp
+          res <- handleOpcode opcode pOp
+          send_result pOp res
+          -- pFilePath <- (#peek operation, path) pOp
+          -- filePath <- peekCString pFilePath
+          -- eitherFileStat <- (fuseGetFileStat ops) filePath
+          -- case eitherFileStat of
+          --   Left (Errno errno) -> send_result pOp (-errno)
+          --   Right stat         -> do pRet <- (#peek operation, attr) pOp
+          --                            fileStatToCStat stat pRet
+          --                            send_result pOp okErrno
+    return ()
+    where fuseHandler :: e -> IO CInt
+          fuseHandler e = handler e >>= return . negate . unErrno
+
+          handleOpcode :: CInt -> Ptr Operation -> IO CInt
+          handleOpcode 1 pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.getattr.pn) pOp
+            pStat <- (#peek struct operation, u.getattr.st) pOp
+            filePath <- peekCString pFilePath
+            eitherFileStat <- (fuseGetFileStat ops) filePath
+            case eitherFileStat of
+              Left (Errno errno) -> return (- errno)
+              Right stat         -> do fileStatToCStat stat pStat
+                                       return okErrno
+
+          handleOpcode opcode pOp =
+            error $ "Undefined opcode handler for " ++ (show opcode)
 
 -- | Default exception handler.
 -- Print the exception on error output and returns 'eFAULT'.
