@@ -106,7 +106,7 @@ opfuse_release(const char *path, struct fuse_file_info *fi)
 
 static int
 opfuse_read(const char *path, char *buf, size_t size, off_t offset,
-	    struct fuse_file_info *fi)
+           struct fuse_file_info *fi)
 {
   struct operation op;
 
@@ -122,7 +122,7 @@ opfuse_read(const char *path, char *buf, size_t size, off_t offset,
 
 static int
 opfuse_write(const char *path, const char *buf, size_t size,
-	     off_t offset, struct fuse_file_info *fi)
+            off_t offset, struct fuse_file_info *fi)
 {
   struct operation op;
 
@@ -138,7 +138,7 @@ opfuse_write(const char *path, const char *buf, size_t size,
 
 static int
 opfuse_fsync(const char *path, int isdatasync,
-	     struct fuse_file_info *fi)
+            struct fuse_file_info *fi)
 {
   struct operation op;
 
@@ -152,7 +152,7 @@ opfuse_fsync(const char *path, int isdatasync,
 
 static int
 opfuse_fsyncdir(const char *path, int isdatasync,
-	        struct fuse_file_info *fi)
+               struct fuse_file_info *fi)
 {
   struct operation op;
 
@@ -226,7 +226,7 @@ opfuse_opendir(const char *path, struct fuse_file_info *fi)
 
 static int
 opfuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-	       off_t offset, struct fuse_file_info *fi)
+              off_t offset, struct fuse_file_info *fi)
 {
   struct operation op;
 
@@ -274,26 +274,26 @@ opfuse_destroy(void *arg)
 }
 
 static struct fuse_operations opfuse_oper = {
-	.getattr	= opfuse_getattr,
-	.mknod		= opfuse_mknod,
-	.mkdir		= opfuse_mkdir,
-	.unlink		= opfuse_unlink,
-	.rmdir		= opfuse_rmdir,
-	.open		= opfuse_open,
-	.release	= opfuse_release,
-	.read		= opfuse_read,
-	.write		= opfuse_write,
-	.fsync		= opfuse_fsync,
-	.rename		= opfuse_rename,
-	.chmod		= opfuse_chmod,
-	.truncate	= opfuse_truncate,
-	.statfs		= opfuse_statfs,
-	.opendir	= opfuse_opendir,
-	.readdir	= opfuse_readdir,
-	.releasedir	= opfuse_releasedir,
-	.fsyncdir	= opfuse_fsyncdir,
-        .utime          = opfuse_utime,
-        .destroy        = opfuse_destroy,
+  .getattr      = opfuse_getattr,
+  .mknod        = opfuse_mknod,
+  .mkdir        = opfuse_mkdir,
+  .unlink       = opfuse_unlink,
+  .rmdir        = opfuse_rmdir,
+  .open         = opfuse_open,
+  .release      = opfuse_release,
+  .read         = opfuse_read,
+  .write        = opfuse_write,
+  .fsync        = opfuse_fsync,
+  .rename       = opfuse_rename,
+  .chmod        = opfuse_chmod,
+  .truncate     = opfuse_truncate,
+  .statfs       = opfuse_statfs,
+  .opendir      = opfuse_opendir,
+  .readdir      = opfuse_readdir,
+  .releasedir   = opfuse_releasedir,
+  .fsyncdir     = opfuse_fsyncdir,
+  .utime        = opfuse_utime,
+  .destroy      = opfuse_destroy,
 };
 
 void
