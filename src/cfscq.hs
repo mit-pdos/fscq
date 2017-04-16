@@ -45,6 +45,12 @@ verboseTiming = True
 cachesize :: Integer
 cachesize = 100000
 
+-- This controls whether HFuse will use upcalls (FUSE threads entering GHC runtime)
+-- or downcalls (separate FUSE threads using a queue, and GHC accessing this queue
+-- using its own threads).
+useDowncalls :: Bool
+useDowncalls = True
+
 debug :: String -> IO ()
 debug msg =
   if verboseFuse then
@@ -127,7 +133,7 @@ run_fuse disk_fn fuse_args = do
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp_val) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp_val)
   s <- I.newState ds
   fsP <- I.run s (CFS.init fsxp_val mscs0)
-  fuseRun "cfscq" fuse_args (fscqFSOps disk_fn ds (doFScall s) s fsP) defaultExceptionHandler
+  fuseRun "cfscq" fuse_args (fscqFSOps disk_fn ds (doFScall s) s fsP) defaultExceptionHandler useDowncalls
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
