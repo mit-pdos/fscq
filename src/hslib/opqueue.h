@@ -84,6 +84,11 @@ struct op_readdir {
   struct fuse_file_info *info;
 };
 
+struct op_releasedir {
+  const char *pn;
+  struct fuse_file_info *info;
+};
+
 struct op_statfs {
   const char *pn;
   struct statvfs *st;
@@ -122,6 +127,7 @@ typedef enum {
   OP_TRUNCATE,
   OP_OPENDIR,
   OP_READDIR,
+  OP_RELEASEDIR,
   OP_STATFS,
   OP_DESTROY,
   OP_UTIME,
@@ -151,6 +157,7 @@ struct operation {
     struct op_truncate truncate;
     struct op_opendir opendir;
     struct op_readdir readdir;
+    struct op_releasedir releasedir;
     struct op_statfs statfs;
     struct op_destroy destroy;
     struct op_utime utime;

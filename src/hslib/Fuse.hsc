@@ -381,15 +381,15 @@ data FuseOperations fh = FuseOperations
 
         -- | Implements @opendir(3)@.  This method should check if the open
         --   operation is permitted for this directory.
-        fuseOpenDirectory :: FilePath -> IO Errno,
+        fuseOpenDirectory :: FilePath -> IO (Either Errno fh),
 
         -- | Implements @readdir(3)@.  The entire contents of the directory
         --   should be returned as a list of tuples (corresponding to the first
         --   mode of operation documented in @fuse.h@).
-        fuseReadDirectory :: FilePath -> IO (Either Errno [(FilePath, FileStat)]),
+        fuseReadDirectory :: FilePath -> fh -> IO (Either Errno [(FilePath, FileStat)]),
 
         -- | Implements @closedir(3)@.
-        fuseReleaseDirectory :: FilePath -> IO Errno,
+        fuseReleaseDirectory :: FilePath -> fh -> IO Errno,
 
         -- | Synchronize the directory's contents; analogous to
         --   'fuseSynchronizeFile'.
@@ -432,9 +432,9 @@ defaultFuseOps =
                    , fuseFlush = \_ _ -> return eOK
                    , fuseRelease = \_ _ -> return ()
                    , fuseSynchronizeFile = \_ _ _ -> return eNOSYS
-                   , fuseOpenDirectory = \_ -> return eNOSYS
-                   , fuseReadDirectory = \_ -> return (Left eNOSYS)
-                   , fuseReleaseDirectory = \_ -> return eNOSYS
+                   , fuseOpenDirectory = \_ -> return (Left eNOSYS)
+                   , fuseReadDirectory = \_ _ -> return (Left eNOSYS)
+                   , fuseReleaseDirectory = \_ _ -> return eNOSYS
                    , fuseSynchronizeDirectory = \_ _ _ -> return eNOSYS
                    , fuseAccess = \_ _ -> return eNOSYS
                    , fuseInit = return ()
@@ -678,13 +678,19 @@ withStructFuse pFuseChan pArgs ops handler f =
           wrapOpenDir pFilePath pFuseFileInfo = handle fuseHandler $
               do filePath <- peekCString pFilePath
                  -- XXX: Should we pass flags from pFuseFileInfo?
-                 (Errno errno) <- (fuseOpenDirectory ops) filePath
-                 return (- errno)
+                 result <- (fuseOpenDirectory ops) filePath
+                 case result of
+                    Left (Errno errno) -> return (- errno)
+                    Right cval         -> do
+                        sptr <- newStablePtr cval
+                        (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
+                        return okErrno
 
           wrapReadDir :: CReadDir
           wrapReadDir pFilePath pBuf pFillDir off pFuseFileInfo =
             handle fuseHandler $ do
               filePath <- peekCString pFilePath
+              cVal     <- getFH pFuseFileInfo
               let fillDir = mkFillDir pFillDir
               let filler :: (FilePath, FileStat) -> IO ()
                   filler (fileName, fileStat) =
@@ -695,16 +701,17 @@ withStructFuse pFuseChan pArgs ops handler f =
                            -- Ignoring return value of pFillDir, namely 1 if
                            -- pBuff is full.
                            return ()
-              eitherContents <- (fuseReadDirectory ops) filePath -- XXX fileinfo
+              eitherContents <- (fuseReadDirectory ops) filePath cVal
               case eitherContents of
                 Left (Errno errno) -> return (- errno)
                 Right contents     -> mapM filler contents >> return okErrno
 
           wrapReleaseDir :: CReleaseDir
-          wrapReleaseDir pFilePath pFuseFileInfo = handle fuseHandler $
+          wrapReleaseDir pFilePath pFuseFileInfo = E.finally (handle fuseHandler $
               do filePath <- peekCString pFilePath
-                 (Errno errno) <- (fuseReleaseDirectory ops) filePath
-                 return (- errno)
+                 cVal     <- getFH pFuseFileInfo
+                 (Errno errno) <- (fuseReleaseDirectory ops) filePath cVal
+                 return (- errno)) (delFH pFuseFileInfo)
           wrapFSyncDir :: CFSyncDir
           wrapFSyncDir pFilePath isFullSync pFuseFileInfo = handle fuseHandler $
               do filePath <- peekCString pFilePath
@@ -942,19 +949,25 @@ startHandlingOps ops handler = do
 
           handleOpcode (#const OP_OPENDIR) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.opendir.pn) pOp
-            -- pFuseFileInfo <- (#peek struct operation, u.opendir.info) pOp
+            pFuseFileInfo <- (#peek struct operation, u.opendir.info) pOp
             -- XXX: Should we pass flags from pFuseFileInfo?
             filePath <- peekCString pFilePath
-            (Errno errno) <- (fuseOpenDirectory ops) filePath
-            return (- errno)
+            result <- (fuseOpenDirectory ops) filePath
+            case result of
+              Left (Errno errno) -> return (- errno)
+              Right cval -> do
+                sptr <- newStablePtr cval
+                (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
+                return okErrno
 
           handleOpcode (#const OP_READDIR) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.readdir.pn) pOp
             pBuf <- (#peek struct operation, u.readdir.buf) pOp
             pFillDir <- (#peek struct operation, u.readdir.fill) pOp
             -- off <- (#peek struct operation, u.readdir.off) pOp
-            -- pFuseFileInfo <- (#peek struct operation, u.readdir.info) pOp
+            pFuseFileInfo <- (#peek struct operation, u.readdir.info) pOp
             filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
             let fillDir = mkFillDir pFillDir
             let filler :: (FilePath, FileStat) -> IO ()
                 filler (fileName, fileStat) =
@@ -965,10 +978,19 @@ startHandlingOps ops handler = do
                          -- Ignoring return value of pFillDir, namely 1 if
                          -- pBuff is full.
                          return ()
-            eitherContents <- (fuseReadDirectory ops) filePath
+            eitherContents <- (fuseReadDirectory ops) filePath cVal
             case eitherContents of
               Left (Errno errno) -> return (- errno)
               Right contents     -> mapM filler contents >> return okErrno
+
+          handleOpcode (#const OP_RELEASEDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.opendir.pn) pOp
+            pFuseFileInfo <- (#peek struct operation, u.opendir.info) pOp
+            filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
+            delFH pFuseFileInfo
+            (Errno errno) <- (fuseReleaseDirectory ops) filePath cVal
+            return (- errno)
 
           handleOpcode (#const OP_DESTROY) pOp = handle fuseHandler $ do
             fuseDestroy ops

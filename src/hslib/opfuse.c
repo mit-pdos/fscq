@@ -241,6 +241,18 @@ opfuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 static int
+opfuse_releasedir(const char *path, struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_RELEASEDIR;
+  op.u.releasedir.pn = path;
+  op.u.releasedir.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
 opfuse_utime(const char *path, struct utimbuf *buf)
 {
   struct operation op;
@@ -278,6 +290,7 @@ static struct fuse_operations opfuse_oper = {
 	.statfs		= opfuse_statfs,
 	.opendir	= opfuse_opendir,
 	.readdir	= opfuse_readdir,
+	.releasedir	= opfuse_releasedir,
 	.fsyncdir	= opfuse_fsyncdir,
         .utime          = opfuse_utime,
         .destroy        = opfuse_destroy,
