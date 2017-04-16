@@ -457,7 +457,7 @@ withFuseArgs prog args f =
 
 withStructFuse :: forall e fh b. Exception e => Ptr CFuseChan -> Ptr CFuseArgs -> FuseOperations fh -> (e -> IO Errno) -> (Ptr CStructFuse -> IO b) -> IO b
 withStructFuse pFuseChan pArgs ops handler f = do
-    startHandlingOps ops
+    startHandlingOps ops handler
     allocaBytes (#size struct fuse_operations) $ \ pOps -> do
       bzero pOps (#size struct fuse_operations)
       mkGetAttr    wrapGetAttr    >>= (#poke struct fuse_operations, getattr)    pOps
@@ -503,12 +503,15 @@ withStructFuse pFuseChan pArgs ops handler f = do
                        (fuse_destroy structFuse)
     where fuseHandler :: e -> IO CInt
           fuseHandler e = handler e >>= return . negate . unErrno
+
           wrapGetAttr :: CGetAttr
           wrapGetAttr pFilePath pStat = handle fuseHandler $
-              allocaBytes (#size operation) (\pOp ->
-                do (#poke operation, path) pOp pFilePath
-                   (#poke operation, attr) pOp pStat
-                   execute pOp)
+              do filePath <- peekCString pFilePath
+                 eitherFileStat <- (fuseGetFileStat ops) filePath
+                 case eitherFileStat of
+                   Left (Errno errno) -> return (- errno)
+                   Right stat         -> do fileStatToCStat stat pStat
+                                            return okErrno
 
           wrapReadLink :: CReadLink
           wrapReadLink pFilePath pBuf bufSize = handle fuseHandler $
@@ -723,32 +726,35 @@ withStructFuse pFuseChan pArgs ops handler f = do
               do fuseDestroy ops
 
 data Operation
-foreign import ccall safe "opqueue.h initialize"
-  initialize :: IO ()
-
 foreign import ccall safe "opqueue.h get_op"
   get_op :: IO (Ptr Operation)
 
 foreign import ccall safe "opqueue.h send_result"
   send_result :: Ptr Operation -> CInt -> IO ()
 
-foreign import ccall safe "opqueue.h execute"
-  execute :: Ptr Operation -> IO CInt
+foreign import ccall safe "opfuse.h opfuse_run"
+  opfuse_run :: CString -> Ptr CFuseArgs -> IO ()
 
-startHandlingOps :: FuseOperations fh -> IO ()
-startHandlingOps ops = do
-  initialize
+startHandlingOps :: forall e fh. Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
+startHandlingOps ops handler = do
   -- TODO: fork many of these worker threads
   _ <- forkIO $ forever $ do
         pOp <- get_op
-        pFilePath <- (#peek operation, path) pOp
-        filePath <- peekCString pFilePath
-        eitherFileStat <- (fuseGetFileStat ops) filePath
-        case eitherFileStat of
-          Left (Errno errno) -> send_result pOp (-errno)
-          Right stat         -> do pRet <- (#peek operation, attr) pOp
-                                   fileStatToCStat stat pRet
-                                   send_result pOp okErrno
+        (opcode :: Int32) <- (#peek struct operation, op_type) pOp
+        case opcode of
+          1 -> error "getattr"
+          2 -> error "mknod"
+          3 -> error "mkdir"
+          4 -> error "unlink"
+          _ -> error $ "Unknown opcode " ++ (show opcode)
+        -- pFilePath <- (#peek operation, path) pOp
+        -- filePath <- peekCString pFilePath
+        -- eitherFileStat <- (fuseGetFileStat ops) filePath
+        -- case eitherFileStat of
+        --   Left (Errno errno) -> send_result pOp (-errno)
+        --   Right stat         -> do pRet <- (#peek operation, attr) pOp
+        --                            fileStatToCStat stat pRet
+        --                            send_result pOp okErrno
   return ()
 
 -- | Default exception handler.
@@ -814,30 +820,9 @@ withSignalHandlers exitHandler f =
 
 -- Mounts the filesystem, forks, and then starts fuse
 fuseMainReal foreground ops handler pArgs mountPt =
-    withCString mountPt (\cMountPt ->
-      do pFuseChan <- fuse_mount cMountPt pArgs
-         if pFuseChan == nullPtr
-           then exitFailure -- fuse will print an error message why this happened
-           else (withStructFuse pFuseChan pArgs ops handler (\pFuse ->
-                  E.finally 
-                     (if foreground -- finally ready to fork
-                       then changeWorkingDirectory "/" >> (procMain pFuse)
-                       else daemon (procMain pFuse))
-                     (fuse_unmount cMountPt pFuseChan))))
-
-    -- here, we're finally inside the daemon process, we can run the main loop
-    where procMain pFuse = do session <- fuse_get_session pFuse
-                              -- calling fuse_session_exit to exit the main loop only
-                              -- appears to work with the multithreaded fuse loop.
-                              -- In the single-threaded case, FUSE depends on their
-                              -- recv() call to finish with EINTR when signals arrive.
-                              -- This doesn't happen with GHC's signal handling in place.
-                              withSignalHandlers (fuse_session_exit session) $
-                                 do retVal <- fuse_loop_mt pFuse
-                                    if retVal == 1 
-                                      then exitWith ExitSuccess
-                                      else exitFailure
-                                    return ()
+    withCString mountPt (\cMountPt -> do
+      startHandlingOps ops handler
+      opfuse_run cMountPt pArgs)
 
 -- | Main function of FUSE.
 -- This is all that has to be called from the @main@ function. On top of
@@ -915,11 +900,6 @@ catch = catchIOError
 data CFuseArgs -- struct fuse_args
 
 data CFuseChan -- struct fuse_chan
-foreign import ccall safe "fuse.h fuse_mount"
-    fuse_mount :: CString -> Ptr CFuseArgs -> IO (Ptr CFuseChan)
-
-foreign import ccall safe "fuse.h fuse_unmount"
-    fuse_unmount :: CString -> Ptr CFuseChan -> IO ()
 
 data CFuseSession -- struct fuse_session
 foreign import ccall safe "fuse.h fuse_get_session"
@@ -947,9 +927,6 @@ foreign import ccall safe "fuse.h fuse_destroy"
 
 foreign import ccall safe "fuse.h fuse_opt_free_args"
     fuse_opt_free_args :: Ptr CFuseArgs -> IO ()
-
-foreign import ccall safe "fuse.h fuse_loop_mt"
-    fuse_loop_mt :: Ptr CStructFuse -> IO Int
 
 data CFuseContext
 foreign import ccall safe "fuse.h fuse_get_context"

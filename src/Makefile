@@ -49,7 +49,7 @@ GHCARGS    := -j$(J) -O2 -threaded -rtsopts
 		# -ticky -ticky-dyn-thunk -ticky-allocd
 		# -prof -fprof-auto
 		# -eventlog
-HSLIB_FUSE := hscgen/Fuse.hs
+HSLIB_FUSE := hscgen/Fuse.hs hslib/libopfuse.a
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/ShowErrno.hs hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
 

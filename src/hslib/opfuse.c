@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -276,8 +277,27 @@ static struct fuse_operations opfuse_oper = {
 	// .fsync		= opfuse_fsync,
 };
 
-int main(int argc, char *argv[])
+void
+opfuse_run(const char *mountpoint, struct fuse_args *args)
 {
+  struct fuse_chan *chan = fuse_mount(mountpoint, args);
+  if (!chan) {
+    fprintf(stderr, "fuse_mount\n");
+    exit(-1);
+  }
+
+  if (chdir("/") < 0) {
+    perror("chdir /");
+    exit(-1);
+  }
+
   umask(0);
-  return fuse_main(argc, argv, &opfuse_oper, NULL);
+
+  struct fuse *f = fuse_new(chan, args, &opfuse_oper, sizeof(opfuse_oper), NULL);
+  if (!f) {
+    fprintf(stderr, "fuse_new\n");
+    exit(-1);
+  }
+
+  fuse_loop_mt(f);
 }
