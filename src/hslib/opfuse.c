@@ -132,6 +132,66 @@ opfuse_release(const char *path, struct fuse_file_info *fi)
   return op.err;
 }
 
+static int
+opfuse_read(const char *path, char *buf, size_t size, off_t offset,
+	    struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_READ;
+  op.u.read.pn = path;
+  op.u.read.buf = buf;
+  op.u.read.bufsiz = size;
+  op.u.read.off = offset;
+  op.u.read.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_write(const char *path, const char *buf, size_t size,
+	     off_t offset, struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_WRITE;
+  op.u.write.pn = path;
+  op.u.write.buf = buf;
+  op.u.write.bufsiz = size;
+  op.u.write.off = offset;
+  op.u.write.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_fsync(const char *path, int isdatasync,
+	     struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_FSYNC;
+  op.u.fsync.pn = path;
+  op.u.fsync.isdatasync = isdatasync;
+  op.u.fsync.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_fsyncdir(const char *path, int isdatasync,
+	        struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_FSYNCDIR;
+  op.u.fsyncdir.pn = path;
+  op.u.fsyncdir.isdatasync = isdatasync;
+  op.u.fsyncdir.info = fi;
+  execute(&op);
+  return op.err;
+}
+
 #if 0
 static int opfuse_rename(const char *from, const char *to)
 {
@@ -177,43 +237,6 @@ static int opfuse_truncate(const char *path, off_t size)
 	return 0;
 }
 
-static int opfuse_read(const char *path, char *buf, size_t size, off_t offset,
-		    struct fuse_file_info *fi)
-{
-	int fd;
-	int res;
-
-	(void) fi;
-	fd = open(path, O_RDONLY);
-	if (fd == -1)
-		return -errno;
-
-	res = pread(fd, buf, size, offset);
-	if (res == -1)
-		res = -errno;
-
-	close(fd);
-	return res;
-}
-
-static int opfuse_write(const char *path, const char *buf, size_t size,
-		     off_t offset, struct fuse_file_info *fi)
-{
-	int fd;
-	int res;
-
-	(void) fi;
-	fd = open(path, O_WRONLY);
-	if (fd == -1)
-		return -errno;
-
-	res = pwrite(fd, buf, size, offset);
-	if (res == -1)
-		res = -errno;
-
-	close(fd);
-	return res;
-}
 
 static int opfuse_statfs(const char *path, struct statvfs *stbuf)
 {
@@ -223,18 +246,6 @@ static int opfuse_statfs(const char *path, struct statvfs *stbuf)
 	if (res == -1)
 		return -errno;
 
-	return 0;
-}
-
-static int opfuse_fsync(const char *path, int isdatasync,
-		     struct fuse_file_info *fi)
-{
-	/* Just a stub.	 This method is optional and can safely be left
-	   unimplemented */
-
-	(void) path;
-	(void) isdatasync;
-	(void) fi;
 	return 0;
 }
 #endif
@@ -247,15 +258,17 @@ static struct fuse_operations opfuse_oper = {
 	.rmdir		= opfuse_rmdir,
 	.open		= opfuse_open,
 	.release	= opfuse_release,
+	.read		= opfuse_read,
+	.write		= opfuse_write,
+	.fsync		= opfuse_fsync,
+	.fsyncdir	= opfuse_fsyncdir,
+
 	// .readdir	= opfuse_readdir,
 	// .rename		= opfuse_rename,
 	// .chmod		= opfuse_chmod,
 	// .chown		= opfuse_chown,
 	// .truncate	= opfuse_truncate,
-	// .read		= opfuse_read,
-	// .write		= opfuse_write,
 	// .statfs		= opfuse_statfs,
-	// .fsync		= opfuse_fsync,
 };
 
 void

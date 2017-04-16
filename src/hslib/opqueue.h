@@ -38,14 +38,46 @@ struct op_rmdir {
   const char *pn;
 };
 
+struct op_fsync {
+  const char *pn;
+  int isdatasync;
+  struct fuse_file_info *info;
+};
+
+struct op_fsyncdir {
+  const char *pn;
+  int isdatasync;
+  struct fuse_file_info *info;
+};
+
+struct op_write {
+  const char *pn;
+  const char *buf;
+  size_t bufsiz;
+  off_t off;
+  struct fuse_file_info *info;
+};
+
+struct op_read {
+  const char *pn;
+  char *buf;
+  size_t bufsiz;
+  off_t off;
+  struct fuse_file_info *info;
+};
+
 typedef enum {
-  OP_GETATTR = 1,
-  OP_MKNOD = 2,
-  OP_MKDIR = 3,
-  OP_UNLINK = 4,
-  OP_OPEN = 5,
-  OP_RELEASE = 6,
-  OP_RMDIR = 7,
+  OP_GETATTR,
+  OP_MKNOD,
+  OP_MKDIR,
+  OP_UNLINK,
+  OP_OPEN,
+  OP_RELEASE,
+  OP_RMDIR,
+  OP_FSYNC,
+  OP_FSYNCDIR,
+  OP_WRITE,
+  OP_READ,
 } op_t;
 
 struct operation {
@@ -63,6 +95,10 @@ struct operation {
     struct op_open open;
     struct op_release release;
     struct op_rmdir rmdir;
+    struct op_fsync fsync;
+    struct op_fsyncdir fsyncdir;
+    struct op_write write;
+    struct op_read read;
   } u;
 };
 
