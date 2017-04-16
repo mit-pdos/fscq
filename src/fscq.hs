@@ -43,7 +43,7 @@ cachesize = 100000
 -- or downcalls (separate FUSE threads using a queue, and GHC accessing this queue
 -- using its own threads).
 useDowncalls :: Bool
-useDowncalls = True
+useDowncalls = False
 
 debug :: String -> IO ()
 debug msg =
