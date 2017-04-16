@@ -726,6 +726,9 @@ withStructFuse pFuseChan pArgs ops handler f = do
               do fuseDestroy ops
 
 data Operation
+foreign import ccall safe "opqueue.h initialize"
+  initialize :: IO ()
+
 foreign import ccall safe "opqueue.h get_op"
   get_op :: IO (Ptr Operation)
 
@@ -740,6 +743,7 @@ foreign import ccall safe "opfuse.h opfuse_run"
 
 startHandlingOps :: forall e fh. Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
 startHandlingOps ops handler = do
+    initialize
     n <- getNumCapabilities
     replicateM_ n . forkIO . forever $ do
           pOp <- get_op
