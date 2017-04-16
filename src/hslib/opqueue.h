@@ -66,6 +66,47 @@ struct op_read {
   struct fuse_file_info *info;
 };
 
+struct op_truncate {
+  const char *pn;
+  off_t size;
+};
+
+struct op_opendir {
+  const char *pn;
+  struct fuse_file_info *info;
+};
+
+struct op_readdir {
+  const char *pn;
+  void *buf;
+  fuse_fill_dir_t fill;
+  off_t off;
+  struct fuse_file_info *info;
+};
+
+struct op_statfs {
+  const char *pn;
+  struct statvfs *st;
+};
+
+struct op_destroy {
+};
+
+struct op_utime {
+  const char *pn;
+  struct utimbuf *buf;
+};
+
+struct op_rename {
+  const char *src;
+  const char *dst;
+};
+
+struct op_chmod {
+  const char *pn;
+  mode_t mode;
+};
+
 typedef enum {
   OP_GETATTR,
   OP_MKNOD,
@@ -78,6 +119,14 @@ typedef enum {
   OP_FSYNCDIR,
   OP_WRITE,
   OP_READ,
+  OP_TRUNCATE,
+  OP_OPENDIR,
+  OP_READDIR,
+  OP_STATFS,
+  OP_DESTROY,
+  OP_UTIME,
+  OP_RENAME,
+  OP_CHMOD,
 } op_t;
 
 struct operation {
@@ -99,6 +148,14 @@ struct operation {
     struct op_fsyncdir fsyncdir;
     struct op_write write;
     struct op_read read;
+    struct op_truncate truncate;
+    struct op_opendir opendir;
+    struct op_readdir readdir;
+    struct op_statfs statfs;
+    struct op_destroy destroy;
+    struct op_utime utime;
+    struct op_rename rename;
+    struct op_chmod chmod;
   } u;
 };
 

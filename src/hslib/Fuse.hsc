@@ -885,6 +885,95 @@ startHandlingOps ops handler = do
                    bsToBuf pBuf bytes len
                    return (fromIntegral len)
 
+          handleOpcode (#const OP_TRUNCATE) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.truncate.pn) pOp
+            size <- (#peek struct operation, u.truncate.size) pOp
+            filePath <- peekCString pFilePath
+            (Errno errno) <- (fuseSetFileSize ops) filePath size
+            return (- errno)
+
+          handleOpcode (#const OP_CHMOD) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.chmod.pn) pOp
+            mode <- (#peek struct operation, u.chmod.mode) pOp
+            filePath <- peekCString pFilePath
+            (Errno errno) <- (fuseSetFileMode ops) filePath mode
+            return (- errno)
+
+          handleOpcode (#const OP_RENAME) pOp = handle fuseHandler $ do
+            pOld <- (#peek struct operation, u.rename.src) pOp
+            pNew <- (#peek struct operation, u.rename.dst) pOp
+            old <- peekCString pOld
+            new <- peekCString pNew
+            (Errno errno) <- (fuseRename ops) old new
+            return (- errno)
+
+          handleOpcode (#const OP_STATFS) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.statfs.pn) pOp
+            pStatVFS <- (#peek struct operation, u.statfs.st) pOp
+            filePath <- peekCString pFilePath
+            eitherStatVFS <- (fuseGetFileSystemStats ops) filePath
+            case eitherStatVFS of
+              Left (Errno errno) -> return (- errno)
+              Right stat         ->
+                do (#poke struct statvfs, f_bsize) pStatVFS
+                       (fromIntegral (fsStatBlockSize stat) :: (#type long))
+                   (#poke struct statvfs, f_blocks) pStatVFS
+                       (fromIntegral (fsStatBlockCount stat) :: (#type fsblkcnt_t))
+                   (#poke struct statvfs, f_bfree) pStatVFS
+                       (fromIntegral (fsStatBlocksFree stat) :: (#type fsblkcnt_t))
+                   (#poke struct statvfs, f_bavail) pStatVFS
+                       (fromIntegral (fsStatBlocksAvailable stat) :: (#type fsblkcnt_t))
+                   (#poke struct statvfs, f_files) pStatVFS
+                        (fromIntegral (fsStatFileCount stat) :: (#type fsfilcnt_t))
+                   (#poke struct statvfs, f_ffree) pStatVFS
+                       (fromIntegral (fsStatFilesFree stat) :: (#type fsfilcnt_t))
+                   (#poke struct statvfs, f_namemax) pStatVFS
+                       (fromIntegral (fsStatMaxNameLength stat) :: (#type long))
+                   return 0
+
+          handleOpcode (#const OP_UTIME) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.utime.pn) pOp
+            pUTimBuf <- (#peek struct operation, u.utime.buf) pOp
+            filePath <- peekCString pFilePath
+            accessTime <- (#peek struct utimbuf, actime) pUTimBuf
+            modificationTime <- (#peek struct utimbuf, modtime) pUTimBuf
+            (Errno errno) <- (fuseSetFileTimes ops) filePath accessTime modificationTime
+            return (- errno)
+
+          handleOpcode (#const OP_OPENDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.opendir.pn) pOp
+            -- pFuseFileInfo <- (#peek struct operation, u.opendir.info) pOp
+            -- XXX: Should we pass flags from pFuseFileInfo?
+            filePath <- peekCString pFilePath
+            (Errno errno) <- (fuseOpenDirectory ops) filePath
+            return (- errno)
+
+          handleOpcode (#const OP_READDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.readdir.pn) pOp
+            pBuf <- (#peek struct operation, u.readdir.buf) pOp
+            pFillDir <- (#peek struct operation, u.readdir.fill) pOp
+            -- off <- (#peek struct operation, u.readdir.off) pOp
+            -- pFuseFileInfo <- (#peek struct operation, u.readdir.info) pOp
+            filePath <- peekCString pFilePath
+            let fillDir = mkFillDir pFillDir
+            let filler :: (FilePath, FileStat) -> IO ()
+                filler (fileName, fileStat) =
+                  withCString fileName $ \ pFileName ->
+                    allocaBytes (#size struct stat) $ \ pFileStat ->
+                      do fileStatToCStat fileStat pFileStat
+                         fillDir pBuf pFileName pFileStat 0
+                         -- Ignoring return value of pFillDir, namely 1 if
+                         -- pBuff is full.
+                         return ()
+            eitherContents <- (fuseReadDirectory ops) filePath
+            case eitherContents of
+              Left (Errno errno) -> return (- errno)
+              Right contents     -> mapM filler contents >> return okErrno
+
+          handleOpcode (#const OP_DESTROY) pOp = handle fuseHandler $ do
+            fuseDestroy ops
+            return 0
+
           handleOpcode opcode pOp =
             error $ "Undefined opcode handler for " ++ (show opcode)
 
