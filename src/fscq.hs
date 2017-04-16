@@ -285,44 +285,34 @@ fscqGetFileStat fr m_fsxp (_:path)
         return $ Right $ fileStat ctx attr
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
-fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO Errno
+fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno HT)
 fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPENDIR" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Errno.Err e -> return $ errnoToPosix e
-    Errno.OK (_, isdir)
-      | isdir -> return eOK
-      | otherwise -> return eNOTDIR
-fscqOpenDirectory _ _ "" = return eNOENT
-
-fscqReadDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
-  debugStart "READDIR" path
-  ctx <- getFuseContext
-  nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
-  debugMore r
-  case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
-    Errno.OK (dnum, isdir)
-      | isdir -> do
-        (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
-        files_stat <- mapM (mkstat fsxp ctx) files
-        return $ Right $ [(".",          dirStat ctx)
-                         ,("..",         dirStat ctx)
-                         ] ++ files_stat
-      | otherwise -> return $ Left $ eNOTDIR
+    Errno.OK (inum, isdir)
+      | isdir -> return $ Right inum
+      | otherwise -> return $ Left eNOTDIR
+fscqOpenDirectory _ _ "" = return $ Left eNOENT
+
+fscqReadDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
+  debugStart "READDIR" dnum
+  ctx <- getFuseContext
+  (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
+  files_stat <- mapM (mkstat fsxp ctx) files
+  return $ Right $ [(".",          dirStat ctx)
+                   ,("..",         dirStat ctx)
+                   ] ++ files_stat
   where
     mkstat fsxp ctx (fn, (inum, isdir))
       | isdir = return $ (fn, dirStat ctx)
       | otherwise = do
         (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
         return $ (fn, fileStat ctx attr)
-
-fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr m_fsxp (_:path) _ flags
