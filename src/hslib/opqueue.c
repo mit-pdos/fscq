@@ -3,61 +3,74 @@
 #include <stdio.h>
 #include <errno.h>
 
+static inline uint64_t __attribute__((__always_inline__))
+rdtsc(void)
+{
+    uint32_t a, d;
+    __asm __volatile("rdtsc" : "=a" (a), "=d" (d));
+    return ((uint64_t) a) | (((uint64_t) d) << 32);
+}
+
 #define QUEUE_MAX_SIZE 256
 
 static struct {
   struct operation *ops[QUEUE_MAX_SIZE];
   int puts;
   int gets;
-  pthread_mutex_t m;
-  pthread_cond_t wait_empty;
-  pthread_cond_t wait_full;
+  pthread_spinlock_t spin;
 } q;
 
 struct operation* get_op() {
-  pthread_mutex_lock(&q.m);
   while (1) {
-    if (q.puts > q.gets) {
-      struct operation *op = q.ops[q.gets % QUEUE_MAX_SIZE];
-      q.gets++;
-      pthread_cond_signal(&q.wait_full);
-      pthread_mutex_unlock(&q.m);
-      return op;
-    } else {
-      pthread_cond_wait(&q.wait_empty, &q.m);
+    if (q.puts <= q.gets) {
+      __sync_synchronize();
+      continue;
     }
+
+    pthread_spin_lock(&q.spin);
+    if (q.puts <= q.gets) {
+      pthread_spin_unlock(&q.spin);
+      continue;
+    }
+
+    struct operation *op = q.ops[q.gets % QUEUE_MAX_SIZE];
+    q.gets++;
+    pthread_spin_unlock(&q.spin);
+    return op;
   }
 }
 
 void send_result(struct operation *op, int err) {
-  pthread_mutex_lock(&op->m);
   op->err = err;
+  __sync_synchronize();
   op->done = 1;
-  pthread_cond_signal(&op->cond);
-  pthread_mutex_unlock(&op->m);
-  return;
 }
 
 int execute(struct operation *op) {
-  pthread_cond_init(&op->cond, NULL);
-  pthread_mutex_init(&op->m, NULL);
   op->done = 0;
 
-  pthread_mutex_lock(&q.m);
-  while (q.puts - q.gets >= QUEUE_MAX_SIZE) {
-    pthread_cond_wait(&q.wait_full, &q.m);
+  while (1) {
+    if (q.puts - q.gets >= QUEUE_MAX_SIZE) {
+      __sync_synchronize();
+      continue;
+    }
+
+    pthread_spin_lock(&q.spin);
+    if (q.puts - q.gets >= QUEUE_MAX_SIZE) {
+      pthread_spin_unlock(&q.spin);
+      continue;
+    }
+
+    q.ops[q.puts % QUEUE_MAX_SIZE] = op;
+    q.puts++;
+    pthread_spin_unlock(&q.spin);
+    break;
   }
 
-  q.ops[q.puts % QUEUE_MAX_SIZE] = op;
-  q.puts++;
-  pthread_cond_signal(&q.wait_empty);
-  pthread_mutex_unlock(&q.m);
-
-  pthread_mutex_lock(&op->m);
   while (!op->done) {
-    pthread_cond_wait(&op->cond, &op->m);
+    __sync_synchronize();
   }
-  pthread_mutex_unlock(&op->m);
+
   return op->err;
 }
 
@@ -66,4 +79,10 @@ send_result_and_get_op(struct operation *op, int err)
 {
   send_result(op, err);
   return get_op();
+}
+
+void
+initialize()
+{
+  pthread_spin_init(&q.spin, PTHREAD_PROCESS_PRIVATE);
 }

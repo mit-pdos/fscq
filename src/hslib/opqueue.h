@@ -49,12 +49,11 @@ typedef enum {
 } op_t;
 
 struct operation {
-  pthread_mutex_t m;
-  pthread_cond_t cond;
+  int op_type;
   int64_t err;
   int done;
 
-  int op_type;
+  uint64_t t0, t1, t2, t3;
 
   union {
     struct op_getattr getattr;
@@ -67,12 +66,10 @@ struct operation {
   } u;
 };
 
+void initialize();
 struct operation* get_op();
-
 void send_result(struct operation *op, int err);
-
 struct operation* send_result_and_get_op(struct operation *op, int err);
-
 int execute(struct operation *op);
 
 #endif
