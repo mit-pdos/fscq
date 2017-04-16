@@ -178,6 +178,6 @@ clean:
 	       ocamlfuse/*.cmi ocamlfuse/*.cmx ocamlfuse/*.cmo \
 	       ocamlfuse/*.o ocamlfuse/Fuse_bindings_stubs.c \
 	       ocamlfuse/Fuse_bindings.h ocamlfuse/Fuse_bindings.ml \
-	       ocamlfuse/libFuse_stubs.a hslib/*.o
+	       ocamlfuse/libFuse_stubs.a hslib/*.o hscgen
 
 .PRECIOUS: hscgen/%.hs %_stubs.c
