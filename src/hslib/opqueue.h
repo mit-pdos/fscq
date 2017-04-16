@@ -71,6 +71,8 @@ struct operation* get_op();
 
 void send_result(struct operation *op, int err);
 
+struct operation* send_result_and_get_op(struct operation *op, int err);
+
 int execute(struct operation *op);
 
 #endif

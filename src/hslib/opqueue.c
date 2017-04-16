@@ -60,3 +60,10 @@ int execute(struct operation *op) {
   pthread_mutex_unlock(&op->m);
   return op->err;
 }
+
+struct operation*
+send_result_and_get_op(struct operation *op, int err)
+{
+  send_result(op, err);
+  return get_op();
+}
