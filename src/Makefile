@@ -98,7 +98,7 @@ ocamlfuse/Fuse.cmxa ocamlfuse/Fuse.a: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
 
 hscgen/%.hs: hslib/%.hsc
 	@mkdir -p $(@D)
-	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
+	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64 -Ihslib
 
 %: %.hs $(VS_HS) $(HSLIB_FUSE)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
