@@ -112,6 +112,12 @@ struct op_chmod {
   mode_t mode;
 };
 
+struct op_create {
+  const char *pn;
+  mode_t mode;
+  struct fuse_file_info *info;
+};
+
 typedef enum {
   OP_GETATTR,
   OP_MKNOD,
@@ -133,6 +139,7 @@ typedef enum {
   OP_UTIME,
   OP_RENAME,
   OP_CHMOD,
+  OP_CREATE,
 } op_t;
 
 struct operation {
@@ -163,6 +170,7 @@ struct operation {
     struct op_utime utime;
     struct op_rename rename;
     struct op_chmod chmod;
+    struct op_create create;
   } u;
 };
 

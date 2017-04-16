@@ -273,6 +273,19 @@ opfuse_destroy(void *arg)
   execute(&op);
 }
 
+static int
+opfuse_create(const char *path, mode_t mode, struct fuse_file_info *info)
+{
+  struct operation op;
+
+  op.op_type = OP_CREATE;
+  op.u.create.pn = path;
+  op.u.create.mode = mode;
+  op.u.create.info = info;
+  execute(&op);
+  return op.err;
+}
+
 static struct fuse_operations opfuse_oper = {
   .getattr      = opfuse_getattr,
   .mknod        = opfuse_mknod,
@@ -294,6 +307,7 @@ static struct fuse_operations opfuse_oper = {
   .fsyncdir     = opfuse_fsyncdir,
   .utime        = opfuse_utime,
   .destroy      = opfuse_destroy,
+  .create       = opfuse_create,
 };
 
 void

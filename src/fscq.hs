@@ -118,6 +118,7 @@ fscqFSOps :: String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOpera
 fscqFSOps fn ds fr m_fsxp = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fr m_fsxp
   , fuseOpen = fscqOpen fr m_fsxp
+  , fuseCreateFile = fscqCreateFile fr m_fsxp
   , fuseCreateDevice = fscqCreate fr m_fsxp
   , fuseCreateDirectory = fscqCreateDir fr m_fsxp
   , fuseRemoveLink = fscqUnlink fr m_fsxp
@@ -339,6 +340,26 @@ fscqOpen _ _ _ _ _ = return $ Left eIO
 splitDirsFile :: String -> ([String], String)
 splitDirsFile path = (init parts, last parts)
   where parts = splitDirectories path
+
+fscqCreateFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileMode -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqCreateFile fr m_fsxp (_:path) _ _ _
+  | path == "stats" = return $ Left eEXIST
+  | otherwise = withMVar m_fsxp $ \fsxp -> do
+  debugStart "CREATEFILE" path
+  (dirparts, filename) <- return $ splitDirsFile path
+  (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  debugMore rd
+  case rd of
+    Errno.Err e -> return $ Left $ errnoToPosix e
+    Errno.OK (dnum, isdir)
+      | isdir -> do
+        (r, ()) <- fr $ AsyncFS._AFS__create fsxp dnum filename
+        debugMore r
+        case r of
+          Errno.Err e -> return $ Left $ errnoToPosix e
+          Errno.OK inum -> return $ Right inum
+      | otherwise -> return $ Left eNOTDIR
+fscqCreateFile _ _ _ _ _ _ = return $ Left eOPNOTSUPP
 
 fscqCreate :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
