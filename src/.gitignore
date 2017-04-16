@@ -36,3 +36,4 @@ Makefile.coqproof
 *.cmx
 *.cmxa
 *.prof
+/hslib/libopfuse.a
