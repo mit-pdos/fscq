@@ -106,7 +106,7 @@ hscgen/%.hs: hslib/%.hsc
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -o $@
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -lopfuse -Lhslib -o $@
 
 $(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )
@@ -151,6 +151,9 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 
 hslib/%.o: hslib/%.c
 	$(CC) $^ -c -o $@ -O2 -Wall -Werror -D_FILE_OFFSET_BITS=64
+
+hslib/libopfuse.a: hslib/opqueue.o hslib/opfuse.o
+	ar rcs $@ $^
 
 clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \

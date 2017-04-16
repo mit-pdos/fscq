@@ -24,12 +24,12 @@ struct op_unlink {
   const char *pn;
 };
 
-enum {
-  OP_GETATTR,
-  OP_MKNOD,
-  OP_MKDIR,
-  OP_UNLINK,
-};
+typedef enum {
+  OP_GETATTR = 1,
+  OP_MKNOD = 2,
+  OP_MKDIR = 3,
+  OP_UNLINK = 4,
+} op_t;
 
 struct operation {
   pthread_mutex_t m;
