@@ -149,12 +149,15 @@ coqbuild/Makefile.coq: Makefile $(VS_BUILD)
 gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
+hslib/%.o: hslib/%.c
+	$(CC) $^ -c -o $@ -O2 -Wall -Werror -D_FILE_OFFSET_BITS=64
+
 clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \
 	       fscq mkfs *.o *.hi ocamlfuse/*.d ocamlfuse/*.di \
 	       ocamlfuse/*.cmi ocamlfuse/*.cmx ocamlfuse/*.cmo \
 	       ocamlfuse/*.o ocamlfuse/Fuse_bindings_stubs.c \
 	       ocamlfuse/Fuse_bindings.h ocamlfuse/Fuse_bindings.ml \
-	       ocamlfuse/libFuse_stubs.a
+	       ocamlfuse/libFuse_stubs.a hslib/*.o
 
 .PRECIOUS: hscgen/%.hs %_stubs.c
