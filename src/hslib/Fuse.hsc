@@ -57,6 +57,7 @@ module Fuse
 import Prelude hiding ( Read )
 
 import Control.Monad
+import Control.Concurrent (forkIO)
 import Control.Exception as E(Exception, handle, finally, SomeException)
 import qualified Data.ByteString.Char8    as B
 import qualified Data.ByteString.Internal as B
@@ -93,6 +94,7 @@ import System.IO.Error (catchIOError,ioeGetErrorString)
 #include <dirent.h>
 #include <fuse.h>
 #include <fcntl.h>
+#include "opqueue.h"
 
 {- $intro
 'FuseOperations' contains a field for each filesystem operations that can be called
@@ -454,7 +456,8 @@ withFuseArgs prog args f =
                                (fuse_opt_free_args fuseArgs))))
 
 withStructFuse :: forall e fh b. Exception e => Ptr CFuseChan -> Ptr CFuseArgs -> FuseOperations fh -> (e -> IO Errno) -> (Ptr CStructFuse -> IO b) -> IO b
-withStructFuse pFuseChan pArgs ops handler f =
+withStructFuse pFuseChan pArgs ops handler f = do
+    startHandlingOps ops
     allocaBytes (#size struct fuse_operations) $ \ pOps -> do
       bzero pOps (#size struct fuse_operations)
       mkGetAttr    wrapGetAttr    >>= (#poke struct fuse_operations, getattr)    pOps
@@ -502,12 +505,10 @@ withStructFuse pFuseChan pArgs ops handler f =
           fuseHandler e = handler e >>= return . negate . unErrno
           wrapGetAttr :: CGetAttr
           wrapGetAttr pFilePath pStat = handle fuseHandler $
-              do filePath <- peekCString pFilePath
-                 eitherFileStat <- (fuseGetFileStat ops) filePath
-                 case eitherFileStat of
-                   Left (Errno errno) -> return (- errno)
-                   Right stat         -> do fileStatToCStat stat pStat
-                                            return okErrno
+              allocaBytes (#size operation) (\pOp ->
+                do (#poke operation, path) pOp pFilePath
+                   (#poke operation, attr) pOp pStat
+                   execute pOp)
 
           wrapReadLink :: CReadLink
           wrapReadLink pFilePath pBuf bufSize = handle fuseHandler $
@@ -720,6 +721,35 @@ withStructFuse pFuseChan pArgs ops handler f =
           wrapDestroy :: CDestroy
           wrapDestroy _ = handle (\e -> defaultExceptionHandler e >> return ()) $
               do fuseDestroy ops
+
+data Operation
+foreign import ccall safe "opqueue.h initialize"
+  initialize :: IO ()
+
+foreign import ccall safe "opqueue.h get_op"
+  get_op :: IO (Ptr Operation)
+
+foreign import ccall safe "opqueue.h send_result"
+  send_result :: Ptr Operation -> CInt -> IO ()
+
+foreign import ccall safe "opqueue.h execute"
+  execute :: Ptr Operation -> IO CInt
+
+startHandlingOps :: FuseOperations fh -> IO ()
+startHandlingOps ops = do
+  initialize
+  -- TODO: fork many of these worker threads
+  _ <- forkIO $ forever $ do
+        pOp <- get_op
+        pFilePath <- (#peek operation, path) pOp
+        filePath <- peekCString pFilePath
+        eitherFileStat <- (fuseGetFileStat ops) filePath
+        case eitherFileStat of
+          Left (Errno errno) -> send_result pOp (-errno)
+          Right stat         -> do pRet <- (#peek operation, attr) pOp
+                                   fileStatToCStat stat pRet
+                                   send_result pOp okErrno
+  return ()
 
 -- | Default exception handler.
 -- Print the exception on error output and returns 'eFAULT'.
