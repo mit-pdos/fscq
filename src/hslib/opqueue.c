@@ -3,36 +3,38 @@
 #include <stdio.h>
 #include <errno.h>
 
-#define QUEUE_MAX_SIZE 100
+#define QUEUE_MAX_SIZE 256
 
-typedef struct {
-  operation **ops;
-  int length;
+static struct {
+  operation *ops[QUEUE_MAX_SIZE];
+  int puts;
+  int gets;
   pthread_mutex_t m;
-} queue;
-
-queue q = {NULL, 0, PTHREAD_MUTEX_INITIALIZER};
-
-void initialize() {
-  q.ops = calloc(sizeof(operation*), QUEUE_MAX_SIZE);
-}
+  pthread_cond_t wait_empty;
+  pthread_cond_t wait_full;
+} q;
 
 operation* get_op() {
+  pthread_mutex_lock(&q.m);
   while (1) {
-    pthread_mutex_lock(&q.m);
-    if (q.length > 0) {
-      operation *op = q.ops[q.length-1];
-      q.length--;
+    if (q.puts > q.gets) {
+      operation *op = q.ops[q.gets % QUEUE_MAX_SIZE];
+      q.gets++;
+      pthread_cond_signal(&q.wait_full);
       pthread_mutex_unlock(&q.m);
       return op;
+    } else {
+      pthread_cond_wait(&q.wait_empty, &q.m);
     }
-    pthread_mutex_unlock(&q.m);
   }
 }
 
 void send_result(operation *op, int err) {
+  pthread_mutex_lock(&op->m);
   op->err = err;
+  op->done = 1;
   pthread_cond_signal(&op->cond);
+  pthread_mutex_unlock(&op->m);
   return;
 }
 
@@ -41,18 +43,19 @@ int execute(operation *op) {
   pthread_mutex_init(&op->m, NULL);
 
   pthread_mutex_lock(&q.m);
-  if (q.length >= QUEUE_MAX_SIZE) {
-    // we should avoid this happening
-    fprintf(stderr, "too many pending operations\n");
-    return EAGAIN;
-  } else {
-    q.ops[q.length] = op;
-    q.length++;
+  while (q.puts - q.gets >= QUEUE_MAX_SIZE) {
+    pthread_cond_wait(&q.wait_full, &q.m);
   }
+
+  q.ops[q.puts % QUEUE_MAX_SIZE] = op;
+  q.puts++;
+  pthread_cond_signal(&q.wait_empty);
   pthread_mutex_unlock(&q.m);
 
   pthread_mutex_lock(&op->m);
-  pthread_cond_wait(&op->cond, &op->m);
+  while (!op->done) {
+    pthread_cond_wait(&op->cond, &op->m);
+  }
   pthread_mutex_unlock(&op->m);
   return op->err;
 }
