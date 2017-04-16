@@ -19,12 +19,10 @@
 #include <dirent.h>
 #include <errno.h>
 #include <sys/time.h>
-#ifdef HAVE_SETXATTR
-#include <sys/xattr.h>
-#endif
 #include "opqueue.h"
 
-static int opfuse_getattr(const char *path, struct stat *stbuf)
+static int
+opfuse_getattr(const char *path, struct stat *stbuf)
 {
   struct operation op;
 
@@ -63,7 +61,8 @@ static int opfuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 #endif
 
-static int opfuse_mknod(const char *path, mode_t mode, dev_t rdev)
+static int
+opfuse_mknod(const char *path, mode_t mode, dev_t rdev)
 {
   struct operation op;
 
@@ -75,7 +74,8 @@ static int opfuse_mknod(const char *path, mode_t mode, dev_t rdev)
   return op.err;
 }
 
-static int opfuse_mkdir(const char *path, mode_t mode)
+static int
+opfuse_mkdir(const char *path, mode_t mode)
 {
   struct operation op;
 
@@ -86,7 +86,8 @@ static int opfuse_mkdir(const char *path, mode_t mode)
   return op.err;
 }
 
-static int opfuse_unlink(const char *path)
+static int
+opfuse_unlink(const char *path)
 {
   struct operation op;
 
@@ -96,45 +97,47 @@ static int opfuse_unlink(const char *path)
   return op.err;
 }
 
+static int
+opfuse_rmdir(const char *path)
+{
+  struct operation op;
+
+  op.op_type = OP_RMDIR;
+  op.u.rmdir.pn = path;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_open(const char *path, struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_OPEN;
+  op.u.open.pn = path;
+  op.u.open.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_release(const char *path, struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_RELEASE;
+  op.u.release.pn = path;
+  op.u.release.info = fi;
+  execute(&op);
+  return op.err;
+}
+
 #if 0
-static int opfuse_rmdir(const char *path)
-{
-	int res;
-
-	res = rmdir(path);
-	if (res == -1)
-		return -errno;
-
-	return 0;
-}
-
-static int opfuse_symlink(const char *from, const char *to)
-{
-	int res;
-
-	res = symlink(from, to);
-	if (res == -1)
-		return -errno;
-
-	return 0;
-}
-
 static int opfuse_rename(const char *from, const char *to)
 {
 	int res;
 
 	res = rename(from, to);
-	if (res == -1)
-		return -errno;
-
-	return 0;
-}
-
-static int opfuse_link(const char *from, const char *to)
-{
-	int res;
-
-	res = link(from, to);
 	if (res == -1)
 		return -errno;
 
@@ -171,18 +174,6 @@ static int opfuse_truncate(const char *path, off_t size)
 	if (res == -1)
 		return -errno;
 
-	return 0;
-}
-
-static int opfuse_open(const char *path, struct fuse_file_info *fi)
-{
-	int res;
-
-	res = open(path, fi->flags);
-	if (res == -1)
-		return -errno;
-
-	close(res);
 	return 0;
 }
 
@@ -235,16 +226,6 @@ static int opfuse_statfs(const char *path, struct statvfs *stbuf)
 	return 0;
 }
 
-static int opfuse_release(const char *path, struct fuse_file_info *fi)
-{
-	/* Just a stub.	 This method is optional and can safely be left
-	   unimplemented */
-
-	(void) path;
-	(void) fi;
-	return 0;
-}
-
 static int opfuse_fsync(const char *path, int isdatasync,
 		     struct fuse_file_info *fi)
 {
@@ -260,20 +241,20 @@ static int opfuse_fsync(const char *path, int isdatasync,
 
 static struct fuse_operations opfuse_oper = {
 	.getattr	= opfuse_getattr,
-	// .readdir	= opfuse_readdir,
 	.mknod		= opfuse_mknod,
 	.mkdir		= opfuse_mkdir,
 	.unlink		= opfuse_unlink,
-	// .rmdir		= opfuse_rmdir,
+	.rmdir		= opfuse_rmdir,
+	.open		= opfuse_open,
+	.release	= opfuse_release,
+	// .readdir	= opfuse_readdir,
 	// .rename		= opfuse_rename,
 	// .chmod		= opfuse_chmod,
 	// .chown		= opfuse_chown,
 	// .truncate	= opfuse_truncate,
-	// .open		= opfuse_open,
 	// .read		= opfuse_read,
 	// .write		= opfuse_write,
 	// .statfs		= opfuse_statfs,
-	// .release	= opfuse_release,
 	// .fsync		= opfuse_fsync,
 };
 

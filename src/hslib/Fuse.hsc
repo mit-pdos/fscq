@@ -756,6 +756,8 @@ startHandlingOps ops handler = do
           fuseHandler e = handler e >>= return . negate . unErrno
 
           handleOpcode :: CInt -> Ptr Operation -> IO CInt
+
+          -- OP_GETATTR
           handleOpcode 1 pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.getattr.pn) pOp
             pStat <- (#peek struct operation, u.getattr.st) pOp
@@ -765,6 +767,75 @@ startHandlingOps ops handler = do
               Left (Errno errno) -> return (- errno)
               Right stat         -> do fileStatToCStat stat pStat
                                        return okErrno
+
+          -- OP_MKNOD
+          handleOpcode 2 pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.mknod.pn) pOp
+            filePath <- peekCString pFilePath
+            mode <- (#peek struct operation, u.mknod.mode) pOp
+            rdev <- (#peek struct operation, u.mknod.rdev) pOp
+            (Errno errno) <- (fuseCreateDevice ops) filePath (fileModeToEntryType mode) mode rdev
+            return (- errno)
+
+          -- OP_MKDIR
+          handleOpcode 3 pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.mkdir.pn) pOp
+            filePath <- peekCString pFilePath
+            mode <- (#peek struct operation, u.mkdir.mode) pOp
+            (Errno errno) <- (fuseCreateDirectory ops) filePath mode
+            return (- errno)
+
+          -- OP_UNLINK
+          handleOpcode 4 pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.unlink.pn) pOp
+            filePath <- peekCString pFilePath
+            (Errno errno) <- (fuseRemoveLink ops) filePath
+            return (- errno)
+
+          -- OP_OPEN
+          handleOpcode 5 pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.open.pn) pOp
+            pFuseFileInfo <- (#peek struct operation, u.open.info) pOp
+            filePath <- peekCString pFilePath
+            (flags :: CInt) <- (#peek struct fuse_file_info, flags) pFuseFileInfo
+            let append    = (#const O_APPEND)   .&. flags == (#const O_APPEND)
+                noctty    = (#const O_NOCTTY)   .&. flags == (#const O_NOCTTY)
+                nonBlock  = (#const O_NONBLOCK) .&. flags == (#const O_NONBLOCK)
+                how | (#const O_RDWR) .&. flags == (#const O_RDWR) = ReadWrite
+                    | (#const O_WRONLY) .&. flags == (#const O_WRONLY) = WriteOnly
+                    | otherwise = ReadOnly
+                openFileFlags = OpenFileFlags { append = append
+                                              , exclusive = False
+                                              , noctty = noctty
+                                              , nonBlock = nonBlock
+                                              , trunc = False
+                                              }
+            result <- (fuseOpen ops) filePath how openFileFlags
+            case result of
+               Left (Errno errno) -> return (- errno)
+               Right cval         -> do
+                   sptr <- newStablePtr cval
+                   (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
+                   return okErrno
+
+          -- OP_RELEASE
+          handleOpcode 6 pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.open.pn) pOp
+            pFuseFileInfo <- (#peek struct operation, u.open.info) pOp
+            filePath <- peekCString pFilePath
+            cVal     <- getFH pFuseFileInfo
+            -- TODO: deal with these flags?
+            -- flags <- (#peek struct fuse_file_info, flags) pFuseFileInfo
+            delFH pFuseFileInfo
+            (fuseRelease ops) filePath cVal
+            return 0
+
+          -- OP_RMDIR
+          handleOpcode 7 pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.unlink.pn) pOp
+            filePath <- peekCString pFilePath
+            (Errno errno) <- (fuseRemoveDirectory ops) filePath
+            return (- errno)
 
           handleOpcode opcode pOp =
             error $ "Undefined opcode handler for " ++ (show opcode)
