@@ -2,20 +2,55 @@
 #define OPQUEUE_H
 #include <sys/stat.h>
 #include <pthread.h>
+#include <inttypes.h>
 
-typedef struct {
-  char *path;
-  struct stat *attr;
+struct op_getattr {
+  const char *pn;
+  struct stat *st;
+};
+
+struct op_mknod {
+  const char *pn;
+  mode_t mode;
+  dev_t rdev;
+};
+
+struct op_mkdir {
+  const char *pn;
+  mode_t mode;
+};
+
+struct op_unlink {
+  const char *pn;
+};
+
+enum {
+  OP_GETATTR,
+  OP_MKNOD,
+  OP_MKDIR,
+  OP_UNLINK,
+};
+
+struct operation {
   pthread_mutex_t m;
   pthread_cond_t cond;
-  int err;
+  int64_t err;
   int done;
-} operation;
 
-operation* get_op();
+  int op_type;
 
-void send_result(operation *op, int err);
+  union {
+    struct op_getattr getattr;
+    struct op_mknod mknod;
+    struct op_mkdir mkdir;
+    struct op_unlink unlink;
+  } u;
+};
 
-int execute(operation *op);
+struct operation* get_op();
+
+void send_result(struct operation *op, int err);
+
+int execute(struct operation *op);
 
 #endif

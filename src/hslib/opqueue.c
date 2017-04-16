@@ -6,7 +6,7 @@
 #define QUEUE_MAX_SIZE 256
 
 static struct {
-  operation *ops[QUEUE_MAX_SIZE];
+  struct operation *ops[QUEUE_MAX_SIZE];
   int puts;
   int gets;
   pthread_mutex_t m;
@@ -14,11 +14,11 @@ static struct {
   pthread_cond_t wait_full;
 } q;
 
-operation* get_op() {
+struct operation* get_op() {
   pthread_mutex_lock(&q.m);
   while (1) {
     if (q.puts > q.gets) {
-      operation *op = q.ops[q.gets % QUEUE_MAX_SIZE];
+      struct operation *op = q.ops[q.gets % QUEUE_MAX_SIZE];
       q.gets++;
       pthread_cond_signal(&q.wait_full);
       pthread_mutex_unlock(&q.m);
@@ -29,7 +29,7 @@ operation* get_op() {
   }
 }
 
-void send_result(operation *op, int err) {
+void send_result(struct operation *op, int err) {
   pthread_mutex_lock(&op->m);
   op->err = err;
   op->done = 1;
@@ -38,9 +38,10 @@ void send_result(operation *op, int err) {
   return;
 }
 
-int execute(operation *op) {
+int execute(struct operation *op) {
   pthread_cond_init(&op->cond, NULL);
   pthread_mutex_init(&op->m, NULL);
+  op->done = 0;
 
   pthread_mutex_lock(&q.m);
   while (q.puts - q.gets >= QUEUE_MAX_SIZE) {
