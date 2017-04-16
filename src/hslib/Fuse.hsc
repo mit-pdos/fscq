@@ -377,7 +377,7 @@ data FuseOperations fh = FuseOperations
         fuseRelease :: FilePath -> fh -> IO (),
 
         -- | Implements @fsync(2)@.
-        fuseSynchronizeFile :: FilePath -> SyncType -> IO Errno,
+        fuseSynchronizeFile :: FilePath -> fh -> SyncType -> IO Errno,
 
         -- | Implements @opendir(3)@.  This method should check if the open
         --   operation is permitted for this directory.
@@ -393,7 +393,7 @@ data FuseOperations fh = FuseOperations
 
         -- | Synchronize the directory's contents; analogous to
         --   'fuseSynchronizeFile'.
-        fuseSynchronizeDirectory :: FilePath -> SyncType -> IO Errno,
+        fuseSynchronizeDirectory :: FilePath -> fh -> SyncType -> IO Errno,
 
         -- | Check file access permissions; this will be called for the
         --   access() system call.  If the @default_permissions@ mount option
@@ -431,11 +431,11 @@ defaultFuseOps =
                    , fuseGetFileSystemStats = \_ -> return (Left eNOSYS)
                    , fuseFlush = \_ _ -> return eOK
                    , fuseRelease = \_ _ -> return ()
-                   , fuseSynchronizeFile = \_ _ -> return eNOSYS
+                   , fuseSynchronizeFile = \_ _ _ -> return eNOSYS
                    , fuseOpenDirectory = \_ -> return eNOSYS
                    , fuseReadDirectory = \_ -> return (Left eNOSYS)
                    , fuseReleaseDirectory = \_ -> return eNOSYS
-                   , fuseSynchronizeDirectory = \_ _ -> return eNOSYS
+                   , fuseSynchronizeDirectory = \_ _ _ -> return eNOSYS
                    , fuseAccess = \_ _ -> return eNOSYS
                    , fuseInit = return ()
                    , fuseDestroy = return ()
@@ -670,8 +670,9 @@ withStructFuse pFuseChan pArgs ops handler f =
           wrapFSync :: CFSync
           wrapFSync pFilePath isFullSync pFuseFileInfo = handle fuseHandler $
               do filePath <- peekCString pFilePath
+                 cVal <- getFH pFuseFileInfo
                  (Errno errno) <- (fuseSynchronizeFile ops)
-                                      filePath (toEnum isFullSync)
+                                      filePath cVal (toEnum isFullSync)
                  return (- errno)
           wrapOpenDir :: COpenDir
           wrapOpenDir pFilePath pFuseFileInfo = handle fuseHandler $
@@ -707,8 +708,9 @@ withStructFuse pFuseChan pArgs ops handler f =
           wrapFSyncDir :: CFSyncDir
           wrapFSyncDir pFilePath isFullSync pFuseFileInfo = handle fuseHandler $
               do filePath <- peekCString pFilePath
+                 cVal <- getFH pFuseFileInfo
                  (Errno errno) <- (fuseSynchronizeDirectory ops)
-                                      filePath (toEnum isFullSync)
+                                      filePath cVal (toEnum isFullSync)
                  return (- errno)
           wrapAccess :: CAccess
           wrapAccess pFilePath at = handle fuseHandler $
@@ -838,17 +840,19 @@ startHandlingOps ops handler = do
           handleOpcode (#const OP_FSYNC) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.fsync.pn) pOp
             isDataSync <- (#peek struct operation, u.fsync.isdatasync) pOp
-            -- pFuseFileInfo <- (#peek struct operation, u.fsync.info) pOp
+            pFuseFileInfo <- (#peek struct operation, u.fsync.info) pOp
             filePath <- peekCString pFilePath
-            (Errno errno) <- (fuseSynchronizeFile ops) filePath (toEnum isDataSync)
+            cVal <- getFH pFuseFileInfo
+            (Errno errno) <- (fuseSynchronizeFile ops) filePath cVal (toEnum isDataSync)
             return (- errno)
 
           handleOpcode (#const OP_FSYNCDIR) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.fsyncdir.pn) pOp
             isDataSync <- (#peek struct operation, u.fsyncdir.isdatasync) pOp
-            -- pFuseFileInfo <- (#peek struct operation, u.fsyncdir.info) pOp
+            pFuseFileInfo <- (#peek struct operation, u.fsyncdir.info) pOp
             filePath <- peekCString pFilePath
-            (Errno errno) <- (fuseSynchronizeDirectory ops) filePath (toEnum isDataSync)
+            cVal <- getFH pFuseFileInfo
+            (Errno errno) <- (fuseSynchronizeDirectory ops) filePath cVal (toEnum isDataSync)
             return (- errno)
 
           handleOpcode (#const OP_WRITE) pOp = handle fuseHandler $ do
