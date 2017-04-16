@@ -456,8 +456,7 @@ withFuseArgs prog args f =
                                (fuse_opt_free_args fuseArgs))))
 
 withStructFuse :: forall e fh b. Exception e => Ptr CFuseChan -> Ptr CFuseArgs -> FuseOperations fh -> (e -> IO Errno) -> (Ptr CStructFuse -> IO b) -> IO b
-withStructFuse pFuseChan pArgs ops handler f = do
-    startHandlingOps ops handler
+withStructFuse pFuseChan pArgs ops handler f =
     allocaBytes (#size struct fuse_operations) $ \ pOps -> do
       bzero pOps (#size struct fuse_operations)
       mkGetAttr    wrapGetAttr    >>= (#poke struct fuse_operations, getattr)    pOps
@@ -503,7 +502,6 @@ withStructFuse pFuseChan pArgs ops handler f = do
                        (fuse_destroy structFuse)
     where fuseHandler :: e -> IO CInt
           fuseHandler e = handler e >>= return . negate . unErrno
-
           wrapGetAttr :: CGetAttr
           wrapGetAttr pFilePath pStat = handle fuseHandler $
               do filePath <- peekCString pFilePath
@@ -909,10 +907,36 @@ withSignalHandlers exitHandler f =
                      Signals.installHandler Signals.openEndedPipe Signals.Default Nothing)
 
 -- Mounts the filesystem, forks, and then starts fuse
-fuseMainReal foreground ops handler pArgs mountPt =
+fuseMainRealDowncalls foreground ops handler pArgs mountPt =
     withCString mountPt (\cMountPt -> do
       startHandlingOps ops handler
       opfuse_run cMountPt pArgs)
+
+fuseMainRealUpcalls foreground ops handler pArgs mountPt =
+    withCString mountPt (\cMountPt ->
+      do pFuseChan <- fuse_mount cMountPt pArgs
+         if pFuseChan == nullPtr
+           then exitFailure -- fuse will print an error message why this happened
+           else (withStructFuse pFuseChan pArgs ops handler (\pFuse ->
+                  E.finally 
+                     (if foreground -- finally ready to fork
+                       then changeWorkingDirectory "/" >> (procMain pFuse)
+                       else daemon (procMain pFuse))
+                     (fuse_unmount cMountPt pFuseChan))))
+
+    -- here, we're finally inside the daemon process, we can run the main loop
+    where procMain pFuse = do session <- fuse_get_session pFuse
+                              -- calling fuse_session_exit to exit the main loop only
+                              -- appears to work with the multithreaded fuse loop.
+                              -- In the single-threaded case, FUSE depends on their
+                              -- recv() call to finish with EINTR when signals arrive.
+                              -- This doesn't happen with GHC's signal handling in place.
+                              withSignalHandlers (fuse_session_exit session) $
+                                 do retVal <- fuse_loop_mt pFuse
+                                    if retVal == 1 
+                                      then exitWith ExitSuccess
+                                      else exitFailure
+                                    return ()
 
 -- | Main function of FUSE.
 -- This is all that has to be called from the @main@ function. On top of
@@ -937,25 +961,33 @@ fuseMainReal foreground ops handler pArgs mountPt =
 --   * registers the operations ;
 --
 --   * calls FUSE event loop.
-fuseMain :: Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
-fuseMain ops handler = do
+fuseMain :: Exception e => FuseOperations fh -> (e -> IO Errno) -> Bool -> IO ()
+fuseMain ops handler use_downcalls = do
     -- this used to be implemented using libfuse's fuse_main. Doing this will fork()
     -- from C behind the GHC runtime's back, which deadlocks in GHC 6.8.
     -- Instead, we reimplement fuse_main in Haskell using the forkProcess and the
     -- lower-level fuse_new/fuse_loop_mt API.
     prog <- getProgName
     args <- getArgs
-    fuseRun prog args ops handler
+    fuseRun prog args ops handler use_downcalls
 
-fuseRun :: String -> [String] -> Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
-fuseRun prog args ops handler =
+fuseRun :: String -> [String] -> Exception e => FuseOperations fh -> (e -> IO Errno) -> Bool -> IO ()
+fuseRun prog args ops handler use_downcalls =
     catch
        (withFuseArgs prog args (\pArgs ->
          do cmd <- fuseParseCommandLine pArgs
             case cmd of
               Nothing -> fail ""
               Just (Nothing, _, _) -> fail "Usage error: mount point required"
-              Just (Just mountPt, _, foreground) -> fuseMainReal foreground ops handler pArgs mountPt))
+              Just (Just mountPt, multiThreaded, foreground) ->
+                if multiThreaded
+                   then
+                     if use_downcalls
+                       then
+                         fuseMainRealDowncalls foreground ops handler pArgs mountPt
+                       else
+                         fuseMainRealUpcalls foreground ops handler pArgs mountPt
+                else fail "Single threaded execution is not supported"))
        ((\errStr -> when (not $ null errStr) (putStrLn errStr) >> exitFailure) . ioeGetErrorString)
 
 -----------------------------------------------------------------------------
@@ -987,6 +1019,11 @@ catch = catchIOError
 data CFuseArgs -- struct fuse_args
 
 data CFuseChan -- struct fuse_chan
+foreign import ccall safe "fuse.h fuse_mount"
+    fuse_mount :: CString -> Ptr CFuseArgs -> IO (Ptr CFuseChan)
+
+foreign import ccall safe "fuse.h fuse_unmount"
+    fuse_unmount :: CString -> Ptr CFuseChan -> IO ()
 
 data CFuseSession -- struct fuse_session
 foreign import ccall safe "fuse.h fuse_get_session"
@@ -1014,6 +1051,9 @@ foreign import ccall safe "fuse.h fuse_destroy"
 
 foreign import ccall safe "fuse.h fuse_opt_free_args"
     fuse_opt_free_args :: Ptr CFuseArgs -> IO ()
+
+foreign import ccall safe "fuse.h fuse_loop_mt"
+    fuse_loop_mt :: Ptr CStructFuse -> IO Int
 
 data CFuseContext
 foreign import ccall safe "fuse.h fuse_get_context"
