@@ -163,14 +163,17 @@ func (fs FileSystem) Launch(opts Options) {
 			args = append(args, "--")
 		}
 		args = append(args, "-o", opts.optString())
+		args = append(args, "-f")
 	}
-	cmd := opts.ServerCpu.Command(fs.binary, args...)
-	cmd.Stderr = os.Stderr
-	cmd.Run()
+	go func() {
+		cmd := opts.ServerCpu.Command(fs.binary, args...)
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+		if _, err := os.Stat(fs.filenames[0]); os.IsNotExist(err) {
+			log.Fatal(fmt.Errorf("failed to launch %s %s", fs.binary, strings.Join(args, " ")))
+		}
+	}()
 	time.Sleep(10 * time.Millisecond)
-	if _, err := os.Stat(fs.filenames[0]); os.IsNotExist(err) {
-		log.Fatal(fmt.Errorf("failed to launch %s %s", fs.binary, strings.Join(args, " ")))
-	}
 }
 
 func (fs FileSystem) Stop() {
