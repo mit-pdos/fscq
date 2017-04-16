@@ -9,6 +9,7 @@ typedef struct {
   pthread_mutex_t m;
   pthread_cond_t cond;
   int err;
+  int done;
 } operation;
 
 operation* get_op();
