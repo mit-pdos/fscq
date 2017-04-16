@@ -57,7 +57,7 @@ module Fuse
 import Prelude hiding ( Read )
 
 import Control.Monad
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, getNumCapabilities)
 import Control.Exception as E(Exception, handle, finally, SomeException)
 import qualified Data.ByteString.Char8    as B
 import qualified Data.ByteString.Internal as B
@@ -737,8 +737,8 @@ foreign import ccall safe "opfuse.h opfuse_run"
 
 startHandlingOps :: forall e fh. Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
 startHandlingOps ops handler = do
-    -- TODO: fork many of these worker threads
-    _ <- forkIO $ forever $ do
+    n <- getNumCapabilities
+    replicateM_ n . forkIO . forever $ do
           pOp <- get_op
           opcode <- (#peek struct operation, op_type) pOp
           res <- handleOpcode opcode pOp
@@ -751,7 +751,6 @@ startHandlingOps ops handler = do
           --   Right stat         -> do pRet <- (#peek operation, attr) pOp
           --                            fileStatToCStat stat pRet
           --                            send_result pOp okErrno
-    return ()
     where fuseHandler :: e -> IO CInt
           fuseHandler e = handler e >>= return . negate . unErrno
 
