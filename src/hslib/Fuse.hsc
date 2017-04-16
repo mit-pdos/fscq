@@ -732,6 +732,9 @@ foreign import ccall safe "opqueue.h get_op"
 foreign import ccall safe "opqueue.h send_result"
   send_result :: Ptr Operation -> CInt -> IO ()
 
+foreign import ccall safe "opqueue.h send_result_and_get_op"
+  send_result_and_get_op :: Ptr Operation -> CInt -> IO (Ptr Operation)
+
 foreign import ccall safe "opfuse.h opfuse_run"
   opfuse_run :: CString -> Ptr CFuseArgs -> IO ()
 
