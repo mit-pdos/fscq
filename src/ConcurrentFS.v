@@ -978,28 +978,29 @@ Section ConcurrentFS.
 
   Theorem file_truncate_ok : forall tid inum sz,
       cprog_spec G tid
-                 (fun '(tree, homedirs, pathname, f) sigma =>
+                 (fun '(tree, homedirs, homedir, pathname, f) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          homedir_disjoint homedirs tid /\
-                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f);
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree pathname homedir = Some (TreeFile inum f);
                        postcondition :=
                          fun sigma' r =>
-                           exists tree' tree'',
-                             fs_inv(P, sigma', tree'', homedirs) /\
-                             homedir_rely tid homedirs tree tree' /\
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done (r, _) =>
                                match r with
                                | OK _ =>
                                  let f' := mk_dirfile (ListUtils.setlen (DFData f) sz (Word.natToWord _ 0, nil)) (DFAttr f) in
-                                 tree'' = update_subtree (homedirs tid ++ pathname) (TreeFile inum f') tree'
-                               | Err _ => tree'' = tree'
+                                 let homedir' := update_subtree pathname (TreeFile inum f') homedir in
+                                 find_subtree (homedirs tid) tree' = Some homedir'
+                               | Err _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
                              | TryAgain => False
-                             | SyscallFailed => tree'' = tree'
+                             | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (file_truncate inum sz).
   Proof.
@@ -1015,20 +1016,21 @@ Section ConcurrentFS.
 
     unfold same_fs_update; intros.
     destruct_goal_matches.
-    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
     unfold dirtree_alter_file.
     erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
     erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
 
     eapply is_allowed_fs_update; intros.
     destruct_goal_matches.
-    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
     unfold dirtree_alter_file.
     eapply homedir_guarantee_alter; eauto.
 
     step; finish.
-    destruct r; intuition eauto.
-    destruct_goal_matches; subst; eauto.
+    destruct r; intuition (subst; eauto).
+    destruct_goal_matches.
+    erewrite find_subtree_update_subtree_child; eauto.
   Qed.
 
   Definition lookup names :=
