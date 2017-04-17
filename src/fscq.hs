@@ -329,7 +329,7 @@ fscqOpen fr m_fsxp (_:path) _ flags
       | isdir -> return $ Left eISDIR
       | otherwise -> do
         if trunc flags then do
-          (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum 0
+          (ok, ()) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W64 0)
           case ok of
             Errno.OK _ -> return $ Right inum
             Errno.Err e -> return $ Left $ errnoToPosix e
