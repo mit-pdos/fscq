@@ -106,14 +106,14 @@ int writefile()
       printf("%s: write %s failed %s\n", prog, name, strerror(errno));
       exit(1);
     }
-    if ((i * WSIZE) % (10 * 1024 * 1024) == 0) {
+    if (((i + 1) * WSIZE) % (10 * 1024 * 1024) == 0) {
       if (fsync(fd) < 0) {
 	  printf("%s: fsync %s failed %s\n", prog, name, strerror(errno));
 	  exit(1);
 	}
     }
   }
-  if (fsync(fd) < 0) {
+  if ((i * WSIZE) % (10 * 1024 * 1024) != 0 && fsync(fd) < 0) {
     printf("%s: fsync %s failed %s\n", prog, name, strerror(errno));
     exit(1);
   }
