@@ -169,11 +169,16 @@ func (fs FileSystem) Launch(opts Options) {
 		cmd := opts.ServerCpu.Command(fs.binary, args...)
 		cmd.Stderr = os.Stderr
 		cmd.Run()
-		if _, err := os.Stat(fs.filenames[0]); os.IsNotExist(err) {
-			log.Fatal(fmt.Errorf("failed to launch %s %s", fs.binary, strings.Join(args, " ")))
-		}
 	}()
-	time.Sleep(10 * time.Millisecond)
+	for i := 0; i < 100; i++ {
+		time.Sleep(10 * time.Millisecond)
+		if _, err := os.Stat(fs.filenames[0]); err == nil {
+			break
+		}
+	}
+	if _, err := os.Stat(fs.filenames[0]); os.IsNotExist(err) {
+		log.Fatal(fmt.Errorf("failed to launch %s %s", fs.binary, strings.Join(args, " ")))
+	}
 }
 
 func (fs FileSystem) Stop() {
