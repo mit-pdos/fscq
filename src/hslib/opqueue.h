@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <inttypes.h>
+#include <fuse.h>
 
 struct op_getattr {
   const char *pn;
