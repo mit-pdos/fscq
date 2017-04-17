@@ -725,37 +725,29 @@ withStructFuse pFuseChan pArgs ops handler f =
 
 data Operation
 foreign import ccall safe "opqueue.h initialize"
-  initialize :: IO ()
+  initialize :: CInt -> IO ()
 
 foreign import ccall safe "opqueue.h get_op"
-  get_op :: IO (Ptr Operation)
+  get_op :: CInt -> IO (Ptr Operation)
 
 foreign import ccall safe "opqueue.h send_result"
   send_result :: Ptr Operation -> CInt -> IO ()
 
 foreign import ccall safe "opqueue.h send_result_and_get_op"
-  send_result_and_get_op :: Ptr Operation -> CInt -> IO (Ptr Operation)
+  send_result_and_get_op :: Ptr Operation -> CInt -> CInt -> IO (Ptr Operation)
 
 foreign import ccall safe "opfuse.h opfuse_run"
   opfuse_run :: CString -> Ptr CFuseArgs -> IO ()
 
 startHandlingOps :: forall e fh. Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
 startHandlingOps ops handler = do
-    initialize
     n <- getNumCapabilities
-    replicateM_ n . forkIO . forever $ do
-          pOp <- get_op
+    initialize (fromIntegral n)
+    forM_ [0..(n-1)] $ \i -> forkIO . forever $ do
+          pOp <- get_op (fromIntegral i)
           opcode <- (#peek struct operation, op_type) pOp
           res <- handleOpcode opcode pOp
           send_result pOp res
-          -- pFilePath <- (#peek operation, path) pOp
-          -- filePath <- peekCString pFilePath
-          -- eitherFileStat <- (fuseGetFileStat ops) filePath
-          -- case eitherFileStat of
-          --   Left (Errno errno) -> send_result pOp (-errno)
-          --   Right stat         -> do pRet <- (#peek operation, attr) pOp
-          --                            fileStatToCStat stat pRet
-          --                            send_result pOp okErrno
     where fuseHandler :: e -> IO CInt
           fuseHandler e = handler e >>= return . negate . unErrno
 

@@ -66,10 +66,10 @@ struct operation {
   } u;
 };
 
-void initialize();
-struct operation* get_op();
+void initialize(int num_queues);
+struct operation* get_op(int queue_index);
 void send_result(struct operation *op, int err);
-struct operation* send_result_and_get_op(struct operation *op, int err);
+struct operation* send_result_and_get_op(struct operation *op, int err, int queue_index);
 int execute(struct operation *op);
 
 #endif

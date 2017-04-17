@@ -13,29 +13,35 @@ rdtsc(void)
 
 #define QUEUE_MAX_SIZE 256
 
-static struct {
+struct queue {
   struct operation *ops[QUEUE_MAX_SIZE];
   int puts;
   int gets;
   pthread_spinlock_t spin;
-} q;
+};
 
-struct operation* get_op() {
+static struct {
+  struct queue *queues;
+  int num_queues;
+} opqueue;
+
+struct operation* get_op(int queue_index) {
+  struct queue *q = &opqueue.queues[queue_index];
   while (1) {
-    if (q.puts <= q.gets) {
+    if (q->puts <= q->gets) {
       __sync_synchronize();
       continue;
     }
 
-    pthread_spin_lock(&q.spin);
-    if (q.puts <= q.gets) {
-      pthread_spin_unlock(&q.spin);
+    pthread_spin_lock(&q->spin);
+    if (q->puts <= q->gets) {
+      pthread_spin_unlock(&q->spin);
       continue;
     }
 
-    struct operation *op = q.ops[q.gets % QUEUE_MAX_SIZE];
-    q.gets++;
-    pthread_spin_unlock(&q.spin);
+    struct operation *op = q->ops[q->gets % QUEUE_MAX_SIZE];
+    q->gets++;
+    pthread_spin_unlock(&q->spin);
     return op;
   }
 }
@@ -48,22 +54,23 @@ void send_result(struct operation *op, int err) {
 
 int execute(struct operation *op) {
   op->done = 0;
+  struct queue *q = &opqueue.queues[rand()%opqueue.num_queues];
 
   while (1) {
-    if (q.puts - q.gets >= QUEUE_MAX_SIZE) {
+    if (q->puts - q->gets >= QUEUE_MAX_SIZE) {
       __sync_synchronize();
       continue;
     }
 
-    pthread_spin_lock(&q.spin);
-    if (q.puts - q.gets >= QUEUE_MAX_SIZE) {
-      pthread_spin_unlock(&q.spin);
+    pthread_spin_lock(&q->spin);
+    if (q->puts - q->gets >= QUEUE_MAX_SIZE) {
+      pthread_spin_unlock(&q->spin);
       continue;
     }
 
-    q.ops[q.puts % QUEUE_MAX_SIZE] = op;
-    q.puts++;
-    pthread_spin_unlock(&q.spin);
+    q->ops[q->puts % QUEUE_MAX_SIZE] = op;
+    q->puts++;
+    pthread_spin_unlock(&q->spin);
     break;
   }
 
@@ -75,14 +82,19 @@ int execute(struct operation *op) {
 }
 
 struct operation*
-send_result_and_get_op(struct operation *op, int err)
+send_result_and_get_op(struct operation *op, int err, int queue_index)
 {
   send_result(op, err);
-  return get_op();
+  return get_op(queue_index);
 }
 
 void
-initialize()
+initialize(int num_queues)
 {
-  pthread_spin_init(&q.spin, PTHREAD_PROCESS_PRIVATE);
+  opqueue.num_queues = num_queues;
+  opqueue.queues = (struct queue*) calloc(num_queues, sizeof(struct queue));
+  for (int i = 0; i < num_queues; i++) {
+    struct queue *q = &opqueue.queues[i];
+    pthread_spin_init(&q->spin, PTHREAD_PROCESS_PRIVATE);
+  }
 }
