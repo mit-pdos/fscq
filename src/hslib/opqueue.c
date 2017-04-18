@@ -42,6 +42,7 @@ struct operation* get_op(int queue_index) {
     struct operation *op = q->ops[q->gets % QUEUE_MAX_SIZE];
     q->gets++;
     pthread_spin_unlock(&q->spin);
+    op->t2 = rdtsc();
     return op;
   }
 }
@@ -50,10 +51,12 @@ void send_result(struct operation *op, int err) {
   op->err = err;
   __sync_synchronize();
   op->done = 1;
+  op->t3 = rdtsc();
 }
 
 int execute(struct operation *op) {
   op->done = 0;
+  op->t0 = rdtsc();
   struct queue *q = &opqueue.queues[rand()%opqueue.num_queues];
 
   while (1) {
@@ -70,6 +73,7 @@ int execute(struct operation *op) {
 
     q->ops[q->puts % QUEUE_MAX_SIZE] = op;
     q->puts++;
+    op->t1 = rdtsc();
     pthread_spin_unlock(&q->spin);
     break;
   }
@@ -77,6 +81,10 @@ int execute(struct operation *op) {
   while (!op->done) {
     __sync_synchronize();
   }
+
+  op->t4 = rdtsc();
+
+  fprintf(stderr, "Op timing: %ld %ld %ld %ld\n", op->t1 - op->t0, op->t2 - op->t1, op->t3 - op->t2, op->t4 - op->t3);
 
   return op->err;
 }

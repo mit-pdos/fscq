@@ -53,7 +53,7 @@ struct operation {
   int64_t err;
   int done;
 
-  uint64_t t0, t1, t2, t3;
+  uint64_t t0, t1, t2, t3, t4;
 
   union {
     struct op_getattr getattr;
