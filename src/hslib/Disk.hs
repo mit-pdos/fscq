@@ -36,7 +36,9 @@ debugmsg s =
 
 -- DiskStats counts the number of reads, writes, and syncs
 data DiskStats =
-  Stats !Word !Word !Word
+  Stats { readCount :: !Word,
+          writeCount :: !Word,
+          syncCount :: !Word }
 
 -- FlushLog is used to track writes for empirical crash recovery testing
 data FlushLog =
@@ -49,18 +51,18 @@ data DiskState =
 
 bumpRead :: IORef DiskStats -> IO ()
 bumpRead sr = do
-  Stats r w s <- readIORef sr
-  writeIORef sr $ Stats (r+1) w s
+  stats <- readIORef sr
+  writeIORef sr $ stats { readCount = readCount stats + 1 }
 
 bumpWrite :: IORef DiskStats -> IO ()
 bumpWrite sr = do
-  Stats r w s <- readIORef sr
-  writeIORef sr $ Stats r (w+1) s
+  stats <- readIORef sr
+  writeIORef sr $ stats { writeCount = writeCount stats + 1 }
 
 bumpSync :: IORef DiskStats -> IO ()
 bumpSync sr = do
-  Stats r w s <- readIORef sr
-  writeIORef sr $ Stats r w (s+1)
+  stats <- readIORef sr
+  writeIORef sr $ stats { syncCount = syncCount stats + 1 }
 
 logWrite :: Maybe (IORef FlushLog) -> Integer -> Coq_word -> IO ()
 logWrite Nothing _ _ = return ()
