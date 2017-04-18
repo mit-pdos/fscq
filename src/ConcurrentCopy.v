@@ -233,6 +233,7 @@ Section ConcurrentCopy.
                          find_subtree (homedirs tid) tree = Some homedir /\
                          find_subtree fpath homedir = Some (TreeFile inum f) /\
                          find_subtree dpath homedir = Some (TreeDir dnum dents) /\
+                         ~ DirTreePath.pathname_prefix (dpath ++ dstname :: nil) fpath /\
                          (0 |-> (b0, nil))%pred (GenSepN.list2nmem (DFData f));
                        postcondition :=
                          fun sigma' r =>
@@ -261,8 +262,6 @@ Section ConcurrentCopy.
     destruct r; destruct_goal_matches; try (step; finish);
       eauto using find_subtree_tree_graft.
     erewrite find_subtree_graft_subtree_oob; eauto.
-    admit. (* created file and original file are distinct due to guarantee from
-    create - how do we use this? *)
 
     destruct r; destruct_goal_matches; try (step; finish).
     replace (find_subtree (homedirs tid) tree'0).
@@ -275,6 +274,6 @@ Section ConcurrentCopy.
 
     Grab Existential Variables.
     all: auto.
-  Admitted.
+  Qed.
 
 End ConcurrentCopy.
