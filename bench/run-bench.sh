@@ -38,7 +38,7 @@ mkdir -p $MOUNT
 ## fscq
 dd if=/dev/zero of=$DEV bs=4096 count=$NEWFSCQBLOCKS
 ../src/mkfs $DEV
-../src/fuse $DEV -s -f $MOUNT &
+../src/fscq $DEV -s -o big_writes,atomic_o_trunc -f $MOUNT &
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
