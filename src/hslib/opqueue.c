@@ -22,7 +22,7 @@ struct queue {
   struct {
     int ident;
     uint64_t time;
-  } timings[10*1024];
+  } timings[1000*1024];
   int next_timing;
 };
 
@@ -49,7 +49,6 @@ struct operation* get_op(int queue_index) {
     q->gets++;
     op->t2 = rdtsc();
     pthread_spin_unlock(&q->spin);
-    op->t2 = rdtsc();
     return op;
   }
 }
@@ -57,8 +56,8 @@ struct operation* get_op(int queue_index) {
 void send_result(struct operation *op, int err) {
   op->err = err;
   __sync_synchronize();
-  op->done = 1;
   op->t3 = rdtsc();
+  op->done = 1;
 }
 
 int find_unloaded() {
@@ -74,6 +73,10 @@ int find_unloaded() {
 
 void report_time(int ident, int queue, uint64_t start, uint64_t end) {
   struct queue *q = &opqueue.queues[queue];
+  if (start > end) {
+    fprintf(stderr, "nonsensical time for %d: %ld - %ld\n", ident, end, start);
+    return;
+  }
   int index = q->next_timing++;
   q->timings[index].ident = ident;
   q->timings[index].time = end - start;
@@ -142,7 +145,7 @@ print_opqueue_timings()
 {
   for (int qi = 0; qi < opqueue.num_queues; qi++) {
     struct queue *q = &opqueue.queues[qi];
-    printf("queue %d: %d puts %d gets\n", qi, q->puts, q->gets);
+    printf("queue %d: %d ops\n", qi, q->gets);
   }
 
   for (int qi = 0; qi < opqueue.num_queues; qi++) {
