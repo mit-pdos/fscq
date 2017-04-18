@@ -171,8 +171,6 @@ Section ConcurrentCopy.
                          find_subtree (homedirs tid) tree = Some homedir /\
                          find_subtree fpath homedir = Some (TreeFile inum f) /\
                          (0 |-> (b0, nil))%pred (GenSepN.list2nmem (DFData f)) /\
-                         ~DirTreePath.pathname_prefix fpath fpath' /\
-                         ~DirTreePath.pathname_prefix fpath' fpath /\
                          find_subtree fpath' homedir = Some (TreeFile inum' f') /\
                          DFData f' = nil;
                        postcondition :=
@@ -221,5 +219,62 @@ Section ConcurrentCopy.
     Grab Existential Variables.
     all: auto.
   Qed.
+
+  Hint Extern 1 {{ copy_attrs _ _ _; _ }} => apply copy_attrs_ok : prog.
+  Hint Extern 1 {{ copy_block _ _; _ }} => apply copy_block_ok : prog.
+
+  Theorem copy_ok : forall inum dnum dstname tid,
+      cprog_spec (fs_guarantee P) tid
+                 (fun '(tree, homedirs, homedir, fpath, dpath, f, b0, dents) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         homedir_disjoint homedirs tid /\
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree fpath homedir = Some (TreeFile inum f) /\
+                         find_subtree dpath homedir = Some (TreeDir dnum dents) /\
+                         (0 |-> (b0, nil))%pred (GenSepN.list2nmem (DFData f));
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done r =>
+                               match r with
+                               | Some inum' =>
+                                 exists data bs,
+                                 (0 |-> (b0, bs))%pred (GenSepN.list2nmem data) /\
+                                 let f' := mk_dirfile data (DFAttr f) in
+                                 let homedir' :=
+                                     tree_graft dnum dents dpath dstname (TreeFile inum' f') homedir in
+                                 find_subtree (homedirs tid) tree' = Some homedir'
+                               | None => True
+                               end
+                             | TryAgain => False
+                             | SyscallFailed => True
+                             end |})
+                 (copy inum dnum dstname).
+  Proof.
+    unfold copy, bind.
+    step; finish.
+    destruct r; destruct_goal_matches; try (step; finish);
+      eauto using find_subtree_tree_graft.
+    erewrite find_subtree_graft_subtree_oob; eauto.
+    admit. (* created file and original file are distinct due to guarantee from
+    create - how do we use this? *)
+
+    destruct r; destruct_goal_matches; try (step; finish).
+    replace (find_subtree (homedirs tid) tree'0).
+    erewrite update_graft_to_single_graft; eauto.
+    eapply DirTreeNames.find_subtree_tree_names_distinct; eauto.
+    eapply fs_invariant_tree_names_distinct; eauto.
+
+    eapply DirTreeNames.find_subtree_tree_names_distinct; eauto.
+    eapply fs_invariant_tree_names_distinct; eauto.
+
+    Grab Existential Variables.
+    all: auto.
+  Admitted.
 
 End ConcurrentCopy.
