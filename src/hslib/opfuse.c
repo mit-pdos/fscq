@@ -239,6 +239,13 @@ static int opfuse_fsync(const char *path, int isdatasync,
 }
 #endif
 
+static int opfuse_fsyncdir(const char *path, int isdatasync,
+                           struct fuse_file_info *fi)
+{
+  print_opqueue_timings();
+  return 0;
+}
+
 static struct fuse_operations opfuse_oper = {
 	.getattr	= opfuse_getattr,
 	.mknod		= opfuse_mknod,
@@ -256,6 +263,7 @@ static struct fuse_operations opfuse_oper = {
 	// .write		= opfuse_write,
 	// .statfs		= opfuse_statfs,
 	// .fsync		= opfuse_fsync,
+  .fsyncdir = opfuse_fsyncdir,
 };
 
 void

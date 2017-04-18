@@ -18,6 +18,12 @@ struct queue {
   int puts;
   int gets;
   pthread_spinlock_t spin;
+
+  struct {
+    int ident;
+    uint64_t time;
+  } timings[10*1024];
+  int next_timing;
 };
 
 static struct {
@@ -41,6 +47,7 @@ struct operation* get_op(int queue_index) {
 
     struct operation *op = q->ops[q->gets % QUEUE_MAX_SIZE];
     q->gets++;
+    op->t2 = rdtsc();
     pthread_spin_unlock(&q->spin);
     op->t2 = rdtsc();
     return op;
@@ -54,18 +61,37 @@ void send_result(struct operation *op, int err) {
   op->t3 = rdtsc();
 }
 
+int find_unloaded() {
+  int i1 = rand()%opqueue.num_queues;
+  int i2 = rand()%opqueue.num_queues;
+  if ((opqueue.queues[i1].puts - opqueue.queues[i1].gets) <
+      (opqueue.queues[i2].puts - opqueue.queues[i2].gets)) {
+    return i1;
+  } else {
+    return i2;
+  }
+}
+
+void report_time(int ident, int queue, uint64_t start, uint64_t end) {
+  struct queue *q = &opqueue.queues[queue];
+  int index = q->next_timing++;
+  q->timings[index].ident = ident;
+  q->timings[index].time = end - start;
+}
+
 int execute(struct operation *op) {
-  op->done = 0;
   op->t0 = rdtsc();
-  struct queue *q = &opqueue.queues[rand()%opqueue.num_queues];
+  op->done = 0;
+  int queue_index = find_unloaded();
+  struct queue *q = &opqueue.queues[queue_index];
 
   while (1) {
+    pthread_spin_lock(&q->spin);
     if (q->puts - q->gets >= QUEUE_MAX_SIZE) {
-      __sync_synchronize();
+      pthread_spin_unlock(&q->spin);
       continue;
     }
 
-    pthread_spin_lock(&q->spin);
     if (q->puts - q->gets >= QUEUE_MAX_SIZE) {
       pthread_spin_unlock(&q->spin);
       continue;
@@ -74,6 +100,7 @@ int execute(struct operation *op) {
     q->ops[q->puts % QUEUE_MAX_SIZE] = op;
     q->puts++;
     op->t1 = rdtsc();
+
     pthread_spin_unlock(&q->spin);
     break;
   }
@@ -82,9 +109,12 @@ int execute(struct operation *op) {
     __sync_synchronize();
   }
 
-  op->t4 = rdtsc();
-
-  fprintf(stderr, "Op timing: %ld %ld %ld %ld\n", op->t1 - op->t0, op->t2 - op->t1, op->t3 - op->t2, op->t4 - op->t3);
+  uint64_t now = rdtsc();
+  report_time(0, queue_index, op->t0, op->t1);
+  report_time(1, queue_index, op->t1, op->t2);
+  report_time(2, queue_index, op->t2, op->t3);
+  report_time(3, queue_index, op->t3, now);
+  report_time(4, queue_index, now, rdtsc());
 
   return op->err;
 }
@@ -104,5 +134,23 @@ initialize(int num_queues)
   for (int i = 0; i < num_queues; i++) {
     struct queue *q = &opqueue.queues[i];
     pthread_spin_init(&q->spin, PTHREAD_PROCESS_PRIVATE);
+  }
+}
+
+void
+print_opqueue_timings()
+{
+  for (int qi = 0; qi < opqueue.num_queues; qi++) {
+    struct queue *q = &opqueue.queues[qi];
+    printf("queue %d: %d puts %d gets\n", qi, q->puts, q->gets);
+  }
+
+  for (int qi = 0; qi < opqueue.num_queues; qi++) {
+    struct queue *q = &opqueue.queues[qi];
+    for (int i = 0; i < q->next_timing; i++) {
+      int ident = q->timings[i].ident;
+      uint64_t time = q->timings[i].time;
+      printf("%d on %d: %lfus\n", ident, qi, ((double) time) / 2600);
+    }
   }
 }

@@ -168,6 +168,7 @@ func (fs FileSystem) Launch(opts Options) {
 	go func() {
 		cmd := opts.ServerCpu.Command(fs.binary, args...)
 		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
 		cmd.Run()
 	}()
 	for i := 0; i < 100; i++ {
@@ -182,6 +183,12 @@ func (fs FileSystem) Launch(opts Options) {
 }
 
 func (fs FileSystem) Stop() {
+	if fs.ident == "cfscq" || fs.ident == "fscq" {
+		if d, err := os.Open(fs.mntPoint); err == nil {
+			d.Sync()
+			d.Close()
+		}
+	}
 	if fs.isFuse() {
 		mountCmd := "fusermount"
 		if fs.isFuse3 {

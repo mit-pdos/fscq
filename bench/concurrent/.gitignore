@@ -9,3 +9,4 @@ disk.img
 /data.tsv.xz
 gc*.txt
 *.ticky
+/cfscq*.log
