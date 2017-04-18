@@ -129,6 +129,7 @@ fscqFSOps :: String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOpera
 fscqFSOps fn ds fr m_fsxp = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fr m_fsxp
   , fuseOpen = fscqOpen fr m_fsxp
+  , fuseCreateFile = fscqCreateFile fr m_fsxp
   , fuseCreateDevice = fscqCreate fr m_fsxp
   , fuseCreateDirectory = fscqCreateDir fr m_fsxp
   , fuseRemoveLink = fscqUnlink fr m_fsxp
@@ -267,36 +268,28 @@ fscqGetFileStat fr m_fsxp (_:path)
         return $ Right $ fileStat ctx attr
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
-fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO Errno
+fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno HT)
 fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPENDIR" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Errno.Err e -> return $ errnoToPosix e
-    Errno.OK (_, isdir)
-      | isdir -> return eOK
-      | otherwise -> return eNOTDIR
-fscqOpenDirectory _ _ "" = return eNOENT
-
-fscqReadDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
-  debugStart "READDIR" path
-  ctx <- getFuseContext
-  nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
-  debugMore r
-  case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
-    Errno.OK (dnum, isdir)
-      | isdir -> do
-        (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
-        files_stat <- mapM (mkstat fsxp ctx) files
-        return $ Right $ [(".",          dirStat ctx)
-                         ,("..",         dirStat ctx)
-                         ] ++ files_stat
-      | otherwise -> return $ Left $ eNOTDIR
+    Errno.OK (inum, isdir)
+      | isdir -> return $ Right inum
+      | otherwise -> return $ Left eNOTDIR
+fscqOpenDirectory _ _ "" = return $ Left eNOENT
+
+fscqReadDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
+  debugStart "READDIR" dnum
+  ctx <- getFuseContext
+  (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
+  files_stat <- mapM (mkstat fsxp ctx) files
+  return $ Right $ [(".",          dirStat ctx)
+                   ,("..",         dirStat ctx)
+                   ] ++ files_stat
   where
     mkstat fsxp ctx (fn, (inum, isdir))
       | isdir = return $ (fn, dirStat ctx)
@@ -304,10 +297,8 @@ fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
         (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
         return $ (fn, fileStat ctx attr)
 
-fscqReadDirectory _ _ _ = return (Left (eNOENT))
-
 fscqOpen :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen fr m_fsxp (_:path) _ _
+fscqOpen fr m_fsxp (_:path) _ flags
   | path == "stats" = return $ Right 0
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPEN" path
@@ -318,12 +309,40 @@ fscqOpen fr m_fsxp (_:path) _ _
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (inum, isdir)
       | isdir -> return $ Left eISDIR
-      | otherwise -> return $ Right $ inum
+      | otherwise -> do
+        if trunc flags then do
+          _ <- fr $ AsyncFS._AFS__file_truncate fsxp inum 0
+          (ok, ()) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W64 0)
+          case ok of
+            Errno.OK _ -> return $ Right inum
+            Errno.Err e -> return $ Left $ errnoToPosix e
+        else do
+          return $ Right inum
 fscqOpen _ _ _ _ _ = return $ Left eIO
 
 splitDirsFile :: String -> ([String], String)
 splitDirsFile path = (init parts, last parts)
   where parts = splitDirectories path
+
+fscqCreateFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileMode -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqCreateFile fr m_fsxp (_:path) _ _ _
+  | path == "stats" = return $ Left eEXIST
+  | otherwise = withMVar m_fsxp $ \fsxp -> do
+  debugStart "CREATEFILE" path
+  (dirparts, filename) <- return $ splitDirsFile path
+  (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  debugMore rd
+  case rd of
+    Errno.Err e -> return $ Left $ errnoToPosix e
+    Errno.OK (dnum, isdir)
+      | isdir -> do
+        (r, ()) <- fr $ AsyncFS._AFS__create fsxp dnum filename
+        debugMore r
+        case r of
+          Errno.Err e -> return $ Left $ errnoToPosix e
+          Errno.OK inum -> return $ Right inum
+      | otherwise -> return $ Left eNOTDIR
+fscqCreateFile _ _ _ _ _ _ = return $ Left eOPNOTSUPP
 
 fscqCreate :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
@@ -552,26 +571,18 @@ fscqChmod :: FilePath -> FileMode -> IO Errno
 fscqChmod _ _ = do
   return eOK
 
-fscqSyncFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> SyncType -> IO Errno
-fscqSyncFile fr m_fsxp (_:path) syncType = withMVar m_fsxp $ \fsxp -> do
-  debugStart "SYNC FILE" path
-  nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
-  debugMore r
-  case r of
-    Errno.Err e -> return $ errnoToPosix e
-    Errno.OK (inum, _) -> do
-      _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
-      case syncType of
-        DataSync -> return eOK
-        FullSync -> do
-          _ <- fr $ AsyncFS._AFS__tree_sync fsxp
-          return eOK
-fscqSyncFile _ _ _ _ = return eIO
+fscqSyncFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> SyncType -> IO Errno
+fscqSyncFile fr m_fsxp _ inum syncType = withMVar m_fsxp $ \fsxp -> do
+  debugStart "SYNC FILE" inum
+  _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
+  case syncType of
+    DataSync -> return eOK
+    FullSync -> do
+      _ <- fr $ AsyncFS._AFS__tree_sync fsxp
+      return eOK
 
-fscqSyncDir :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> SyncType -> IO Errno
-fscqSyncDir fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
-  debugStart "SYNC DIR" path
+fscqSyncDir :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> SyncType -> IO Errno
+fscqSyncDir fr m_fsxp _ inum _ = withMVar m_fsxp $ \fsxp -> do
+  debugStart "SYNC DIR" inum
   _ <- fr $ AsyncFS._AFS__tree_sync fsxp
   return eOK
-fscqSyncDir _ _ _ _ = return eIO

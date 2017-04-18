@@ -33,34 +33,6 @@ opfuse_getattr(const char *path, struct stat *stbuf)
   return op.err;
 }
 
-#if 0
-static int opfuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-		       off_t offset, struct fuse_file_info *fi)
-{
-	DIR *dp;
-	struct dirent *de;
-
-	(void) offset;
-	(void) fi;
-
-	dp = opendir(path);
-	if (dp == NULL)
-		return -errno;
-
-	while ((de = readdir(dp)) != NULL) {
-		struct stat st;
-		memset(&st, 0, sizeof(st));
-		st.st_ino = de->d_ino;
-		st.st_mode = de->d_type << 12;
-		if (filler(buf, de->d_name, &st, 0))
-			break;
-	}
-
-	closedir(dp);
-	return 0;
-}
-#endif
-
 static int
 opfuse_mknod(const char *path, mode_t mode, dev_t rdev)
 {
@@ -132,138 +104,210 @@ opfuse_release(const char *path, struct fuse_file_info *fi)
   return op.err;
 }
 
-#if 0
-static int opfuse_rename(const char *from, const char *to)
+static int
+opfuse_read(const char *path, char *buf, size_t size, off_t offset,
+           struct fuse_file_info *fi)
 {
-	int res;
+  struct operation op;
 
-	res = rename(from, to);
-	if (res == -1)
-		return -errno;
-
-	return 0;
+  op.op_type = OP_READ;
+  op.u.read.pn = path;
+  op.u.read.buf = buf;
+  op.u.read.bufsiz = size;
+  op.u.read.off = offset;
+  op.u.read.info = fi;
+  execute(&op);
+  return op.err;
 }
 
-static int opfuse_chmod(const char *path, mode_t mode)
+static int
+opfuse_write(const char *path, const char *buf, size_t size,
+            off_t offset, struct fuse_file_info *fi)
 {
-	int res;
+  struct operation op;
 
-	res = chmod(path, mode);
-	if (res == -1)
-		return -errno;
-
-	return 0;
+  op.op_type = OP_WRITE;
+  op.u.write.pn = path;
+  op.u.write.buf = buf;
+  op.u.write.bufsiz = size;
+  op.u.write.off = offset;
+  op.u.write.info = fi;
+  execute(&op);
+  return op.err;
 }
 
-static int opfuse_chown(const char *path, uid_t uid, gid_t gid)
+static int
+opfuse_fsync(const char *path, int isdatasync,
+            struct fuse_file_info *fi)
 {
-	int res;
+  struct operation op;
 
-	res = lchown(path, uid, gid);
-	if (res == -1)
-		return -errno;
-
-	return 0;
+  op.op_type = OP_FSYNC;
+  op.u.fsync.pn = path;
+  op.u.fsync.isdatasync = isdatasync;
+  op.u.fsync.info = fi;
+  execute(&op);
+  return op.err;
 }
 
-static int opfuse_truncate(const char *path, off_t size)
+static int
+opfuse_fsyncdir(const char *path, int isdatasync,
+               struct fuse_file_info *fi)
 {
-	int res;
+  struct operation op;
 
-	res = truncate(path, size);
-	if (res == -1)
-		return -errno;
-
-	return 0;
+  op.op_type = OP_FSYNCDIR;
+  op.u.fsyncdir.pn = path;
+  op.u.fsyncdir.isdatasync = isdatasync;
+  op.u.fsyncdir.info = fi;
+  execute(&op);
+  return op.err;
 }
 
-static int opfuse_read(const char *path, char *buf, size_t size, off_t offset,
-		    struct fuse_file_info *fi)
+static int
+opfuse_truncate(const char *path, off_t size)
 {
-	int fd;
-	int res;
+  struct operation op;
 
-	(void) fi;
-	fd = open(path, O_RDONLY);
-	if (fd == -1)
-		return -errno;
-
-	res = pread(fd, buf, size, offset);
-	if (res == -1)
-		res = -errno;
-
-	close(fd);
-	return res;
+  op.op_type = OP_TRUNCATE;
+  op.u.truncate.pn = path;
+  op.u.truncate.size = size;
+  execute(&op);
+  return op.err;
 }
 
-static int opfuse_write(const char *path, const char *buf, size_t size,
-		     off_t offset, struct fuse_file_info *fi)
+static int
+opfuse_rename(const char *from, const char *to)
 {
-	int fd;
-	int res;
+  struct operation op;
 
-	(void) fi;
-	fd = open(path, O_WRONLY);
-	if (fd == -1)
-		return -errno;
-
-	res = pwrite(fd, buf, size, offset);
-	if (res == -1)
-		res = -errno;
-
-	close(fd);
-	return res;
+  op.op_type = OP_RENAME;
+  op.u.rename.src = from;
+  op.u.rename.dst = to;
+  execute(&op);
+  return op.err;
 }
 
-static int opfuse_statfs(const char *path, struct statvfs *stbuf)
+static int
+opfuse_chmod(const char *path, mode_t mode)
 {
-	int res;
+  struct operation op;
 
-	res = statvfs(path, stbuf);
-	if (res == -1)
-		return -errno;
-
-	return 0;
+  op.op_type = OP_CHMOD;
+  op.u.chmod.pn = path;
+  op.u.chmod.mode = mode;
+  execute(&op);
+  return op.err;
 }
 
-static int opfuse_fsync(const char *path, int isdatasync,
-		     struct fuse_file_info *fi)
+static int
+opfuse_statfs(const char *path, struct statvfs *stbuf)
 {
-	/* Just a stub.	 This method is optional and can safely be left
-	   unimplemented */
+  struct operation op;
 
-	(void) path;
-	(void) isdatasync;
-	(void) fi;
-	return 0;
+  op.op_type = OP_STATFS;
+  op.u.statfs.pn = path;
+  op.u.statfs.st = stbuf;
+  execute(&op);
+  return op.err;
 }
-#endif
 
-static int opfuse_fsyncdir(const char *path, int isdatasync,
-                           struct fuse_file_info *fi)
+static int
+opfuse_opendir(const char *path, struct fuse_file_info *fi)
 {
-  print_opqueue_timings();
-  return 0;
+  struct operation op;
+
+  op.op_type = OP_OPENDIR;
+  op.u.opendir.pn = path;
+  op.u.opendir.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+              off_t offset, struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_READDIR;
+  op.u.readdir.pn = path;
+  op.u.readdir.buf = buf;
+  op.u.readdir.fill = filler;
+  op.u.readdir.off = offset;
+  op.u.readdir.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_releasedir(const char *path, struct fuse_file_info *fi)
+{
+  struct operation op;
+
+  op.op_type = OP_RELEASEDIR;
+  op.u.releasedir.pn = path;
+  op.u.releasedir.info = fi;
+  execute(&op);
+  return op.err;
+}
+
+static int
+opfuse_utime(const char *path, struct utimbuf *buf)
+{
+  struct operation op;
+
+  op.op_type = OP_UTIME;
+  op.u.utime.pn = path;
+  op.u.utime.buf = buf;
+  execute(&op);
+  return op.err;
+}
+
+static void
+opfuse_destroy(void *arg)
+{
+  struct operation op;
+
+  op.op_type = OP_DESTROY;
+  execute(&op);
+}
+
+static int
+opfuse_create(const char *path, mode_t mode, struct fuse_file_info *info)
+{
+  struct operation op;
+
+  op.op_type = OP_CREATE;
+  op.u.create.pn = path;
+  op.u.create.mode = mode;
+  op.u.create.info = info;
+  execute(&op);
+  return op.err;
 }
 
 static struct fuse_operations opfuse_oper = {
-	.getattr	= opfuse_getattr,
-	.mknod		= opfuse_mknod,
-	.mkdir		= opfuse_mkdir,
-	.unlink		= opfuse_unlink,
-	.rmdir		= opfuse_rmdir,
-	.open		= opfuse_open,
-	.release	= opfuse_release,
-	// .readdir	= opfuse_readdir,
-	// .rename		= opfuse_rename,
-	// .chmod		= opfuse_chmod,
-	// .chown		= opfuse_chown,
-	// .truncate	= opfuse_truncate,
-	// .read		= opfuse_read,
-	// .write		= opfuse_write,
-	// .statfs		= opfuse_statfs,
-	// .fsync		= opfuse_fsync,
-  .fsyncdir = opfuse_fsyncdir,
+  .getattr      = opfuse_getattr,
+  .mknod        = opfuse_mknod,
+  .mkdir        = opfuse_mkdir,
+  .unlink       = opfuse_unlink,
+  .rmdir        = opfuse_rmdir,
+  .open         = opfuse_open,
+  .release      = opfuse_release,
+  .read         = opfuse_read,
+  .write        = opfuse_write,
+  .fsync        = opfuse_fsync,
+  .rename       = opfuse_rename,
+  .chmod        = opfuse_chmod,
+  .truncate     = opfuse_truncate,
+  .statfs       = opfuse_statfs,
+  .opendir      = opfuse_opendir,
+  .readdir      = opfuse_readdir,
+  .releasedir   = opfuse_releasedir,
+  .fsyncdir     = opfuse_fsyncdir,
+  .utime        = opfuse_utime,
+  .destroy      = opfuse_destroy,
+  .create       = opfuse_create,
 };
 
 void

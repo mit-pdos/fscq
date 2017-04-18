@@ -28,7 +28,7 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
 	      TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
-	      DirSep ProgMetatheory TreeSeq \
+	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs
 
 VS         := $(MODULES:%=%.v)
@@ -107,13 +107,13 @@ hscgen/%.hs: hslib/%.hsc
 	@mkdir -p $(@D)
 	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64 -Ihslib
 
-%: %.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_POST)
+%: %.hs $(VS_HS) $(HSLIB_PRE) $(HSLIB_POST) $(HSLIB_FUSE)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -lfuse -lopfuse -Lhslib -o $@
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -lopfuse -Lhslib -o $@
 
 parstat: parstat.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_POST) parallelize.c parallelize.h
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs

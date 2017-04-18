@@ -573,7 +573,8 @@ Module AFS.
        [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
        exists d n, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
-       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
+       [[ BFILE.MSinitial ms ]]
      XCRASH:hm'
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} recover cachesize.
@@ -627,6 +628,7 @@ Module AFS.
     intuition simpl; eauto.
     intuition simpl; eauto.
     intuition simpl; eauto.
+
     xcrash.
 
     eapply LOG.crash_xform_cached_before; eauto.

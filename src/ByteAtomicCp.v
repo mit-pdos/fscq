@@ -39,14 +39,14 @@ Require Import TreeSeq.
 Require Import DirSep.
 Require Import Rounding.
 Require Import BACHelper.
-Require Import BytefileSpecs.
 Require Import DirTreeDef.
 Require Import DirTreeNames.
 Require Import AtomicCp.
+Require Import BytefileSpecs.
 
 Import DIRTREE.
-Import DTCrash.
 Import TREESEQ.
+Import ATOMICCP.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -73,7 +73,6 @@ Hint Resolve valubytes_ge_O.
 
   Opaque LOG.idempred.
   Opaque crash_xform.
-
 
    
 Definition atomic_cp fsxp src_inum dstbase dstname mscs :=

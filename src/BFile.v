@@ -66,13 +66,20 @@ Module BFILE.
     MSCache : BFcache_type
   }.
 
-  Definition ms_empty sz := mk_memstate
+  Definition ms_empty msll := mk_memstate
     true
-    (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 sz))
+    msll
     (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0)
     IAlloc.Alloc.freelist0
     INODE.IRec.cache0
     (BFcache.empty _).
+
+  Definition MSinitial ms :=
+    MSAlloc ms = true /\
+    MSAllocC ms = (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) /\
+    MSIAllocC ms = IAlloc.Alloc.freelist0 /\
+    MSICache ms = INODE.IRec.cache0 /\
+    MSCache ms = (BFcache.empty _).
 
   Definition MSIAlloc ms :=
     IAlloc.mk_memstate (MSLL ms) (MSIAllocC ms).
@@ -1198,7 +1205,7 @@ Module BFILE.
     cbv; omega.
     unfold INODE.IRecSig.items_per_val.
     rewrite valulen_is.
-    compute; omega.
+    vm_compute; omega.
 
     denote (_ =p=> freepred0) as Hx; apply Hx.
     substl (length dl); substl (IXLen ixp).
@@ -1208,7 +1215,7 @@ Module BFILE.
     unfold INODE.IRecSig.items_per_val.
     apply Nat.mod_divide; auto.
     rewrite valulen_is.
-    compute; auto.
+    vm_compute; auto.
 
     all: auto; cancel.
     Unshelve. eauto.
@@ -2593,13 +2600,15 @@ Module BFILE.
     PRE:hm  LOG.rep lxp F (LOG.NoTxn ds) ms hm
     POST:hm' RET:ms'
       LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') hm' *
-      [[ ms = (MSLL ms') ]]
+      [[ ms = (MSLL ms') ]] *
+      [[ BFILE.MSinitial ms' ]]
     CRASH:hm' LOG.rep lxp F (LOG.NoTxn ds) ms hm'
     >} recover ms.
   Proof.
     unfold recover; intros.
     step.
     step.
+    unfold MSinitial; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (recover _ ) _) => apply recover_ok : prog.

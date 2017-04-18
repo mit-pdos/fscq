@@ -346,6 +346,8 @@ data FuseOperations fh = FuseOperations
         --   flags.
         fuseOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno fh),
 
+        fuseCreateFile :: FilePath -> FileMode -> OpenMode -> OpenFileFlags -> IO (Either Errno fh),
+
         -- | Implements Unix98 @pread(2)@. It differs from
         --   'System.Posix.Files.fdRead' by the explicit 'FileOffset' argument.
         --   The @fuse.h@ documentation stipulates that this \"should return
@@ -377,23 +379,23 @@ data FuseOperations fh = FuseOperations
         fuseRelease :: FilePath -> fh -> IO (),
 
         -- | Implements @fsync(2)@.
-        fuseSynchronizeFile :: FilePath -> SyncType -> IO Errno,
+        fuseSynchronizeFile :: FilePath -> fh -> SyncType -> IO Errno,
 
         -- | Implements @opendir(3)@.  This method should check if the open
         --   operation is permitted for this directory.
-        fuseOpenDirectory :: FilePath -> IO Errno,
+        fuseOpenDirectory :: FilePath -> IO (Either Errno fh),
 
         -- | Implements @readdir(3)@.  The entire contents of the directory
         --   should be returned as a list of tuples (corresponding to the first
         --   mode of operation documented in @fuse.h@).
-        fuseReadDirectory :: FilePath -> IO (Either Errno [(FilePath, FileStat)]),
+        fuseReadDirectory :: FilePath -> fh -> IO (Either Errno [(FilePath, FileStat)]),
 
         -- | Implements @closedir(3)@.
-        fuseReleaseDirectory :: FilePath -> IO Errno,
+        fuseReleaseDirectory :: FilePath -> fh -> IO Errno,
 
         -- | Synchronize the directory's contents; analogous to
         --   'fuseSynchronizeFile'.
-        fuseSynchronizeDirectory :: FilePath -> SyncType -> IO Errno,
+        fuseSynchronizeDirectory :: FilePath -> fh -> SyncType -> IO Errno,
 
         -- | Check file access permissions; this will be called for the
         --   access() system call.  If the @default_permissions@ mount option
@@ -426,16 +428,17 @@ defaultFuseOps =
                    , fuseSetFileSize = \_ _ -> return eNOSYS
                    , fuseSetFileTimes = \_ _ _ -> return eNOSYS
                    , fuseOpen =   \_ _ _   -> return (Left eNOSYS)
+                   , fuseCreateFile =   \_ _ _ _   -> return (Left eNOSYS)
                    , fuseRead =   \_ _ _ _ -> return (Left eNOSYS)
                    , fuseWrite =  \_ _ _ _ -> return (Left eNOSYS)
                    , fuseGetFileSystemStats = \_ -> return (Left eNOSYS)
                    , fuseFlush = \_ _ -> return eOK
                    , fuseRelease = \_ _ -> return ()
-                   , fuseSynchronizeFile = \_ _ -> return eNOSYS
-                   , fuseOpenDirectory = \_ -> return eNOSYS
-                   , fuseReadDirectory = \_ -> return (Left eNOSYS)
-                   , fuseReleaseDirectory = \_ -> return eNOSYS
-                   , fuseSynchronizeDirectory = \_ _ -> return eNOSYS
+                   , fuseSynchronizeFile = \_ _ _ -> return eNOSYS
+                   , fuseOpenDirectory = \_ -> return (Left eNOSYS)
+                   , fuseReadDirectory = \_ _ -> return (Left eNOSYS)
+                   , fuseReleaseDirectory = \_ _ -> return eNOSYS
+                   , fuseSynchronizeDirectory = \_ _ _ -> return eNOSYS
                    , fuseAccess = \_ _ -> return eNOSYS
                    , fuseInit = return ()
                    , fuseDestroy = return ()
@@ -476,6 +479,7 @@ withStructFuse pFuseChan pArgs ops handler f =
       -- TODO: Deprecated, use utimens() instead.
       mkUTime      wrapUTime      >>= (#poke struct fuse_operations, utime)      pOps 
       mkOpen       wrapOpen       >>= (#poke struct fuse_operations, open)       pOps 
+      mkCreateFile wrapCreateFile >>= (#poke struct fuse_operations, create)     pOps 
       mkRead       wrapRead       >>= (#poke struct fuse_operations, read)       pOps 
       mkWrite      wrapWrite      >>= (#poke struct fuse_operations, write)      pOps 
       mkStatFS     wrapStatFS     >>= (#poke struct fuse_operations, statfs)     pOps
@@ -593,6 +597,7 @@ withStructFuse pFuseChan pArgs ops handler f =
                  let append    = (#const O_APPEND)   .&. flags == (#const O_APPEND)
                      noctty    = (#const O_NOCTTY)   .&. flags == (#const O_NOCTTY)
                      nonBlock  = (#const O_NONBLOCK) .&. flags == (#const O_NONBLOCK)
+                     trunc     = (#const O_TRUNC)    .&. flags == (#const O_TRUNC)
                      how | (#const O_RDWR) .&. flags == (#const O_RDWR) = ReadWrite
                          | (#const O_WRONLY) .&. flags == (#const O_WRONLY) = WriteOnly
                          | otherwise = ReadOnly
@@ -600,9 +605,34 @@ withStructFuse pFuseChan pArgs ops handler f =
                                                    , exclusive = False
                                                    , noctty = noctty
                                                    , nonBlock = nonBlock
-                                                   , trunc = False
+                                                   , trunc = trunc
                                                    }
                  result <- (fuseOpen ops) filePath how openFileFlags
+                 case result of
+                    Left (Errno errno) -> return (- errno)
+                    Right cval         -> do
+                        sptr <- newStablePtr cval
+                        (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
+                        return okErrno
+
+          wrapCreateFile :: CCreate
+          wrapCreateFile pFilePath mode pFuseFileInfo = handle fuseHandler $
+              do filePath <- peekCString pFilePath
+                 (flags :: CInt) <- (#peek struct fuse_file_info, flags) pFuseFileInfo
+                 let append    = (#const O_APPEND)   .&. flags == (#const O_APPEND)
+                     noctty    = (#const O_NOCTTY)   .&. flags == (#const O_NOCTTY)
+                     nonBlock  = (#const O_NONBLOCK) .&. flags == (#const O_NONBLOCK)
+                     trunc     = (#const O_TRUNC)    .&. flags == (#const O_TRUNC)
+                     how | (#const O_RDWR) .&. flags == (#const O_RDWR) = ReadWrite
+                         | (#const O_WRONLY) .&. flags == (#const O_WRONLY) = WriteOnly
+                         | otherwise = ReadOnly
+                     openFileFlags = OpenFileFlags { append = append
+                                                   , exclusive = False
+                                                   , noctty = noctty
+                                                   , nonBlock = nonBlock
+                                                   , trunc = trunc
+                                                   }
+                 result <- (fuseCreateFile ops) filePath mode how openFileFlags
                  case result of
                     Left (Errno errno) -> return (- errno)
                     Right cval         -> do
@@ -669,20 +699,27 @@ withStructFuse pFuseChan pArgs ops handler f =
           wrapFSync :: CFSync
           wrapFSync pFilePath isFullSync pFuseFileInfo = handle fuseHandler $
               do filePath <- peekCString pFilePath
+                 cVal <- getFH pFuseFileInfo
                  (Errno errno) <- (fuseSynchronizeFile ops)
-                                      filePath (toEnum isFullSync)
+                                      filePath cVal (toEnum isFullSync)
                  return (- errno)
           wrapOpenDir :: COpenDir
           wrapOpenDir pFilePath pFuseFileInfo = handle fuseHandler $
               do filePath <- peekCString pFilePath
                  -- XXX: Should we pass flags from pFuseFileInfo?
-                 (Errno errno) <- (fuseOpenDirectory ops) filePath
-                 return (- errno)
+                 result <- (fuseOpenDirectory ops) filePath
+                 case result of
+                    Left (Errno errno) -> return (- errno)
+                    Right cval         -> do
+                        sptr <- newStablePtr cval
+                        (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
+                        return okErrno
 
           wrapReadDir :: CReadDir
           wrapReadDir pFilePath pBuf pFillDir off pFuseFileInfo =
             handle fuseHandler $ do
               filePath <- peekCString pFilePath
+              cVal     <- getFH pFuseFileInfo
               let fillDir = mkFillDir pFillDir
               let filler :: (FilePath, FileStat) -> IO ()
                   filler (fileName, fileStat) =
@@ -693,21 +730,23 @@ withStructFuse pFuseChan pArgs ops handler f =
                            -- Ignoring return value of pFillDir, namely 1 if
                            -- pBuff is full.
                            return ()
-              eitherContents <- (fuseReadDirectory ops) filePath -- XXX fileinfo
+              eitherContents <- (fuseReadDirectory ops) filePath cVal
               case eitherContents of
                 Left (Errno errno) -> return (- errno)
                 Right contents     -> mapM filler contents >> return okErrno
 
           wrapReleaseDir :: CReleaseDir
-          wrapReleaseDir pFilePath pFuseFileInfo = handle fuseHandler $
+          wrapReleaseDir pFilePath pFuseFileInfo = E.finally (handle fuseHandler $
               do filePath <- peekCString pFilePath
-                 (Errno errno) <- (fuseReleaseDirectory ops) filePath
-                 return (- errno)
+                 cVal     <- getFH pFuseFileInfo
+                 (Errno errno) <- (fuseReleaseDirectory ops) filePath cVal
+                 return (- errno)) (delFH pFuseFileInfo)
           wrapFSyncDir :: CFSyncDir
           wrapFSyncDir pFilePath isFullSync pFuseFileInfo = handle fuseHandler $
               do filePath <- peekCString pFilePath
+                 cVal <- getFH pFuseFileInfo
                  (Errno errno) <- (fuseSynchronizeDirectory ops)
-                                      filePath (toEnum isFullSync)
+                                      filePath cVal (toEnum isFullSync)
                  return (- errno)
           wrapAccess :: CAccess
           wrapAccess pFilePath at = handle fuseHandler $
@@ -725,36 +764,35 @@ withStructFuse pFuseChan pArgs ops handler f =
 
 data Operation
 foreign import ccall safe "opqueue.h initialize"
-  initialize :: CInt -> IO ()
+  initialize :: IO ()
 
 foreign import ccall safe "opqueue.h get_op"
-  get_op :: CInt -> IO (Ptr Operation)
+  get_op :: IO (Ptr Operation)
 
-foreign import ccall unsafe "opqueue.h send_result"
+foreign import ccall safe "opqueue.h send_result"
   send_result :: Ptr Operation -> CInt -> IO ()
 
 foreign import ccall safe "opqueue.h send_result_and_get_op"
-  send_result_and_get_op :: Ptr Operation -> CInt -> CInt -> IO (Ptr Operation)
+  send_result_and_get_op :: Ptr Operation -> CInt -> IO (Ptr Operation)
 
 foreign import ccall safe "opfuse.h opfuse_run"
   opfuse_run :: CString -> Ptr CFuseArgs -> IO ()
 
 startHandlingOps :: forall e fh. Exception e => FuseOperations fh -> (e -> IO Errno) -> IO ()
 startHandlingOps ops handler = do
+    initialize
     n <- getNumCapabilities
-    initialize (fromIntegral n)
-    forM_ [0..(n-1)] $ \i -> forkIO . forever $ do
-          pOp <- get_op (fromIntegral i)
-          opcode <- (#peek struct operation, op_type) pOp
-          res <- handleOpcode opcode pOp
-          send_result pOp res
+    replicateM_ n . forkIO . forever $ do
+      pOp <- get_op
+      opcode <- (#peek struct operation, op_type) pOp
+      res <- handleOpcode opcode pOp
+      send_result pOp res
     where fuseHandler :: e -> IO CInt
           fuseHandler e = handler e >>= return . negate . unErrno
 
           handleOpcode :: CInt -> Ptr Operation -> IO CInt
 
-          -- OP_GETATTR
-          handleOpcode 1 pOp = handle fuseHandler $ do
+          handleOpcode (#const OP_GETATTR) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.getattr.pn) pOp
             pStat <- (#peek struct operation, u.getattr.st) pOp
             filePath <- peekCString pFilePath
@@ -764,8 +802,7 @@ startHandlingOps ops handler = do
               Right stat         -> do fileStatToCStat stat pStat
                                        return okErrno
 
-          -- OP_MKNOD
-          handleOpcode 2 pOp = handle fuseHandler $ do
+          handleOpcode (#const OP_MKNOD) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.mknod.pn) pOp
             filePath <- peekCString pFilePath
             mode <- (#peek struct operation, u.mknod.mode) pOp
@@ -773,23 +810,20 @@ startHandlingOps ops handler = do
             (Errno errno) <- (fuseCreateDevice ops) filePath (fileModeToEntryType mode) mode rdev
             return (- errno)
 
-          -- OP_MKDIR
-          handleOpcode 3 pOp = handle fuseHandler $ do
+          handleOpcode (#const OP_MKDIR) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.mkdir.pn) pOp
             filePath <- peekCString pFilePath
             mode <- (#peek struct operation, u.mkdir.mode) pOp
             (Errno errno) <- (fuseCreateDirectory ops) filePath mode
             return (- errno)
 
-          -- OP_UNLINK
-          handleOpcode 4 pOp = handle fuseHandler $ do
+          handleOpcode (#const OP_UNLINK) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.unlink.pn) pOp
             filePath <- peekCString pFilePath
             (Errno errno) <- (fuseRemoveLink ops) filePath
             return (- errno)
 
-          -- OP_OPEN
-          handleOpcode 5 pOp = handle fuseHandler $ do
+          handleOpcode (#const OP_OPEN) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.open.pn) pOp
             pFuseFileInfo <- (#peek struct operation, u.open.info) pOp
             filePath <- peekCString pFilePath
@@ -797,6 +831,7 @@ startHandlingOps ops handler = do
             let append    = (#const O_APPEND)   .&. flags == (#const O_APPEND)
                 noctty    = (#const O_NOCTTY)   .&. flags == (#const O_NOCTTY)
                 nonBlock  = (#const O_NONBLOCK) .&. flags == (#const O_NONBLOCK)
+                trunc     = (#const O_TRUNC)    .&. flags == (#const O_TRUNC)
                 how | (#const O_RDWR) .&. flags == (#const O_RDWR) = ReadWrite
                     | (#const O_WRONLY) .&. flags == (#const O_WRONLY) = WriteOnly
                     | otherwise = ReadOnly
@@ -804,7 +839,7 @@ startHandlingOps ops handler = do
                                               , exclusive = False
                                               , noctty = noctty
                                               , nonBlock = nonBlock
-                                              , trunc = False
+                                              , trunc = trunc
                                               }
             result <- (fuseOpen ops) filePath how openFileFlags
             case result of
@@ -814,10 +849,36 @@ startHandlingOps ops handler = do
                    (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
                    return okErrno
 
-          -- OP_RELEASE
-          handleOpcode 6 pOp = handle fuseHandler $ do
-            pFilePath <- (#peek struct operation, u.open.pn) pOp
-            pFuseFileInfo <- (#peek struct operation, u.open.info) pOp
+          handleOpcode (#const OP_CREATE) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.create.pn) pOp
+            mode <- (#peek struct operation, u.create.mode) pOp
+            pFuseFileInfo <- (#peek struct operation, u.create.info) pOp
+            filePath <- peekCString pFilePath
+            (flags :: CInt) <- (#peek struct fuse_file_info, flags) pFuseFileInfo
+            let append    = (#const O_APPEND)   .&. flags == (#const O_APPEND)
+                noctty    = (#const O_NOCTTY)   .&. flags == (#const O_NOCTTY)
+                nonBlock  = (#const O_NONBLOCK) .&. flags == (#const O_NONBLOCK)
+                trunc     = (#const O_TRUNC)    .&. flags == (#const O_TRUNC)
+                how | (#const O_RDWR) .&. flags == (#const O_RDWR) = ReadWrite
+                    | (#const O_WRONLY) .&. flags == (#const O_WRONLY) = WriteOnly
+                    | otherwise = ReadOnly
+                openFileFlags = OpenFileFlags { append = append
+                                              , exclusive = False
+                                              , noctty = noctty
+                                              , nonBlock = nonBlock
+                                              , trunc = trunc
+                                              }
+            result <- (fuseCreateFile ops) filePath mode how openFileFlags
+            case result of
+               Left (Errno errno) -> return (- errno)
+               Right cval         -> do
+                   sptr <- newStablePtr cval
+                   (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
+                   return okErrno
+
+          handleOpcode (#const OP_RELEASE) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.release.pn) pOp
+            pFuseFileInfo <- (#peek struct operation, u.release.info) pOp
             filePath <- peekCString pFilePath
             cVal     <- getFH pFuseFileInfo
             -- TODO: deal with these flags?
@@ -826,12 +887,163 @@ startHandlingOps ops handler = do
             (fuseRelease ops) filePath cVal
             return 0
 
-          -- OP_RMDIR
-          handleOpcode 7 pOp = handle fuseHandler $ do
-            pFilePath <- (#peek struct operation, u.unlink.pn) pOp
+          handleOpcode (#const OP_RMDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.rmdir.pn) pOp
             filePath <- peekCString pFilePath
             (Errno errno) <- (fuseRemoveDirectory ops) filePath
             return (- errno)
+
+          handleOpcode (#const OP_FSYNC) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.fsync.pn) pOp
+            (isDataSync :: CInt) <- (#peek struct operation, u.fsync.isdatasync) pOp
+            pFuseFileInfo <- (#peek struct operation, u.fsync.info) pOp
+            filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
+            (Errno errno) <- (fuseSynchronizeFile ops) filePath cVal (toEnum $ fromIntegral isDataSync)
+            return (- errno)
+
+          handleOpcode (#const OP_FSYNCDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.fsyncdir.pn) pOp
+            (isDataSync :: CInt) <- (#peek struct operation, u.fsyncdir.isdatasync) pOp
+            pFuseFileInfo <- (#peek struct operation, u.fsyncdir.info) pOp
+            filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
+            (Errno errno) <- (fuseSynchronizeDirectory ops) filePath cVal (toEnum $ fromIntegral isDataSync)
+            return (- errno)
+
+          handleOpcode (#const OP_WRITE) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.write.pn) pOp
+            pBuf <- (#peek struct operation, u.write.buf) pOp
+            (bufSiz :: CSize) <- (#peek struct operation, u.write.bufsiz) pOp
+            off <- (#peek struct operation, u.write.off) pOp
+            pFuseFileInfo <- (#peek struct operation, u.write.info) pOp
+            filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
+            buf  <- B.packCStringLen (pBuf, fromIntegral bufSiz)
+            eitherBytes <- (fuseWrite ops) filePath cVal buf off
+            case eitherBytes of
+              Left  (Errno errno) -> return (- errno)
+              Right bytes         -> return (fromIntegral bytes)
+
+          handleOpcode (#const OP_READ) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.read.pn) pOp
+            pBuf <- (#peek struct operation, u.read.buf) pOp
+            (bufSiz :: CSize) <- (#peek struct operation, u.read.bufsiz) pOp
+            off <- (#peek struct operation, u.read.off) pOp
+            pFuseFileInfo <- (#peek struct operation, u.read.info) pOp
+            filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
+            eitherRead <- (fuseRead ops) filePath cVal bufSiz off
+            case eitherRead of
+              Left (Errno errno) -> return (- errno)
+              Right bytes  ->
+                do let len = fromIntegral bufSiz `min` B.length bytes
+                   bsToBuf pBuf bytes len
+                   return (fromIntegral len)
+
+          handleOpcode (#const OP_TRUNCATE) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.truncate.pn) pOp
+            size <- (#peek struct operation, u.truncate.size) pOp
+            filePath <- peekCString pFilePath
+            (Errno errno) <- (fuseSetFileSize ops) filePath size
+            return (- errno)
+
+          handleOpcode (#const OP_CHMOD) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.chmod.pn) pOp
+            mode <- (#peek struct operation, u.chmod.mode) pOp
+            filePath <- peekCString pFilePath
+            (Errno errno) <- (fuseSetFileMode ops) filePath mode
+            return (- errno)
+
+          handleOpcode (#const OP_RENAME) pOp = handle fuseHandler $ do
+            pOld <- (#peek struct operation, u.rename.src) pOp
+            pNew <- (#peek struct operation, u.rename.dst) pOp
+            old <- peekCString pOld
+            new <- peekCString pNew
+            (Errno errno) <- (fuseRename ops) old new
+            return (- errno)
+
+          handleOpcode (#const OP_STATFS) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.statfs.pn) pOp
+            pStatVFS <- (#peek struct operation, u.statfs.st) pOp
+            filePath <- peekCString pFilePath
+            eitherStatVFS <- (fuseGetFileSystemStats ops) filePath
+            case eitherStatVFS of
+              Left (Errno errno) -> return (- errno)
+              Right stat         ->
+                do (#poke struct statvfs, f_bsize) pStatVFS
+                       (fromIntegral (fsStatBlockSize stat) :: (#type long))
+                   (#poke struct statvfs, f_blocks) pStatVFS
+                       (fromIntegral (fsStatBlockCount stat) :: (#type fsblkcnt_t))
+                   (#poke struct statvfs, f_bfree) pStatVFS
+                       (fromIntegral (fsStatBlocksFree stat) :: (#type fsblkcnt_t))
+                   (#poke struct statvfs, f_bavail) pStatVFS
+                       (fromIntegral (fsStatBlocksAvailable stat) :: (#type fsblkcnt_t))
+                   (#poke struct statvfs, f_files) pStatVFS
+                        (fromIntegral (fsStatFileCount stat) :: (#type fsfilcnt_t))
+                   (#poke struct statvfs, f_ffree) pStatVFS
+                       (fromIntegral (fsStatFilesFree stat) :: (#type fsfilcnt_t))
+                   (#poke struct statvfs, f_namemax) pStatVFS
+                       (fromIntegral (fsStatMaxNameLength stat) :: (#type long))
+                   return 0
+
+          handleOpcode (#const OP_UTIME) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.utime.pn) pOp
+            pUTimBuf <- (#peek struct operation, u.utime.buf) pOp
+            filePath <- peekCString pFilePath
+            accessTime <- (#peek struct utimbuf, actime) pUTimBuf
+            modificationTime <- (#peek struct utimbuf, modtime) pUTimBuf
+            (Errno errno) <- (fuseSetFileTimes ops) filePath accessTime modificationTime
+            return (- errno)
+
+          handleOpcode (#const OP_OPENDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.opendir.pn) pOp
+            pFuseFileInfo <- (#peek struct operation, u.opendir.info) pOp
+            -- XXX: Should we pass flags from pFuseFileInfo?
+            filePath <- peekCString pFilePath
+            result <- (fuseOpenDirectory ops) filePath
+            case result of
+              Left (Errno errno) -> return (- errno)
+              Right cval -> do
+                sptr <- newStablePtr cval
+                (#poke struct fuse_file_info, fh) pFuseFileInfo $ castStablePtrToPtr sptr
+                return okErrno
+
+          handleOpcode (#const OP_READDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.readdir.pn) pOp
+            pBuf <- (#peek struct operation, u.readdir.buf) pOp
+            pFillDir <- (#peek struct operation, u.readdir.fill) pOp
+            -- off <- (#peek struct operation, u.readdir.off) pOp
+            pFuseFileInfo <- (#peek struct operation, u.readdir.info) pOp
+            filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
+            let fillDir = mkFillDir pFillDir
+            let filler :: (FilePath, FileStat) -> IO ()
+                filler (fileName, fileStat) =
+                  withCString fileName $ \ pFileName ->
+                    allocaBytes (#size struct stat) $ \ pFileStat ->
+                      do fileStatToCStat fileStat pFileStat
+                         fillDir pBuf pFileName pFileStat 0
+                         -- Ignoring return value of pFillDir, namely 1 if
+                         -- pBuff is full.
+                         return ()
+            eitherContents <- (fuseReadDirectory ops) filePath cVal
+            case eitherContents of
+              Left (Errno errno) -> return (- errno)
+              Right contents     -> mapM filler contents >> return okErrno
+
+          handleOpcode (#const OP_RELEASEDIR) pOp = handle fuseHandler $ do
+            pFilePath <- (#peek struct operation, u.opendir.pn) pOp
+            pFuseFileInfo <- (#peek struct operation, u.opendir.info) pOp
+            filePath <- peekCString pFilePath
+            cVal <- getFH pFuseFileInfo
+            delFH pFuseFileInfo
+            (Errno errno) <- (fuseReleaseDirectory ops) filePath cVal
+            return (- errno)
+
+          handleOpcode (#const OP_DESTROY) pOp = handle fuseHandler $ do
+            fuseDestroy ops
+            return 0
 
           handleOpcode opcode pOp =
             error $ "Undefined opcode handler for " ++ (show opcode)
@@ -1114,6 +1326,10 @@ foreign import ccall safe "wrapper"
 type COpen = CString -> Ptr CFuseFileInfo -> IO CInt
 foreign import ccall safe "wrapper"
     mkOpen :: COpen -> IO (FunPtr COpen)
+
+type CCreate = CString -> CMode -> Ptr CFuseFileInfo -> IO CInt
+foreign import ccall safe "wrapper"
+    mkCreateFile :: CCreate -> IO (FunPtr CCreate)
 
 type CRead = CString -> CString -> CSize -> COff -> Ptr CFuseFileInfo -> IO CInt
 foreign import ccall safe "wrapper"
