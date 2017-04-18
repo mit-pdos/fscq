@@ -895,20 +895,20 @@ startHandlingOps ops handler = do
 
           handleOpcode (#const OP_FSYNC) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.fsync.pn) pOp
-            isDataSync <- (#peek struct operation, u.fsync.isdatasync) pOp
+            (isDataSync :: CInt) <- (#peek struct operation, u.fsync.isdatasync) pOp
             pFuseFileInfo <- (#peek struct operation, u.fsync.info) pOp
             filePath <- peekCString pFilePath
             cVal <- getFH pFuseFileInfo
-            (Errno errno) <- (fuseSynchronizeFile ops) filePath cVal (toEnum isDataSync)
+            (Errno errno) <- (fuseSynchronizeFile ops) filePath cVal (toEnum $ fromIntegral isDataSync)
             return (- errno)
 
           handleOpcode (#const OP_FSYNCDIR) pOp = handle fuseHandler $ do
             pFilePath <- (#peek struct operation, u.fsyncdir.pn) pOp
-            isDataSync <- (#peek struct operation, u.fsyncdir.isdatasync) pOp
+            (isDataSync :: CInt) <- (#peek struct operation, u.fsyncdir.isdatasync) pOp
             pFuseFileInfo <- (#peek struct operation, u.fsyncdir.info) pOp
             filePath <- peekCString pFilePath
             cVal <- getFH pFuseFileInfo
-            (Errno errno) <- (fuseSynchronizeDirectory ops) filePath cVal (toEnum isDataSync)
+            (Errno errno) <- (fuseSynchronizeDirectory ops) filePath cVal (toEnum $ fromIntegral isDataSync)
             return (- errno)
 
           handleOpcode (#const OP_WRITE) pOp = handle fuseHandler $ do
