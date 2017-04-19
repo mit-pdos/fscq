@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 static inline uint64_t __attribute__((__always_inline__))
 rdtsc(void)
@@ -12,14 +13,11 @@ rdtsc(void)
     return ((uint64_t) a) | (((uint64_t) d) << 32);
 }
 
-#define QUEUE_MAX_SIZE 256
 #define MAX_TIMING (1000*1024)
 
 struct queue {
-  struct operation *ops[QUEUE_MAX_SIZE];
-  int puts;
-  int gets;
-  pthread_spinlock_t spin;
+  struct operation *op;
+  int num_ops;
 
   struct {
     int ident;
@@ -37,22 +35,15 @@ struct operation* get_op(int qi) {
   struct queue *q = &opqueue.qs[qi];
 
   while (1) {
-    if (q->puts <= q->gets) {
-      __sync_synchronize();
-      continue;
+    struct operation *op = q->op;
+    if (op != NULL) {
+      // retrieved from queue
+      q->op = NULL;
+      op->t2 = rdtsc();
+      __sync_fetch_and_add(&q->num_ops, 1);
+      return op;
     }
-
-    pthread_spin_lock(&q->spin);
-    if (q->puts <= q->gets) {
-      pthread_spin_unlock(&q->spin);
-      continue;
-    }
-
-    struct operation *op = q->ops[q->gets % QUEUE_MAX_SIZE];
-    q->gets++;
-    op->t1 = rdtsc();
-    pthread_spin_unlock(&q->spin);
-    return op;
+    __sync_synchronize();
   }
 }
 
@@ -65,40 +56,39 @@ void send_result(struct operation *op, int err) {
 
 void report_time(int ident, int qi, uint64_t start, uint64_t end) {
   struct queue *q = &opqueue.qs[qi];
-  int index = q->next_timing++;
-  if (index < MAX_TIMING) {
+  if (q->next_timing < MAX_TIMING) {
+    if (start > end) {
+      // sometimes the operation is removed from the queue ~100 cycles before
+      // adding it - possibly due to unsychronized processor-local clocks; in
+      // these cases, do not add underflowing end-start but don't print an
+      // error either
+      if (start > end+200) {
+        fprintf(stderr, "nonsensical timing %d on %d: %lu - %lu = %ld\n",
+            ident, qi,
+            end, start, (int64_t) end - (int64_t) start);
+      }
+      return;
+    }
+    int index = q->next_timing++;
     q->timings[index].ident = ident;
     q->timings[index].time = end - start;
   }
 }
 
 int execute(struct operation *op) {
-  if (op->op_type == OP_OPEN &&
-      strcmp(op->u.open.pn, "/print_timing_info") == 0) {
-    print_opqueue_timings();
-  }
   op->done = 0;
   op->t0 = rdtsc();
+
   int qi = rand()%opqueue.num_queues;
-  struct queue *q = &opqueue.qs[qi];
-
   while (1) {
-    if (q->puts - q->gets >= QUEUE_MAX_SIZE) {
-      __sync_synchronize();
-      continue;
+    struct queue *q = &opqueue.qs[qi];
+    if (__sync_bool_compare_and_swap(&q->op, NULL, op)) {
+      // queue put
+      op->t1 = rdtsc();
+      break;
     }
-
-    pthread_spin_lock(&q->spin);
-    if (q->puts - q->gets >= QUEUE_MAX_SIZE) {
-      pthread_spin_unlock(&q->spin);
-      continue;
-    }
-
-    q->ops[q->puts % QUEUE_MAX_SIZE] = op;
-    q->puts++;
-    op->t2 = rdtsc();
-    pthread_spin_unlock(&q->spin);
-    break;
+    __sync_synchronize();
+    qi = (qi+1)%opqueue.num_queues;
   }
 
   while (!op->done) {
@@ -114,16 +104,16 @@ int execute(struct operation *op) {
   return op->err;
 }
 
+void sig_handler(int signo) {
+  print_opqueue_timings();
+}
+
 void
 initialize(int n)
 {
   opqueue.num_queues = n;
   opqueue.qs = (struct queue *) calloc(n, sizeof(struct queue));
-
-  for (int qi = 0; qi < n; qi++) {
-    struct queue *q = &opqueue.qs[qi];
-    pthread_spin_init(&q->spin, PTHREAD_PROCESS_PRIVATE);
-  }
+  signal(SIGUSR1, sig_handler);
 }
 
 void
@@ -131,15 +121,34 @@ print_opqueue_timings()
 {
   for (int qi = 0; qi < opqueue.num_queues; qi++) {
     struct queue *q = &opqueue.qs[qi];
-    printf("queue %d: %d puts %d gets\n", qi, q->puts, q->gets);
+    printf("queue %d: %d ops\n", qi, q->num_ops);
   }
 
+  // for (int qi = 0; qi < opqueue.num_queues; qi++) {
+  //   struct queue *q = &opqueue.qs[qi];
+  //   for (int i = 0; i < q->next_timing; i++) {
+  //     int ident = q->timings[i].ident;
+  //     uint64_t time = q->timings[i].time;
+  //     printf("%d on %d: %lfus\n", ident, qi, ((double) time) / 2600);
+  //   }
+  // }
+  uint64_t total_time[4] = {0, 0, 0, 0};
   for (int qi = 0; qi < opqueue.num_queues; qi++) {
     struct queue *q = &opqueue.qs[qi];
     for (int i = 0; i < q->next_timing; i++) {
       int ident = q->timings[i].ident;
       uint64_t time = q->timings[i].time;
-      printf("%d on %d: %lfus\n", ident, qi, ((double) time) / 2600);
+      total_time[ident] += time;
     }
+  }
+  for (int ident = 0; ident < 4; ident++) {
+    printf("total %d time: %lfs\n", ident, ((double) total_time[ident])/3330.0/1e6);
+  }
+
+  // clear timings till next call
+  for (int qi = 0; qi < opqueue.num_queues; qi++) {
+    struct queue *q = &opqueue.qs[qi];
+    q->num_ops = 0;
+    q->next_timing = 0;
   }
 }
