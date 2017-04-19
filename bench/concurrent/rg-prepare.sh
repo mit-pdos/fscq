@@ -13,18 +13,17 @@ if [ -z "$img" ]; then
   exit 1
 fi
 
-mkfs --data-bitmaps 16 --inode-bitmaps 16 $img
+mkfs --data-bitmaps 20 --inode-bitmaps 20 --log-desc-blocks 256 $img
 fscq $img "$mnt" -f &
-sleep 1
+sleep 4
 
-cp -r $code/xv6 "$mnt/"
+cp -r ~/xv6 "$mnt/"
 cd "$mnt/"
 tar -xf ~/coq.tar.xz
+sync "$mnt/coq"
+
 #tar -xf ~/linux.tar.xz
 
-for file in $mnt/**; do
-  sync $file
+for file in "$mnt"/**; do
+  sync "$file"
 done
-
-fusermount -u /tmp/fscq
-wait
