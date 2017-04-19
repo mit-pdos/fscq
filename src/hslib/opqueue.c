@@ -13,6 +13,7 @@ rdtsc(void)
 }
 
 #define QUEUE_MAX_SIZE 256
+#define MAX_TIMING (1000*1024)
 
 struct queue {
   struct operation *ops[QUEUE_MAX_SIZE];
@@ -23,7 +24,7 @@ struct queue {
   struct {
     int ident;
     uint64_t time;
-  } timings[1000*1024];
+  } timings[MAX_TIMING];
   int next_timing;
 };
 
@@ -65,8 +66,10 @@ void send_result(struct operation *op, int err) {
 void report_time(int ident, int qi, uint64_t start, uint64_t end) {
   struct queue *q = &opqueue.qs[qi];
   int index = q->next_timing++;
-  q->timings[index].ident = ident;
-  q->timings[index].time = end - start;
+  if (index < MAX_TIMING) {
+    q->timings[index].ident = ident;
+    q->timings[index].time = end - start;
+  }
 }
 
 int execute(struct operation *op) {
