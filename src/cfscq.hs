@@ -285,44 +285,34 @@ fscqGetFileStat fr fsP (_:path)
         return $ Right $ fileStat ctx attr
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
-fscqOpenDirectory :: FSrunner -> FsParams -> FilePath -> IO Errno
+fscqOpenDirectory :: FSrunner -> FsParams -> FilePath -> IO (Either Errno HT)
 fscqOpenDirectory fr fsP (_:path) = do
   debugStart "OPENDIR" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ CFS.lookup fsP nameparts
   debugMore r
   case r of
-    Errno.Err e -> return $ errnoToPosix e
-    Errno.OK (_, isdir)
-      | isdir -> return eOK
-      | otherwise -> return eNOTDIR
-fscqOpenDirectory _ _ "" = return eNOENT
-
-fscqReadDirectory :: FSrunner -> FsParams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fr fsP (_:path) = do
-  debugStart "READDIR" path
-  ctx <- getFuseContext
-  nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP nameparts
-  debugMore r
-  case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
-    Errno.OK (dnum, isdir)
-      | isdir -> do
-        (files, ()) <- fr $ CFS.readdir fsP dnum
-        files_stat <- mapM (mkstat ctx) files
-        return $ Right $ [(".",          dirStat ctx)
-                         ,("..",         dirStat ctx)
-                         ] ++ files_stat
-      | otherwise -> return $ Left $ eNOTDIR
+    Errno.OK (inum, isdir)
+      | isdir -> return $ Right inum
+      | otherwise -> return $ Left eNOTDIR
+fscqOpenDirectory _ _ "" = return $ Left eNOENT
+
+fscqReadDirectory :: FSrunner -> FsParams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory fr fsP _ dnum = do
+  debugStart "READDIR" dnum
+  ctx <- getFuseContext
+  (files, ()) <- fr $ CFS.readdir fsP dnum
+  files_stat <- mapM (mkstat ctx) files
+  return $ Right $ [(".",          dirStat ctx)
+                   ,("..",         dirStat ctx)
+                   ] ++ files_stat
   where
     mkstat ctx (fn, (inum, isdir))
       | isdir = return $ (fn, dirStat ctx)
       | otherwise = do
         (attr, ()) <- fr $ CFS.file_get_attr fsP inum
         return $ (fn, fileStat ctx attr)
-
-fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> FsParams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr fsP (_:path) _ _
@@ -561,26 +551,18 @@ fscqChmod :: FilePath -> FileMode -> IO Errno
 fscqChmod _ _ = do
   return eOK
 
-fscqSyncFile :: FSrunner -> FsParams -> FilePath -> SyncType -> IO Errno
-fscqSyncFile fr fsP (_:path) syncType = do
-  debugStart "SYNC FILE" path
-  nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ CFS.lookup fsP nameparts
-  debugMore r
-  case r of
-    Errno.Err e -> return $ errnoToPosix e
-    Errno.OK (inum, _) -> do
-      _ <- fr $ CFS.file_sync fsP inum
-      case syncType of
-        DataSync -> return eOK
-        FullSync -> do
-          _ <- fr $ CFS.tree_sync fsP
-          return eOK
-fscqSyncFile _ _ _ _ = return eIO
+fscqSyncFile :: FSrunner -> FsParams -> FilePath -> HT -> SyncType -> IO Errno
+fscqSyncFile fr fsP _ inum syncType = do
+  debugStart "SYNC FILE" inum
+  _ <- fr $ CFS.file_sync fsP inum
+  case syncType of
+    DataSync -> return eOK
+    FullSync -> do
+      _ <- fr $ CFS.tree_sync fsP
+      return eOK
 
-fscqSyncDir :: FSrunner -> FsParams -> FilePath -> SyncType -> IO Errno
-fscqSyncDir fr fsP (_:path) _ = do
-  debugStart "SYNC DIR" path
+fscqSyncDir :: FSrunner -> FsParams -> FilePath -> HT -> SyncType -> IO Errno
+fscqSyncDir fr fsP _ inum _ = do
+  debugStart "SYNC DIR" inum
   _ <- fr $ CFS.tree_sync fsP
   return eOK
-fscqSyncDir _ _ _ _ = return eIO
