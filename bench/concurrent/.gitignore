@@ -5,6 +5,7 @@
 *.prof
 perf.data
 disk.img
+*-disk.img
 /data.tsv
 /data.tsv.xz
 gc*.txt

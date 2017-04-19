@@ -13,13 +13,14 @@ if [ -z "$img" ]; then
   exit 1
 fi
 
-mkfs $img
+mkfs --data-bitmaps 16 --inode-bitmaps 16 $img
 fscq $img "$mnt" -f &
 sleep 1
 
 cp -r $code/xv6 "$mnt/"
 cd "$mnt/"
 tar -xf ~/coq.tar.xz
+#tar -xf ~/linux.tar.xz
 
 for file in $mnt/**; do
   sync $file
