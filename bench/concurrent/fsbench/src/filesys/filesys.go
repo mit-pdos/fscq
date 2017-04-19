@@ -184,8 +184,8 @@ func (fs FileSystem) Launch(opts Options) {
 
 func (fs FileSystem) Stop() {
 	if fs.ident == "cfscq" || fs.ident == "fscq" {
-		if d, err := os.Open(fs.mntPoint); err == nil {
-			d.Sync()
+		if d, err := os.Open(path.Join(fs.mntPoint,
+			"print_timing_info")); err == nil {
 			d.Close()
 		}
 	}

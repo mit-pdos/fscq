@@ -1,3 +1,4 @@
+#define FUSE_USE_VERSION 26
 #ifndef OPQUEUE_H
 #define OPQUEUE_H
 #include <sys/stat.h>
@@ -175,10 +176,10 @@ struct operation {
   } u;
 };
 
-void initialize();
-struct operation* get_op();
+void initialize(int n);
+struct operation* get_op(int qi);
 void send_result(struct operation *op, int err);
-struct operation* send_result_and_get_op(struct operation *op, int err);
 int execute(struct operation *op);
+void print_opqueue_timings();
 
 #endif
