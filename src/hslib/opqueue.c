@@ -1,3 +1,4 @@
+// vim: et:ts=2:sw=2
 #include "opqueue.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -58,15 +59,9 @@ void report_time(int ident, int qi, uint64_t start, uint64_t end) {
   struct queue *q = &opqueue.qs[qi];
   if (q->next_timing < MAX_TIMING) {
     if (start > end) {
-      // sometimes the operation is removed from the queue ~100 cycles before
-      // adding it - possibly due to unsychronized processor-local clocks; in
-      // these cases, do not add underflowing end-start but don't print an
-      // error either
-      if (start > end+200) {
-        fprintf(stderr, "nonsensical timing %d on %d: %lu - %lu = %ld\n",
-            ident, qi,
-            end, start, (int64_t) end - (int64_t) start);
-      }
+      // fprintf(stderr, "nonsensical timing %d on %d: %lu - %lu = %ld\n",
+      //     ident, qi,
+      //     end, start, (int64_t) end - (int64_t) start);
       return;
     }
     int index = q->next_timing++;
