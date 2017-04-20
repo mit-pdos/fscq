@@ -487,11 +487,11 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
     return (ok, True)
   else do
     bslen <- return $ fromIntegral $ BS.length bs
-    if ((fromIntegral offset) `mod` 4096 == 0) && (bslen `mod` 4096 == 0) && bslen < 4096 * 5 then
-      -- block is small and aligned -> logged write
-      return $ (Errno.OK (), True)
-    else
+    if ((fromIntegral offset) `mod` 4096 == 0) && (bslen `mod` 4096 == 0) && bslen > 4096 * 5 then
+      -- block is large and aligned -> bypass write
       return $ (Errno.OK (), False)
+    else
+      return $ (Errno.OK (), True)
   case okspc of
     Errno.OK _ -> do
       r <- foldM (write_piece do_log fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
