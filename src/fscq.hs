@@ -485,8 +485,13 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
   (okspc, do_log) <- if len < endpos then do
     (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
     return (ok, True)
-  else
-    return $ (Errno.OK (), False)
+  else do
+    bslen <- return $ fromIntegral $ BS.length bs
+    if ((fromIntegral offset) `mod` 4096 == 0) && (bslen `mod` 4096 == 0) && bslen < 4096 * 5 then
+      -- block is small and aligned -> logged write
+      return $ (Errno.OK (), True)
+    else
+      return $ (Errno.OK (), False)
   case okspc of
     Errno.OK _ -> do
       r <- foldM (write_piece do_log fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
