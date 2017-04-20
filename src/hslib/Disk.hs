@@ -1,4 +1,4 @@
-{-# LANGUAGE MagicHash, UnboxedTuples #-}
+{-# LANGUAGE MagicHash, UnboxedTuples, ScopedTypeVariables #-}
 
 module Disk where
 
@@ -15,6 +15,7 @@ import Foreign.ForeignPtr
 import Foreign.Marshal.Alloc
 import Data.IORef
 import qualified Data.Map.Strict
+import Control.Exception (catch, IOException)
 
 verbose :: Bool
 verbose = False
@@ -80,15 +81,20 @@ read_disk (S fd sr _ _) a = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
-    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
-    cc <- fdReadBuf fd buf 4096
-    if cc == 4096 then
-      do
-        i <- buf2i 0 4096 buf
-        return $ W i
-    else
-      do
-        error $ "read_disk: short read: " ++ (show cc) ++ " @ " ++ (show a)
+    success <- catch (fdSeek fd AbsoluteSeek (fromIntegral $ 4096*a) >> return True)
+        (\(e::IOException) -> do
+        putStrLn $ "could not read at " ++ show a
+        putStrLn $ show e
+        return False)
+    if success then do
+      cc <- fdReadBuf fd buf 4096
+      if cc == 4096 then do
+              i <- buf2i 0 4096 buf
+              return $ W i
+      else error $ "read_disk: short read: " ++ (show cc) ++ " @ " ++ (show a)
+    else do
+      i <- buf2i 0 4096 buf
+      return $ W i
 
 write_disk :: DiskState -> Integer -> Coq_word -> IO ()
 write_disk _ _ (W64 _) = error "write_disk: short value"
