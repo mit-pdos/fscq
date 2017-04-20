@@ -17,20 +17,20 @@ else
 fi
 
 if [ "$fs" = "ext4" ]; then
-  mnt="$HOME/coq-source"
+  mnt="$HOME/linux-source"
 fi
 
-coq="$mnt/coq"
+src="$mnt/linux-4.10.11"
 
-if [ ! -d "$coq" ]; then
-  echo "coq source not found at $coq" 1>&2
+if [ ! -d "$src" ]; then
+  echo "source not found at $src" 1>&2
   usage
 fi
 
 # warmup
-rg -j4 'le_plus_minus_r' "$coq" 1>/dev/null
+rg -j1 'PM_RESUME' "$src" 1>/dev/null
 
-/usr/bin/time -f '%C\n %Uu %Ss %er' rg -j4 'le_plus_minus_r' "$coq" 1>/dev/null
+/usr/bin/time -f '%C\n %Uu %Ss %er' rg -j4 'PM_RESUME' "$src" 1>/dev/null
 
 if [ "$fs" = "cfscq" -o "$fs" = "fscq" ]; then
   fusermount -u "$mnt"
