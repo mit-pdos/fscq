@@ -214,6 +214,7 @@ Module Go.
   | MapElements
   | FreezeBuffer (* destination, source *)
   | SliceBuffer (* destination, source, from, to *)
+  | InitSliceWithCapacity (cap : nat)
   | StructGet (idx : nat)
   | StructPut (idx : nat)
   | DeserializeNum
@@ -698,6 +699,13 @@ Module Go.
       exact (Some (slice_buffer_impl' from (to - from) (ns - to) s)).
     Defined.
 
+    Definition init_slice_with_capacity_impl (cap : nat) : op_impl 1 :=
+      fun args => let '^(Val tl l) := args in
+               match tl with
+               | Slice tl' => Some ^(SetTo (Val (Slice tl') (Here [])))
+               | _ =>  None
+               end.
+
     Definition struct_get_impl (idx : nat) : op_impl 2.
       refine (fun args => let '^(Val ts s, Val tr r) := args in
                         match ts with
@@ -755,6 +763,7 @@ Module Go.
     | MapElements => existT _ _ map_elements_impl
     | FreezeBuffer => existT _ _ freeze_buffer_impl
     | SliceBuffer => existT _ _ slice_buffer_impl
+    | InitSliceWithCapacity cap => existT _ _ (init_slice_with_capacity_impl cap)
     | StructGet idx => existT _ _ (struct_get_impl idx)
     | StructPut idx => existT _ _ (struct_set_impl idx)
     | DeserializeNum => existT _ _ deserialize_num_impl

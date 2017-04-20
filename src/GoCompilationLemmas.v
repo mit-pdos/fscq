@@ -54,6 +54,24 @@ Proof.
   repeat econstructor; [eval_expr; eauto..].
 Qed.
 
+Lemma CompileInitSliceWithCapacity : forall T {Wr: GoWrapper T} env A (v : Go.var) n,
+  EXTRACT Ret []
+  {{ v ~>? list T * A }}
+    Go.Modify (Go.InitSliceWithCapacity n) ^(v)
+  {{ fun ret => v ~> ret * A }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  inv_exec_progok.
+  eval_expr.
+  do 2 eexists.
+  intuition eauto.
+  pred_solve.
+
+  eval_expr.
+  contradiction H1.
+  repeat econstructor; [eval_expr; eauto..].
+Qed.
 
 Lemma CompileRet : forall T {H: GoWrapper T} env A B var (v : T) p,
   EXTRACT Ret v

@@ -373,6 +373,11 @@ let go_modify_op (ts : TranscriberState.state)
     | Go.Divide -> dst ^ ".Divide(" ^ a ^ ", " ^ b ^ ")"
     | Go.Modulo -> dst ^ ".Modulo(" ^ a ^ ", " ^ b ^ ")"
     )
+  | Go.InitSliceWithCapacity cap ->
+    let (var, _) = Obj.magic args_tuple in
+    let t = TranscriberState.get_var_type ts var in
+    let go_type = TranscriberState.get_go_type ts.gstate t in
+    (var_ref ts var) ^ " = make(" ^ go_type ^ "," ^ to_string cap ^ ")"
   | Go.StructGet _ ->
     fail_unmatched "go_modify_op StructGet"
   | Go.StructPut _ ->

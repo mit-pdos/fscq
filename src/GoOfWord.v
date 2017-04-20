@@ -56,16 +56,16 @@ Fixpoint go_of_word (t : Rec.type) (vdst vsrc : var) (from : nat) : stmt :=
       Declare Num (fun vto =>
         (Modify (@SetConst Num from) ^(vfrom); Modify (@SetConst Num (from + n)) ^(vto);
          Modify SliceBuffer ^(vdst, vsrc, vfrom, vto))))
-  | Rec.ArrayF t' n =>
+  | Rec.ArrayF t' n0 =>
     (fix array_of_word n from :=
        match n with
-       | O => Modify (@SetConst (Slice (go_rec_type t')) (Here [])) ^(vdst)
+       | O => Modify (InitSliceWithCapacity n0) ^(vdst)
        | S n' =>
          Declare (go_rec_type t') (fun vt' =>
            (array_of_word n' (from + Rec.len t');
             go_of_word t' vt' vsrc from;
             Modify AppendOp ^(vdst, vt')))
-       end) n from
+       end) n0 from
   | Rec.RecF fs =>
     (fix rec_of_word fs vdst from :=
        match fs with
@@ -99,8 +99,12 @@ Proof.
               )))%go
        end) rt vdst from)); simpl; intros.
   - eauto.
-  - revert vdst from. induction n; eauto.
-    intros. econstructor; intro. econstructor. eapply (IHn vdst (from + Rec.len t)).
+  - set (n' := n).
+    change (InitSliceWithCapacity n') with (InitSliceWithCapacity n).
+    generalize n.
+    subst n'.
+    revert vdst from. induction n; eauto.
+    intros. econstructor; intro. econstructor. eapply (IHn vdst (from + Rec.len t) n0).
     eauto.
   - eapply IHt.
   - eauto.
@@ -187,10 +191,14 @@ Proof.
     fold plus.
     eapply hoare_weaken; [ eapply CompileMiddle; eauto | cancel_go.. ].
   - revert vdst before after buf H0 H1 H F.
+    set (n' := n).
+    change (InitSliceWithCapacity n') with (InitSliceWithCapacity n).
+    generalize n.
+    subst n'.
     induction n; simpl; intros.
     + eapply hoare_weaken.
       evar (F' : pred).
-      pose proof (@CompileConst (list (Rec.data t0)) _ env F' vdst []).
+      pose proof (@CompileInitSliceWithCapacity (Rec.data t0) _ env F' vdst n).
       subst F'.
       simpl in H2.
       rewrite GoWrapper_rec_go_rec_type in H2.
@@ -216,7 +224,7 @@ Proof.
       eapply hoare_weaken; [ eapply CompileBindRet with (vara := vdst) | cancel_go.. ].
       eapply hoare_weaken.
       rewrite GoWrapper_rec_go_rec_type.
-      specialize (IHn vdst (before + Rec.len t0)).
+      specialize (IHn n0 vdst (before + Rec.len t0)).
       eapply IHn; eauto.
       divisibility.
 
