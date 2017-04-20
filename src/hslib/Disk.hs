@@ -5,6 +5,7 @@ module Disk where
 import System.IO
 import System.Posix.Types
 import System.Posix.IO
+import System.Posix.IO.Extra
 import System.Posix.Unistd
 import System.Posix.Files
 import Word
@@ -81,20 +82,11 @@ read_disk (S fd sr _ _) a = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
-    success <- catch (fdSeek fd AbsoluteSeek (fromIntegral $ 4096*a) >> return True)
-        (\(e::IOException) -> do
-        putStrLn $ "could not read at " ++ show a
-        putStrLn $ show e
-        return False)
-    if success then do
-      cc <- fdReadBuf fd buf 4096
-      if cc == 4096 then do
-              i <- buf2i 0 4096 buf
-              return $ W i
-      else error $ "read_disk: short read: " ++ (show cc) ++ " @ " ++ (show a)
-    else do
-      i <- buf2i 0 4096 buf
-      return $ W i
+    cc <- pread fd buf 4096 (fromIntegral $ 4096*a)
+    if cc == 4096 then do
+            i <- buf2i 0 4096 buf
+            return $ W i
+    else error $ "read_disk: short read: " ++ (show cc) ++ " @ " ++ (show a)
 
 write_disk :: DiskState -> Integer -> Coq_word -> IO ()
 write_disk _ _ (W64 _) = error "write_disk: short value"
