@@ -14,7 +14,7 @@ if [ -z "$img" ]; then
 fi
 
 mkfs --data-bitmaps 20 --inode-bitmaps 20 --log-desc-blocks 256 $img
-fscq $img "$mnt" -f &
+fscq --use-downcalls=false $img "$mnt" -- -f &
 sleep 4
 
 cp -r ~/xv6 "$mnt/"

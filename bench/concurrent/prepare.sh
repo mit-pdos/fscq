@@ -12,7 +12,7 @@ if [ -z "$img" ]; then
 fi
 
 mkfs $img
-fscq $img "$mnt" -f &
+fscq --use-downcalls=false $img "$mnt" -- -f &
 sleep 1
 
 dd if=/dev/urandom of="$mnt/small-4k" bs=4k count=1

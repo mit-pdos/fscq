@@ -31,6 +31,7 @@ import qualified Errno
 import ShowErrno
 import qualified BFile
 import System.Clock
+import Options
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -41,11 +42,17 @@ verboseFuse = False
 cachesize :: Integer
 cachesize = 100000
 
--- This controls whether HFuse will use upcalls (FUSE threads entering GHC runtime)
--- or downcalls (separate FUSE threads using a queue, and GHC accessing this queue
--- using its own threads).
-useDowncalls :: Bool
-useDowncalls = True
+data FscqOptions = FscqOptions
+  { 
+    -- This controls whether HFuse will use upcalls (FUSE threads entering GHC runtime)
+    -- or downcalls (separate FUSE threads using a queue, and GHC accessing this queue
+    -- using its own threads).
+    optUseDowncalls :: Bool }
+
+instance Options FscqOptions where
+  defineOptions = pure FscqOptions
+    <*> simpleOption "use-downcalls" True
+         "use downcalls (opqueue) rather than C->HS upcalls"
 
 debug :: String -> IO ()
 debug msg =
@@ -88,14 +95,13 @@ doFScall ds ref f = do
   return r
 
 main :: IO ()
-main = do
-  args <- getArgs
+main = runCommand $ \opts args -> do
   case args of
-    fn:rest -> run_fuse fn rest
-    _ -> putStrLn $ "Usage: fuse disk -f /tmp/ft"
+    fn:rest -> run_fuse (optUseDowncalls opts) fn rest
+    _ -> putStrLn $ "Usage: fscq disk -f /tmp/ft"
 
-run_fuse :: String -> [String] -> IO()
-run_fuse disk_fn fuse_args = do
+run_fuse :: Bool -> String -> [String] -> IO()
+run_fuse useDowncalls disk_fn fuse_args = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of
     "/tmp/crashlog.img" -> init_disk_crashlog disk_fn
