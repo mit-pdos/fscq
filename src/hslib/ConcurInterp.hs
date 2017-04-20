@@ -13,12 +13,16 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
 import Data.IORef
 import qualified Data.Map.Strict as Map
+import System.CPUTime.Rdtsc
 
 verbose :: Bool
 verbose = False
 
 showDebugs :: Bool
 showDebugs = False
+
+timing :: Bool
+timing = False
 
 debugmsg :: String -> IO ()
 debugmsg s = when verbose $ putStrLn s
@@ -94,6 +98,12 @@ run_dcode _ (Ret r) = do
 run_dcode _ (Debug s n) = do
   when (showDebugs || verbose) $ putStrLn $ "debug: " ++ s ++ " " ++ show n;
   return $ unsafeCoerce ()
+run_dcode _ (Rdtsc) = do
+  if timing then do
+    r <- rdtsc
+    return $ unsafeCoerce r
+  else
+    return $ unsafeCoerce (0::Integer)
 run_dcode s (Alloc v) = do
   i <- atomicModifyIORef (memory s) $ \h ->
     let (maxIdent,_) = Map.findMax h

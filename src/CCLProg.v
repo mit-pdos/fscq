@@ -122,6 +122,8 @@ Section CCL.
   | YieldTillReady (a:addr) : cprog unit
   (* no-op for debugging *)
   | Debug (s:String.string) (n:nat) : cprog unit
+  (* timing *)
+  | Rdtsc : cprog nat
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
@@ -333,6 +335,8 @@ Section CCL.
   | ExecStepDecFail : forall T (p: cprog T) sigma,
       step_dec tid sigma p = Fails ->
       exec tid sigma p Error
+  | ExecRdtsc : forall sigma n,
+      exec tid sigma Rdtsc (Finished sigma n)
   | ExecHash : forall sigma sz buf,
       let h := hash_fwd buf in
       hash_safe (Sigma.hm sigma) h buf ->

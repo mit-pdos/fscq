@@ -490,6 +490,19 @@ Section Primitives.
     prim.
   Qed.
 
+  Theorem Rdtsc_ok : forall tid,
+      cprog_spec G tid
+                 (fun (_:unit) sigma =>
+                    {| precondition := True;
+                       postcondition :=
+                         fun sigma' _ =>
+                           (* can't say anything about return value *)
+                           sigma' = sigma; |})
+                 (Rdtsc).
+  Proof.
+    prim.
+  Qed.
+
   Theorem YieldTillReady_ok : forall tid a,
       cprog_spec G tid
                  (fun (_:unit) sigma =>

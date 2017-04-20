@@ -39,7 +39,7 @@ Section OptimisticTranslator.
            | Prog.AlertModified => Ret (Success Modified tt, cs)
            | Prog.Debug s n => _ <- Debug (String.append "fscq: " s) n;
                                 Ret (Success NoChange tt, cs)
-           | Prog.Rdtsc => Ret (Success NoChange 0, cs)
+           | Prog.Rdtsc => n <- Rdtsc; Ret (Success NoChange n, cs)
            | Prog.Read a => do '(v, cs) <- CacheRead cs a l;
                              match v with
                              | Some v => Ret (Success NoChange v, cs)
@@ -336,6 +336,11 @@ Section OptimisticTranslator.
       CCLTactics.inv_ret.
       destruct (local_l tid (Sigma.l sigma')); intuition subst;
         left; descend; intuition eauto.
+    - CCLTactics.inv_bind;
+        CCLTactics.inv_exec.
+      CCLTactics.inv_ret; intuition eauto.
+      destruct (local_l tid (Sigma.l sigma')); (intuition subst);
+        left; descend; intuition eauto 10.
     - CCLTactics.inv_bind;
         match goal with
         | [ H: exec _ _ _ (Hash _) _ |- _ ] =>
