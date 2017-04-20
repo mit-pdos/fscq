@@ -28,7 +28,7 @@ if [ ! -d "$src" ]; then
 fi
 
 # warmup
-rg -j1 'PM_RESUME' "$src" 1>/dev/null
+rg 'PM_RESUME' "$src" 1>/dev/null
 
 /usr/bin/time -f '%C\n %Uu %Ss %er' rg -j4 'PM_RESUME' "$src" 1>/dev/null
 
