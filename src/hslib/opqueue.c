@@ -114,19 +114,23 @@ initialize(int n)
 void
 print_opqueue_timings()
 {
-  for (int qi = 0; qi < opqueue.num_queues; qi++) {
-    struct queue *q = &opqueue.qs[qi];
-    printf("queue %d: %d ops\n", qi, q->num_ops);
-  }
-
+  /* detailed per-operation time */
   // for (int qi = 0; qi < opqueue.num_queues; qi++) {
   //   struct queue *q = &opqueue.qs[qi];
   //   for (int i = 0; i < q->next_timing; i++) {
   //     int ident = q->timings[i].ident;
-  //     uint64_t time = q->timings[i].time;
-  //     printf("%d on %d: %lfus\n", ident, qi, ((double) time) / 2600);
+  //     uint64_t cycles = q->timings[i].time;
+  //     fprintf(stderr, "%d on %d: %ld\n", ident, qi, cycles);
   //   }
   // }
+
+  /* queue balance */
+  for (int qi = 0; qi < opqueue.num_queues; qi++) {
+    struct queue *q = &opqueue.qs[qi];
+    fprintf(stderr, "queue %d: %d ops\n", qi, q->num_ops);
+  }
+
+  /* time per ident */
   uint64_t total_time[4] = {0, 0, 0, 0};
   for (int qi = 0; qi < opqueue.num_queues; qi++) {
     struct queue *q = &opqueue.qs[qi];
@@ -137,7 +141,7 @@ print_opqueue_timings()
     }
   }
   for (int ident = 0; ident < 4; ident++) {
-    printf("total %d time: %lfs\n", ident, ((double) total_time[ident])/3330.0/1e6);
+    fprintf(stderr, "total %d time: %lfs\n", ident, ((double) total_time[ident])/3330.0/1e6);
   }
 
   // clear timings till next call
