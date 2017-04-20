@@ -31,7 +31,7 @@ Set Implicit Arguments.
 
 Module DIR.
 
-  Definition filename_len := (512 - addrlen - addrlen).
+  Definition filename_len := (1024 - addrlen - addrlen).
   Definition filename := word filename_len.
 
 
