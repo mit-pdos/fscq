@@ -168,7 +168,6 @@ func (fs FileSystem) Launch(opts Options) {
 	go func() {
 		cmd := opts.ServerCpu.Command(fs.binary, args...)
 		cmd.Stderr = os.Stderr
-		cmd.Stdout = os.Stdout
 		cmd.Run()
 	}()
 	for i := 0; i < 100; i++ {
