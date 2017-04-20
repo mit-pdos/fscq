@@ -277,7 +277,7 @@ Module INODE.
     Ret ^(cache, (BALLOCC.upd_memstate lms ms)).
 
   (* reset combines shrink and setattr so that removing incurs one IRec.put_array call, instead of 2 *)
-  Definition reset lxp bxp xp inum nr attr cache ms :=
+  Definition reset lxp bxp xp inum nr attr cache ms := Eval compute_rec in
     let^ (cache, lms, (ir : irec)) <- IRec.get_array lxp xp inum cache (BALLOCC.MSLog ms);
     let^ (ms, (ir': irec)) <- Ind.shrink lxp bxp ir nr (BALLOCC.upd_memstate lms ms);
     let^ (cache, lms) <- IRec.put_array lxp xp inum (ir' :=> "attrs" := attr) cache (BALLOCC.MSLog ms);
