@@ -64,6 +64,10 @@ void report_time(int ident, int qi, uint64_t start, uint64_t end) {
       //     end, start, (int64_t) end - (int64_t) start);
       return;
     }
+    // if (end - start > 1000000) {
+    //   fprintf(stderr, "large time difference %lu - %lu = %ld\n",
+    //       end, start, (int64_t) end - (int64_t) start);
+    // }
     int index = q->next_timing++;
     q->timings[index].ident = ident;
     q->timings[index].time = end - start;

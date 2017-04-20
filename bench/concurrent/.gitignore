@@ -3,6 +3,7 @@
 /timeres
 /large_small
 /parallel_ls
+/read_file
 
 *.prof
 perf.data
