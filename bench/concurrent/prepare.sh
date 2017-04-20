@@ -11,12 +11,12 @@ if [ -z "$img" ]; then
   exit 1
 fi
 
-mkfs $img
+mkfs --data-bitmaps 3 "$img"
 fscq --use-downcalls=false $img "$mnt" -- -f &
 sleep 1
 
-dd if=/dev/urandom of="$mnt/small-4k" bs=4k count=1
-dd if=/dev/urandom of="$mnt/large-10m" bs=1k count=10000
+dd if=/dev/urandom of="$mnt/small" bs=4k count=1
+dd if=/dev/urandom of="$mnt/large" bs=1k count=100000
 
 for num in $(seq 1 20); do
   mkdir "$mnt/dir$num"

@@ -20,7 +20,7 @@ void *large_read(void *arg) {
   char buf[4096];
 
   measurement m = init_measurement();
-  for (int i = 0; i < 2500; i++) {
+  for (int i = 0; i < 25000; i++) {
     pread(f, buf, sizeof(buf), i*4096);
   }
   op->elapsed_ns = elapsed_ns(m);
@@ -54,8 +54,8 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
-  readop large_fn = {"/tmp/fscq/large-10m"};
-  readop small_fn = {"/tmp/fscq/small-4k"};
+  readop large_fn = {"/tmp/fscq/large"};
+  readop small_fn = {"/tmp/fscq/small"};
   pthread_t large_t, small_t;
   pthread_create(&large_t, NULL, large_read, (void *)&large_fn);
   if (!parallel) {
@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
     pthread_join(large_t, NULL);
   }
 
-  printf("large\t%ld\n", large_fn.elapsed_ns);
-  printf("small\t%ld\n", small_fn.elapsed_ns);
+  printf("large\t%lf\n", ((double) large_fn.elapsed_ns) / 1e9);
+  printf("small\t%lf\n", ((double) small_fn.elapsed_ns) / 1e9);
   pthread_exit(NULL);
 }
