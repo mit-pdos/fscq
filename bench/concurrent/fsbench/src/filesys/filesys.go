@@ -200,6 +200,9 @@ func (fs FileSystem) Stop() {
 		if err != nil {
 			log.Fatal(fmt.Errorf("could not unmount: %v", err))
 		}
+		if _, err := os.Stat(fs.filenames[0]); !os.IsNotExist(err) {
+			log.Fatal(fmt.Errorf("failed to shutdown %s with fusermount", fs.binary))
+		}
 	}
 }
 
