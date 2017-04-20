@@ -477,7 +477,7 @@ Section Primitives.
     prim.
   Qed.
 
-  Theorem Debug_ok : forall tid s,
+  Theorem Debug_ok : forall tid s n,
       cprog_spec G tid
                  (fun (_:unit) sigma =>
                     {| precondition := True;
@@ -485,7 +485,7 @@ Section Primitives.
                          fun sigma' r =>
                            sigma' = sigma /\
                            r = tt; |})
-                 (Debug s).
+                 (Debug s n).
   Proof.
     prim.
   Qed.

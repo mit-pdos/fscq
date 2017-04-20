@@ -91,8 +91,8 @@ wait_for_read s a = do
 run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
-run_dcode _ (Debug s) = do
-  when (showDebugs || verbose) $ putStrLn $ "debug: " ++ s;
+run_dcode _ (Debug s n) = do
+  when (showDebugs || verbose) $ putStrLn $ "debug: " ++ s ++ " " ++ show n;
   return $ unsafeCoerce ()
 run_dcode s (Alloc v) = do
   i <- atomicModifyIORef (memory s) $ \h ->

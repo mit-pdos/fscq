@@ -121,7 +121,7 @@ Section CCL.
   (* no-op to indicate interest in reading a *)
   | YieldTillReady (a:addr) : cprog unit
   (* no-op for debugging *)
-  | Debug (s:String.string) : cprog unit
+  | Debug (s:String.string) (n:nat) : cprog unit
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
@@ -267,7 +267,7 @@ Section CCL.
                      else Fails (* caller didn't know its lock status *)
     | YieldTillReady _ => StepTo sigma tt
     | Ret v => StepTo sigma v
-    | Debug _ => StepTo sigma tt
+    | Debug _ _ => StepTo sigma tt
     | _ => NonDet
     end.
 
@@ -455,10 +455,10 @@ Module CCLTactics.
 
   Ltac inv_debug :=
     match goal with
-    | [ H: exec _ _ _ (Debug _) _ |- _ ] =>
+    | [ H: exec _ _ _ (Debug _ _) _ |- _ ] =>
       inversion H; subst; repeat inj_pair2;
       try match goal with
-          | [ H: step_dec _ _ (Debug _) = _ |- _ ] =>
+          | [ H: step_dec _ _ (Debug _ _) = _ |- _ ] =>
             simpl in H; inversion H; subst; clear H
           end;
       clear H

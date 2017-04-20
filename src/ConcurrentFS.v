@@ -35,7 +35,7 @@ Section ConcurrentFS.
   Definition reportBailout T (r: Result T) : cprog unit :=
     match r with
     | Success Modified _ =>
-       Debug "readonly bailout"
+       Debug "readonly bailout" 0
     | _ => Ret tt
     end.
 

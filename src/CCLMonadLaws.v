@@ -31,8 +31,8 @@ Section MonadLaws.
     - destruct out, st; eauto.
   Qed.
 
-  Theorem monad_debug_left_id : forall T' (p: _ -> cprog T') s,
-      exec_equiv (Bind (Debug s) p) (p tt).
+  Theorem monad_debug_left_id : forall T' (p: _ -> cprog T') s n,
+      exec_equiv (Bind (Debug s n) p) (p tt).
   Proof.
     split; intros.
     - inv_bind.
