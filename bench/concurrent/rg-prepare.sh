@@ -20,14 +20,15 @@ sleep 4
 cp -r ~/xv6 "$mnt/"
 cd "$mnt/"
 tar -xf ~/coq.tar.xz
-sync "$mnt/coq"
+sync "coq"
 
 mkdir "lots-of-dirs"
 for i in $(seq 5000); do
   mkdir -p "lots-of-dirs/dir$i"
 done
+sync "lots-of-dirs"
 
-#tar -xf ~/linux.tar.xz
+tar -xf ~/linux.tar.xz
 
 for file in "$mnt"/*; do
   sync "$file"
