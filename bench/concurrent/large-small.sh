@@ -15,7 +15,7 @@ if [ -z "$img" ]; then
   img="disk.img"
 fi
 
-$fs "$img" /tmp/fscq +RTS -N2 -qg -RTS -- -f &
+$fs --use-downcalls=false "$img" /tmp/fscq +RTS -N2 -qg -RTS -- -f &
 sleep 1
 
 out=$(./large_small "$par")
