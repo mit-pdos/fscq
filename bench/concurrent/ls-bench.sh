@@ -35,9 +35,9 @@ if [ ! -d "$src" ]; then
 fi
 
 # warmup
-./parallel-lsR.sh 1 "$src" 1>/dev/null
+parallel_ls 1 "$src" 1>/dev/null
 
-/usr/bin/time -f '%C\n %Uu %Ss %er' ./parallel-lsR.sh 20 "$src" 1>/dev/null
+/usr/bin/time -f '%C\n %Uu %Ss %er' parallel_ls 10 "$src" 1>/dev/null
 
 if [ "$fs" = "cfscq" -o "$fs" = "fscq" ]; then
   fusermount -u "$mnt"

@@ -2,6 +2,8 @@
 /fsops
 /timeres
 /large_small
+/parallel_ls
+
 *.prof
 perf.data
 disk.img

@@ -23,12 +23,8 @@ tar -xf ~/coq.tar.xz
 sync "$mnt/coq"
 
 mkdir "lots-of-dirs"
-for i in $(seq 30); do
-  for j in $(seq 30); do
-    for k in $(seq 30); do
-      mkdir -p "lots-of-dirs/dir$i/dir$j/dir$k"
-    done
-  done
+for i in $(seq 5000); do
+  mkdir -p "lots-of-dirs/dir$i"
 done
 
 #tar -xf ~/linux.tar.xz
