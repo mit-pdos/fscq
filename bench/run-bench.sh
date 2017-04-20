@@ -1,32 +1,35 @@
 #!/bin/sh
 
-DEV=/dev/sda1
 OLDFSCQBLOCKS=34310
 NEWFSCQBLOCKS=66628
-ORIGFSCQ=/tmp/fscq-master
+ORIGFSCQ=~/fscq-master
+YV6=~/yggdrasil
 MOUNT="/tmp/ft"
 TRACE="/tmp/blktrace.out"
 
-SCRIPTPREFIX="$1"
-CMD="$2"
+DEV="$1"
+SCRIPTPREFIX="$2"
+CMD="$3"
 
-if [ $# -ne 2 ]; then
-  echo "$0 bench-name bench-cmd"
+if [ $# -ne 3 ]; then
+  echo "$0 dev bench-name bench-cmd"
   exit 1
 fi
 
 ## Just in case..
-fusermount -u $MOUNT
+fusermount -u $MOUNT 2>/dev/null
+sudo umount $MOUNT 2>/dev/null
 mkdir -p $MOUNT
 
 ## Ensure sudo works first
 ( sudo true ) || exit 1
 
+BLKTRACE=0
 ## ramdisk
-DEV=$(losetup -f)
-dd if=/dev/zero of=/dev/shm/fscq.img bs=1G count=1
-sudo losetup $DEV /dev/shm/fscq.img
-sudo chmod 777 $DEV
+# DEV=$(sudo losetup -f)
+# dd if=/dev/zero of=/dev/shm/fscq.img bs=1G count=1
+# sudo losetup $DEV /dev/shm/fscq.img
+# sudo chmod 777 $DEV
 
 ## Do a priming run on whatever the native /tmp file system is..
 rm -rf $MOUNT
@@ -35,71 +38,69 @@ $CMD
 rm -rf $MOUNT
 mkdir -p $MOUNT
 
-## fscq
-dd if=/dev/zero of=$DEV bs=4096 count=$NEWFSCQBLOCKS
-../src/mkfs $DEV
-../src/fscq $DEV -s -o big_writes,atomic_o_trunc -f $MOUNT &
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
+run_benchmark() {
+  FS=$1
+  MKFS_CMD=$2
+  MOUNT_CMD=$3
+  END_CMD=$4
 
-script $SCRIPTPREFIX-fscq.out -c "$CMD"
+  eval $MKFS_CMD
+  eval $MOUNT_CMD
+  
+  if [ "$BLKTRACE" = "1" ]; then
+    sudo blktrace -d $DEV -o - > $TRACE &
+    TRACEPID=$!
+  fi
+  sleep 1
 
-fusermount -u $MOUNT
-sudo killall blktrace
-sleep 1
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-fscq.blktrace
-./blkstats.sh $SCRIPTPREFIX-fscq.blktrace >> $SCRIPTPREFIX-fscq.out
+  script $SCRIPTPREFIX-$FS.out -c "$CMD"
 
-## origfscq
-dd if=/dev/zero of=$DEV bs=4096 count=$OLDFSCQBLOCKS
-$ORIGFSCQ/src/mkfs $DEV
-$ORIGFSCQ/src/fuse $DEV -s -f $MOUNT &
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
+  eval $END_CMD
+  if [ "$BLKTRACE" = "1" ]; then
+    sudo killall blktrace
+    sleep 1
+    wait $TRACEPID
+    mv $TRACE $SCRIPTPREFIX-$FS.blktrace
+    ./blkstats.sh $SCRIPTPREFIX-$FS.blktrace >> $SCRIPTPREFIX-$FS.out
+  fi
+}
 
-script $SCRIPTPREFIX-origfscq.out -c "$CMD"
+run_benchmark \
+  "fscq" \
+  "dd if=/dev/zero of=$DEV bs=4096 count=$NEWFSCQBLOCKS; ../src/mkfs $DEV" \
+  "../src/fscq $DEV -o big_writes,atomic_o_trunc -f $MOUNT &" \
+  "fusermount -u $MOUNT"
 
-fusermount -u $MOUNT
-sudo killall blktrace
-sleep 1
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-origfscq.blktrace
-./blkstats.sh $SCRIPTPREFIX-origfscq.blktrace >> $SCRIPTPREFIX-origfscq.out
+if test -e "$ORIGFSCQ/src/fuse"; then
+  run_benchmark \
+    "origfscq" \
+    "dd if=/dev/zero of=$DEV bs=4096 count=$OLDFSCQBLOCKS; $ORIGFSCQ/src/mkfs $DEV" \
+    "$ORIGFSCQ/src/fuse $DEV -s -f $MOUNT &" \
+    "fusermount -u $MOUNT"
+fi
 
-## ext4async
-yes | mke2fs -t ext4 -J size=4 $DEV
-sudo mount $DEV $MOUNT -o journal_async_commit,data=journal
-sudo chmod 777 $MOUNT
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
+if test -e "$YV6/yav_xv6_main.py"; then
+  run_benchmark \
+    "yxv6" \
+    "dd if=/dev/zero of=$DEV bs=4K count=60K; python2 $YV6/lfs.py $DEV" \
+    "python2 $YV6/yav_xv6_main.py -o max_read=4096 -o max_write=4096 -s $MOUNT -- --sync $DEV > /dev/null 2>&1 &" \
+    "fusermount -u $MOUNT"
 
-script $SCRIPTPREFIX-ext4async.out -c "$CMD"
+  run_benchmark \
+    "yxv6+gc" \
+    "dd if=/dev/zero of=$DEV bs=4K count=60K; python2 $YV6/lfs.py $DEV" \
+    "python2 $YV6/yav_xv6_main.py -o max_read=4096 -o max_write=4096 -s $MOUNT -- $DEV > /dev/null 2>&1 &" \
+    "fusermount -u $MOUNT"
+fi
 
-sudo killall blktrace
-sudo umount $MOUNT
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext4async.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext4async.blktrace >> $SCRIPTPREFIX-ext4async.out
+run_benchmark \
+  "ext4async" \
+  "yes | mke2fs -t ext4 -J size=4 $DEV" \
+  "sudo mount $DEV $MOUNT -o journal_async_commit,data=journal; sudo chmod 777 $MOUNT" \
+  "sudo umount $MOUNT"
 
-## ext4ordered
-yes | mke2fs -t ext4 -J size=4 $DEV
-sudo mount $DEV $MOUNT -o data=ordered
-sudo chmod 777 $MOUNT
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
-
-script $SCRIPTPREFIX-ext4ordered.out -c "$CMD"
-
-sudo killall blktrace
-sudo umount $MOUNT
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext4ordered.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext4ordered.blktrace >> $SCRIPTPREFIX-ext4ordered.out
-
-## Just in case this was a ramdisk...
-sudo losetup -d $DEV
+run_benchmark \
+  "ext4ordered" \
+  "yes | mke2fs -t ext4 -J size=4 $DEV" \
+  "sudo mount $DEV $MOUNT -o data=ordered; sudo chmod 777 $MOUNT" \
+  "sudo umount $MOUNT"
