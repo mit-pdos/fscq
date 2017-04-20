@@ -377,7 +377,7 @@ let go_modify_op (ts : TranscriberState.state)
     let (var, _) = Obj.magic args_tuple in
     let t = TranscriberState.get_var_type ts var in
     let go_type = TranscriberState.get_go_type ts.gstate t in
-    (var_ref ts var) ^ " = make(" ^ go_type ^ "," ^ to_string cap ^ ")"
+    (var_ref ts var) ^ " = make(" ^ go_type ^ ",0," ^ to_string cap ^ ")"
   | Go.StructGet _ ->
     fail_unmatched "go_modify_op StructGet"
   | Go.StructPut _ ->
