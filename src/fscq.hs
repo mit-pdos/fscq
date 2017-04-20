@@ -19,7 +19,6 @@ import Interpreter as I
 import qualified AsyncFS
 import FSLayout
 import qualified DirName
-import System.Environment
 import Inode
 import Control.Concurrent.MVar
 import Text.Printf

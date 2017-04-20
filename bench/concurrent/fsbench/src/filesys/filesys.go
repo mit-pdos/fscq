@@ -30,17 +30,13 @@ func fscqFs(name string) FileSystem {
 		filenames = append(filenames,
 			path.Join(fscqMnt, fmt.Sprintf("dir%d/file1", num)))
 	}
-	parsesOwnFlags := false
-	if name == "fscq" {
-		parsesOwnFlags = true
-	}
 	return FileSystem{
 		ident:          name,
 		binary:         name,
 		mntPoint:       fscqMnt,
 		filenames:      filenames,
 		isHaskell:      true,
-		parsesOwnFlags: parsesOwnFlags,
+		parsesOwnFlags: true,
 		//filenames: []string{
 		//	path.Join(fscqMnt, "a/b/c/d/e/f/file"),
 		//	path.Join(fscqMnt, "a____/b____/c____/d____/e____/f____/file"),
