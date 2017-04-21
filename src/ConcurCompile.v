@@ -243,9 +243,9 @@ Section ConcurCompile.
 
   Lemma translate'_match_opt : forall T T' (p1: T -> prog T') (p2: prog T') r,
       translate' (match r with
-                         | Some r => p1 r
-                         | None => p2
-                         end) =
+                  | Some r => p1 r
+                  | None => p2
+                  end) =
       match r with
       | Some r => translate' (p1 r)
       | None => translate' p2
@@ -284,8 +284,8 @@ Section ConcurCompile.
       destruct c
     end.
 
-  Lemma compile_match_res T T' (p1: T -> _ -> _ -> cprog T') p2
-        (r: res T) (ls: LockState) (c: Cache) :
+  Lemma compile_match_res T T' LT CT (p1: T -> _ -> _ -> cprog T') p2
+        (r: res T) (ls: LT) (c: CT) :
     (forall v ls c, Compiled (p1 v ls c)) ->
     (forall e ls c, Compiled (p2 e ls c)) ->
     Compiled (match r with
@@ -303,8 +303,8 @@ Section ConcurCompile.
       eauto.
   Defined.
 
-  Lemma compile_match_opt T T' (p1: T -> _ -> _ -> cprog T') p2
-        (r: option T) (ls: LockState) (c: Cache) :
+  Lemma compile_match_opt T T' LT CT (p1: T -> _ -> _ -> cprog T') p2
+        (r: option T) (ls: LT) (c: CT) :
     (forall v ls c, Compiled (p1 v ls c)) ->
     (forall ls c, Compiled (p2 ls c)) ->
     Compiled (match r with
@@ -322,8 +322,27 @@ Section ConcurCompile.
       eauto.
   Defined.
 
-  Lemma compile_match_sumbool P Q T' (p1:  _ -> _ -> cprog T') p2
-        (r: {P}+{Q}) (ls: LockState) (c: Cache) :
+  Lemma compile_match_opt' T T' (p1: T -> cprog T') p2
+        (r: option T) :
+    (forall v, Compiled (p1 v)) ->
+    (Compiled p2) ->
+    Compiled (match r with
+              | Some v => p1 v
+              | None => p2
+              end).
+  Proof.
+    intros.
+    refine (ExtractionOf (match r with
+                          | Some v => compiled_prog (X v)
+                          | None => compiled_prog X0
+                          end) _).
+    destruct r;
+      destruct_compiled;
+      eauto.
+  Defined.
+
+  Lemma compile_match_sumbool P Q T' LT CT (p1:  _ -> _ -> cprog T') p2
+        (r: {P}+{Q}) (ls: LT) (c: CT) :
     (forall ls c, Compiled (p1 ls c)) ->
     (forall ls c, Compiled (p2 ls c)) ->
     Compiled (match r with
@@ -403,26 +422,26 @@ Section ConcurCompile.
       apply compile_bind; intros
 
     (* push translate' inside functions *)
-    | [ |- Compiled (translate' _ (ForEach_ _ _ _ _ _) _ _) ] =>
+    | [ |- Compiled (translate' (ForEach_ _ _ _ _ _) _ _) ] =>
       rewrite translate'_ForEach
-    | [ |- Compiled (translate' _ (ForN_ _ _ _ _ _ _) _ _) ] =>
+    | [ |- Compiled (translate' (ForN_ _ _ _ _ _ _) _ _) ] =>
       rewrite translate'_ForN
-    | [ |- Compiled (translate' _ (match _ with
+    | [ |- Compiled (translate' (match _ with
                                  | OK _ => _
                                  | Err _ => _
                                  end) _ _) ] =>
       rewrite translate'_match_res
-    | [ |- Compiled (translate' _ (match _ with
+    | [ |- Compiled (translate' (match _ with
                                  | Some _ => _
                                  | None => _
                                  end) _ _) ] =>
       rewrite translate'_match_opt
-    | [ |- Compiled (translate' _ (match ?r with
-                                 | left _ => ?p1
-                                 | right _ => ?p2
-                                 end) _ _) ] =>
+    | [ |- Compiled (translate' (match ?r with
+                                | left _ => ?p1
+                                | right _ => ?p2
+                                end) _ _) ] =>
       rewrite (translate'_match_sumbool p1 p2 r)
-    | [ |- Compiled (translate' _ (let (_, _) := _ in _) _ _) ] =>
+    | [ |- Compiled (translate' (let (_, _) := _ in _) _ _) ] =>
       rewrite translate'_destruct_prod
 
     (* compile specific constructs *)
@@ -434,6 +453,8 @@ Section ConcurCompile.
       apply compile_match_res; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
       apply compile_match_opt; intros; eauto
+    | [ |- Compiled (match _ with | _ => _ end) ] =>
+      apply compile_match_opt'; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
       apply compile_match_sumbool; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
@@ -459,6 +480,7 @@ Section ConcurCompile.
     | [ |- Compiled (Debug _  _)] =>
       apply compile_refl
 
+    | _ => progress (autounfold with compile)
     | _ => progress (unfold pair_args_helper, If_; simpl)
 
     | _ => compile_hook
@@ -501,11 +523,14 @@ Section ConcurCompile.
     destruct p; auto.
   Qed.
 
+  Hint Unfold INODE.IRec.get INODE.Ind.get : compile.
+  Hint Unfold LOG.read GLog.read MemLog.MLog.read : compile.
+  Hint Unfold BUFCACHE.maybe_evict : compile.
+
   Definition CompiledReadBlock fsxp inum off ams ls c :
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
     unfold OptFS.read_fblock, translate.
-
     repeat compile;
       apply compile_refl.
   Defined.
