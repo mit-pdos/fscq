@@ -14,3 +14,6 @@ disk.img
 gc*.txt
 *.ticky
 /cfscq*.log
+# strace output
+*.out
+*.log
