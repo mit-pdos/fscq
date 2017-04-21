@@ -4,7 +4,7 @@
 devices = [
         ("hdd", "/dev/sdc1"),
         ("ssd-sam", "/dev/sdb1"),
-        ("sdd-intel", "/dev/sdd2"),
+        ("ssd-intel", "/dev/sdd2"),
         ("ram", "/dev/loop0"),
         ]
 
