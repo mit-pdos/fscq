@@ -55,6 +55,9 @@ Require Import OptimisticTranslator.
 Transparent LOG.begin.
 Transparent LOG.commit_ro.
 
+Opaque Nat.div.
+Opaque Nat.modulo.
+
 Section ConcurCompile.
 
   Variable G:Protocol.
@@ -501,6 +504,7 @@ Section ConcurCompile.
     | [ |- Compiled (Debug _  _)] =>
       apply compile_refl
 
+    | _ => progress (autounfold with compile)
     | _ => progress (unfold pair_args_helper, If_; simpl)
 
     | _ => compile_hook
