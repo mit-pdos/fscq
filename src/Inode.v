@@ -261,8 +261,11 @@ Module INODE.
 
 
   Definition getbnum lxp xp inum off cache ms :=
+    t1 <- Rdtsc;
     let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;
-    let^ (ms, r) <- Ind.get lxp ir off ms;
+         let^ (ms, r) <- Ind.get lxp ir off ms;
+              t2 <- Rdtsc;
+    Debug "getbnum" (t2-t1);;
     Ret ^(cache, ms, r).
 
   Definition getallbnum lxp xp inum cache ms :=

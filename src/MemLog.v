@@ -176,12 +176,18 @@ Module MLog.
   (******************  Program *)
 
   Definition read xp a ms :=
+    t1 <- Rdtsc;
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     match Map.find a oms with
-    | Some v => Ret ^(ms, v)
+    | Some v => t2 <- Rdtsc;
+                 Debug "MLog.read fast" (t2-t1);;
+                       Ret ^(ms, v)
     | None =>
         let^ (cs, v) <- BUFCACHE.read_array (DataStart xp) a cs;
-        Ret ^(mk_memstate oms cs, v)
+             let ms' := mk_memstate oms cs in
+             t2 <- Rdtsc;
+               Debug "MLog.read slow" (t2-t1);;
+                     Ret ^(ms', v)
     end.
 
   Definition flush_noapply xp ents ms :=
