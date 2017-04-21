@@ -36,6 +36,7 @@ Require Import DirTreeRep.
 Require Import DirTreePred.
 Require Import DirTreeInodes.
 Require Import DirTreeSafe.
+Require Import TranslateTest.
 
 Set Implicit Arguments.
 Import DirTree.
@@ -188,9 +189,8 @@ Section ConcurCompile.
       Compiled p.
   Proof.
     intros.
-    destruct cp' as [p'' ?].
-    exists p''.
-    etransitivity; eauto.
+    refine (ExtractionOf (compiled_prog cp') _).
+    abstract (destruct cp'; etransitivity; eauto).
   Defined.
 
   Ltac monad_compile :=
@@ -208,23 +208,21 @@ Section ConcurCompile.
     Compiled (Bind p1 p2).
   Proof.
     intros.
-    unshelve econstructor.
-    destruct X.
-    eapply (Bind p').
-    intro v.
-    destruct (X0 v).
-    exact p'0.
-    destruct X.
+    refine (ExtractionOf (Bind
+                            (compiled_prog X)
+                            (fun v => (compiled_prog (X0 v)))
+                         ) _).
 
-    eapply exec_equiv_bind; intros; eauto.
-    destruct (X0 v); simpl; eauto.
-  Qed.
+    abstract (eapply exec_equiv_bind; intros; eauto;
+              [ destruct X; eauto |
+                destruct (X0 v); simpl; eauto ]).
+  Defined.
 
   Lemma compile_refl T (p: cprog T) :
     Compiled p.
   Proof.
     exists p.
-    reflexivity.
+    abstract (reflexivity).
   Defined.
 
   Lemma translate'_match_res : forall T T' (p1: T -> prog T') (p2: Errno -> prog T') r,
@@ -523,10 +521,18 @@ Section ConcurCompile.
     destruct p; auto.
   Qed.
 
+  Definition CompiledAddTuple nums b ls c :
+    Compiled (translate (add_tuple nums b) ls c).
+  Proof.
+    unfold add_tuple, translate.
+    repeat compile.
+  Defined.
+
   Hint Unfold INODE.IRec.get INODE.Ind.get : compile.
   Hint Unfold LOG.read GLog.read MemLog.MLog.read : compile.
   Hint Unfold BUFCACHE.maybe_evict : compile.
 
+  (*
   Definition CompiledReadBlock fsxp inum off ams ls c :
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
@@ -551,9 +557,14 @@ Section ConcurCompile.
     repeat compile;
       apply compile_refl.
   Defined.
+*)
 
 End ConcurCompile.
 
+Definition compiled_add_tuple nums b :=
+  compiled_prog (CompiledAddTuple (fun _ _ _ => True) nums b Locked empty_cache).
+
+(*
 Definition read_fblock G fsxp inum off ams ls c :=
   compiled_prog (CompiledReadBlock G fsxp inum off ams ls c).
 
@@ -562,3 +573,4 @@ Definition lookup G fsxp dnum names ams ls c :=
 
 Definition file_get_attr G fsxp inum ams ls c :=
   compiled_prog (CompiledGetAttr G fsxp inum ams ls c).
+*)

@@ -3,6 +3,7 @@ Require Import ExtrHaskellMap.
 Require Import AsyncFS.
 Require Import StringUtils.
 Require ConcurrentFS.
+Require ConcurCompile.
 Require TranslateTest.
 
 Extraction Language Haskell.
@@ -30,7 +31,10 @@ Extract Inlined Constant StringUtils.String_as_OT.string_compare =>
 
 Extract Inlined Constant DirName.ascii2byte => "Word.ascii2byte".
 
+Extraction Inline ConcurCompile.compile_bind ConcurCompile.compile_match_sumbool ConcurCompile.compile_equiv ConcurCompile.compiled_prog ConcurCompile.compile_refl.
+
 Cd "../codegen".
 Recursive Extraction Library ConcurrentFS.
 Recursive Extraction Library AsyncFS.
+Recursive Extraction Library ConcurCompile.
 Recursive Extraction Library TranslateTest.
