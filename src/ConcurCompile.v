@@ -523,7 +523,7 @@ Section ConcurCompile.
   Definition CompiledAddTuple nums b :
     Compiled (add_tuple_concur nums b).
   Proof.
-    unfold add_tuple_concur, add_tuple, translate'.
+    unfold add_tuple_concur, add_tuple.
     repeat compile.
   Defined.
 
@@ -561,7 +561,7 @@ Section ConcurCompile.
 End ConcurCompile.
 
 Definition compiled_add_tuple nums b :=
-  compiled_prog (CompiledAddTuple (fun _ _ _ => True) nums b Locked empty_cache).
+  compiled_prog (CompiledAddTuple (fun _ _ _ => True) nums b).
 
 (*
 Definition read_fblock G fsxp inum off ams ls c :=
