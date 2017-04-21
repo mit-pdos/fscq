@@ -90,7 +90,7 @@ run_dcode _ AlertModified = do
   return $ unsafeCoerce ()
 run_dcode _ (Debug s n) = do
   if output then do
-    putStrLn $ s ++ " " ++ (show n)
+    putStrLn $ "debug: " ++ s ++ " " ++ (show n)
     return $ unsafeCoerce ()
   else
     return $ unsafeCoerce ()
