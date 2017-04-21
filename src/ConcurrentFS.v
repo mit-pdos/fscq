@@ -797,6 +797,13 @@ Section ConcurrentFS.
       [ monad_simpl; eapply retry_readonly_syscall_ok;
         eauto using opt_file_get_attr_ok | ];
       simplify; finish.
+    (* TODO: fix proof by using exec equivalence *)
+    Locate exec_equiv.
+    Search cprog_spec CCLMonadLaws.exec_equiv.
+    eapply spec_respects_exec_equiv.
+    unfold ConcurCompile.file_get_attr.
+    eapply ConcurCompile.compiled_exec_equiv.
+
 
     unfold precondition_stable; simplify; simpl.
     eapply homedir_rely_preserves_subtrees; eauto.
@@ -1086,7 +1093,7 @@ Section ConcurrentFS.
   Qed.
 
   Definition read_fblock inum off :=
-    retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).
+    retry_readonly_syscall (fun mscs => read_fblock (fsxp P) inum off mscs).
 
   Theorem read_fblock_ok : forall inum off tid,
       cprog_spec G tid

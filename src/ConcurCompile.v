@@ -66,6 +66,10 @@ Section ConcurCompile.
   Definition compiled_prog T (p: cprog T) (c: Compiled p) :=
     let 'ExtractionOf p' _ := c in p'.
 
+  Definition compiled_exec_equiv T (p: cprog T) (c: Compiled p) :
+    exec_equiv G p (compiled_prog c) :=
+    let 'ExtractionOf _ pf := c in pf.
+
   Fixpoint cForEach_ (ITEM : Type) (L : Type)
            (f : ITEM -> L -> CacheSt -> cprog (Result L * CacheSt))
            (lst : list ITEM)
@@ -356,6 +360,24 @@ Section ConcurCompile.
     destruct (X0 e c); simpl; eauto.
   Defined.
 
+  Lemma compile_match_result : forall T T' (p1: ModifiedFlag -> T -> cprog T') p2 r,
+      (forall f v, Compiled (p1 f v)) ->
+      (forall e, Compiled (p2 e)) ->
+      Compiled (match r with
+                | Success f v => p1 f v
+                | Failure e => p2 e
+                end).
+  Proof.
+    intros.
+    exists (match r with
+       | Success f v => compiled_prog (X f v)
+       | Failure e => compiled_prog (X0 e)
+       end).
+    destruct r.
+    destruct (X f v); simpl; eauto.
+    destruct (X0 e); simpl; eauto.
+  Defined.
+
   Lemma compile_destruct_prod : forall A B T' (p: A -> B -> cprog T') (r:A*B),
       (forall a b, Compiled (p a b)) ->
       Compiled (let (a, b) := r in p a b).
@@ -416,6 +438,8 @@ Section ConcurCompile.
       apply compile_match_sumbool; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
       apply compile_match_cT; intros; eauto
+    | [ |- Compiled (match _ with | _ => _ end) ] =>
+      apply compile_match_result; intros; eauto
     | [ |- Compiled (let _ := (_, _) in _) ] =>
       apply compile_destruct_prod; intros
 
@@ -423,6 +447,16 @@ Section ConcurCompile.
     | [ |- Compiled (Ret _)] =>
       apply compile_refl
     | [ |- Compiled (CacheRead _ _ _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheInit  _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheCommit  _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheAbort  _)] =>
+      apply compile_refl
+    | [ |- Compiled (Rdtsc)] =>
+      apply compile_refl
+    | [ |- Compiled (Debug _  _)] =>
       apply compile_refl
 
     | _ => progress (unfold pair_args_helper, If_; simpl)
@@ -467,10 +501,19 @@ Section ConcurCompile.
     destruct p; auto.
   Qed.
 
+  Definition CompiledReadBlock fsxp inum off ams ls c :
+    Compiled (OptFS.read_fblock fsxp inum off ams ls c).
+  Proof.
+    unfold OptFS.read_fblock, translate.
+
+    repeat compile;
+      apply compile_refl.
+  Defined.
+
   Definition CompiledLookup fsxp dnum names ams ls c :
     Compiled (OptFS.lookup fsxp dnum names ams ls c).
   Proof.
-    unfold OptFS.lookup.
+    unfold OptFS.lookup, translate.
 
     repeat compile;
       apply compile_refl.
@@ -479,17 +522,18 @@ Section ConcurCompile.
   Definition CompiledGetAttr fsxp inum ams ls c :
     Compiled (OptFS.file_get_attr fsxp inum ams ls c).
   Proof.
-    unfold OptFS.file_get_attr; simpl.
+    unfold OptFS.file_get_attr, translate; simpl.
     repeat compile;
       apply compile_refl.
   Defined.
 
 End ConcurCompile.
 
-Definition G : Protocol := fun _ _ _ => True.
+Definition read_fblock G fsxp inum off ams ls c :=
+  compiled_prog (CompiledReadBlock G fsxp inum off ams ls c).
 
-Definition lookup fsxp dnum names ams ls c :=
+Definition lookup G fsxp dnum names ams ls c :=
   compiled_prog (CompiledLookup G fsxp dnum names ams ls c).
 
-Definition file_get_attr fsxp inum ams ls c :=
+Definition file_get_attr G fsxp inum ams ls c :=
   compiled_prog (CompiledGetAttr G fsxp inum ams ls c).
