@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
   measurement m = init_measurement();
 
   char buf[4096];
-  for (int i = 1; i < iters; i++) {
+  for (int i = 0; i < iters; i++) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
       fprintf(stderr, "could not open %s for reading\n", path);
