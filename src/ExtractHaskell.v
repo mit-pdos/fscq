@@ -31,7 +31,7 @@ Extract Inlined Constant StringUtils.String_as_OT.string_compare =>
 
 Extract Inlined Constant DirName.ascii2byte => "Word.ascii2byte".
 
-Extraction Inline ConcurCompile.compile_bind ConcurCompile.compile_match_sumbool ConcurCompile.compile_equiv ConcurCompile.compiled_prog ConcurCompile.compile_refl.
+Extraction Inline Logic.eq_rect_r Logic.eq_rect.
 
 Cd "../codegen".
 Recursive Extraction Library ConcurrentFS.

@@ -67,9 +67,14 @@ Section ConcurCompile.
   Definition compiled_prog T (p: cprog T) (c: Compiled p) :=
     let 'ExtractionOf p' _ := c in p'.
 
+  Extraction Inline compiled_prog.
+
+
   Definition compiled_exec_equiv T (p: cprog T) (c: Compiled p) :
     exec_equiv G p (compiled_prog c) :=
     let 'ExtractionOf _ pf := c in pf.
+
+  Extraction Inline compiled_exec_equiv.
 
   Fixpoint cForEach_ (ITEM : Type) (L : Type)
            (f : ITEM -> L -> CacheSt -> cprog (Result L * CacheSt))
@@ -109,10 +114,7 @@ Section ConcurCompile.
     (forall lst l c, Compiled (@cForEach_ ITEM L p lst l c)).
   Proof.
     intros.
-    unshelve refine (ExtractionOf (@cForEach_ ITEM L _ lst l c) _);
-      intros.
-    destruct (X X0 X1 X2).
-    exact p'.
+    refine (ExtractionOf (@cForEach_ ITEM L (fun i l c => compiled_prog (X i l c)) lst l c) _).
     generalize dependent l.
     generalize dependent c.
     induction lst; intros; simpl.
@@ -125,6 +127,8 @@ Section ConcurCompile.
     reflexivity.
     reflexivity.
   Defined.
+
+  Extraction Inline compile_forEach.
 
   Fixpoint cForN_ (L : Type)
            (f : nat -> L -> CacheSt -> cprog (Result L * CacheSt))
@@ -165,10 +169,7 @@ Section ConcurCompile.
     (forall i n l c, Compiled (@cForN_ L p i n l c)).
   Proof.
     intros.
-    unshelve refine (ExtractionOf (@cForN_ L _ i n l c) _);
-      intros.
-    destruct (X H X0 X1).
-    exact p'.
+    refine (ExtractionOf (@cForN_ L (fun a l c => compiled_prog (X a l c)) i n l c) _).
     generalize dependent i.
     generalize dependent l.
     generalize dependent c.
@@ -183,6 +184,8 @@ Section ConcurCompile.
     reflexivity.
   Defined.
 
+  Extraction Inline compile_forN.
+
   Lemma compile_equiv T (p p': cprog T) :
     exec_equiv G p p' ->
     forall (cp': Compiled p'),
@@ -192,6 +195,8 @@ Section ConcurCompile.
     refine (ExtractionOf (compiled_prog cp') _).
     abstract (destruct cp'; etransitivity; eauto).
   Defined.
+
+  Extraction Inline compile_equiv.
 
   Ltac monad_compile :=
     repeat match goal with
@@ -218,12 +223,16 @@ Section ConcurCompile.
                 destruct (X0 v); simpl; eauto ]).
   Defined.
 
+  Extraction Inline compile_bind.
+
   Lemma compile_refl T (p: cprog T) :
     Compiled p.
   Proof.
     exists p.
     abstract (reflexivity).
   Defined.
+
+  Extraction Inline compile_refl.
 
   Lemma translate'_match_res : forall T T' (p1: T -> prog T') (p2: Errno -> prog T') r,
       translate' (match r with
@@ -301,6 +310,8 @@ Section ConcurCompile.
       eauto.
   Defined.
 
+  Extraction Inline compile_match_res.
+
   Lemma compile_match_opt T T' LT CT (p1: T -> _ -> _ -> cprog T') p2
         (r: option T) (ls: LT) (c: CT) :
     (forall v ls c, Compiled (p1 v ls c)) ->
@@ -319,6 +330,8 @@ Section ConcurCompile.
       destruct_compiled;
       eauto.
   Defined.
+
+  Extraction Inline compile_match_opt.
 
   Lemma compile_match_opt' T T' (p1: T -> cprog T') p2
         (r: option T) :
@@ -339,6 +352,8 @@ Section ConcurCompile.
       eauto.
   Defined.
 
+  Extraction Inline compile_match_opt'.
+
   Lemma compile_match_sumbool P Q T' LT CT (p1:  _ -> _ -> cprog T') p2
         (r: {P}+{Q}) (ls: LT) (c: CT) :
     (forall ls c, Compiled (p1 ls c)) ->
@@ -357,6 +372,8 @@ Section ConcurCompile.
       destruct_compiled;
       eauto.
   Defined.
+
+  Extraction Inline compile_match_sumbool.
 
   Lemma compile_match_cT : forall T T' (p1: T -> Cache -> cprog T') p2 r,
       (forall v c, Compiled (p1 v c)) ->
@@ -377,6 +394,8 @@ Section ConcurCompile.
     destruct (X0 e c); simpl; eauto.
   Defined.
 
+  Extraction Inline compile_match_cT.
+
   Lemma compile_match_result : forall T T' (p1: ModifiedFlag -> T -> cprog T') p2 r,
       (forall f v, Compiled (p1 f v)) ->
       (forall e, Compiled (p2 e)) ->
@@ -395,6 +414,8 @@ Section ConcurCompile.
     destruct (X0 e); simpl; eauto.
   Defined.
 
+  Extraction Inline compile_match_result.
+
   Lemma compile_destruct_prod : forall A B T' (p: A -> B -> cprog T') (r:A*B),
       (forall a b, Compiled (p a b)) ->
       Compiled (let (a, b) := r in p a b).
@@ -405,6 +426,8 @@ Section ConcurCompile.
     destruct r.
     destruct (X a b); eauto.
   Defined.
+
+  Extraction Inline compile_destruct_prod.
 
   Ltac compile_hook := fail.
 
@@ -531,7 +554,6 @@ Section ConcurCompile.
   Hint Unfold LOG.read GLog.read MemLog.MLog.read : compile.
   Hint Unfold BUFCACHE.maybe_evict : compile.
 
-  (*
   Definition CompiledReadBlock fsxp inum off ams ls c :
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
@@ -556,14 +578,12 @@ Section ConcurCompile.
     repeat compile;
       apply compile_refl.
   Defined.
-*)
 
 End ConcurCompile.
 
 Definition compiled_add_tuple nums b :=
   compiled_prog (CompiledAddTuple (fun _ _ _ => True) nums b).
 
-(*
 Definition read_fblock G fsxp inum off ams ls c :=
   compiled_prog (CompiledReadBlock G fsxp inum off ams ls c).
 
@@ -572,4 +592,3 @@ Definition lookup G fsxp dnum names ams ls c :=
 
 Definition file_get_attr G fsxp inum ams ls c :=
   compiled_prog (CompiledGetAttr G fsxp inum ams ls c).
-*)
