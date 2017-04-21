@@ -581,22 +581,45 @@ Section ConcurCompile.
   Hint Unfold INODE.Ind.IndSig.RAStart
        INODE.BPtrSig.NDirect
        INODE.Ind.IndSig.items_per_val : params.
-  Hint Unfold INODE.BPtrSig.IRIndPtr : params.
-  Hint Unfold INODE.BPtrSig.IRDindPtr : params.
+  Hint Unfold INODE.BPtrSig.IRIndPtr
+       INODE.BPtrSig.IRDindPtr
+       INODE.BPtrSig.IRTindPtr : params.
 
   Hint Unfold LOG.read_array : compile.
-  Hint Unfold LOG.commit_ro LOG.mk_memstate.
+  Hint Unfold LOG.commit_ro LOG.mk_memstate : compile.
+
+  Lemma valulen_64 : valulen/64 = 512.
+  Proof.
+    rewrite valulen_is; vm_compute; auto.
+  Qed.
+
+  Ltac calc_simpl :=
+    intros;
+    repeat (autounfold with params || simpl);
+    rewrite ?valulen_64,
+    ?Nat.mul_1_r, ?Nat.div_1_r,
+    ?Nat.div_small,
+    <- ?Nat.sub_add_distr,
+    ?Nat.div_small by auto.
 
   Lemma offset_calc_reduce : forall fsxp inum,
       INODE.IRecSig.RAStart (FSXPInode fsxp) +
       inum / INODE.IRecSig.items_per_val =
       IXStart (FSXPInode fsxp) + inum / 32.
   Proof.
-    autounfold with params; simpl.
+    calc_simpl.
     rewrite valulen_is.
     replace (valulen_real/1024) with 32 by (vm_compute; reflexivity).
     auto.
   Qed.
+
+  Definition fivetwelve_not_0 : 512 <> 0 := ltac:(omega).
+  Definition fivetwelve_squared_not_0 : 512*512 <> 0 := ltac:(omega).
+  Hint Resolve fivetwelve_not_0 fivetwelve_squared_not_0.
+  (* this works but it's too evil *)
+  (* Hint Resolve (ltac:(omega) : 512 <> 0). *)
+
+  Hint Resolve Nat.mod_upper_bound.
 
   Lemma calc2_reduce : forall n off,
       (INODE.Ind.IndSig.RAStart n +
@@ -605,16 +628,7 @@ Section ConcurCompile.
           INODE.Ind.IndSig.items_per_val ^ 0 /
                                              INODE.Ind.IndSig.items_per_val) = n.
   Proof.
-    intros.
-    repeat (autounfold with params || simpl).
-    rewrite valulen_is.
-    replace (valulen_real/64) with 512 by (vm_compute; auto).
-    rewrite Nat.mul_1_r.
-    rewrite Nat.div_1_r.
-    rewrite Nat.div_small.
-    omega.
-    apply Nat.mod_upper_bound.
-    omega.
+    calc_simpl; auto.
   Qed.
 
   Lemma calc3_reduce : forall n off,
@@ -625,12 +639,7 @@ Section ConcurCompile.
                                              INODE.Ind.IndSig.items_per_val
       = # (fst (snd (snd n))) + (off - 7) / 512.
   Proof.
-    intros.
-    repeat (autounfold with params || simpl).
-    rewrite Nat.div_1_r.
-    rewrite valulen_is.
-    replace (valulen_real/64) with 512 by (vm_compute; auto).
-    auto.
+    calc_simpl; auto.
   Qed.
 
   Lemma calc4_reduce : forall v off,
@@ -639,17 +648,14 @@ Section ConcurCompile.
           (off - INODE.BPtrSig.NDirect - INODE.Ind.IndSig.items_per_val) /
           INODE.Ind.IndSig.items_per_val ^ 1 /
                                              INODE.Ind.IndSig.items_per_val
-      = # (fst (snd (snd (snd v)))) + (off - 7 - 512) / (512 * 512).
+      = # (fst (snd (snd (snd v)))) + (off - 519) / (512 * 512).
   Proof.
-    intros.
     (* hide from simpl *)
     set (x := 512*512).
-    repeat (autounfold with params || simpl).
-    rewrite valulen_is.
-    replace (valulen_real/64) with 512 by (vm_compute; auto).
-    rewrite Nat.mul_1_r.
-    rewrite Nat.div_div by omega.
-    auto.
+    calc_simpl.
+    rewrite Nat.div_div by auto.
+    replace (7 + 512) with (519) by (rewrite plus_comm; auto).
+    subst x; auto.
   Qed.
 
   Lemma calc5_reduce : forall n off,
@@ -662,16 +668,40 @@ Section ConcurCompile.
                                                                                   INODE.Ind.IndSig.items_per_val
       = n.
   Proof.
-    intros.
-    repeat (autounfold with params || simpl).
-    rewrite valulen_is.
-    replace (valulen_real/64) with 512 by (vm_compute;auto).
-    rewrite Nat.mul_1_r.
-    rewrite Nat.div_1_r.
-    rewrite Nat.div_small.
-    omega.
-    apply Nat.mod_upper_bound.
-    omega.
+    calc_simpl; auto.
+  Qed.
+
+  Lemma calc6_reduce : forall n off,
+      INODE.Ind.IndSig.RAStart
+             (INODE.BPtrSig.IRTindPtr n) +
+           (off - INODE.BPtrSig.NDirect - INODE.Ind.IndSig.items_per_val -
+            INODE.Ind.IndSig.items_per_val ^ 2) /
+           INODE.Ind.IndSig.items_per_val ^ 2 /
+                                              INODE.Ind.IndSig.items_per_val
+      = # (fst (snd (snd (snd (snd n))))) +
+        (off - (519 + 512 * 512)) / (512 * 512 * 512).
+  Proof.
+    set (x := 512*512*512).
+    set (y := 512*512).
+    set (z := 519).
+    calc_simpl.
+    rewrite Nat.div_div by omega.
+    f_equal.
+  Qed.
+
+  Lemma calc7_reduce : forall n off,
+      INODE.Ind.IndSig.RAStart n +
+      (off - INODE.BPtrSig.NDirect - INODE.Ind.IndSig.items_per_val -
+       INODE.Ind.IndSig.items_per_val ^ 2)
+        mod INODE.Ind.IndSig.items_per_val ^ 2 /
+                                               INODE.Ind.IndSig.items_per_val ^ 1 /
+                                                                                  INODE.Ind.IndSig.items_per_val
+      = n.
+  Proof.
+    calc_simpl.
+    rewrite Nat.div_div by auto.
+    rewrite Nat.div_small by auto.
+    auto.
   Qed.
 
   Hint Rewrite offset_calc_reduce : compile.
@@ -679,6 +709,8 @@ Section ConcurCompile.
   Hint Rewrite calc3_reduce : compile.
   Hint Rewrite calc4_reduce : compile.
   Hint Rewrite calc5_reduce : compile.
+  Hint Rewrite calc6_reduce : compile.
+  Hint Rewrite calc7_reduce : compile.
 
   Hint Unfold LOG.read GLog.read MemLog.MLog.read : compile.
   Hint Unfold BUFCACHE.maybe_evict BUFCACHE.evict : compile.
@@ -689,8 +721,6 @@ Section ConcurCompile.
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
     unfold OptFS.read_fblock, translate.
-    (* TODO: remove LOG.read unfold and reduce parameters with more calc
-    lemmas *)
     repeat compile;
       apply compile_refl.
   Defined.
