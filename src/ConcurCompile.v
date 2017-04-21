@@ -434,8 +434,12 @@ Section ConcurCompile.
 
   Ltac compile_hook := fail.
 
+  Hint Unfold pair_args_helper If_ : compile.
+
   Ltac compile :=
     match goal with
+
+    | _ => progress (cbn [translate'])
 
     (* monad laws *)
     | [ |- Compiled (Bind (Ret _) _) ] =>
@@ -447,26 +451,26 @@ Section ConcurCompile.
 
     (* push translate' inside functions *)
     | [ |- Compiled (translate' (ForEach_ _ _ _ _ _) _ _) ] =>
-      rewrite translate'_ForEach
+      time "translate'_ForEach" rewrite translate'_ForEach
     | [ |- Compiled (translate' (ForN_ _ _ _ _ _ _) _ _) ] =>
-      rewrite translate'_ForN
+      time "translate'_ForN" rewrite translate'_ForN
     | [ |- Compiled (translate' (match _ with
-                                 | OK _ => _
-                                 | Err _ => _
-                                 end) _ _) ] =>
-      rewrite translate'_match_res
+                                | OK _ => _
+                                | Err _ => _
+                                end) _ _) ] =>
+      time "rewrite match res" rewrite translate'_match_res
     | [ |- Compiled (translate' (match _ with
-                                 | Some _ => _
-                                 | None => _
-                                 end) _ _) ] =>
-      rewrite translate'_match_opt
+                                | Some _ => _
+                                | None => _
+                                end) _ _) ] =>
+      time "rewrite match opt" rewrite translate'_match_opt
     | [ |- Compiled (translate' (match ?r with
                                 | left _ => ?p1
                                 | right _ => ?p2
                                 end) _ _) ] =>
       rewrite (translate'_match_sumbool p1 p2 r)
     | [ |- Compiled (translate' (let (_, _) := _ in _) _ _) ] =>
-      rewrite translate'_destruct_prod
+      time "destruct prod" rewrite translate'_destruct_prod
 
     (* compile specific constructs *)
     | [ |- Compiled (cForEach_ _ _ _ _) ] =>
@@ -474,13 +478,13 @@ Section ConcurCompile.
     | [ |- Compiled (cForN_ _ _ _ _ _) ] =>
       apply compile_forN; intros
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
-      apply compile_match_res; intros; eauto
+      time "compile_match_res" apply compile_match_res; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
-      apply compile_match_opt; intros; eauto
+      time "compile_match_opt" apply compile_match_opt; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
-      apply compile_match_opt'; intros; eauto
+      time "compile_match_opt'" apply compile_match_opt'; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
-      apply compile_match_sumbool; intros; eauto
+      time "compile match sumbool" apply compile_match_sumbool; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
       apply compile_match_cT; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
@@ -490,7 +494,7 @@ Section ConcurCompile.
 
     (* terminating programs that cannot be improved *)
     | [ |- Compiled (Ret _)] =>
-      apply compile_refl
+      time "compile ret" apply compile_refl
     | [ |- Compiled (CacheRead _ _ _)] =>
       apply compile_refl
     | [ |- Compiled (CacheInit  _)] =>
@@ -504,10 +508,11 @@ Section ConcurCompile.
     | [ |- Compiled (Debug _  _)] =>
       apply compile_refl
 
-    | _ => progress (autounfold with compile)
-    | _ => progress (unfold pair_args_helper, If_; simpl)
+    | _ => time "autounfold" progress (autounfold with compile)
+    | _ => time "autorewrite" progress (autorewrite with compile)
+    | _ => time "cbn" progress (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache])
 
-    | _ => compile_hook
+    | _ => time "hook" compile_hook
     end.
 
   Ltac head_symbol e :=
@@ -529,11 +534,11 @@ Section ConcurCompile.
       unfold h
     end.
 
-  Ltac compile_hook ::= comp_unfold ||
-       match goal with
-       | [ |- context[let (_, _) := ?p in _] ] =>
-         destruct p
-       end.
+  Ltac compile_hook ::=
+    match goal with
+    | [ |- context[let (_, _) := ?p in _] ] =>
+      destruct p
+    end.
 
   Transparent DirName.SDIR.lookup.
   Transparent BUFCACHE.read_array.
@@ -554,15 +559,136 @@ Section ConcurCompile.
     repeat compile.
   Defined.
 
+  Hint Unfold AsyncFS.AFS.read_fblock : compile.
+  Hint Unfold LOG.begin : compile.
+  Hint Unfold read BFILE.read : compile.
+  Hint Unfold INODE.getbnum : compile.
+
+  Hint Unfold INODE.IRec.get_array : compile.
+  Hint Unfold INODE.Ind.indget : compile.
   Hint Unfold INODE.IRec.get INODE.Ind.get : compile.
+
+  Hint Unfold INODE.IRec.LRA.get INODE.Ind.IndRec.get : compile.
+
+  (* Hint Unfold INODE.IRecSig.RAStart INODE.IRecSig.items_per_val : compile.
+  Hint Unfold INODE.IRecSig.itemtype : compile.
+  Hint Unfold INODE.irectype INODE.iattrtype : compile.
+  Hint Unfold addrlen INODE.NDirect : compile. *)
+
+  Hint Unfold INODE.IRecSig.RAStart INODE.IRecSig.items_per_val : params.
+  Hint Unfold INODE.IRecSig.itemtype : params.
+  Hint Unfold INODE.irectype INODE.iattrtype : params.
+  Hint Unfold addrlen INODE.NDirect : params.
+  Hint Unfold INODE.Ind.IndSig.RAStart
+       INODE.BPtrSig.NDirect
+       INODE.Ind.IndSig.items_per_val : params.
+  Hint Unfold INODE.BPtrSig.IRIndPtr : params.
+  Hint Unfold INODE.BPtrSig.IRDindPtr : params.
+
+  Hint Unfold LOG.read_array : compile.
+
+  Lemma offset_calc_reduce : forall fsxp inum,
+      INODE.IRecSig.RAStart (FSXPInode fsxp) +
+      inum / INODE.IRecSig.items_per_val =
+      IXStart (FSXPInode fsxp) + inum / 32.
+  Proof.
+    autounfold with params; simpl.
+    rewrite valulen_is.
+    replace (valulen_real/1024) with 32 by (vm_compute; reflexivity).
+    auto.
+  Qed.
+
+  Lemma calc2_reduce : forall n off,
+      (INODE.Ind.IndSig.RAStart n +
+          (off - INODE.BPtrSig.NDirect - INODE.Ind.IndSig.items_per_val)
+          mod INODE.Ind.IndSig.items_per_val ^ 1 /
+          INODE.Ind.IndSig.items_per_val ^ 0 /
+                                             INODE.Ind.IndSig.items_per_val) = n.
+  Proof.
+    intros.
+    repeat (autounfold with params || simpl).
+    rewrite valulen_is.
+    replace (valulen_real/64) with 512 by (vm_compute; auto).
+    rewrite Nat.mul_1_r.
+    rewrite Nat.div_1_r.
+    rewrite Nat.div_small.
+    omega.
+    apply Nat.mod_upper_bound.
+    omega.
+  Qed.
+
+  Lemma calc3_reduce : forall n off,
+      INODE.Ind.IndSig.RAStart
+            (INODE.BPtrSig.IRIndPtr n) +
+          (off - INODE.BPtrSig.NDirect) /
+          INODE.Ind.IndSig.items_per_val ^ 0 /
+                                             INODE.Ind.IndSig.items_per_val
+      = # (fst (snd (snd n))) + (off - 7) / 512.
+  Proof.
+    intros.
+    repeat (autounfold with params || simpl).
+    rewrite Nat.div_1_r.
+    rewrite valulen_is.
+    replace (valulen_real/64) with 512 by (vm_compute; auto).
+    auto.
+  Qed.
+
+  Lemma calc4_reduce : forall v off,
+      INODE.Ind.IndSig.RAStart
+            (INODE.BPtrSig.IRDindPtr v) +
+          (off - INODE.BPtrSig.NDirect - INODE.Ind.IndSig.items_per_val) /
+          INODE.Ind.IndSig.items_per_val ^ 1 /
+                                             INODE.Ind.IndSig.items_per_val
+      = # (fst (snd (snd (snd v)))) + (off - 7 - 512) / (512 * 512).
+  Proof.
+    intros.
+    (* hide from simpl *)
+    set (x := 512*512).
+    repeat (autounfold with params || simpl).
+    rewrite valulen_is.
+    replace (valulen_real/64) with 512 by (vm_compute; auto).
+    rewrite Nat.mul_1_r.
+    rewrite Nat.div_div by omega.
+    auto.
+  Qed.
+
+  Lemma calc5_reduce : forall n off,
+      INODE.Ind.IndSig.RAStart n +
+      ((off - INODE.BPtrSig.NDirect - INODE.Ind.IndSig.items_per_val -
+        INODE.Ind.IndSig.items_per_val ^ 2)
+         mod INODE.Ind.IndSig.items_per_val ^ 2)
+        mod INODE.Ind.IndSig.items_per_val ^ 1 /
+                                               INODE.Ind.IndSig.items_per_val ^ 0 /
+                                                                                  INODE.Ind.IndSig.items_per_val
+      = n.
+  Proof.
+    intros.
+    repeat (autounfold with params || simpl).
+    rewrite valulen_is.
+    replace (valulen_real/64) with 512 by (vm_compute;auto).
+    rewrite Nat.mul_1_r.
+    rewrite Nat.div_1_r.
+    rewrite Nat.div_small.
+    omega.
+    apply Nat.mod_upper_bound.
+    omega.
+  Qed.
+
+  Hint Rewrite offset_calc_reduce : compile.
+  Hint Rewrite calc2_reduce : compile.
+  Hint Rewrite calc3_reduce : compile.
+  Hint Rewrite calc4_reduce : compile.
+  Hint Rewrite calc5_reduce : compile.
+
+  (*
   Hint Unfold LOG.read GLog.read MemLog.MLog.read : compile.
-  Hint Unfold BUFCACHE.maybe_evict : compile.
+  Hint Unfold BUFCACHE.maybe_evict : compile. *)
 
   Definition CompiledReadBlock fsxp inum off ams ls c :
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
     unfold OptFS.read_fblock, translate.
-    repeat compile;
+    repeat time "compile" compile;
       apply compile_refl.
   Defined.
 
