@@ -20,6 +20,8 @@ Inductive SyscallResult {T} :=
 
 Arguments SyscallResult T : clear implicits.
 
+Set Default Proof Using "All".
+
 Section ConcurrentFS.
 
   Variable P:FsParams.
@@ -757,7 +759,7 @@ Section ConcurrentFS.
   use [write_syscall]'s) *)
 
   Definition file_get_attr inum :=
-    retry_readonly_syscall (fun mscs => file_get_attr (fsxp P) inum mscs).
+    retry_readonly_syscall (fun mscs => file_get_attr G (fsxp P) inum mscs).
 
   Lemma find_subtree_app' : forall prefix path tree subtree o_dir,
       find_subtree prefix tree = Some subtree ->
@@ -1042,7 +1044,7 @@ Section ConcurrentFS.
   Qed.
 
   Definition lookup names :=
-    retry_readonly_syscall (fun mscs => lookup (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs).
+    retry_readonly_syscall (fun mscs => lookup G (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs).
 
   Theorem lookup_ok : forall tid pathname,
       cprog_spec G tid
@@ -1093,7 +1095,7 @@ Section ConcurrentFS.
   Qed.
 
   Definition read_fblock inum off :=
-    retry_readonly_syscall (fun mscs => read_fblock (fsxp P) inum off mscs).
+    retry_readonly_syscall (fun mscs => read_fblock G (fsxp P) inum off mscs).
 
   Theorem read_fblock_ok : forall inum off tid,
       cprog_spec G tid
