@@ -478,7 +478,6 @@ Section ConcurCompile.
     | [ |- Compiled (Debug _  _)] =>
       apply compile_refl
 
-    | _ => progress (autounfold with compile)
     | _ => progress (unfold pair_args_helper, If_; simpl)
 
     | _ => compile_hook
@@ -521,10 +520,10 @@ Section ConcurCompile.
     destruct p; auto.
   Qed.
 
-  Definition CompiledAddTuple nums b ls c :
-    Compiled (translate (add_tuple nums b) ls c).
+  Definition CompiledAddTuple nums b :
+    Compiled (add_tuple_concur nums b).
   Proof.
-    unfold add_tuple, translate.
+    unfold add_tuple_concur, add_tuple, translate'.
     repeat compile.
   Defined.
 
