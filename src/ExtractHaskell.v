@@ -3,6 +3,7 @@ Require Import ExtrHaskellMap.
 Require Import AsyncFS.
 Require Import StringUtils.
 Require ConcurrentFS.
+Require TranslateTest.
 
 Extraction Language Haskell.
 
@@ -32,3 +33,4 @@ Extract Inlined Constant DirName.ascii2byte => "Word.ascii2byte".
 Cd "../codegen".
 Recursive Extraction Library ConcurrentFS.
 Recursive Extraction Library AsyncFS.
+Recursive Extraction Library TranslateTest.

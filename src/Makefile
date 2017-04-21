@@ -9,6 +9,7 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
               MemCache OptimisticCache \
               SeqSpecs OptimisticTranslator OptimisticFS \
 		          HomeDirProtocol FSProtocol OptimisticFSSpecs ConcurrentFS \
+              TranslateTest \
 							ConcurrentCopy \
 							Lock Nomega Word WordAuto WordZ Bytes Rounding \
 				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
@@ -68,7 +69,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: vio proof clean
 
-all: cfscq fscq mkfs parstat
+all: cfscq fscq mkfs parstat translate
 
 -include $(OCAMLFUSE_DEP)
 
