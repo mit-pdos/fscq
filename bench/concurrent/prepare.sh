@@ -11,7 +11,7 @@ if [ -z "$img" ]; then
   exit 1
 fi
 
-mkfs --data-bitmaps 3 "$img"
+mkfs --data-bitmaps 16 --inode-bitmaps 16 "$img"
 fscq --use-downcalls=false $img "$mnt" -- -f &
 sleep 1
 
@@ -31,9 +31,12 @@ mkdir -p "$mnt/$path2"
 touch "$mnt/$path1/file"
 touch "$mnt/$path2/file"
 
+mkdir "$mnt/linux-source"
+cp $HOME/linux.tar.xz "$mnt/linux-source/"
+
+cd "$mnt"
+tar -xf $HOME/linux.tar.xz
+
 for file in $mnt/**; do
   sync $file
 done
-
-fusermount -u /tmp/fscq
-wait
