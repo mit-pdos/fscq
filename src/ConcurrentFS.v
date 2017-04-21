@@ -6,6 +6,7 @@ Require Import Hashmap.
 Require Import FSProtocol.
 Require Import OptimisticFS.
 Require Import OptimisticFSSpecs.
+Require Import ConcurCompile.
 Require Import Errno.
 
 Import FSLayout BFile.
@@ -756,7 +757,7 @@ Section ConcurrentFS.
   use [write_syscall]'s) *)
 
   Definition file_get_attr inum :=
-    retry_readonly_syscall (fun mscs => OptFS.file_get_attr (fsxp P) inum mscs).
+    retry_readonly_syscall (fun mscs => file_get_attr (fsxp P) inum mscs).
 
   Lemma find_subtree_app' : forall prefix path tree subtree o_dir,
       find_subtree prefix tree = Some subtree ->
@@ -1034,7 +1035,7 @@ Section ConcurrentFS.
   Qed.
 
   Definition lookup names :=
-    retry_readonly_syscall (fun mscs => OptFS.lookup (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs).
+    retry_readonly_syscall (fun mscs => lookup (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs).
 
   Theorem lookup_ok : forall tid pathname,
       cprog_spec G tid
