@@ -451,26 +451,26 @@ Section ConcurCompile.
 
     (* push translate' inside functions *)
     | [ |- Compiled (translate' (ForEach_ _ _ _ _ _) _ _) ] =>
-      time "translate'_ForEach" rewrite translate'_ForEach
+      rewrite translate'_ForEach
     | [ |- Compiled (translate' (ForN_ _ _ _ _ _ _) _ _) ] =>
-      time "translate'_ForN" rewrite translate'_ForN
+      rewrite translate'_ForN
     | [ |- Compiled (translate' (match _ with
                                 | OK _ => _
                                 | Err _ => _
                                 end) _ _) ] =>
-      time "rewrite match res" rewrite translate'_match_res
+      rewrite translate'_match_res
     | [ |- Compiled (translate' (match _ with
                                 | Some _ => _
                                 | None => _
                                 end) _ _) ] =>
-      time "rewrite match opt" rewrite translate'_match_opt
+      rewrite translate'_match_opt
     | [ |- Compiled (translate' (match ?r with
                                 | left _ => ?p1
                                 | right _ => ?p2
                                 end) _ _) ] =>
       rewrite (translate'_match_sumbool p1 p2 r)
     | [ |- Compiled (translate' (let (_, _) := _ in _) _ _) ] =>
-      time "destruct prod" rewrite translate'_destruct_prod
+      rewrite translate'_destruct_prod
 
     (* compile specific constructs *)
     | [ |- Compiled (cForEach_ _ _ _ _) ] =>
@@ -478,13 +478,13 @@ Section ConcurCompile.
     | [ |- Compiled (cForN_ _ _ _ _ _) ] =>
       apply compile_forN; intros
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
-      time "compile_match_res" apply compile_match_res; intros; eauto
+      apply compile_match_res; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
-      time "compile_match_opt" apply compile_match_opt; intros; eauto
+      apply compile_match_opt; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
-      time "compile_match_opt'" apply compile_match_opt'; intros; eauto
+      apply compile_match_opt'; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end _ _) ] =>
-      time "compile match sumbool" apply compile_match_sumbool; intros; eauto
+      apply compile_match_sumbool; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
       apply compile_match_cT; intros; eauto
     | [ |- Compiled (match _ with | _ => _ end) ] =>
@@ -494,7 +494,7 @@ Section ConcurCompile.
 
     (* terminating programs that cannot be improved *)
     | [ |- Compiled (Ret _)] =>
-      time "compile ret" apply compile_refl
+      apply compile_refl
     | [ |- Compiled (CacheRead _ _ _)] =>
       apply compile_refl
     | [ |- Compiled (CacheInit  _)] =>
@@ -508,11 +508,15 @@ Section ConcurCompile.
     | [ |- Compiled (Debug _  _)] =>
       apply compile_refl
 
-    | _ => time "autounfold" progress (autounfold with compile)
-    | _ => time "autorewrite" progress (autorewrite with compile)
-    | _ => time "cbn" progress (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache])
+    | _ => progress (autounfold with compile)
+    (* autorewrite has been slow in the past, keep an eye on it *)
+    | _ => progress (autorewrite with compile)
+    | _ => progress
+            (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache
+                           MemLog.MLog.MSCache
+                           CSMap CSMaxCount CSCount CSEvict])
 
-    | _ => time "hook" compile_hook
+    | _ => compile_hook
     end.
 
   Ltac head_symbol e :=
@@ -570,11 +574,6 @@ Section ConcurCompile.
 
   Hint Unfold INODE.IRec.LRA.get INODE.Ind.IndRec.get : compile.
 
-  (* Hint Unfold INODE.IRecSig.RAStart INODE.IRecSig.items_per_val : compile.
-  Hint Unfold INODE.IRecSig.itemtype : compile.
-  Hint Unfold INODE.irectype INODE.iattrtype : compile.
-  Hint Unfold addrlen INODE.NDirect : compile. *)
-
   Hint Unfold INODE.IRecSig.RAStart INODE.IRecSig.items_per_val : params.
   Hint Unfold INODE.IRecSig.itemtype : params.
   Hint Unfold INODE.irectype INODE.iattrtype : params.
@@ -586,6 +585,7 @@ Section ConcurCompile.
   Hint Unfold INODE.BPtrSig.IRDindPtr : params.
 
   Hint Unfold LOG.read_array : compile.
+  Hint Unfold LOG.commit_ro LOG.mk_memstate.
 
   Lemma offset_calc_reduce : forall fsxp inum,
       INODE.IRecSig.RAStart (FSXPInode fsxp) +
@@ -680,15 +680,18 @@ Section ConcurCompile.
   Hint Rewrite calc4_reduce : compile.
   Hint Rewrite calc5_reduce : compile.
 
-  (*
   Hint Unfold LOG.read GLog.read MemLog.MLog.read : compile.
-  Hint Unfold BUFCACHE.maybe_evict : compile. *)
+  Hint Unfold BUFCACHE.maybe_evict BUFCACHE.evict : compile.
+  Hint Unfold BUFCACHE.read_array BUFCACHE.read : compile.
+  Hint Unfold BUFCACHE.writeback : compile.
 
   Definition CompiledReadBlock fsxp inum off ams ls c :
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
     unfold OptFS.read_fblock, translate.
-    repeat time "compile" compile;
+    (* TODO: remove LOG.read unfold and reduce parameters with more calc
+    lemmas *)
+    repeat compile;
       apply compile_refl.
   Defined.
 
