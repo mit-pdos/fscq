@@ -764,7 +764,7 @@ Module INODE.
     2, 3: eauto.
     rewrite listmatch_updN_removeN by omega.
     unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
-    rewrite <- rep_upd_attrs.
+    rewrite rep_upd_attrs. cbn.
     unfold cuttail.
     match goal with [H : context [Ind.rep _ ?x ?l] |- context [length ?l] ] =>
       unfold Ind.rep in H; destruct_lift H; substl (length l)
