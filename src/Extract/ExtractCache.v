@@ -109,9 +109,7 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  (* OK, ret is ignored: sign that we should be done! *)
-  eapply hoare_weaken_post; [ | eapply CompileSkip ].
-  cancel_go.
+  compile_step.
 
   (*
 Class find_ret_path {T} (P : pred) := FindRetPath : T.

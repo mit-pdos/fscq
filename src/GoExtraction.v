@@ -161,7 +161,8 @@ Ltac transform_includes v term :=
 
 Ltac compile_ret :=
   match goal with
-  | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
+  | [ |- EXTRACT Ret _ {{ _ }} _ {{ fun _ => ?post }} // _ ] =>
+    (* This will only match if ret is ignored. By the invariant, this means we should be done. *)
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_go ]
   | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val x pre with
