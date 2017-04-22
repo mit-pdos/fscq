@@ -439,8 +439,6 @@ Section ConcurCompile.
   Ltac compile :=
     match goal with
 
-    | _ => progress (cbn [translate'])
-
     (* monad laws *)
     | [ |- Compiled (Bind (Ret _) _) ] =>
       eapply compile_equiv; [ solve [ apply monad_left_id ] | ]
@@ -450,6 +448,7 @@ Section ConcurCompile.
       apply compile_bind; intros
 
     (* push translate' inside functions *)
+    | _ => progress (cbn [translate'])
     | [ |- Compiled (translate' (ForEach_ _ _ _ _ _) _ _) ] =>
       rewrite translate'_ForEach
     | [ |- Compiled (translate' (ForN_ _ _ _ _ _ _) _ _) ] =>
@@ -721,6 +720,11 @@ Section ConcurCompile.
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
     unfold OptFS.read_fblock, translate.
+
+    (* can we avoid checking for exceptions from never-failing code in more
+    cases? (even in other cases we should reduce the overhead of always pattern
+    matching on success results) *)
+
     repeat compile;
       apply compile_refl.
   Defined.
