@@ -97,13 +97,18 @@ func compute_xparams(data_bitmaps, inode_bitmaps, log_descr_blocks uint64) Pair_
 	return ret
 }
 
+const usetsc = false
+
 func BenchmarkGetSz(b *testing.B) {
 	disk := "disk.img"
 	Init_disk(disk)
 	ams, fsxp := init_ams(), compute_xparams(1, 1, 256)
-	tsc := gotsc.TSCOverhead()
-
-	start := gotsc.BenchStart()
+	var tsc uint64
+	var start uint64
+	if usetsc {
+		tsc = gotsc.TSCOverhead()
+		start = gotsc.BenchStart()
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var ret Pair_Pair_Bool_Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct__Pair_ImmutableBuffer_Struct_
@@ -113,7 +118,9 @@ func BenchmarkGetSz(b *testing.B) {
 			log.Printf("out: %d", ret.Snd.Fst)
 		}
 	}
-	end := gotsc.BenchEnd()
-	avg := (end - start - tsc) / uint64(b.N)
-	log.Printf("cycles: %d", avg)
+	if usetsc {
+		end := gotsc.BenchEnd()
+		avg := (end - start - tsc) / uint64(b.N)
+		log.Printf("cycles: %d", avg)
+	}
 }
