@@ -491,6 +491,16 @@ Section ConcurCompile.
     | [ |- Compiled (let _ := (_, _) in _) ] =>
       apply compile_destruct_prod; intros
 
+    (* simplifications *)
+    | _ => progress (autounfold with compile)
+    (* autorewrite has been slow in the past, keep an eye on it *)
+    | _ => progress (autorewrite with compile)
+    | _ => progress
+            (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache
+                           MemLog.MLog.MSCache
+                           CSMap CSMaxCount CSCount CSEvict
+                           modified_or])
+
     (* terminating programs that cannot be improved *)
     | [ |- Compiled (Ret _)] =>
       apply compile_refl
@@ -506,14 +516,6 @@ Section ConcurCompile.
       apply compile_refl
     | [ |- Compiled (Debug _  _)] =>
       apply compile_refl
-
-    | _ => progress (autounfold with compile)
-    (* autorewrite has been slow in the past, keep an eye on it *)
-    | _ => progress (autorewrite with compile)
-    | _ => progress
-            (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache
-                           MemLog.MLog.MSCache
-                           CSMap CSMaxCount CSCount CSEvict])
 
     | _ => compile_hook
     end.
@@ -554,6 +556,15 @@ Section ConcurCompile.
     intros.
     destruct p; auto.
   Qed.
+
+  Lemma modified_or_nochange : forall T (v:T) f,
+      modified_or f (Success NoChange v) = Success f v.
+  Proof.
+    intros.
+    destruct f; simpl; auto.
+  Qed.
+
+  Hint Rewrite modified_or_nochange : compile.
 
   Definition CompiledAddTuple nums b :
     Compiled (add_tuple_concur nums b).
