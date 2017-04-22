@@ -14,9 +14,9 @@ Local Open Scope string_scope.
 Example compile_writeback : sigT (fun p => source_stmt p /\
   forall env a cs,
   EXTRACT BUFCACHE.writeback a cs
-  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
+  {{ 0 ~> a * 1 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~>? addr * 1 ~> ret }} // env).
 Proof.
   unfold BUFCACHE.writeback.
   compile.
@@ -26,22 +26,21 @@ Eval lazy in (projT1 compile_writeback).
 Example compile_evict : sigT (fun p => source_stmt p /\ forall env a cs,
   prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "cache_writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.evict a cs
-  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
+  {{ 0 ~> a * 1 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? W * 2 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~>? W * 1 ~> ret }} // env).
 Proof.
   unfold BUFCACHE.evict.
   compile.
 Defined.
-
 Eval lazy in (projT1 compile_evict).
 
 Example compile_maybe_evict : sigT (fun p => source_stmt p /\ forall env cs,
   prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "cache_evict" BUFCACHE.evict env ->
   EXTRACT BUFCACHE.maybe_evict cs
-  {{ 0 ~>? cachestate * 1 ~> cs }}
+  {{ 0 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~> ret }} // env).
 Proof.
   unfold BUFCACHE.maybe_evict.
   compile.
@@ -58,14 +57,13 @@ Defined.
 
 Example compile_eviction_update' : sigT (fun p => source_stmt p /\ forall env a s,
   EXTRACT eviction_update' a s
-  {{ 0 ~>? eviction_state * 1 ~> a * 2 ~> s }}
+  {{ 0 ~> a * 1 ~> s }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? eviction_state }} // env).
+  {{ fun ret => 0 ~>? addr * 1 ~> ret }} // env).
 Proof.
   unfold eviction_update', eviction_update.
   compile.
 Defined.
-
 Eval lazy in (projT1 compile_eviction_update').
 
 Transparent BUFCACHE.read.
@@ -76,9 +74,9 @@ Example compile_read : sigT (fun p => source_stmt p /\ forall env a cs,
   prog_func_call_lemma {| FArgs := [with_wrapper W; with_wrapper eviction_state]; FRet := with_wrapper eviction_state |}
     "cache_eviction_update" eviction_update' env ->
   EXTRACT BUFCACHE.read a cs
-  {{ 0 ~>? (cachestate * (immut_word valulen * unit)) * 1 ~> a * 2 ~> cs }}
+  {{ 0 ~>? immut_word valulen * 1 ~> a * 2 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~> fst (snd ret) * 1 ~>? addr * 2 ~> fst (ret) }} // env).
 Proof.
   unfold BUFCACHE.read.
   compile_step.
@@ -97,17 +95,38 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  let ret := constr:(^(a0, fst b)) in
+  let fret := eval simpl in (fst (snd ret)) in
+  eapply hoare_weaken; [
+  eapply CompileRetPart with (fvar := 0) (f := fun ret_ => fst (snd ret_)) | cancel_go.. ]; change (fst (snd ret)) with fret; cbv beta.
+  compile_step.
+  compile_step.
+  let ret := constr:(^(a0, fst b)) in
+  let fret := eval simpl in (fst ret) in
+  eapply hoare_weaken; [
+  eapply CompileRetPart with (fvar := 2) (f := fun ret_ => fst ret_) | cancel_go.. ]; change (fst ret) with fret; cbv beta.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
+  (* OK, ret is ignored: sign that we should be done! *)
+  eapply hoare_weaken_post; [ | eapply CompileSkip ].
+  cancel_go.
+
+  (*
+Class find_ret_path {T} (P : pred) := FindRetPath : T.
+Ltac find_ret_tac P :=
+  match goal with
+    | [ ret : mark_ret ?T |- _ ] => var_mapping_to P ret
+  end.
+Hint Extern 0 (@find_ret ?T ?P) => (let x := find_ret_tac P in exact x) : typeclass_instances.
+  lazymatch goal with
+    | [ |- EXTRACT _ {{ _ }} _ {{ fun ret : ?T => ?P }} // _ ] =>
+      lazymatch constr:(fun ret : mark_ret T => ltac:(lazymatch goal with [ret : mark_ret _ |- _] => let v := var_mapping_to P ret in exact v end; exact 0)) with
+        | (fun ret => ?var) => idtac var
+      end
+  end.
+  *)
   Ltac a := match goal with
          | [ |- EXTRACT (v <- Read _; _) {{ _ }} _ {{ _ }} // _ ] =>
            compile_step; [
@@ -122,21 +141,21 @@ Proof.
          end.
   do_declare (immut_word valulen) ltac:(fun bvar => idtac bvar).
   eapply hoare_weaken; [
-    eapply CompileBind with (T := immut_word valulen) (var0 := nth_var 13 vars) | cancel_go.. ].
+    eapply CompileBind with (T := immut_word valulen) (var0 := nth_var 10 vars) | cancel_go.. ].
   do_declare valu ltac:(fun mvar => idtac mvar).
-  let vara := constr:(nth_var 14 vars) in
+  let vara := constr:(nth_var 11 vars) in
   let F := fresh "F" in
   evar (F : pred);
   eapply CompileAfter with (B := (fun r : valu => vara ~> r * F)%pred); subst F.
   eapply CompileBefore; [
-    eapply CompileRet with (var0 := nth_var 14 vars) (v := ($0 : word 0)) | ].
+    eapply CompileRet with (var0 := nth_var 11 vars) (v := ($0 : word 0)) | ].
   compile_step.
   compile_step.
   intro block.
   eapply hoare_weaken; [
-    eapply CompileRet with (v := block : immut_word valulen) (var0 := nth_var 13 vars) | cancel_go.. ].
+    eapply CompileRet with (v := block : immut_word valulen) (var0 := nth_var 10 vars) | cancel_go.. ].
   eapply hoare_weaken; [
-    eapply CompileFreeze with (dvar := nth_var 13 vars) (svar := nth_var 14 vars); divisibility | cancel_go.. ].
+    eapply CompileFreeze with (dvar := nth_var 10 vars) (svar := nth_var 11 vars); divisibility | cancel_go.. ].
   intros.
   a.
   a.
@@ -167,10 +186,11 @@ Proof.
   solve [repeat a].
   solve [repeat a].
   solve [repeat a].
-  change (nth_var 13 vars |-> Val ImmutableBuffer (existT (fun n : W => word n) valulen a1))%pred
-         with (nth_var 13 vars ~> a1 : pred)%pred.
+  change (nth_var 10 vars |-> Val ImmutableBuffer (existT (fun n : W => word n) valulen a1))%pred
+         with (nth_var 10 vars ~> a1 : pred)%pred.
   change valu with (immut_word valulen).
   repeat a.
+  compile_step.
 
   Unshelve.
   all: compile.

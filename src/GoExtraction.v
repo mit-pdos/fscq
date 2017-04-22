@@ -167,10 +167,12 @@ Ltac compile_ret :=
     match find_val x pre with
     | Some ?kx =>
       match var_mapping_to_ret with
-      | ?kret => (unify kx kret; fail 2) ||
-                                        eapply hoare_weaken; [
+      | ?kret => (unify kx kret; eapply hoare_weaken; [
+                  eapply CompileRet' with (var0 := kret); eapply CompileSkip
+                | cancel_go.. ])
+                || (eapply hoare_weaken; [
                   eapply CompileMove with (var0 := kx) (var' := kret)
-                | cancel_go.. ]
+                | cancel_go.. ])
       end
     end
   end.
@@ -187,7 +189,7 @@ Ltac compile_ret_transformable :=
         let P := fresh "P" in
         match goal with
         | [ |- ?P_ =p=> _ ] => set P_ as P
-        end; rewrite ?transform_pimpl; simpl; subst P;
+        end; rewrite transform_pimpl; simpl; subst P;
         let Q := fresh "Q" in
         match goal with
         | [ |- ?e ?x =p=> ?Q_ ] =>
@@ -218,16 +220,13 @@ Ltac compile_match := match goal with
         eapply extract_equiv_prog with (pr1 := Bind (Ret o) (fun x => _));
         [ generalize o; intro; rewrite bind_left_id; apply prog_equiv_equivalence |]
       | Some ?x =>
-        match var_mapping_to_ret with
-        | ?ret =>
-          do_declare bool ltac:(fun vara => simpl decls_pre; simpl decls_post;
-            do_declare X ltac:(fun varb =>
-              eapply hoare_weaken;
-              [ eapply CompileMatchOption with
-                  (ovar := x) (avar := vara) (bvar := varb) (xvar := ret) | cancel_go.. ];
-              intros
-            ))
-        end
+        do_declare bool ltac:(fun vara => simpl decls_pre; simpl decls_post;
+          do_declare X ltac:(fun varb =>
+            eapply hoare_weaken;
+            [ eapply CompileMatchOption with
+                (ovar := x) (avar := vara) (bvar := varb) | cancel_go.. ];
+            intros; cbv beta
+          ))
       end
     end
   | [|- EXTRACT (let (a_, b_) := ?p in _) {{ _ }} _ {{ _ }} // _ ] =>
@@ -572,7 +571,7 @@ Ltac compile_split := match goal with
   | [ |- EXTRACT Ret ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_pair_val a pre with
     | Some (_, ?ppath) =>
-      change (Ret a) with (Ret ppath)
+      progress change (Ret a) with (Ret ppath)
     end
   | [ |- EXTRACT Ret (fst ?p) {{ ?pre }} _ {{ _ }} // _ ] =>
     let avar_ := var_mapping_to_ret in

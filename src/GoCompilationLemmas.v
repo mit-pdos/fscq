@@ -23,8 +23,8 @@ Hint Constructors Go.step.
 
 
 
-Lemma CompileSkip : forall env A,
-  EXTRACT Ret tt
+Lemma CompileSkip : forall env A T (v : T),
+  EXTRACT Ret v
   {{ A }}
     Go.Skip
   {{ fun _ => A }} // env.
@@ -643,6 +643,66 @@ Proof.
     + destruct_pair. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
       forward_solve.
       invc H10; repeat (find_apply_lem_hyp inj_pair2; subst); solve_by_inversion.
+
+  Unshelve.
+  all: auto.
+Qed.
+
+Ltac invc2 H := invc H; repeat find_apply_lem_hyp inj_pair2; subst.
+Lemma CompileRetPart : forall T T' {Wr : GoWrapper T'} env A B C (v : T) (f : T -> T') fvar p1 p2,
+    EXTRACT Ret (f v)
+    {{ A }}
+      p1
+    {{ fun ret => fvar ~> ret * B }} // env ->
+    EXTRACT Ret v
+    {{ fvar ~> f v * B }}
+      p2
+    {{ fun ret => fvar ~> f v * C ret }} // env ->
+    EXTRACT Ret v
+    {{ A }}
+      p1; p2
+    {{ fun ret => fvar ~> f ret * C ret }} // env.
+Proof.
+  unfold ProgOk.
+  intuition subst.
+
+  - find_eapply_lem_hyp Go.ExecFinished_Steps. find_eapply_lem_hyp Go.Steps_Seq.
+    intuition; repeat deex; try discriminate.
+    find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFinished.
+    forward_solve.
+    invc2 H5.
+    forward_solve.
+    invc2 H5.
+    eauto.
+    invc H17.
+    invc H15.
+
+  - find_eapply_lem_hyp Go.ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
+    intuition; repeat deex.
+    + invc H4. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
+      forward_solve.
+      invc2 H.
+      invc H11.
+    + destruct_pair. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
+      forward_solve.
+      invc2 H6.
+      forward_solve.
+      invc2 H16.
+
+  - find_eapply_lem_hyp Go.ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
+    intuition; repeat deex.
+    + eapply Go.Steps_ExecFailed in H4; eauto.
+      * forward_solve.
+        invc2 H6.
+        invc H11.
+      * unfold Go.is_final; simpl; intuition (subst; eauto).
+      * intuition. repeat deex.
+        intuition eauto.
+    + destruct_pair. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFailed; eauto.
+      forward_solve.
+      invc2 H7.
+      forward_solve.
+      invc H17.
 
   Unshelve.
   all: auto.
@@ -2306,18 +2366,18 @@ Proof.
     [ eval_expr; eauto.. ].
 Qed.
 
-Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X}
-  ovar avar bvar xvar (o : option B)
+Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X
+  ovar avar bvar (o : option B)
   (pnone : prog X) xpnone (psome : B -> prog X) xpsome (F : pred) C,
   (forall (b : B),
   EXTRACT (psome b)
   {{ avar ~> true * bvar ~> b * ovar |-> moved_value (wrap o) * F }}
     xpsome
-  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env) ->
+  {{ fun ret => avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env) ->
   EXTRACT pnone
   {{ avar ~> false * bvar |-> default_value (@wrap_type _ HB) * ovar |-> moved_value (wrap o) * F }}
     xpnone
-  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env ->
+  {{ fun ret => avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env ->
   EXTRACT (match o with
            | None => pnone
            | Some b => psome b
@@ -2325,7 +2385,7 @@ Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X}
   {{ ovar ~> o * avar ~>? bool * bvar ~>? B * F }}
     Modify SplitPair ^(ovar, avar, bvar) ;
     If Var avar Then xpsome Else xpnone EndIf
-  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env.
+  {{ fun ret => avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env.
 Proof.
   intros.
   eapply extract_equiv_prog with (pr1 := Bind (Ret tt) (fun _ => _)).
