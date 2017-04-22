@@ -148,16 +148,36 @@ Ltac compile_const := lazymatch goal with
       end
   end.
 
-Ltac is_transformable v :=
-  let T := type of v in
-  let wr := constr:(_ : WrapByTransforming T) in idtac.
-
-Ltac transform_includes v term :=
-  let y := constr:(transform v) in
-  let x := ltac:(eval simpl in y) in
-  match x with
-  | context [term] => idtac
+Ltac is_path_to' v v0 :=
+  match v0 with
+  | v => True
+  | fst ?v0' => is_path_to' v v0'
+  | snd ?v0' => is_path_to' v v0'
   end.
+Ltac is_path_to v v0 :=
+  match v0 with
+  | fst ?v0' => is_path_to' v v0'
+  | snd ?v0' => is_path_to' v v0'
+  end.
+
+Ltac find_path_val v P :=
+  match P with
+  | context [(?k ~> ?v0)%pred] =>
+    match v0 with
+    | context [v] =>
+      match is_path_to v v0 with
+      | True => constr:(Some (k,v0))
+      end
+    end
+  | _ => constr:(@None unit)
+  end.
+
+Class find_ret_path {T} (P : pred) := FindRetPath : T.
+Ltac find_ret_path_tac P :=
+  match goal with
+    | [ ret : mark_ret ?T |- _ ] => find_path_val ret P
+  end.
+Hint Extern 0 (@find_ret_path ?T ?P) => (let x := find_ret_path_tac P in exact x) : typeclass_instances.
 
 Ltac compile_ret :=
   match goal with
@@ -176,6 +196,26 @@ Ltac compile_ret :=
                 | cancel_go.. ])
       end
     end
+  | [ |- EXTRACT (Ret ?retv) {{ _ }} _ {{ fun ret : ?T => ?P }} // _ ] =>
+    lazymatch constr:(fun ret : mark_ret T => (_:find_ret_path P)) with
+    | (fun ret => Some (?fvar_, ?fbody)) =>
+      let f_ := constr:(fun ret : T => fbody) in
+      let fret := eval cbv beta in (f_ retv) in
+          let fret' := eval simpl in fret in
+              eapply hoare_weaken; [eapply CompileRetPart with (fvar := fvar_) (f := f_) | cancel_go.. ];
+                                     change fret with fret'; cbv beta
+    end
+  end.
+
+Ltac is_transformable v :=
+  let T := type of v in
+  let wr := constr:(_ : WrapByTransforming T) in idtac.
+
+Ltac transform_includes v term :=
+  let y := constr:(transform v) in
+  let x := ltac:(eval simpl in y) in
+  match x with
+  | context [term] => idtac
   end.
 
 Ltac compile_ret_transformable :=

@@ -95,36 +95,15 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  let ret := constr:(^(a0, fst b)) in
-  let fret := eval simpl in (fst (snd ret)) in
-  eapply hoare_weaken; [
-  eapply CompileRetPart with (fvar := 0) (f := fun ret_ => fst (snd ret_)) | cancel_go.. ]; change (fst (snd ret)) with fret; cbv beta.
-  compile_step.
-  compile_step.
-  let ret := constr:(^(a0, fst b)) in
-  let fret := eval simpl in (fst ret) in
-  eapply hoare_weaken; [
-  eapply CompileRetPart with (fvar := 2) (f := fun ret_ => fst ret_) | cancel_go.. ]; change (fst ret) with fret; cbv beta.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
-
-  (*
-Class find_ret_path {T} (P : pred) := FindRetPath : T.
-Ltac find_ret_tac P :=
-  match goal with
-    | [ ret : mark_ret ?T |- _ ] => var_mapping_to P ret
-  end.
-Hint Extern 0 (@find_ret ?T ?P) => (let x := find_ret_tac P in exact x) : typeclass_instances.
-  lazymatch goal with
-    | [ |- EXTRACT _ {{ _ }} _ {{ fun ret : ?T => ?P }} // _ ] =>
-      lazymatch constr:(fun ret : mark_ret T => ltac:(lazymatch goal with [ret : mark_ret _ |- _] => let v := var_mapping_to P ret in exact v end; exact 0)) with
-        | (fun ret => ?var) => idtac var
-      end
-  end.
-  *)
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
   Ltac a := match goal with
          | [ |- EXTRACT (v <- Read _; _) {{ _ }} _ {{ _ }} // _ ] =>
            compile_step; [
@@ -164,6 +143,8 @@ Hint Extern 0 (@find_ret ?T ?P) => (let x := find_ret_tac P in exact x) : typecl
   a.
   a.
   a.
+  a.
+  a.
   change valu with (immut_word valulen)%type.
   lazymatch goal with
   | |- EXTRACT Bind (Ret ?x_) ?p
@@ -188,7 +169,6 @@ Hint Extern 0 (@find_ret ?T ?P) => (let x := find_ret_tac P in exact x) : typecl
          with (nth_var 10 vars ~> a1 : pred)%pred.
   change valu with (immut_word valulen).
   repeat a.
-  compile_step.
 
   Unshelve.
   all: compile.
@@ -200,9 +180,9 @@ Example compile_read_array : sigT (fun p => source_stmt p /\  forall env a i cs,
   prog_func_call_lemma {| FArgs := [with_wrapper _ ; with_wrapper _]; FRet := with_wrapper _ |}
     "cache_read" BUFCACHE.read env ->
   EXTRACT BUFCACHE.read_array a i cs
-  {{ 0 ~>? (cachestate * (immut_word valulen * unit)) * 1 ~> a * 2 ~> i * 3 ~> cs }}
+  {{ 0 ~>? immut_word valulen * 1 ~> a * 2 ~> i * 3 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? W * 3 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~> fst (snd ret) * 1 ~>? addr * 2 ~>? W * 3 ~> fst ret }} // env).
 Proof.
   unfold BUFCACHE.read_array.
   compile.
@@ -215,9 +195,9 @@ Example compile_write : sigT (fun p => source_stmt p /\ forall env a v cs,
   prog_func_call_lemma {| FArgs := [with_wrapper W; with_wrapper eviction_state]; FRet := with_wrapper eviction_state |}
     "cache_eviction_update" eviction_update' env ->
   EXTRACT BUFCACHE.write a v cs
-  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> v * 3 ~> cs }}
+  {{ 0 ~> a * 1 ~> v * 2 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? immut_word valulen * 3 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~>? addr * 1 ~>? immut_word valulen * 2 ~> ret }} // env).
 Proof.
   unfold BUFCACHE.write.
   repeat (progress change (Ret (eviction_update ?s ?a)) with (eviction_update' a s)
@@ -230,42 +210,38 @@ Defined.
 Transparent BUFCACHE.begin_sync.
 Example compile_begin_sync : sigT (fun p => source_stmt p /\ forall env cs,
   EXTRACT BUFCACHE.begin_sync cs
-  {{ 0 ~>? cachestate * 1 ~> cs }}
+  {{ 0 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~> ret }} // env).
 Proof.
   unfold BUFCACHE.begin_sync.
   compile.
 Defined.
-
 Eval lazy in projT1 (compile_begin_sync).
 
 Transparent BUFCACHE.sync.
-
 Example compile_sync : sigT (fun p => source_stmt p /\ forall env a cs,
   prog_func_call_lemma {| FRet := with_wrapper cachestate; FArgs := [with_wrapper addr; with_wrapper cachestate] |} "cache_writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.sync a cs
-  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
+  {{ 0 ~> a * 1 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~>? addr * 1 ~> ret }} // env).
 Proof.
   unfold BUFCACHE.sync.
   compile.
 Defined.
 Eval lazy in projT1 (compile_sync).
 
-
 Transparent BUFCACHE.end_sync.
 Example compile_end_sync : sigT (fun p => source_stmt p /\ forall env cs,
   EXTRACT BUFCACHE.end_sync cs
-  {{ 0 ~>? cachestate * 1 ~> cs }}
+  {{ 0 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
+  {{ fun ret => 0 ~> ret }} // env).
 Proof.
   unfold BUFCACHE.end_sync.
   compile.
 Defined.
-
 
 Transparent BUFCACHE.init.
 Example compile_init : sigT (fun p => source_stmt p /\ forall env n,
