@@ -582,7 +582,7 @@ Proof.
   congruence.
 Qed.
 
-Theorem arrayN_except : forall V vs (def : V) i (pts: _ -> _ -> @pred _ _ V),
+Theorem arrayN_except : forall T V (vs : list T) (def : T) i (pts: _ -> _ -> @pred _ _ V),
   i < length vs
   -> arrayN pts 0 vs <=p=>
     (arrayN_ex pts vs i) * (pts i (selN vs i def)).
@@ -593,11 +593,10 @@ Proof.
   unfold piff; split; cancel.
 Qed.
 
-
-Theorem arrayN_except_upd : forall V vs (v : V) i,
+Theorem arrayN_except_upd : forall V T vs (v : T) i (pts : nat -> T -> @pred _ _ V),
   i < length vs
-  -> arrayN (@ptsto _ eq_nat_dec V) 0 (updN vs i v) <=p=>
-    (arrayN_ex (@ptsto _ eq_nat_dec V) vs i) * (i |-> v).
+  -> arrayN pts 0 (updN vs i v) <=p=>
+    (arrayN_ex pts vs i) * (pts i v).
 Proof.
   intros; unfold arrayN_ex.
   erewrite isolate_fwd_upd; eauto.
@@ -605,10 +604,9 @@ Proof.
   unfold piff; split; cancel.
 Qed.
 
-
-Theorem arrayN_ex_updN_eq : forall A l i (v : A),
-  arrayN_ex (@ptsto _ eq_nat_dec A) (updN l i v) i <=p=>
-  arrayN_ex (@ptsto _ eq_nat_dec A) l i.
+Theorem arrayN_ex_updN_eq : forall T A l i (v : A) (pts : _ -> _ -> @pred _ _ T),
+  arrayN_ex pts (updN l i v) i <=p=>
+  arrayN_ex pts l i.
 Proof.
   unfold arrayN_ex; intros; autorewrite with core lists;
   split; simpl; rewrite skipn_updN; eauto.

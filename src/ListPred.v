@@ -329,6 +329,16 @@ Proof.
   end.
 Qed.
 
+Lemma listpred_pimpl_replace: forall T AT V M (l : list T) (F G : T -> @pred AT M V),
+       (forall x, In x l -> F x =p=> G x) ->
+       listpred F l =p=> listpred G l.
+Proof.
+  induction l; cbn; intros; auto.
+  rewrite H; auto.
+  cancel.
+  eauto.
+Qed.
+
 Lemma listpred_piff_replace : forall A B AT M l F G,
   (forall x, In x l -> F x <=p=> G x) -> @listpred A B AT M F l <=p=> listpred G l.
 Proof.
@@ -602,6 +612,16 @@ Proof.
   - apply forall_forall2; auto.
     rewrite Forall_map.
     rewrite map_fst_combine; auto.
+Qed.
+
+Lemma listmatch_pimpl_replace: forall A B AT T M la lb (F G : A -> B -> @pred AT M T),
+       (forall x y, In x la -> In y lb -> F x y =p=> G x y) ->
+       listmatch F la lb =p=> listmatch G la lb.
+Proof.
+  unfold listmatch.
+  intros.
+  rewrite listpred_pimpl_replace; cancel.
+  eauto using in_combine_l, in_combine_r.
 Qed.
 
 Lemma listmatch_piff_replace : forall A B AT T M l1 l2 F G,

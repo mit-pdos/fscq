@@ -1508,6 +1508,22 @@ Proof.
   rewrite IHi; auto.
 Qed.
 
+Lemma combine_updN_l: forall A B (a : list A) (b : list B) i x d,
+  combine (updN a i x) b = updN (combine a b) i (x, selN b i d).
+Proof.
+  intros.
+  erewrite <- updN_selN_eq with (l := b) at 1.
+  eauto using combine_updN.
+Qed.
+
+Lemma combine_updN_r: forall A B (a : list A) (b : list B) i x d,
+  combine a (updN b i x) = updN (combine a b) i (selN a i d, x).
+Proof.
+  intros.
+  erewrite <- updN_selN_eq with (l := a) at 1.
+  eauto using combine_updN.
+Qed.
+
 Lemma selN_combine : forall Ta Tb i a b (a0:Ta) (b0:Tb),
   length a = length b
   -> selN (List.combine a b) i (a0, b0) = pair (selN a i a0) (selN b i b0).
@@ -1834,6 +1850,33 @@ Proof.
   induction l; cbn; intros.
   auto.
   f_equal; eauto.
+Qed.
+
+Lemma combine_map': forall T T' A' B' (a : list T) (b : list T') (f : _ -> A') (g : _ -> B'),
+  map (fun x => (f (fst x), g (snd x))) (combine a b) = combine (map f a) (map g b).
+Proof.
+  induction a; cbn; intros.
+  auto.
+  destruct b; cbn; auto.
+  f_equal; eauto.
+Qed.
+
+Lemma combine_map_l : forall A B C (a : list A) (b : list B) (f : _ -> C),
+  combine (map f a) b = map (fun ab => (f (fst ab), snd ab)) (combine a b).
+Proof.
+  intros.
+  setoid_rewrite combine_map' with (g := id).
+  rewrite map_id.
+  auto.
+Qed.
+
+Lemma combine_map_r : forall A B C (a : list A) (b : list B) (f : _ -> C),
+  combine a (map f b) = map (fun ab => (fst ab, f (snd ab))) (combine a b).
+Proof.
+  intros.
+  setoid_rewrite combine_map' with (f := id).
+  rewrite map_id.
+  auto.
 Qed.
 
 Lemma map_fst_combine: forall A B (a: list A) (b: list B),

@@ -379,8 +379,26 @@ Section PtstoArray.
 
 End PtstoArray.
 
+Lemma arrayN_piff_replace: forall T V (l : list T) n (p q : _ -> _ -> @pred _ _ V),
+  (forall i d x, i < length l -> selN l i d = x -> p (i + n) x <=p=> q (i + n) x) ->
+  arrayN p n l <=p=> arrayN q n l.
+Proof.
+  induction l; cbn; intros; auto.
+  rewrite H with (i := 0) by (auto; omega).
+  rewrite IHl.
+  split; cancel.
+  intros.
+  rewrite <- plus_Snm_nSm.
+  rewrite H; (eauto; omega).
+Qed.
 
-
+Lemma arrayN_map: forall V T T' (l : list T) n (p : addr -> T' -> @pred _ _ V) (f : T -> T'),
+  arrayN p n (map f l) <=p=> arrayN (fun i x => p i (f x)) n l.
+Proof.
+  induction l; cbn; intros; auto.
+  rewrite IHl.
+  auto.
+Qed.
 
 Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
   updN vs i (v, vsmerge (selN vs i ($0, nil))).
