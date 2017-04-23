@@ -45,13 +45,15 @@ Proof.
   intuition.
   deex.
   contradiction H1.
-  destruct v1. repeat eexists. econstructor; eauto. simpl.
-  destruct (d a); eauto. contradiction H2. eauto.
+  destruct v1. repeat eexists. econstructor; eauto. apply H0.
+  destruct (d a); eauto; exfalso; eauto.
 Qed.
 Hint Resolve read_fails_not_present.
 
+Require Import Word.
+
 Lemma write_fails_not_present:
-  forall env vvar avar (a : W) (v : valu) d s,
+  forall env vvar avar (a : W) (v : immut_word valulen) d s,
     VarMap.find vvar s = Some (wrap v) ->
     VarMap.find avar s = Some (wrap a) ->
     ~ (exists st' p', Go.step env (d, s, Go.DiskWrite avar vvar) (st', p')) ->
@@ -63,7 +65,7 @@ Proof.
   deex.
   contradiction H1.
   destruct v0. repeat eexists. econstructor; eauto.
-  destruct (d a); eauto. contradiction H2. eauto.
+  destruct (d a); eauto. exfalso; eauto.
 Qed.
 Hint Resolve write_fails_not_present.
 
