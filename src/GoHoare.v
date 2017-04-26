@@ -411,49 +411,185 @@ destruct wt.
 assumption.
 Defined.
 
-Fixpoint arg_tuple (args : list WrappedType) : Type :=
-  match args with
-  | [] => unit
-  | arg :: args' => (arg.(WrType) * arg_tuple args')%type
+(* Fst (Snd WholeValue) corresponds to fun p => fst (snd p) *)
+Inductive ValuePath : forall T T' : Type, Type :=
+| WholeValue : forall {T}, ValuePath T T
+| Fst : forall {T A B}, ValuePath T (A * B) -> ValuePath T A
+| Snd : forall {T A B}, ValuePath T (A * B) -> ValuePath T B.
+
+Fixpoint ValuePath_get {T T'} (p : ValuePath T T') : T -> T' :=
+  match p in ValuePath T T' return T -> T' with
+  | WholeValue => fun v => v
+  | Fst p' => fun v => fst (ValuePath_get p' v)
+  | Snd p' => fun v => snd (ValuePath_get p' v)
   end.
 
-Fixpoint argval_foralls (args : list WrappedType) :
-  forall (B : arg_tuple args -> Prop), Prop :=
-  match args return forall (B : arg_tuple args -> Prop), Prop with
-  | [] => fun B => B tt
-  | arg :: args' => fun B => forall argval : arg.(WrType), argval_foralls args' (fun argvals' => B (argval, argvals'))
+Inductive ValuePathFrom : forall T : Type, Type :=
+| VP : forall {T T'}, ValuePath T T' -> GoWrapper T' -> ValuePathFrom T.
+
+Definition ValuePathFrom_to {T} (p : ValuePathFrom T) : Type :=
+  match p with
+  | @VP _ T' _ _ => T'
   end.
 
-Theorem argval_inst : forall (args : list WrappedType) (B : arg_tuple args -> Prop),
-    argval_foralls args B -> forall argvals : arg_tuple args, B argvals.
-Proof.
-  induction args; simpl; intros.
-  - destruct argvals. auto.
-  - destruct argvals.
-    specialize (IHargs (fun argvals' => B (w, argvals')) (H w)).
-    auto.
-Qed.
+Definition ValuePathFrom_get {T} (p : ValuePathFrom T) : T -> ValuePathFrom_to p :=
+  match p with
+  | VP p0 _ => ValuePath_get p0
+  end.
 
-Theorem argval_inst' : forall (args : list WrappedType) (B : arg_tuple args -> Prop),
-    (forall argvals : arg_tuple args, B argvals) -> argval_foralls args B.
-Proof.
-  induction args; simpl; auto.
-Qed.
+Definition ValuePathFrom_wrapper {T} (p : ValuePathFrom T) : GoWrapper (ValuePathFrom_to p) :=
+  match p with
+  | VP _ Wr => Wr
+  end.
 
-Fixpoint args_pre args : forall (argvars : n_tuple (List.length args) var) (argvals : arg_tuple args), pred :=
-  match args return forall (argvars : n_tuple (List.length args) var) (argvals : arg_tuple args), pred with
-  | [] => fun _ _ => emp
-  | arg :: args' => fun argvars argvals =>
+Definition ValuePathFrom_get_wrapped {T} (p : ValuePathFrom T) : T -> Go.value :=
+  match p with
+  | VP p0 Wr => fun v => wrap (ValuePath_get p0 v)
+  end.
+
+Fixpoint arg_tuple {nargs} : forall args : n_tuple nargs WrappedType, Type :=
+  match nargs with
+  | 0 => fun _ => unit
+  | S n' => fun args => let '(arg, args') := args in (arg.(WrType) * arg_tuple args')%type
+  end.
+
+Fixpoint argval_foralls {nargs} : forall (args : n_tuple nargs WrappedType) (B : arg_tuple args -> Prop), Prop :=
+  match nargs with
+  | 0 => fun _ B => B tt
+  | S n' => fun args => let '(arg, args') := args in
+    fun B => forall argval : arg.(WrType), argval_foralls args' (fun argvals' => B (argval, argvals'))
+  end.
+
+Fixpoint args_pre {nargs} : forall (args : n_tuple nargs WrappedType)
+                              (argvars : n_tuple nargs var)
+                              (argvals : arg_tuple args), pred :=
+  match nargs with
+  | 0 => fun _ _ _ => emp
+  | S n' => fun args =>
+             let '(arg, args') := args in
+             fun argvars argvals =>
                      let '(argvar, argvars') := argvars in
                      let '(argval, argvals') := argvals in
                      (argvar ~> argval * args_pre args' argvars' argvals')%pred
   end.
 
-Fixpoint args_post args : forall (argvars : n_tuple (List.length args) var) (argvals : arg_tuple args), pred :=
-  match args return forall (argvars : n_tuple (List.length args) var) (argvals : arg_tuple args), pred with
-  | [] => fun _ _ => emp
-  | arg :: args' => fun argvars argvals =>
-                     let '(argvar, argvars') := argvars in
-                     let '(argval, argvals') := argvals in
-                     (argvar |-> moved_value (wrap argval) * args_post args' argvars' argvals')%pred
+Fixpoint args_post {nargs} : forall (args : n_tuple nargs WrappedType)
+                               (argvars : n_tuple nargs var)
+                               (argvals : arg_tuple args)
+                               (tret : Type)
+                               (argspost : n_tuple nargs (option (ValuePathFrom tret)))
+                               (ret : tret), pred :=
+  match nargs with
+  | 0 => fun _ _ _ _ _ _ => emp
+  | S nargs' => fun args =>
+                 let '(arg, args') := args in
+                 fun argvars argvals tret argspost ret =>
+                   let '(argvar, argvars') := argvars in
+                   let '(argval, argvals') := argvals in
+                   let '(argpost, argspost') := argspost in
+                   ((match argpost with
+                     | None => argvar |-> moved_value (wrap argval)
+                     | Some vp => argvar |-> ValuePathFrom_get_wrapped vp ret
+                     end) * args_post args' argvars' argvals' argspost' ret)%pred
+  end.
+
+Fixpoint retargs_pre {nargs} : forall (retvars : n_tuple nargs var)
+                                 (tret : Type)
+                                 (retspost : n_tuple nargs (ValuePathFrom tret)), pred :=
+  match nargs with
+  | 0 => fun _ _ _ => emp
+  | S nargs' => fun retvars tret retspost =>
+                 let '(retvar, retvars') := retvars in
+                 let '(retpost, retspost') := retspost in
+                 ((exists val, retvar |-> @wrap _ (ValuePathFrom_wrapper retpost) val) *
+                  retargs_pre retvars' tret retspost')%pred
+  end.
+
+Fixpoint retargs_post {nargs} : forall (retvars : n_tuple nargs var)
+                                  (tret : Type)
+                                  (retspost : n_tuple nargs (ValuePathFrom tret))
+                                  (ret : tret), pred :=
+  match nargs with
+  | 0 => fun _ _ _ _ => emp
+  | S nargs' => fun retvars tret retspost ret =>
+                 let '(retvar, retvars') := retvars in
+                 let '(retspost, retspost') := retspost in
+                 (retvar |-> ValuePathFrom_get_wrapped retspost ret *
+                  retargs_post retvars' retspost' ret)%pred
+  end.
+
+Fixpoint arg_func_type {nargs} : forall (args : n_tuple nargs WrappedType) (TRet : Type), Type :=
+  match nargs with
+  | 0 => fun _ TRet => TRet
+  | S n' => fun args TRet =>
+    let '(arg, args') := args in arg.(WrType) -> arg_func_type args' TRet
+  end.
+
+Definition prog_function_type (sig : ProgFunctionSig) :=
+  arg_func_type sig.(FSourceArgs) (prog sig.(FSourceRet)).
+
+Fixpoint do_call {nargs} : forall {args : n_tuple nargs _} {ret}, arg_func_type args ret -> arg_tuple args -> ret :=
+  match nargs with
+  | 0 => fun args ret f _ => f
+  | S n' => fun args ret =>
+             let '(arg, args') := args in
+             fun f argvals =>
+               let '(argval, argvals') := argvals in
+               @do_call n' args' ret (f argval) argvals'
+  end.
+
+Fixpoint params_pre {nargs} : forall (args : n_tuple nargs _) (n : nat) (argvals : arg_tuple args), pred.
+  refine (
+      match nargs with
+      | 0 => fun _ _ _ => emp
+      | S nargs' => fun args =>_
+      end).
+  refine (
+      let '(arg, args') := args in
+      fun n argvals => _).
+  refine (
+      let '(argval, argvals') := argvals in
+      (n ~> argval * params_pre nargs' args' (S n) argvals')%pred).
+Defined.
+
+Fixpoint params_post {nargs} : forall (args : n_tuple nargs WrappedType)
+                                 (n : nat)
+                                 (argvals : arg_tuple args)
+                                 (tret : Type)
+                                 (argspost : n_tuple nargs (option (ValuePathFrom tret)))
+                                 (ret : tret), pred :=
+  match nargs with
+  | 0 => fun _ _ _ _ _ _ => emp
+  | S nargs' => fun args =>
+                 let '(arg, args') := args return forall n (argvals : @arg_tuple (S nargs') args), _ in
+                 fun n argvals tret argspost ret =>
+                   let '(argval, argvals') := argvals in
+                   let '(argpost, argspost') := argspost in
+                   ((match argpost with
+                     | None => n |-> moved_value (wrap argval)
+                     | Some vp => n |-> ValuePathFrom_get_wrapped vp ret
+                     end) * params_post args' (S n) argvals' argspost' ret)%pred
+  end.
+
+Fixpoint retparams_pre {nargs} : forall (n : nat)
+                                   (tret : Type)
+                                   (retspost : n_tuple nargs (ValuePathFrom tret)), pred :=
+  match nargs with
+  | 0 => fun _ _ _ => emp
+  | S nargs' => fun n tret (retspost : n_tuple (S nargs') _) =>
+                 let '(retpost, retspost') := retspost in
+                 ((exists val, n |-> @wrap _ (ValuePathFrom_wrapper retpost) val) *
+                  retparams_pre (S n) tret retspost')%pred
+  end.
+
+Fixpoint retparams_post {nargs} : forall (n : nat)
+                                    (tret : Type)
+                                    (retspost : n_tuple nargs (ValuePathFrom tret))
+                                    (ret : tret), pred :=
+  match nargs with
+  | 0 => fun _ _ _ _ => emp
+  | S nargs' => fun n tret (retspost : n_tuple (S nargs') _) ret =>
+                 let '(retspost, retspost') := retspost in
+                 (n |-> ValuePathFrom_get_wrapped retspost ret *
+                  retparams_post (S n) retspost' ret)%pred
   end.

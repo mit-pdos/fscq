@@ -1029,13 +1029,6 @@ Proof.
   find_apply_lem_hyp inj_pair2.
   eval_expr.
   exec_solve_step.
-  destruct (r a) eqn:Ha.
-  contradiction H1. eval_expr; repeat econstructor.
-  cbv [wrap wrap' GoWrapper_word] in He0.
-  eassumption.
-  eassumption.
-  cbn. eassumption.
-  eauto.
 Qed.
 
 Lemma CompileSync : forall env F,
@@ -1832,53 +1825,69 @@ Proof.
     eapply H | cancel_go..].
 Qed.
 
-(* TODO: support passing arguments by reference *)
+
 Record ProgFunctionSig :=
   {
-    FRet : WrappedType;
-    FArgs : list WrappedType;
+    FSourceRet : Type;
+    FNumSourceArgs : nat;
+    FSourceArgs : n_tuple FNumSourceArgs WrappedType;
+    FNumTargetRet : nat;
+    FTargetRetPost : n_tuple FNumTargetRet (ValuePathFrom FSourceRet);
+    FTargetArgsPost : n_tuple FNumSourceArgs (option (ValuePathFrom FSourceRet));
   }.
 
-Fixpoint arg_func_type (args : list WrappedType) T :=
-  match args with
-  | [] => T
-  | arg :: args' => arg.(WrType) -> arg_func_type args' T
-  end.
-
 Definition prog_function_type (sig : ProgFunctionSig) :=
-  arg_func_type sig.(FArgs) (prog sig.(FRet).(WrType)).
+  arg_func_type sig.(FSourceArgs) (prog sig.(FSourceRet)).
 
-Fixpoint do_call {args ret} : arg_func_type args ret -> arg_tuple args -> ret :=
-  match args return arg_func_type args ret -> arg_tuple args -> ret with
-  | [] => fun f _ => f
-  | arg :: args' => fun f argvals =>
-                     let '(argval, argvals') := argvals in
-                     @do_call args' ret (f argval) argvals'
+Fixpoint do_call {nargs} : forall {args : n_tuple nargs _} {ret}, arg_func_type args ret -> arg_tuple args -> ret :=
+  match nargs with
+  | 0 => fun args ret f _ => f
+  | S n' => fun args ret =>
+             let '(arg, args') := args in
+             fun f argvals =>
+               let '(argval, argvals') := argvals in
+               @do_call n' args' ret (f argval) argvals'
   end.
 
-Fixpoint params_pre args n : forall (argvals : arg_tuple args), pred :=
-  match args return forall (argvals : arg_tuple args), pred with
-  | [] => fun _ => emp
-  | arg :: args' => fun argvals =>
-                     let '(argval, argvals') := argvals in
-                     (n ~> argval * params_pre args' (S n) argvals')%pred
-  end.
 
-Fixpoint params_post args n : pred :=
-  match args with
-  | [] => emp
-  | arg :: args' => (n ~>? arg.(WrType) * params_post args' (S n))%pred
-  end.
+Theorem argval_inst : forall {nargs} (args : n_tuple nargs WrappedType) (B : arg_tuple args -> Prop),
+    argval_foralls args B -> forall argvals : arg_tuple args, B argvals.
+Proof.
+  induction nargs; simpl; intros.
+  - destruct argvals. auto.
+  - destruct args as [arg args'].
+    destruct argvals.
+    specialize (IHnargs args' (fun argvals' => B (w, argvals')) (H w)).
+    auto.
+Qed.
 
+Theorem argval_inst' : forall {nargs} (args : n_tuple nargs WrappedType) (B : arg_tuple args -> Prop),
+    (forall argvals : arg_tuple args, B argvals) -> argval_foralls args B.
+Proof.
+  induction nargs; simpl; auto.
+  intros.
+  destruct args as [arg args'].
+  auto.
+Qed.
+
+Fixpoint append_nt {T n1 n2} : n_tuple n1 T -> n_tuple n2 T -> n_tuple (n1 + n2) T :=
+  match n1 return n_tuple n1 T -> n_tuple n2 T -> n_tuple (n1 + n2) T with
+  | 0 => fun _ t2 => t2
+  | S n' => fun t1 t2 =>
+             let '(t, t1') := t1 in
+             (t, append_nt t1' t2)
+  end.
 
 Polymorphic Definition prog_func_call_lemma (sig : ProgFunctionSig) (name : String.string) (src : prog_function_type sig) env :=
-  forall retvar (argvars : n_tuple (length sig.(FArgs)) var) F,
+  forall (retvars : n_tuple sig.(FNumTargetRet) var) (argvars : n_tuple sig.(FNumSourceArgs) var) F,
     argval_foralls
-      sig.(FArgs)
+      sig.(FSourceArgs)
       (fun argvals => EXTRACT do_call src argvals
-       {{ retvar ~>? sig.(FRet).(WrType) * args_pre sig.(FArgs) argvars argvals * F }}
-         Call (S (length sig.(FArgs))) name (retvar, argvars)
-       {{ fun retval => retvar ~> retval * args_post sig.(FArgs) argvars argvals * F }} // env).
+                   {{ retargs_pre retvars sig.(FSourceRet) sig.(FTargetRetPost)
+                    * args_pre sig.(FSourceArgs) argvars argvals * F }}
+                      Call (sig.(FNumTargetRet) + sig.(FNumSourceArgs)) name (append_nt retvars argvars)
+                   {{ fun retval => @retargs_post _ retvars sig.(FSourceRet) sig.(FTargetRetPost) retval
+                    * args_post sig.(FSourceArgs) argvars argvals sig.(FTargetArgsPost) retval * F }} // env).
 
 Fixpoint to_list {T n} : n_tuple n T -> list T :=
   match n with
@@ -1888,44 +1897,46 @@ Fixpoint to_list {T n} : n_tuple n T -> list T :=
              t :: to_list ts'
   end.
 
-Fixpoint wrap_all args : arg_tuple args -> n_tuple (length args) value :=
-  match args return arg_tuple args -> n_tuple (length args) value with
-  | [] => fun _ => tt
-  | arg :: args' => fun argvals =>
-                     let '(argval, argvals') := argvals in
-                     (wrap argval, wrap_all args' argvals')
+Fixpoint wrap_all {nargs} : forall (args : n_tuple nargs WrappedType) (argvals : arg_tuple args), n_tuple nargs value :=
+  match nargs with
+  | 0 => fun _ _ => tt
+  | S nargs' => fun args =>
+                 let '(arg, args') := args in
+                 fun argvals =>
+                   let '(argval, argvals') := argvals in
+                   (wrap argval, wrap_all args' argvals')
   end.
 
 (* Somehow, all of the following proofs should have made much more use of separation logic *)
 
 Lemma args_pre_notin :
-  forall args argvars argvals F s v0,
+  forall nargs (args : n_tuple nargs _) argvars argvals F s v0,
     (v0 |->? * args_pre args argvars argvals * F)%pred (mem_of s) ->
     ~ In v0 (to_list argvars).
 Proof.
-  induction args; intuition.
-  destruct argvars, argvals.
+  induction nargs; intuition.
+  destruct args, argvars, argvals.
   simpl in *.
   destruct H0; subst.
   - eapply pimpl_apply in H.
     eapply ptsto_conflict_F with (a := v0) in H; auto.
     cancel_go.
   - eapply pimpl_apply in H.
-    eapply IHargs with (argvals := a0); eauto.
+    eapply IHnargs with (argvals := a); eauto.
     cancel_go.
 Qed.
 
 Lemma args_pre_nodup :
-  forall args argvars argvals F s,
+  forall nargs (args : n_tuple nargs _) argvars argvals F s,
     (args_pre args argvars argvals * F)%pred (mem_of s) ->
     NoDup (to_list argvars).
 Proof.
-  induction args; intros.
+  induction nargs; intros.
   - constructor.
-  - destruct argvars, argvals. simpl in *. constructor.
+  - destruct args, argvars, argvals. simpl in *. constructor.
     + eapply args_pre_notin; eauto.
       pred_cancel.
-    + eapply IHargs.
+    + eapply IHnargs.
       eapply pimpl_apply in H.
       eapply ptsto_delete with (a := v) in H.
       rewrite <- remove_delete in H.
@@ -1951,13 +1962,13 @@ Proof.
 Qed.
 
 Lemma collect_args_pre:
-  forall args (argvars : n_tuple (Datatypes.length args) var) (argvals : arg_tuple args)
-    (argvals' : n_tuple (Datatypes.length args) value) F s, 
+  forall nargs (args : n_tuple nargs _) (argvars : n_tuple nargs var) (argvals : arg_tuple args)
+    (argvals' : n_tuple nargs value) F s, 
     (args_pre args argvars argvals * F)%pred (mem_of s) ->
     collect (map_nt (fun k : VarMap.key => VarMap.find (elt:=value) k s) argvars) = Some argvals' ->
     argvals' = wrap_all args argvals.
 Proof.
-  induction args; intros.
+  induction nargs; intros.
   - destruct argvals'. reflexivity.
   - eval_expr.
     extract_var_val.
@@ -1971,15 +1982,16 @@ Proof.
     eapply ptsto_delete with (a := v0) in H.
     2: cancel_go.
     rewrite <- remove_delete in H.
-    eapply IHargs; eauto.
+    eapply IHnargs; eauto.
 
     eapply collect_notin_remove; eauto.
 Qed.
 
+(*
 Lemma update_args:
-  forall args (argvars : n_tuple (Datatypes.length args) var)
+  forall nargs (args : n_tuple nargs _) (argvars : n_tuple nargs var)
     (argvals : arg_tuple args)
-    (argvals' : n_tuple (Datatypes.length args) value)
+    (argvals' : n_tuple nargs value)
     (F : Pred.pred) (s : VarMap.t value)
     (t : VarMap.t value),
     update_many argvars (wrap_all args argvals) (map_nt SetTo argvals') s = Some t ->
@@ -1996,6 +2008,7 @@ Proof.
     eapply IHargs in H0; eauto.
     (* TODO *)
 Admitted.
+*)
 
 Ltac fold_pred_apply :=
   repeat match goal with
@@ -2006,16 +2019,18 @@ Ltac fold_pred_apply :=
 Polymorphic Lemma extract_prog_func_call :
   forall sig name src env,
     forall body ss,
-      (argval_foralls sig.(FArgs)
+      (argval_foralls sig.(FSourceArgs)
                       (fun argvals =>
                          EXTRACT do_call src argvals
-                         {{ 0 ~>? sig.(FRet).(WrType) * params_pre sig.(FArgs) 1 argvals }}
+                         {{ retparams_pre 0 sig.(FSourceRet) sig.(FTargetRetPost)
+                          * params_pre sig.(FSourceArgs) sig.(FNumTargetRet) argvals }}
                            body
-                         {{ fun ret => 0 ~> ret * params_post sig.(FArgs) 1 }} // env)) ->
+                         {{ fun ret => @retparams_post _ 0 sig.(FSourceRet) sig.(FTargetRetPost) ret
+                          * @params_post _ sig.(FSourceArgs) sig.(FNumTargetRet) argvals sig.(FSourceRet) sig.(FTargetArgsPost) ret }} // env)) ->
       StringMap.find name env = Some {|
-                                    NumParamVars := S (length sig.(FArgs));
-                                    ParamVars := (@wrap_type _ sig.(FRet).(Wrapper),
-                                                  map_nt (fun WT => @wrap_type _ (Wrapper WT)) (tupled sig.(FArgs)));
+                                    NumParamVars := sig.(FNumTargetRet) + sig.(FNumSourceArgs);
+                                    ParamVars := append_nt (map_nt (fun p => @wrap_type _ (ValuePathFrom_wrapper p)) sig.(FTargetRetPost)) 
+                                                           (map_nt (fun WT => @wrap_type _ (Wrapper WT)) sig.(FSourceArgs));
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -2053,6 +2068,7 @@ Proof.
     rewrite sep_star_comm in H.
     apply sep_star_assoc in H.
     apply sep_star_comm in H.
+(*
     eapply update_args; eauto.
     assert (n0 = wrap_all (FArgs sig) argvals) by (eapply collect_args_pre; eauto); subst.
     eassumption.
@@ -2153,6 +2169,7 @@ Proof.
   * subst_definitions. eval_expr. pred_solve. auto.
   * exact hm.
   * eval_expr. pred_solve. auto.
+*)
 *)
 Admitted.
 

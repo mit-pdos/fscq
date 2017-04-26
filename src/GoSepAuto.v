@@ -835,7 +835,7 @@ Ltac find_frame p cont :=
   end.
 
 Ltac norm_refl :=
-  simpl decls_pre; simpl decls_post; simpl args_pre; simpl args_post;
+  simpl decls_pre; simpl decls_post; simpl args_pre; simpl args_post; simpl retargs_pre; simpl retargs_post;
   match goal with
   |- ?a =p=> ?b =>
     (find_missing_preds a b ltac:(fun missing' =>
