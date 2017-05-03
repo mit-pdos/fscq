@@ -143,13 +143,15 @@ Module BFILE.
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (icache, ms, bn) <- INODE.getbnum lxp ixp inum off icache ms;
     ms <- LOG.dwrite lxp (# bn) v ms;
+    let dblocks := put_dirty inum (# bn) dblocks in
     Ret (mk_memstate al ms alc ialc icache cache dblocks).
 
   Definition datasync lxp (ixp : INODE.IRecSig.xparams) inum fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
-    let^ (icache, ms, bns) <- INODE.getallbnum lxp ixp inum icache ms;
+    let bns := get_dirty inum dblocks in
     let bns := map (@wordToNat _) bns in
     ms <- LOG.dsync_vecs lxp bns ms;
+    let dblocks := clear_dirty inum dblocks in
     Ret (mk_memstate al ms alc ialc icache cache dblocks).
 
   Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
@@ -767,11 +769,13 @@ Module BFILE.
     rewrite map_updN.
     erewrite selN_eq_updN_eq by ( erewrite selN_map; eauto; reflexivity ).
     cancel.
+    omega.
 
   Grab Existential Variables.
     all: eauto.
     all: try exact BFILE.bfile0.
     all: try exact None.
+    all: try exact INODE.inode0.
   Qed.
 
   Theorem rep_safe_unused: forall F bxps ixp flist ilist m frees allocc mscache icache dblocks bn v flag,
@@ -1474,6 +1478,25 @@ Module BFILE.
     erewrite H3 by eauto.
     eauto.
   Qed.
+
+
+Lemma arrayN_file_match_upd: forall l dblist i x d n,
+  let x' := selN l i d in
+  BFAttr (fst x) = INODE.IAttr (snd x) ->
+  BFData (fst x) = BFData (fst x') -> INODE.IBlocks (snd x) = INODE.IBlocks (snd x') ->
+  arrayN (file_match dblist) n l =p=> arrayN (file_match dblist) n (updN l i x).
+Proof.
+  intros. subst x'.
+  destruct (lt_dec i (length l)).
+  rewrite isolate_fwd_upd by auto.
+  rewrite arrayN_isolate by eauto.
+  destruct (selN l _ _) eqn:H'.
+  rewrite H' in *.
+  intros m Hl; destruct_lift Hl.
+  pred_apply; cancel; try congruence.
+  rewrite updN_oob by omega.
+  auto.
+Qed.
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
     {< F Fm Ff m0 m flist ilist allocc frees f,
