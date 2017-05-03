@@ -103,6 +103,8 @@ Module AFS.
   Notation MSIAllocC := BFILE.MSIAllocC.
   Notation MSICache := BFILE.MSICache.
   Notation MSAlloc := BFILE.MSAlloc.
+  Notation MSDBlocks := BFILE.MSDBlocks.
+
   Import DIRTREE.
 
   Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks :=
@@ -128,7 +130,7 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs (MSAllocC ms) (IAlloc.MSCache ialloc_ms) (MSICache ms) (MSCache ms)), fsxp))
+          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs (MSAllocC ms) (IAlloc.MSCache ialloc_ms) (MSICache ms) (MSCache ms) (MSDBlocks ms)), fsxp))
         } else {
           Ret (Err ELOGOVERFLOW)
         }
@@ -329,9 +331,9 @@ Module AFS.
   Definition file_get_attr fsxp inum ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, attr) <- DIRTREE.getattr fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams, attr) <- DIRTREE.getattr fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), attr);
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), attr);
     t2 <- Rdtsc ;
     Debug "get_attr" (t2-t1) ;;
     Ret r.
@@ -345,20 +347,20 @@ Module AFS.
 
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams' <- DIRTREE.setattr fsxp inum attr (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    ams' <- DIRTREE.setattr fsxp inum attr (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     let^ (ms', ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
     If (bool_dec ok true) {
-      Ret ^((BFILE.mk_memstate (MSAlloc ams') ms' (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams') ms' (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
     } else {
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms' (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms' (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
     }.
 
   Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
     If (bool_dec ok true) {
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK tt)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), OK tt)
     } else {
       Ret ^(ams, Err ELOGOVERFLOW)
     }.
@@ -366,9 +368,9 @@ Module AFS.
   Definition read_fblock fsxp inum off ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, b) <- DIRTREE.read fsxp inum off (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams, b) <- DIRTREE.read fsxp inum off (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), b);
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), b);
     t2 <- Rdtsc ;
     Debug "read_fblock" (t2-t1) ;;
     Ret r.
@@ -376,17 +378,17 @@ Module AFS.
   Definition file_truncate fsxp inum sz ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     r <- match ok with
     | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
-        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
     | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
       If (bool_dec ok true) {
-        Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
       } else {
-        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
       }
     end;
     t2 <- Rdtsc ;
@@ -397,9 +399,9 @@ Module AFS.
   Definition update_fblock_d fsxp inum off v ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.dwrite fsxp inum off v (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    ams <- DIRTREE.dwrite fsxp inum off v (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)));
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)));
     t2 <- Rdtsc ;
     Debug "update_fblock_d" (t2-t1) ;;
     Ret r.
@@ -407,9 +409,9 @@ Module AFS.
   Definition update_fblock fsxp inum off v ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.write fsxp inum off v (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    ams <- DIRTREE.write fsxp inum off v (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), ok);
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), ok);
     t2 <- Rdtsc ;
     Debug "update_fblock" (t2-t1) ;;
     Ret r.
@@ -418,32 +420,32 @@ Module AFS.
   Definition file_sync fsxp inum ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.datasync fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    ams <- DIRTREE.datasync fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)));
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)));
     t2 <- Rdtsc ;
     Debug "file_sync" (t2-t1) ;;
     Ret r.
 
   Definition readdir fsxp dnum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), files).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), files).
 
   Definition create fsxp dnum name ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams', oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     r <- match oi with
       | Err e =>
           ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
-          Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+          Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
       | OK inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
         match ok with
-          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK inum)
-          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK inum)
+          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
         end
      end;
      t2 <- Rdtsc ;
@@ -452,49 +454,49 @@ Module AFS.
 
   Definition mksock fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     match oi with
       | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
       | OK inum =>
         ams <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UType $1) ams;
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK inum)
-          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), OK inum)
+          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
         end
     end.
 
   Definition mkdir fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     match oi with
       | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+          Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
       | OK inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK inum)
-          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), OK inum)
+          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
         end
     end.
 
   Definition delete fsxp dnum name ams :=
     t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams', ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     res <- match ok with
     | OK _ =>
        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
        match ok with
-       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
-       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
+       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
        end
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
     end;
     t2 <- Rdtsc;
     Debug "delete" (t2-t1);;
@@ -503,9 +505,9 @@ Module AFS.
   Definition lookup fsxp dnum names ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), r);
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), r);
     t2 <- Rdtsc ;
     Debug "lookup" (t2-t1) ;;
     Ret r.
@@ -513,17 +515,17 @@ Module AFS.
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams', r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
+    let^ (ams', r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     res <- match r with
     | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
       match ok with
-      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams')), OK tt)
-      | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
+      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
+      | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
       end
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
     end;
     t2 <- Rdtsc;
     Debug "rename" (t2-t1);;
@@ -544,7 +546,7 @@ Module AFS.
   Definition umount fsxp ams :=
     ams <- DIRTREE.sync fsxp ams;
     ms <- LOG.sync_cache (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams))).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams))).
 
   Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -554,7 +556,7 @@ Module AFS.
      *)
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
     (* Ret ^(mscs, free_blocks, free_inodes).  *)
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), 0, 0).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), 0, 0).
 
   (* Recover theorems *)
 

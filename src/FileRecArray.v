@@ -87,6 +87,7 @@ Module FileRecArray (FRA : FileRASig).
   Notation MSICache := BFILE.MSICache.
   Notation MSCache := BFILE.MSCache.
   Notation MSIAllocC := BFILE.MSIAllocC.
+  Notation MSDBlocks := BFILE.MSDBlocks.
 
   (* find the first item that satisfies cond *)
   Definition ifind lxp ixp inum (cond : item -> addr -> bool) ms0 :=
@@ -97,7 +98,7 @@ Module FileRecArray (FRA : FileRASig).
     Loopvar [ ms ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-      [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+      [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ RAData f ::: rep f items ]]] *
       [[ ret = None ->
@@ -164,16 +165,17 @@ Module FileRecArray (FRA : FileRASig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
           [[ ix < length items ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
           [[ r = selN items ix item0 ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+          [[ MSDBlocks ms' = MSDBlocks ms ]] *
           [[ MSAllocC ms' = MSAllocC ms]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
@@ -202,18 +204,19 @@ Module FileRecArray (FRA : FileRASig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
           [[ ix < length items /\ Rec.well_formed e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:ms' exists m' flist' f',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (updN items ix e) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
-          [[ MSAllocC ms' = MSAllocC ms ]]
+          [[ MSAllocC ms' = MSAllocC ms ]] *
+          [[ MSDBlocks ms' = MSDBlocks ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} put lxp ixp inum ix e ms.
   Proof.

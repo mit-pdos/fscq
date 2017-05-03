@@ -105,7 +105,7 @@ Module DIR.
 
   Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees f ms : (@pred _ addr_eq_dec valuset) :=
     (exists flist,
-    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) ]]] *
+    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms)]]] *
     [[[ flist ::: Fi * inum |-> f ]]] *
     [[ rep f dmap ]])%pred.
 

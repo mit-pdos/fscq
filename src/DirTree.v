@@ -45,6 +45,7 @@ Module DIRTREE.
   Notation MSIAllocC := BFILE.MSIAllocC.
   Notation MSICache := BFILE.MSICache.
   Notation MSCache := BFILE.MSCache.
+  Notation MSDBlocks := BFILE.MSDBlocks.
 
 
   Definition namei fsxp dnum (fnlist : list string) mscs :=
@@ -62,7 +63,7 @@ Module DIRTREE.
            (Ftop * tree_pred_except ibxp fndone treetop * tree_pred ibxp tree * freeinode_pred)%pred (list2nmem bflist) ]] *
         [[ isError valid ->
            (Ftop * tree_pred ibxp treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
-        [[ (Fm * BFILE.rep bxp ixp bflist ilist freeblocks (MSAllocC mscs) (MSCache mscs) (MSICache mscs) *
+        [[ (Fm * BFILE.rep bxp ixp bflist ilist freeblocks (MSAllocC mscs) (MSCache mscs) (MSICache mscs) (MSDBlocks mscs) *
             IAlloc.rep BFILE.freepred ibxp freeinodes freeinode_pred (IAlloc.mk_memstate (MSLL mscs) (MSIAllocC mscs)))%pred
            (list2nmem m) ]] *
         [[ dnum = dirtree_inum treetop ]] *
@@ -101,9 +102,9 @@ Module DIRTREE.
   Definition mkfile fsxp dnum name fms :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let '(al, alc, ialc, ms, icache, cache) := (MSAlloc fms, MSAllocC fms, MSIAllocC fms, MSLL fms, MSICache fms, MSCache fms) in
+    let '(al, alc, ialc, ms, icache, cache, dbcache) := (MSAlloc fms, MSAllocC fms, MSIAllocC fms, MSLL fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (ms, oi) <- IAlloc.alloc lxp ibxp (IAlloc.mk_memstate ms ialc);
-    let fms := BFILE.mk_memstate al (IAlloc.MSLog ms) alc (IAlloc.MSCache ms) icache cache in
+    let fms := BFILE.mk_memstate al (IAlloc.MSLog ms) alc (IAlloc.MSCache ms) icache cache dbcache in
     match oi with
     | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
@@ -120,9 +121,9 @@ Module DIRTREE.
   Definition mkdir fsxp dnum name fms :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let '(al, alc, ialc, ms, icache, cache) := (MSAlloc fms, MSAllocC fms, MSIAllocC fms, MSLL fms, MSICache fms, MSCache fms) in
+    let '(al, alc, ialc, ms, icache, cache, dbcache) := (MSAlloc fms, MSAllocC fms, MSIAllocC fms, MSLL fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (ms, oi) <- IAlloc.alloc lxp ibxp (IAlloc.mk_memstate ms ialc);
-    let fms := BFILE.mk_memstate al (IAlloc.MSLog ms) alc (IAlloc.MSCache ms) icache cache in
+    let fms := BFILE.mk_memstate al (IAlloc.MSLog ms) alc (IAlloc.MSCache ms) icache cache dbcache in
     match oi with
     | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
@@ -160,7 +161,7 @@ Module DIRTREE.
         | OK _ =>
           mscs <- BFILE.reset lxp bxp ixp inum mscs;
           mscs' <- IAlloc.free lxp ibxp inum (IAlloc.mk_memstate (MSLL mscs) (MSIAllocC mscs));
-          Ret ^(BFILE.mk_memstate (MSAlloc mscs) (IAlloc.MSLog mscs') (MSAllocC mscs) (IAlloc.MSCache mscs') (MSICache mscs) (MSCache mscs), OK tt)
+          Ret ^(BFILE.mk_memstate (MSAlloc mscs) (IAlloc.MSLog mscs') (MSAllocC mscs) (IAlloc.MSCache mscs') (MSICache mscs) (MSCache mscs) (MSDBlocks mscs), OK tt)
         | Err e =>
           Ret ^(mscs, Err e)
         end
