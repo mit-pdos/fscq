@@ -503,4 +503,6 @@ Require Import FMapAVL.
 Module AddrMap_AVL := FMapAVL.Make(Nat_as_OT).
 Module AddrMap := MapDefs Nat_as_OT AddrMap_AVL.
 
-
+Require Import MSetAVL.
+Require Import Structures.OrdersEx.
+Module AddrSet := MSetAVL.Make (OrdersEx.Nat_as_OT).

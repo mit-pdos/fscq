@@ -51,14 +51,12 @@ Module DcacheDefs := MapDefs String_as_OT Dcache.
 Definition Dcache_type := Dcache.t (addr * bool).
 
 Module BFcache := AddrMap.Map.
-Module BFcacheDefs := AddrMap.
+Module AddrMap := AddrMap.
 Definition BFcache_type := BFcache.t (Dcache_type * addr).
 Module BFM := MapMem Nat_as_OT BFcache.
 
-Module DBlocks := AddrMap.Map.
-Module DBlocksDefs := AddrMap.
-
-Definition DBlocks_type := DBlocks.t (AddrSet.t).
+Import AddrMap.
+Definition DBlocks_type := Map.t (AddrSet.t).
 
 Module BFILE.
 
@@ -79,7 +77,7 @@ Module BFILE.
     (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0)
     IAlloc.Alloc.freelist0
     INODE.IRec.cache0
-    (BFcache.empty _) (DBlocks.empty _).
+    (BFcache.empty _) (Map.empty _).
 
   Definition MSinitial ms :=
     MSAlloc ms = true /\
@@ -87,7 +85,7 @@ Module BFILE.
     MSIAllocC ms = IAlloc.Alloc.freelist0 /\
     MSICache ms = INODE.IRec.cache0 /\
     MSCache ms = (BFcache.empty _) /\
-    MSDBlocks ms = (DBlocks.empty _).
+    MSDBlocks ms = (Map.empty _).
 
   Definition MSIAlloc ms :=
     IAlloc.mk_memstate (MSLL ms) (MSIAllocC ms).
@@ -121,17 +119,17 @@ Module BFILE.
     Ret ^(mk_memstate al ms alc ialc icache cache dblocks, v).
 
   Definition get_dirty inum (dblocks : DBlocks_type) :=
-    match DBlocks.find inum dblocks with
+    match Map.find inum dblocks with
     | None => AddrSet.empty
     | Some l => l
     end.
 
   Definition put_dirty inum bn (dblocks : DBlocks_type) :=
     let dirty := get_dirty inum dblocks in
-    DBlocks.add inum (AddrSet.add bn dirty) dblocks.
+    Map.add inum (AddrSet.add bn dirty) dblocks.
 
   Definition clear_dirty inum (dblocks : DBlocks_type) :=
-    DBlocks.remove inum dblocks.
+    Map.remove inum dblocks.
 
   Definition write lxp ixp inum off v fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
@@ -140,18 +138,23 @@ Module BFILE.
     Ret (mk_memstate al ms alc ialc icache cache dblocks).
 
   Definition dwrite lxp ixp inum off v fms :=
+    t1 <- Rdtsc;
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (icache, ms, bn) <- INODE.getbnum lxp ixp inum off icache ms;
     ms <- LOG.dwrite lxp (# bn) v ms;
     let dblocks := put_dirty inum (# bn) dblocks in
+    t2 <- Rdtsc;
+    Debug "BFILE.dwrite" (t2 - t1);;
     Ret (mk_memstate al ms alc ialc icache cache dblocks).
 
   Definition datasync lxp (ixp : INODE.IRecSig.xparams) inum fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
-    let bns := get_dirty inum dblocks in
-    let bns := map (@wordToNat _) bns in
+    t1 <- Rdtsc;
+    let bns := (AddrSet.elements (get_dirty inum dblocks)) in
     ms <- LOG.dsync_vecs lxp bns ms;
     let dblocks := clear_dirty inum dblocks in
+    t2 <- Rdtsc;
+    Debug "BFILE.datasync" (t2 - t1);;
     Ret (mk_memstate al ms alc ialc icache cache dblocks).
 
   Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
@@ -244,10 +247,10 @@ Module BFILE.
     ialc_ms <- IAlloc.init lxp bixp (BALLOCC.MSLog scms);
     ms <- INODE.init lxp ixp (IAlloc.Alloc.MSLog ialc_ms);
     let^ (ms, cms) <- shuffle_allocs lxp bxps ms (BALLOCC.MSCache scms, BALLOCC.MSCache fcms);
-    Ret (mk_memstate true ms cms (IAlloc.MSCache ialc_ms) INODE.IRec.cache0 (BFcache.empty _) (DBlocks.empty _)).
+    Ret (mk_memstate true ms cms (IAlloc.MSCache ialc_ms) INODE.IRec.cache0 (BFcache.empty _) (Map.empty _)).
 
   Definition recover ms :=
-    Ret (mk_memstate true ms (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) IAlloc.Alloc.freelist0 INODE.IRec.cache0 (BFcache.empty _) (DBlocks.empty _)).
+    Ret (mk_memstate true ms (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) IAlloc.Alloc.freelist0 INODE.IRec.cache0 (BFcache.empty _) (Map.empty _)).
 
   Definition cache_get inum fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
@@ -399,8 +402,8 @@ Module BFILE.
     dirty_block_rep (put_dirty n v' dblocks) i a v <-> dirty_block_rep dblocks i a v.
   Proof.
     unfold dirty_block_rep, get_dirty; split; intros.
-    setoid_rewrite DBlocksDefs.MapProperties.F.add_neq_o in H0; auto.
-    setoid_rewrite DBlocksDefs.MapProperties.F.add_neq_o in H1; auto.
+    setoid_rewrite AddrMap.MapProperties.F.add_neq_o in H0; auto.
+    setoid_rewrite AddrMap.MapProperties.F.add_neq_o in H1; auto.
   Qed.
 
   Lemma file_match_put_dirty_neq: forall f i v n dblocks,
@@ -433,7 +436,7 @@ Module BFILE.
     cbv [dirty_block_rep get_dirty put_dirty].
     intros.
     apply H.
-    rewrite DBlocksDefs.MapProperties.F.add_o in H0.
+    rewrite AddrMap.MapProperties.F.add_o in H0.
     destruct addr_eq_dec; subst; auto.
     unfold In in *.
     intuition auto.
@@ -444,7 +447,7 @@ Module BFILE.
   Proof.
     cbv [dirty_block_rep get_dirty put_dirty].
     intros.
-    rewrite DBlocksDefs.MapProperties.F.add_o in H0.
+    rewrite AddrMap.MapProperties.F.add_o in H0.
     destruct addr_eq_dec; subst; auto.
     unfold In in *.
     intuition auto.
@@ -887,7 +890,7 @@ Module BFILE.
   Qed.
 
   Lemma file_match_init_ok : forall n,
-    emp =p=> arrayN (file_match (DBlocks.empty _)) 0 (combine (repeat bfile0 n) (repeat INODE.inode0 n)).
+    emp =p=> arrayN (file_match (Map.empty _)) 0 (combine (repeat bfile0 n) (repeat INODE.inode0 n)).
   Proof.
     intros n; generalize 0.
     induction n; simpl; intros; auto.
