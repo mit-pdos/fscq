@@ -42,6 +42,9 @@ Definition dsupd_vecs (ds : diskset) av :=
 Definition dssync_vecs (ds : diskset) al := 
   d_map (fun x => vssync_vecs x al) ds.
 
+Definition ds_synced a (ds : diskset) :=
+  Forall (vs_synced a) (fst ds :: snd ds).
+
 Lemma dsupd_latest : forall ds a v,
   latest (dsupd ds a v) = updN (latest ds) a v.
 Proof.
@@ -152,6 +155,496 @@ Proof.
   replace (length ds - S n) with n0 by omega; auto.
 Qed.
 
+Lemma dssync_vecs_nop: forall vs l,
+  Forall (fun a => ds_synced a vs) l ->
+  dssync_vecs vs l = vs.
+Proof.
+  unfold dssync_vecs, d_map.
+  intros.
+  destruct vs; cbn; f_equal.
+  eapply vssync_vecs_nop.
+  rewrite Forall_forall in *.
+  intuition.
+  unfold ds_synced in *.
+  specialize (H x); intuition.
+  inversion H1; auto.
+  rewrite <- map_id.
+  eapply map_ext_in.
+  rewrite Forall_forall in *.
+  unfold ds_synced in *.
+  intuition; cbn in *.
+  eapply vssync_vecs_nop.
+  rewrite Forall_forall.
+  intros x; specialize (H x); intuition.
+  rewrite Forall_forall in *.
+  cbn in *; intuition.
+Qed.
+
+Lemma dssync_comm: forall d a b,
+  dssync (dssync d a) b = dssync (dssync d b) a.
+Proof.
+  unfold dssync, d_map.
+  destruct d; cbn -[vssync]; intros.
+  f_equal.
+  rewrite vssync_comm.
+  auto.
+  repeat rewrite map_map.
+  eapply map_ext_in; intros.
+  rewrite vssync_comm; auto.
+Qed.
+
+Lemma dssync_vecs_cons: forall l vs x,
+  dssync_vecs vs (x :: l) = dssync_vecs (dssync vs x) l.
+Proof.
+  unfold dssync_vecs, dssync.
+  intros.
+  cbn.
+  destruct vs; unfold d_map; cbn.
+  f_equal.
+  rewrite map_map.
+  auto.
+Qed.
+
+Lemma dssync_vecs_dssync_comm: forall l x vs,
+  dssync_vecs (dssync vs x) l = dssync (dssync_vecs vs l) x.
+Proof.
+  induction l; cbn; intros.
+  repeat rewrite dssync_vecs_nop by constructor.
+  auto.
+  repeat rewrite dssync_vecs_cons.
+  rewrite dssync_comm.
+  rewrite IHl.
+  auto.
+Qed.
+
+Lemma dssync_vecs_app: forall vs l l',
+  dssync_vecs vs (l ++ l') = dssync_vecs (dssync_vecs vs l) l'.
+Proof.
+  induction l; cbn.
+  rewrite dssync_vecs_nop; auto.
+  constructor.
+  intros.
+  repeat rewrite dssync_vecs_cons.
+  repeat rewrite dssync_vecs_dssync_comm.
+  congruence.
+Qed.
+
+Module SyncedMem.
+
+  Definition syncedmem := @Mem.mem _ addr_eq_dec bool.
+
+  Definition sm_vs_valid (sm : @Mem.mem _ addr_eq_dec _) vs :=
+    forall a, a < length vs -> sm a <> None /\ (sm a = Some true -> vs_synced a vs).
+
+  Definition sm_ds_valid (sm : @Mem.mem _ addr_eq_dec _) ds :=
+    Forall (sm_vs_valid sm) (fst ds :: snd ds).
+
+  Lemma sm_ds_valid_pushd_iff: forall sm ds d,
+    sm_ds_valid sm ds /\ sm_vs_valid sm d <-> sm_ds_valid sm (pushd d ds).
+  Proof.
+    unfold pushd, sm_ds_valid, ds_synced.
+    split; intuition; cbn in *.
+    all: repeat apply Forall_cons.
+    all: try solve [eapply Forall_inv; eauto | eapply Forall_cons2; eauto].
+    repeat (eapply Forall_cons2; eauto).
+    eapply Forall_inv.
+    eapply Forall_cons2; eauto.
+  Qed.
+
+  Lemma sm_ds_valid_pushd: forall sm ds d,
+    sm_vs_valid sm d ->
+    sm_ds_valid sm ds -> sm_ds_valid sm (pushd d ds).
+  Proof.
+    intros.
+    apply sm_ds_valid_pushd_iff.
+    auto.
+  Qed.
+
+  Lemma sm_ds_valid_pushd_r: forall sm ds d,
+    sm_ds_valid sm (pushd d ds) ->
+    sm_ds_valid sm ds.
+  Proof.
+    intros.
+    rewrite <- sm_ds_valid_pushd_iff in H.
+    intuition.
+  Qed.
+
+  Lemma sm_ds_valid_pushd_l: forall sm ds d,
+    sm_ds_valid sm (pushd d ds) ->
+    sm_vs_valid sm d.
+  Proof.
+    intros.
+    rewrite <- sm_ds_valid_pushd_iff in H.
+    intuition.
+  Qed.
+
+  Lemma vs_synced_updN_synced: forall a d i v,
+    vs_synced a d ->
+    vs_synced a (updN d i (v, nil)).
+  Proof.
+    unfold vs_synced, vssync.
+    intros.
+    destruct (lt_dec i (length d)).
+    destruct (addr_eq_dec i a); subst.
+    rewrite selN_updN_eq; auto.
+    rewrite selN_updN_ne; auto.
+    rewrite updN_oob by omega; auto.
+  Qed.
+
+  Lemma sm_vs_valid_upd_unsynced: forall sm d a v,
+    sm_vs_valid sm d ->
+    sm_vs_valid (Mem.upd sm a false) (updN d a v).
+  Proof.
+    unfold sm_vs_valid, Mem.upd, vsupd.
+    intros.
+    rewrite length_updN in *.
+    intuition.
+    destruct addr_eq_dec; subst.
+    congruence.
+    eapply H; eauto.
+    destruct addr_eq_dec.
+    congruence.
+    unfold vs_synced.
+    rewrite selN_updN_ne; auto.
+    eapply H; eauto.
+  Qed.
+
+  Lemma sm_vs_valid_upd_synced: forall sm i d v,
+    sm_vs_valid sm d ->
+    sm_vs_valid (Mem.upd sm i true) (updN d i (v, nil)).
+  Proof.
+    unfold sm_vs_valid, Mem.upd; cbn.
+    intros.
+    rewrite length_updN in *.
+    intuition.
+    destruct addr_eq_dec; subst.
+    congruence.
+    eapply H; eauto.
+    destruct addr_eq_dec; subst.
+    unfold vs_synced.
+    rewrite selN_updN_eq; auto.
+    apply vs_synced_updN_synced.
+    eapply H; eauto.
+  Qed.
+
+  Lemma sm_vs_valid_vssync': forall sm vs a,
+    sm_vs_valid sm vs -> sm_vs_valid sm (vssync vs a).
+  Proof.
+    unfold sm_vs_valid, vssync; intros.
+    rewrite length_updN in *.
+    intuition.
+    eapply H; eauto.
+    eapply H in H1; auto.
+    eapply vs_synced_updN_synced.
+    auto.
+  Qed.
+
+  Lemma sm_vs_valid_vs_synced: forall sm vs a,
+    sm_vs_valid sm vs -> sm a = Some true ->
+    vs_synced a vs.
+  Proof.
+    unfold vs_synced, sm_vs_valid.
+    intros.
+    destruct (lt_dec a (length vs)) as [Hl|Hl].
+    apply H in Hl; intuition.
+    rewrite selN_oob by omega.
+    auto.
+  Qed.
+
+
+  Lemma sm_ds_valid_dsupd: forall sm ds a v,
+    a < length (ds!!) ->
+    sm_ds_valid sm ds ->
+    sm_ds_valid (Mem.upd sm a false) (dsupd ds a v).
+  Proof.
+    unfold sm_ds_valid.
+    intros.
+    constructor.
+    rewrite dsupd_fst.
+    eapply sm_vs_valid_upd_unsynced.
+    eapply Forall_inv; eauto.
+    unfold dsupd; cbn.
+    rewrite <- Forall_map.
+    rewrite Forall_forall in *.
+    intros.
+    cbn in *.
+    eapply sm_vs_valid_upd_unsynced; auto.
+  Qed.
+
+  Lemma sm_ds_valid_latest: forall sm ds,
+    sm_ds_valid sm ds ->
+    sm_vs_valid sm ds!!.
+  Proof.
+    unfold latest, sm_ds_valid; cbn.
+    intros.
+    inversion H; subst.
+    destruct (snd ds) eqn:?; cbn; eauto.
+    eapply Forall_inv; eauto.
+  Qed.
+
+  Lemma sm_ds_valid_synced: forall sm d,
+    sm_vs_valid sm d ->
+    sm_ds_valid sm (d, nil).
+  Proof.
+    unfold sm_ds_valid.
+    cbn; intros.
+    repeat (constructor; auto).
+  Qed.
+
+  Lemma sm_ds_valid_dssync: forall sm ds a,
+    sm_ds_valid sm ds ->
+    sm_ds_valid (Mem.upd sm a true) (dssync ds a).
+  Proof.
+    unfold sm_ds_valid.
+    intros.
+    constructor.
+    setoid_rewrite d_map_fst.
+    unfold vssync.
+    destruct (selN) eqn:?; cbn.
+    apply sm_vs_valid_upd_synced.
+    eapply Forall_inv; eauto.
+    unfold dssync; cbn.
+    rewrite <- Forall_map.
+    inversion H; subst.
+    rewrite Forall_forall in *.
+    intros.
+    eapply sm_vs_valid_upd_synced; auto.
+  Qed.
+
+  Lemma sm_ds_valid_dssync': forall sm ds a,
+    sm_ds_valid sm ds -> sm_ds_valid sm (dssync ds a).
+  Proof.
+    unfold sm_ds_valid; cbn; intros.
+    inversion H; subst; constructor.
+    eapply sm_vs_valid_vssync'; auto.
+    rewrite <- Forall_map.
+    rewrite Forall_forall in *.
+    intros x; specialize (H x); intuition.
+    eapply sm_vs_valid_vssync'; auto.
+  Qed.
+
+  Lemma sm_ds_valid_dssync_vecs': forall sm ds al,
+    sm_ds_valid sm ds -> sm_ds_valid sm (dssync_vecs ds al).
+  Proof.
+    induction al; cbn; intros.
+    rewrite dssync_vecs_nop by constructor.
+    auto.
+    rewrite dssync_vecs_cons.
+    rewrite dssync_vecs_dssync_comm.
+    eapply sm_ds_valid_dssync'; auto.
+  Qed.
+
+  Lemma sm_ds_valid_ds_synced: forall sm ds a,
+    sm_ds_valid sm ds -> sm a = Some true ->
+    ds_synced a ds.
+  Proof.
+    unfold ds_synced, sm_ds_valid.
+    intros.
+    rewrite Forall_forall in *.
+    intros x; specialize (H x); intuition.
+    eapply sm_vs_valid_vs_synced; eauto.
+  Qed.
+
+
+  Lemma sm_ds_valid_pushd_latest: forall sm ds,
+    sm_ds_valid sm ds ->
+    sm_ds_valid sm (pushd ds!! ds).
+  Proof.
+    intros.
+    auto using sm_ds_valid_pushd, sm_ds_valid_latest.
+  Qed.
+
+  Lemma sm_ds_valid_d_in: forall sm ds d,
+    sm_ds_valid sm ds ->
+    d_in d ds ->
+    sm_vs_valid sm d.
+  Proof.
+    unfold d_in, sm_ds_valid.
+    intros.
+    inversion H; clear H; rewrite Forall_forall in *; subst.
+    intuition; subst.
+    auto.
+  Qed.
+
+  Lemma sm_ds_valid_nthd: forall n sm ds,
+    sm_ds_valid sm ds ->
+    sm_vs_valid sm (nthd n ds).
+  Proof.
+    intros.
+    eapply sm_ds_valid_d_in; eauto.
+    eapply nthd_in_ds.
+  Qed.
+
+  Lemma sm_vs_valid_all_synced: forall sm d d',
+    sm_vs_valid sm d ->
+    length d = length d' ->
+    Forall (fun v => snd v = []) d' ->
+    sm_vs_valid sm d'.
+  Proof.
+    unfold sm_vs_valid.
+    intros.
+    rewrite Forall_forall in *.
+    rewrite H0 in *.
+    intuition.
+    eapply H; eauto.
+    unfold vs_synced.
+    eauto using in_selN.
+  Qed.
+
+  Definition sm_disk_synced (d : diskstate) :=
+    list2nmem (repeat true (length d)).
+
+  Definition sm_disk_exact (d : diskstate) :=
+    list2nmem (map (fun v => match (snd v) with [] => true | _ => false end) d).
+
+  Lemma sm_vs_valid_disk_exact: forall d,
+    sm_vs_valid (sm_disk_exact d) d.
+  Proof.
+    unfold sm_vs_valid, sm_disk_exact, list2nmem.
+    intros.
+    rewrite map_map.
+    erewrite selN_map by auto.
+    intuition.
+    congruence.
+    unfold vs_synced.
+    inversion H0.
+    destruct selN as [? l] eqn:H'.
+    rewrite H' in *.
+    destruct l; cbn in *; congruence.
+  Qed.
+
+  Definition sm_set_vecs (b : bool) (sm : syncedmem) (a : list addr) :=
+    fold_left (fun sm a => @Mem.upd _ _ addr_eq_dec sm a b) a sm.
+
+  Definition sm_upd_vecs sm (a : list (_ * valu)) := sm_set_vecs false sm (map fst a).
+  Definition sm_sync_vecs := sm_set_vecs true.
+
+  Lemma sm_set_vecs_cons: forall a sm x b,
+    sm_set_vecs b sm (x :: a) = Mem.upd (sm_set_vecs b sm a) x b.
+  Proof.
+    unfold sm_set_vecs.
+    induction a; cbn; intros.
+    auto.
+    rewrite <- IHa.
+    cbn.
+    destruct (Nat.eq_dec a x).
+    congruence.
+    rewrite Mem.upd_comm; auto.
+  Qed.
+
+  Lemma sm_set_vecs_cons_inside: forall a sm x b,
+    sm_set_vecs b sm (x :: a) = sm_set_vecs b (Mem.upd sm x b) a.
+  Proof.
+    unfold sm_set_vecs.
+    induction a; cbn; intros.
+    auto.
+    rewrite <- IHa.
+    cbn.
+    destruct (Nat.eq_dec a x).
+    congruence.
+    rewrite Mem.upd_comm; auto.
+  Qed.
+
+  Lemma sm_upd_vecs_cons: forall a sm x,
+    sm_upd_vecs sm (x :: a) = Mem.upd (sm_upd_vecs sm a) (fst x) false.
+  Proof.
+    eauto using sm_set_vecs_cons.
+  Qed.
+
+  Lemma sm_sync_vecs_cons: forall a sm x,
+    sm_sync_vecs sm (x :: a) = Mem.upd (sm_sync_vecs sm a) x true.
+  Proof.
+    eauto using sm_set_vecs_cons.
+  Qed.
+
+  Lemma sm_upd_vecs_cons_inside: forall a sm x,
+    sm_upd_vecs sm (x :: a) = sm_upd_vecs (Mem.upd sm (fst x) false) a.
+  Proof.
+    eauto using sm_set_vecs_cons_inside.
+  Qed.
+
+  Lemma sm_sync_vecs_cons_inside: forall a sm x,
+    sm_sync_vecs sm (x :: a) = sm_sync_vecs (Mem.upd sm x true) a.
+  Proof.
+    eauto using sm_set_vecs_cons_inside.
+  Qed.
+
+  Lemma sm_vs_valid_vsupd_vecs: forall a sm v,
+    sm_vs_valid sm v ->
+    sm_vs_valid (sm_upd_vecs sm a) (vsupd_vecs v a).
+  Proof.
+    induction a; intros.
+    auto.
+    destruct a.
+    rewrite vsupd_vecs_cons, sm_upd_vecs_cons_inside.
+    cbn.
+    eapply IHa.
+    eapply sm_vs_valid_upd_unsynced.
+    auto.
+  Qed.
+
+  Lemma sm_vs_valid_vssync_vecs: forall a sm v,
+    sm_vs_valid sm v ->
+    sm_vs_valid (sm_sync_vecs sm a) (vssync_vecs v a).
+  Proof.
+    induction a; intros.
+    auto.
+    rewrite vssync_vecs_cons, sm_sync_vecs_cons_inside.
+    eapply IHa.
+    eapply sm_vs_valid_upd_synced.
+    auto.
+  Qed.
+
+  Lemma sm_vs_valid_ds_valid: forall sm ds,
+    Forall (sm_vs_valid sm) (fst ds :: snd ds) ->
+    sm_ds_valid sm ds.
+  Proof.
+    intros.
+    unfold sm_ds_valid; auto.
+  Qed.
+
+  Lemma sm_ds_valid_dsupd_vecs: forall a sm ds,
+    sm_ds_valid sm ds ->
+    sm_ds_valid (sm_upd_vecs sm a) (dsupd_vecs ds a).
+  Proof.
+    intros.
+    apply sm_vs_valid_ds_valid.
+    rewrite Forall_forall; intros.
+    unfold dsupd_vecs, d_map in *.
+    cbn in *.
+    intuition subst.
+    eapply sm_vs_valid_vsupd_vecs.
+    inversion H; auto.
+    rewrite in_map_iff in *.
+    deex.
+    eapply sm_vs_valid_vsupd_vecs.
+    inversion H; subst.
+    rewrite Forall_forall in *.
+    auto.
+  Qed.
+
+  Lemma sm_ds_valid_dssync_vecs: forall a sm ds,
+    sm_ds_valid sm ds ->
+    sm_ds_valid (sm_sync_vecs sm a) (dssync_vecs ds a).
+  Proof.
+    intros.
+    apply sm_vs_valid_ds_valid.
+    rewrite Forall_forall; intros.
+    unfold dssync_vecs, d_map in *.
+    cbn in *.
+    intuition subst.
+    eapply sm_vs_valid_vssync_vecs.
+    inversion H; auto.
+    rewrite in_map_iff in *.
+    deex.
+    eapply sm_vs_valid_vssync_vecs.
+    inversion H; subst.
+    rewrite Forall_forall in *.
+    auto.
+  Qed.
+
+
+End SyncedMem.
 
 (* list of transactions *)
 Definition txnlist  := list DLog.contents.
