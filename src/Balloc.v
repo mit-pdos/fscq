@@ -861,19 +861,19 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Hint Extern 0 (okToUnify (listpred ?prd _ ) (listpred ?prd _)) => constructor : okToUnify.
 
   Theorem init_ok : forall V FP lxp xp ms,
-    {< F Fm m0 m bl,
+    {< F Fm m0 sm m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BMPStart xp) bl) ]]] *
           [[ xparams_ok xp /\ BMPStart xp <> 0 /\ length bl = BMPLen xp ]]
     POST:hm' RET:ms exists m' freelist freepred,
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp freelist freepred) ]]] *
           [[ forall bn, bn < (BMPLen xp) * valulen -> In bn freelist ]] *
           [[ forall dl, length dl = ((BMPLen xp) * valulen)%nat ->
                Forall FP dl ->
                arrayN (@ptsto _ _ _) 0 dl =p=> freepred ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init lxp xp ms.
   Proof.
     unfold init, rep; intros.
@@ -904,15 +904,15 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Qed.
 
   Theorem init_nofree_ok : forall V FP lxp xp ms,
-    {< F Fm m0 m bl,
+    {< F Fm m0 sm m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BMPStart xp) bl) ]]] *
           [[ xparams_ok xp /\ BMPStart xp <> 0 /\ length bl = BMPLen xp ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp nil emp) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init_nofree lxp xp ms.
   Proof.
     unfold init_nofree, rep; intros.
@@ -934,15 +934,15 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Qed.
 
   Theorem get_free_blocks_ok : forall V FP lxp xp ms,
-    {<F Fm m0 m freelist freepred,
+    {<F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]]
     POST:hm' RET:^(ms, r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
           [[ ~In 0 r ]] * [[ NoDup r ]] *
           [[ permutation addr_eq_dec r (remove addr_eq_dec 0 freelist) ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} get_free_blocks lxp xp ms.
   Proof.
     unfold get_free_blocks, rep.
@@ -956,16 +956,16 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Qed.
 
   Theorem steal_ok : forall V FP lxp xp bn ms,
-    {< F Fm m0 m freelist freepred,
+    {< F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]] *
           [[ In bn freelist ]]
     POST:hm' RET:ms exists m' freepred',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred') ]]] *
           [[ freepred =p=> freepred' * (exists v, bn |-> v * [[ FP v ]]) ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep. intros.
@@ -1012,19 +1012,19 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Qed.
 
   Theorem alloc_ok : forall V FP lxp xp ms,
-    {< F Fm m0 m freelist freepred,
+    {< F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]]
     POST:hm' RET:^(ms,r)
-          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm'
+          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm'
        \/ exists bn m' freepred',
-          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred') ]]] *
           [[ freepred =p=> freepred' * (exists v, bn |-> v * [[ FP v ]]) ]] *
           [[ bn <> 0 /\ bn < (BMPLen xp) * valulen ]] *
           [[ In bn freelist ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} alloc lxp xp ms.
   Proof.
     unfold alloc, ifind_avail_nonzero, rep.
@@ -1066,17 +1066,17 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
 
 
   Theorem free_ok : forall V FP lxp xp bn ms,
-    {< F Fm m0 m freelist freepred,
+    {< F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ bn < (BMPLen xp) * valulen ]] *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]] *
           [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
     POST:hm' RET:ms exists m' freepred',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred') ]]] *
           [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep.
@@ -1335,19 +1335,19 @@ Module BmapAllocCache (Sig : AllocSig).
     end.
 
   Theorem init_ok : forall V FP lxp xp ms,
-    {< F Fm m0 m bl,
+    {< F Fm m0 sm m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (Sig.BMPStart xp) bl) ]]] *
           [[ Sig.xparams_ok xp /\ Sig.BMPStart xp <> 0 /\ length bl = Sig.BMPLen xp ]]
     POST:hm' RET:ms exists m' freepred freelist,
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp freelist freepred ms) ]]] *
           [[ forall bn, bn < (Sig.BMPLen xp) * valulen -> In bn freelist ]] *
           [[ forall dl, length dl = ((Sig.BMPLen xp) * valulen)%nat ->
                Forall FP dl ->
                arrayN (@ptsto _ _ _) 0 dl =p=> freepred ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init lxp xp ms.
   Proof.
     unfold init, rep; intros.
@@ -1356,15 +1356,15 @@ Module BmapAllocCache (Sig : AllocSig).
   Qed.
 
   Theorem init_nofree_ok : forall V FP lxp xp ms,
-    {< F Fm m0 m bl,
+    {< F Fm m0 sm m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (Sig.BMPStart xp) bl) ]]] *
           [[ Sig.xparams_ok xp /\ Sig.BMPStart xp <> 0 /\ length bl = Sig.BMPLen xp ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp nil emp ms) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init_nofree lxp xp ms.
   Proof.
     unfold init_nofree, rep; intros.
@@ -1373,15 +1373,15 @@ Module BmapAllocCache (Sig : AllocSig).
   Qed.
 
   Theorem get_free_blocks_ok : forall V FP lxp xp (ms:memstate),
-    {< F Fm m0 m freelist freepred,
+    {< F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]]
     POST:hm' RET:^(ms, r)
           [[ MSCache ms = Some r ]] *
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm' *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} get_free_blocks lxp xp ms.
   Proof.
     unfold get_free_blocks, rep.
@@ -1395,19 +1395,19 @@ Module BmapAllocCache (Sig : AllocSig).
   Hint Extern 0 ({{ _ }} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok : prog.
 
   Theorem alloc_ok : forall V FP lxp xp ms,
-    {< F Fm m0 m freelist freepred,
+    {< F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]]
     POST:hm' RET:^(ms,r)
-          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm'
+          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm'
        \/ exists bn m' freepred',
-          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred' ms) ]]] *
           [[ freepred =p=> freepred' * (exists v, bn |-> v * [[ FP v ]]) ]] *
           [[ bn <> 0 /\ bn < (Sig.BMPLen xp) * valulen ]] *
           [[ In bn freelist ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} alloc lxp xp ms.
   Proof.
     unfold alloc.
@@ -1432,18 +1432,18 @@ Module BmapAllocCache (Sig : AllocSig).
   Qed.
 
   Theorem free_ok : forall V FP lxp xp bn ms,
-    {< F Fm m0 m freelist freepred,
+    {< F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
           [[ bn <> 0 ]] *
           [[ bn < (Sig.BMPLen xp) * valulen ]] *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]] *
           [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
     POST:hm' RET:ms exists m' freepred',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred' ms) ]]] *
           [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep; intros.
@@ -1459,16 +1459,16 @@ Module BmapAllocCache (Sig : AllocSig).
   Qed.
 
   Theorem steal_ok : forall V FP lxp xp bn (ms:memstate),
-    {< F Fm m0 m freelist freepred,
+    {< F Fm m0 sm m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred ms)]]] *
           [[ In bn freelist /\ bn < (Sig.BMPLen xp) * valulen ]]
     POST:hm' RET:ms exists m' freepred',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
           [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred' ms) ]]] *
           [[ freepred =p=> freepred' * (exists v, bn |-> v * [[ FP v ]]) ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep; intros.
@@ -1583,38 +1583,61 @@ Module BALLOC.
   Definition rep xp (freeblocks : list addr) :=
     ( exists freepred, freepred * Alloc.rep FP xp freeblocks freepred)%pred.
 
+  Definition smrep (freeblocks : list addr) : @pred _ addr_eq_dec bool :=
+    (listpred (fun a => a |->?) freeblocks)%pred.
+
+  Lemma listpred_seq_smrep: forall F xp fp m l freelist,
+    (F * Alloc.rep FP xp freelist fp)%pred m ->
+    (LOG.arrayP 0 l =p=> fp) ->
+    listpred (fun a => a |->?) (seq 0 (length l)) =p=> smrep freelist.
+  Proof.
+    unfold smrep, Alloc.rep in *.
+    intros.
+    destruct_lifts.
+    rewrite H4 in *.
+
+    eapply arrayN_ptsto_linked.
+    eapply pimpl_trans; eauto.
+    eapply listpred_pimpl_replace.
+    cancel.
+  Qed.
 
   Theorem init_ok : forall lxp xp ms,
-    {< F Fm m0 m bl dl,
+    {< F Fm Fs m0 sm m bl dl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) 0 dl
                         * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
+          [[ (Fs * listpred (fun a => a |->?) (seq 0 (length dl)))%pred sm ]] *
           [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
           [[ length bl = BmapNBlocks xp /\ length dl = ((BmapNBlocks xp) * valulen)%nat ]]
     POST:hm' RET:ms exists m' freeblocks,
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
           [[[ m' ::: (Fm * rep xp freeblocks) ]]] *
+          [[ (Fs * smrep freeblocks)%pred sm ]] *
           [[ forall bn, bn < (BmapNBlocks xp) * valulen -> In bn freeblocks ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init lxp xp ms.
   Proof.
     unfold init, rep; intros.
     step.
     step.
+    eapply listpred_seq_smrep; eauto.
   Qed.
 
   Theorem init_nofree_ok : forall lxp xp ms,
-    {< F Fm m0 m bl,
+    {< F Fs Fm m0 sm m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
+          [[ Fs sm ]] *
           [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
           [[ length bl = BmapNBlocks xp ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-          [[[ m' ::: (Fm * rep xp nil) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
+          [[[ m' ::: (Fm * rep xp nil) ]]] *
+          [[ (Fs * smrep nil)%pred sm ]]
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init_nofree lxp xp ms.
   Proof.
     unfold init_nofree, rep; intros.
@@ -1623,15 +1646,17 @@ Module BALLOC.
   Qed.
 
   Theorem steal_ok : forall lxp xp bn ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fm Fs m0 sm m freeblocks,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * rep xp freeblocks) ]]] *
+          [[ (Fs * smrep freeblocks)%pred sm ]] *
           [[ bn_valid xp bn /\ In bn freeblocks ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-          [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
+          [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]] *
+          [[ (Fs * bn |->? * smrep (remove addr_eq_dec bn freeblocks))%pred sm ]]
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep, bn_valid.
@@ -1641,24 +1666,29 @@ Module BALLOC.
     pred_apply.
     denote pimpl as Hx; rewrite Hx.
     cancel; cancel.
+    unfold smrep in *.
+    rewrite listpred_remove in *|- by eauto using ptsto_conflict.
+    pred_apply; cancel.
     eauto.
-    Unshelve . all: try exact addr_eq_dec; auto.
+    Unshelve. all: try exact addr_eq_dec; auto.
   Qed.
 
 
   Theorem alloc_ok : forall lxp xp ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fm Fs m0 sm m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep xp freeblocks) ]]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * rep xp freeblocks) ]]] *
+           [[ (Fs * smrep freeblocks)%pred sm ]]
     POST:hm' RET:^(ms, r)
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm'
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm'
         \/ exists bn m',
            [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
            [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]] *
+           [[ (Fs * bn |->? * smrep (remove addr_eq_dec bn freeblocks))%pred sm ]] *
            [[ In bn freeblocks ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} alloc lxp xp ms.
   Proof.
     unfold alloc, rep, bn_valid.
@@ -1666,25 +1696,33 @@ Module BALLOC.
     match goal with
     | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
     end.
-    or_r; cancel.
+    unfold smrep.
+    or_r; norm. cancel.
+    intuition eauto.
+    pred_apply; cancel.
+    pred_apply; unfold smrep.
+    rewrite listpred_remove; eauto using ptsto_conflict.
+    cancel.
   Qed.
 
   Theorem free_ok : forall lxp xp bn ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fm Fs m0 sm m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
            [[ bn_valid xp bn ]] *
-           [[[ m ::: (Fm * rep xp freeblocks * bn |->?) ]]]
+           [[[ m ::: (Fm * rep xp freeblocks * bn |->?) ]]] *
+           [[ (Fs * bn |->? * smrep freeblocks)%pred sm ]]
     POST:hm' RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep xp (bn :: freeblocks)) ]]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
+           [[[ m' ::: (Fm * rep xp (bn :: freeblocks)) ]]] *
+           [[ (Fs * smrep (bn :: freeblocks))%pred sm ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep, bn_valid.
     hoare.
     exists (list2nmem m); pred_apply; cancel.
-    rewrite H12; unfold FP; eauto.
+    unfold FP in *; eauto.
   Qed.
 
 
@@ -1702,16 +1740,24 @@ Module BALLOC.
     intros; cancel.
   Qed.
 
+  Lemma smrep_cons: forall l a b,
+    smrep l * a |-> b =p=> smrep (a :: l).
+  Proof.
+    unfold smrep.
+    cancel.
+  Qed.
 
   Definition freevec lxp xp l ms :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
-    Ghost [ F Fm crash m0 freeblocks ]
+    Ghost [ F Fm Fs crash m0 freeblocks sm ]
     Loopvar [ ms ]
     Invariant
-      exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+      exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm *
       [[[ m' ::: (Fm * rep xp (rev (firstn i l) ++ freeblocks)) *
-                       listpred (fun a => a |->?) (skipn i l) ]]]
+                       listpred (fun a => a |->?) (skipn i l) ]]] *
+      [[ (Fs * smrep (rev (firstn i l) ++ freeblocks) *
+                       listpred (fun a => a |->?) (skipn i l))%pred sm ]]
     OnCrash crash
     Begin
       ms <- free lxp xp (selN l i 0) ms;
@@ -1721,33 +1767,39 @@ Module BALLOC.
 
 
   Theorem freevec_ok : forall lxp xp l ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fm Fs m0 sm m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
            [[ Forall (bn_valid xp) l ]] *
-           [[[ m ::: (Fm * rep xp freeblocks * listpred (fun a => a |->?) l ) ]]]
+           [[[ m ::: (Fm * rep xp freeblocks * listpred (fun a => a |->?) l ) ]]] *
+           [[ (Fs * listpred (fun a => a |->?) l * smrep freeblocks)%pred sm ]]
     POST:hm' RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks)) ]]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
+           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks)) ]]] *
+           [[ (Fs * smrep (rev l ++ freeblocks))%pred sm ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} freevec lxp xp l ms.
   Proof.
     unfold freevec.
     step.
 
     prestep; norml.
-    denote listpred as Hx.
+    denote Fm as Hx.
+    denote smrep as Hs.
 
     destruct l.
     denote (_ < _) as Hy; simpl in Hy; inversion Hy.
-    rewrite listpred_isolate with (i := 0) in Hx by (rewrite skipn_length; omega).
-    rewrite skipn_selN, Nat.add_0_r in Hx.
+    rewrite listpred_isolate with (i := 0) in Hx, Hs by (rewrite skipn_length; omega).
+    rewrite skipn_selN, Nat.add_0_r in Hx, Hs.
 
     (*** extract the exis from |->? *)
     apply sep_star_reorder_helper in Hx.
     apply pimpl_exists_r_star_r in Hx; destruct Hx as [ [? ?] ?].
+    destruct_lift Hs.
     safecancel.
     rewrite selN_cons_fold; apply Forall_selN; auto.
+    eauto.
+    rewrite sep_star_assoc_1, sep_star_comm.
     eauto.
 
     step.
@@ -1755,6 +1807,12 @@ Module BALLOC.
     rewrite selN_cons_fold.
     replace ([n]) with (rev [n]) by auto.
     rewrite <- rev_app_distr.
+    rewrite app_comm_cons, <- rev_unit.
+    rewrite <- firstn_S_selN by auto.
+    cancel.
+    rewrite removeN_0_skipn; cancel.
+    rewrite selN_cons_fold.
+    rewrite smrep_cons.
     rewrite app_comm_cons, <- rev_unit.
     rewrite <- firstn_S_selN by auto.
     cancel.
@@ -1915,6 +1973,27 @@ Module BALLOCC.
   Definition rep xp (freeblocks : list addr) ms :=
     ( exists freepred, freepred * Alloc.rep FP xp freeblocks freepred ms)%pred.
 
+  Definition smrep (freeblocks : list addr) : @pred _ addr_eq_dec bool :=
+    (listpred (fun a => a |->?) freeblocks)%pred.
+
+  Lemma listpred_seq_smrep: forall F xp fp ms m l freelist,
+    (F * Alloc.rep FP xp freelist fp ms)%pred m ->
+    (LOG.arrayP 0 l =p=> fp) ->
+    listpred (fun a => a |->?) (seq 0 (length l)) =p=> smrep freelist.
+  Proof.
+    unfold smrep, Alloc.rep, Alloc.Alloc.rep in *.
+    intros.
+    destruct_lifts.
+    denote piff as Hp; rewrite Hp in *.
+
+    eapply arrayN_ptsto_linked.
+    eapply pimpl_trans; eauto.
+    eapply listpred_pimpl_replace.
+    cancel.
+  Unshelve.
+    all: try exact addr_eq_dec. exact unit.
+  Qed.
+
   Lemma rep_ignore_mslog_ok: forall bxps frees lms lms' cm,
     rep bxps frees (mk_memstate lms cm) =p=>
     rep bxps frees (mk_memstate lms' cm).
@@ -1936,36 +2015,41 @@ Module BALLOCC.
   Qed.
 
   Theorem init_ok : forall lxp xp ms,
-    {< F Fm m0 m bl dl,
+    {< F Fm Fs m0 sm m bl dl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) 0 dl
                         * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
+          [[ (Fs * listpred (fun a => a |->?) (seq 0 (length dl)))%pred sm ]] *
           [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
           [[ length bl = BmapNBlocks xp /\ length dl = ((BmapNBlocks xp) * valulen)%nat ]]
     POST:hm' RET:ms exists m' freeblocks,
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
           [[[ m' ::: (Fm * rep xp freeblocks ms) ]]] *
+          [[ (Fs * smrep freeblocks)%pred sm ]] *
           [[ forall bn, bn < (BmapNBlocks xp) * valulen -> In bn freeblocks ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init lxp xp ms.
   Proof.
     unfold init, rep, MSLog; intros.
     step.
     step.
+    eapply listpred_seq_smrep; eauto.
   Qed.
 
   Theorem init_nofree_ok : forall lxp xp ms,
-    {< F Fm m0 m bl,
+    {< F Fm Fs m0 sm m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
+          [[ Fs sm ]] *
           [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
           [[ length bl = BmapNBlocks xp ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
+          [[ (Fs * smrep nil)%pred sm ]] *
           [[[ m' ::: (Fm * rep xp nil ms) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init_nofree lxp xp ms.
   Proof.
     unfold init_nofree, rep, MSLog; intros.
@@ -1974,16 +2058,18 @@ Module BALLOCC.
   Qed.
 
   Theorem steal_ok : forall lxp xp bn ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fm Fs m0 sm m freeblocks,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
           [[[ m ::: (Fm * rep xp freeblocks ms) ]]] *
+          [[ (Fs * smrep freeblocks)%pred sm ]] *
           [[ bn_valid xp bn /\ In bn freeblocks ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
           [[[ m' ::: (Fm * bn |->? * 
-           rep xp (remove addr_eq_dec bn freeblocks) ms) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+           rep xp (remove addr_eq_dec bn freeblocks) ms) ]]] *
+          [[ (Fs * bn |->? * smrep (remove addr_eq_dec bn freeblocks))%pred sm ]]
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep, bn_valid, MSLog.
@@ -1993,25 +2079,30 @@ Module BALLOCC.
     pred_apply.
     denote pimpl as Hx; rewrite Hx.
     cancel; cancel.
+    pred_apply; unfold smrep.
+    rewrite listpred_remove; eauto using ptsto_conflict.
+    cancel.
     eauto.
     Unshelve . all: try exact addr_eq_dec; auto.
   Qed.
 
 
   Theorem alloc_ok : forall lxp xp ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fm Fs m0 sm m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
-           [[[ m ::: (Fm * rep xp freeblocks ms) ]]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
+           [[[ m ::: (Fm * rep xp freeblocks ms) ]]] *
+           [[ (Fs * smrep freeblocks)%pred sm ]]
     POST:hm' RET:^(ms, r)
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm'
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm'
         \/ exists bn m',
            [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
            [[[ m' ::: (Fm * bn |->? * 
             rep xp (remove addr_eq_dec bn freeblocks) ms) ]]] *
+           [[ (Fs * bn |->? * smrep (remove addr_eq_dec bn freeblocks))%pred sm ]] *
            [[ In bn freeblocks ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} alloc lxp xp ms.
   Proof.
     unfold alloc, rep, bn_valid, MSLog.
@@ -2019,25 +2110,29 @@ Module BALLOCC.
     match goal with
     | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
     end.
+    unfold smrep in *.
+    rewrite listpred_remove in * by eauto using ptsto_conflict.
     or_r; cancel.
   Qed.
 
   Theorem free_ok : forall lxp xp bn ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fm Fs m0 sm m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
            [[ bn_valid xp bn ]] *
-           [[[ m ::: (Fm * rep xp freeblocks ms* bn |->?) ]]]
+           [[[ m ::: (Fm * rep xp freeblocks ms* bn |->?) ]]] *
+           [[ (Fs * bn |->? * smrep freeblocks)%pred sm ]]
     POST:hm' RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep xp (bn :: freeblocks) ms) ]]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
+           [[[ m' ::: (Fm * rep xp (bn :: freeblocks) ms) ]]] *
+           [[ (Fs * smrep (bn :: freeblocks))%pred sm ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep, bn_valid, MSLog.
     hoare.
     exists (list2nmem m); pred_apply; cancel.
-    rewrite H12; unfold FP; eauto.
+    unfold FP in *; eauto.
   Qed.
 
 
@@ -2054,16 +2149,24 @@ Module BALLOCC.
     intros; cancel.
   Qed.
 
+  Lemma smrep_cons: forall l a b,
+    smrep l * a |-> b =p=> smrep (a :: l).
+  Proof.
+    unfold smrep.
+    cancel.
+  Qed.
 
   Definition freevec lxp xp l ms :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
-    Ghost [ F Fm crash m0 freeblocks ]
+    Ghost [ F Fm Fs crash m0 sm freeblocks ]
     Loopvar [ ms ]
     Invariant
-      exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm *
+      exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm *
       [[[ m' ::: (Fm * rep xp (rev (firstn i l) ++ freeblocks) ms) *
-                       listpred (fun a => a |->?) (skipn i l) ]]]
+                       listpred (fun a => a |->?) (skipn i l) ]]] *
+      [[ (Fs * smrep (rev (firstn i l) ++ freeblocks) *
+                       listpred (fun a => a |->?) (skipn i l))%pred sm ]]
     OnCrash crash
     Begin
       ms <- free lxp xp (selN l i 0) ms;
@@ -2073,33 +2176,41 @@ Module BALLOCC.
 
 
   Theorem freevec_ok : forall lxp xp l ms,
-    {< F Fm m0 m freeblocks,
+    {< F Fs Fm m0 sm m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm hm *
            [[ Forall (bn_valid xp) l ]] *
-           [[[ m ::: (Fm * rep xp freeblocks ms * listpred (fun a => a |->?) l ) ]]]
+           [[[ m ::: (Fm * rep xp freeblocks ms * listpred (fun a => a |->?) l ) ]]] *
+           [[ (Fs * listpred (fun a => a |->?) l * smrep freeblocks)%pred sm ]]
     POST:hm' RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks) ms) ]]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm hm' *
+           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks) ms) ]]] *
+           [[ (Fs * smrep (rev l ++ freeblocks))%pred sm ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} freevec lxp xp l ms.
   Proof.
     unfold freevec.
-    step.
+    safestep.
+    eauto.
+    eauto.
 
     prestep; norml.
-    denote listpred as Hx.
+    denote Fm as Hx.
+    denote smrep as Hs.
 
     destruct l.
     denote (_ < _) as Hy; simpl in Hy; inversion Hy.
-    rewrite listpred_isolate with (i := 0) in Hx by (rewrite skipn_length; omega).
-    rewrite skipn_selN, Nat.add_0_r in Hx.
+    rewrite listpred_isolate with (i := 0) in Hx, Hs by (rewrite skipn_length; omega).
+    rewrite skipn_selN, Nat.add_0_r in Hx, Hs.
 
     (*** extract the exis from |->? *)
     apply sep_star_reorder_helper in Hx.
     apply pimpl_exists_r_star_r in Hx; destruct Hx as [ [? ?] ?].
+    destruct_lift Hs.
     safecancel.
     rewrite selN_cons_fold; apply Forall_selN; auto.
+    eauto.
+    rewrite sep_star_assoc_1, sep_star_comm.
     eauto.
 
     step.
@@ -2110,11 +2221,18 @@ Module BALLOCC.
     rewrite app_comm_cons, <- rev_unit.
     rewrite <- firstn_S_selN by auto.
     cancel.
+    rewrite removeN_0_skipn; cancel.
+    rewrite selN_cons_fold.
+    rewrite smrep_cons.
+    rewrite app_comm_cons, <- rev_unit.
+    rewrite <- firstn_S_selN by auto.
+    cancel.
 
     step.
     rewrite firstn_oob by auto.
     rewrite skipn_oob by auto.
     step.
+    cancel.
     erewrite <- LOG.intact_hashmap_subset; eauto.
     Unshelve. all: eauto; try exact tt. exact (LOG.mk_memstate0 (BUFCACHE.cache0 0)).
   Qed.

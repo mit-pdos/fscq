@@ -1,6 +1,7 @@
 Require Import Mem.
 Require Import List Omega Ring Word Pred PredCrash Prog Hoare SepAuto BasicProg Array ListUtils.
 Require Import FunctionalExtensionality.
+Require Import Permutation.
 
 Set Implicit Arguments.
 
@@ -211,6 +212,19 @@ Section LISTPRED.
     eauto.
   Qed.
 
+  Lemma listpred_permutation: forall a b,
+    Permutation a b ->
+    listpred a <=p=> listpred b.
+  Proof.
+    intros.
+    induction H; cbn; auto.
+    rewrite IHPermutation. auto.
+    split; cancel.
+    rewrite IHPermutation1.
+    rewrite IHPermutation2.
+    auto.
+  Qed.
+
   Theorem listpred_remove :
     forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
     (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
@@ -346,6 +360,25 @@ Proof.
   rewrite IHl, H by auto; cancel.
   rewrite IHl, H by (intuition; symmetry; auto); cancel.
 Qed.
+
+Lemma listpred_ptsto_notindomain : forall AT AEQ V (t : list AT) x (m : @Mem.mem _ AEQ V),
+  listpred (fun a => (a |->?)%pred) t m ->
+  ~In x t ->
+  notindomain x m.
+Proof.
+  induction t; cbn; intros; unfold notindomain.
+  cbv [emp] in *; auto.
+  intuition.
+  revert H.
+  unfold_sep_star.
+  intuition repeat deex.
+  eapply mem_union_sel_none.
+  unfold exis in *. deex.
+  eapply ptsto_ne; eauto.
+  eapply IHt; eauto.
+Qed.
+
+
 
 (* predicate over a pair of lists *)
 
