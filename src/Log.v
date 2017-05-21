@@ -1975,10 +1975,10 @@ Module LOG.
   Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
-  Lemma idempred_hashmap_subset : forall xp F ds hm hm',
+  Lemma idempred_hashmap_subset : forall xp F ds sm hm hm',
     (exists l, hashmap_subset l hm hm')
-    -> idempred xp F ds hm
-       =p=> idempred xp F ds hm'.
+    -> idempred xp F ds sm hm
+       =p=> idempred xp F ds sm hm'.
   Proof.
     unfold idempred, recover_any, after_crash, before_crash; cancel.
     rewrite rep_hashmap_subset by eauto.
@@ -2003,9 +2003,9 @@ Module LOG.
     intuition simpl; eauto.
   Qed.
 
-  Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F ds al hm,
-    crash_xform (LOG.intact xp F (dssync_vecs ds al) hm) =p=>
-    LOG.idempred xp (crash_xform F) ds hm.
+  Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F sm ds al hm,
+    crash_xform (LOG.intact xp F (dssync_vecs ds al) sm hm) =p=>
+    LOG.idempred xp (crash_xform F) ds sm hm.
   Proof.
     intros.
     rewrite crash_xform_intact.
@@ -2020,10 +2020,10 @@ Module LOG.
   Qed.
 
 
-  Lemma crash_xform_cached_before: forall fsxp F d hm ms ds n,
+  Lemma crash_xform_cached_before: forall fsxp F d hm ms ds sm n,
     n <= length (snd ds) ->
     crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-    crash_xform (rep (FSXPLog fsxp) F (LOG.NoTxn (d, [])) ms hm)
+    crash_xform (rep (FSXPLog fsxp) F (LOG.NoTxn (d, [])) ms sm hm)
         =p=> crash_xform (before_crash (FSXPLog fsxp) F ds hm).
   Proof.
     intros.
@@ -2042,7 +2042,8 @@ Module LOG.
     cancel.
     rewrite MLog.rep_synced_pimpl.
     cancel.
-    intuition simpl; auto.
+    intuition simpl; eauto.
+    intuition simpl; eauto.
   Qed.
 
 
