@@ -426,6 +426,13 @@ Section LISTMATCH.
     unfold listmatch; cancel.
   Qed.
 
+  Lemma listmatch_cons: forall (a : list A) (b : list B) x y,
+    listmatch (x :: a) (y :: b) <=p=> prd x y * listmatch a b.
+  Proof.
+    unfold listmatch.
+    split; cancel.
+  Qed.
+
   Theorem listmatch_isolate : forall a b i ad bd,
     i < length a -> i < length b ->
     listmatch a b <=p=>
