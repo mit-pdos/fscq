@@ -1012,7 +1012,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Qed.
 
 
-  Hint Extern 1 (BALLOCC.bn_valid _ _) => match goal with
+  Local Hint Extern 1 (BALLOCC.bn_valid _ _) => match goal with
     [H : context [indrep_n_helper _ _ ?ir] |- BALLOCC.bn_valid _ ?ir] =>
     rewrite indrep_n_helper_valid in H by omega; destruct_lift H; auto end.
 
@@ -2819,6 +2819,18 @@ Qed.
     reflexivity.
   Qed.
 
+  Theorem rep_bxp_switch : forall bxp bxp' Fs xp ilist,
+    BmapNBlocks bxp = BmapNBlocks bxp' ->
+    rep bxp Fs xp ilist <=p=> rep bxp' Fs xp ilist.
+  Proof.
+    intros. unfold rep.
+    split; norm; intuition eauto; cbv [pred_fold_left stars fold_left].
+    all: rewrite indrep_bxp_switch.
+    all: try cancel.
+    all: eauto.
+  Qed.
+
+
   Theorem xform_indrep : forall xp Fs ir l,
     crash_xform (indrep xp Fs ir l) <=p=> indrep xp Fs ir l.
   Proof.
@@ -3352,7 +3364,7 @@ Qed.
   Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _) _) => apply grow_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 
   Theorem xform_rep : forall xp Fs ir l,
     crash_xform (rep xp Fs ir l) <=p=> rep xp Fs ir l.

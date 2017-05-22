@@ -482,7 +482,7 @@ Module LOG.
     POST:hm' RET: ms exists d sm l,
           rep xp F (NoTxn (d, nil)) ms sm hm' *
           [[[ d ::: arrayN (@ptsto _ _ _) 0 d ]]] *
-          [[ arrayN (@ptsto _ _ _) 0 l sm ]] *
+          [[ arrayN (@ptsto _ _ _) 0 l sm ]] * [[ length l = length d ]] *
           [[ length d = (LogHeader xp) - (DataStart xp) ]]
     XCRASH:hm_crash any
     >} init xp cs.
@@ -494,6 +494,7 @@ Module LOG.
     apply sm_vs_valid_disk_exact.
     apply list2nmem_array.
     apply list2nmem_array.
+    autorewrite with lists. auto.
   Qed.
 
 
