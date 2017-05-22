@@ -129,12 +129,11 @@ Module BFILE.
     let dirty := get_dirty inum dblocks in
     Map.add inum (SS.add bn dirty) dblocks.
 
-  Definition keep_dirty inum bns (dblocks : DBlocks_type) :=
+  Definition remove_dirty inum bns (dblocks : DBlocks_type) :=
     match Map.find inum dblocks with
     | None => dblocks
     | Some dirty =>
-      let dirty' := (fold_right SS.add SS.empty bns) in
-      let dirty := SS.inter dirty dirty' in
+      let dirty' := (fold_right SS.remove dirty bns) in
       Map.add inum dirty dblocks
     end.
 
@@ -216,6 +215,7 @@ Module BFILE.
              Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) ialc icache cache dblocks, Err e)
            | OK _ =>
              ms <- LOG.write lxp bn v (BALLOCC.MSLog cms);
+             let dblocks := put_dirty inum bn dblocks in
              Ret ^(mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) al) ialc icache cache dblocks, OK tt)
            end
       end
@@ -226,10 +226,9 @@ Module BFILE.
   Definition shrink lxp bxps ixp inum nr fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (icache, ms, bns) <- INODE.getallbnum lxp ixp inum icache ms;
-    let bns := map (@wordToNat _) bns in
-    let keep := firstn ((length bns) - nr) bns in
-    let dblocks := keep_dirty inum keep dblocks in
     let l := skipn ((length bns) - nr) bns in
+    let l := map (@wordToNat _) l in
+    let dblocks := remove_dirty inum l dblocks in
     cms <- BALLOCC.freevec lxp (pick_balloc bxps (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));
     let^ (icache, cms) <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr icache cms;
     Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache cache dblocks).
@@ -237,13 +236,14 @@ Module BFILE.
   Definition shuffle_allocs lxp bxps ms cms :=
     let^ (ms, cms) <- ForN 1 <= i < (BmapNBlocks (fst bxps) * valulen / 2)
     Hashmap hm
-    Ghost [ F Fm crash m0 ]
+    Ghost [ F Fm Fs crash m0 sm ]
     Loopvar [ ms cms ]
     Invariant
          exists m' frees,
-         LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+         LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm *
          [[[ m' ::: (Fm * BALLOCC.rep (fst bxps) (fst frees) (BALLOCC.mk_memstate ms (fst cms))   *
                          BALLOCC.rep (snd bxps) (snd frees) (BALLOCC.mk_memstate ms (snd cms))) ]]] *
+         [[ (Fs * BALLOCC.smrep (fst frees) * BALLOCC.smrep (snd frees))%pred sm ]] *
          [[ forall bn, bn < (BmapNBlocks (fst bxps)) * valulen /\ bn >= i
              -> In bn (fst frees) ]]
     OnCrash crash
@@ -290,18 +290,16 @@ Module BFILE.
   Definition bfile0 := mk_bfile nil attr0 None.
   Definition freepred f := f = bfile0.
 
-  Definition file_dirty_block (dirty : SS.t) (f : bfile) (i : INODE.inode) :=
-    SS.Subset dirty (fold_right SS.add (SS.empty) (map (@wordToNat _) (INODE.IBlocks i))) /\
-    (forall off, off < length (INODE.IBlocks i) ->
-      let bn := selN (INODE.IBlocks i) off $0 in
-      let v := selN (BFData f) off ($0, nil) in
-      ~SS.In #bn dirty -> snd v = nil).
+  Definition smrep_single (dirty : SS.t) (i : INODE.inode) : @pred _ addr_eq_dec bool :=
+    ( [[ SS.For_all (fun bn => In bn (map (@wordToNat _) (INODE.IBlocks i))) dirty ]] *
+    listpred (fun bn => exists b, (# bn) |-> b  * [[ ~SS.In (# bn) dirty -> b = true ]]) (INODE.IBlocks i))%pred.
 
-  Definition file_dirty_pred inum fi : @pred _ addr_eq_dec _ :=
-    ([[ file_dirty_block (SS.empty) (fst fi) (snd fi) ]] \/ exists v, ptsto inum v * [[ file_dirty_block v (fst fi) (snd fi) ]])%pred.
+  Definition smrep_single_helper dblocks i ino :=
+    let dirty := match Map.find i dblocks with Some d => d | None => SS.empty end in
+    smrep_single dirty ino.
 
-  Definition dirty_blocks_rep (flist : list bfile) (ilist : list INODE.inode) :=
-    arrayN file_dirty_pred 0 (combine flist ilist).
+  Definition smrep frees (dirty : Map.t (SS.t)) (ilist : list INODE.inode) :=
+    (BALLOCC.smrep (fst frees) * BALLOCC.smrep (snd frees) * arrayN (smrep_single_helper dirty) 0 ilist)%pred.
 
   Definition file_match f i : @pred _ addr_eq_dec datatype :=
     (listmatch (fun v a => a |-> v ) (BFData f) (map (@wordToNat _) (INODE.IBlocks i)) *
@@ -322,21 +320,20 @@ Module BFILE.
   Definition cache_rep mscache (flist : list bfile) (ilist : list INODE.inode) :=
      arrayN cache_ptsto 0 (map BFCache flist) (BFM.mm _ mscache).
 
-  Definition rep (bxps : balloc_xparams * balloc_xparams) ixp (flist : list bfile) ilist frees cms mscache icache (dblocks : DBlocks_type) :=
-    (exists lms, 
+  Definition rep (bxps : balloc_xparams * balloc_xparams) IFs ixp (flist : list bfile) ilist frees cms mscache icache :=
+    (exists lms,
      BALLOCC.rep (fst bxps) (fst frees) (BALLOCC.mk_memstate lms (fst cms)) *
      BALLOCC.rep (snd bxps) (snd frees) (BALLOCC.mk_memstate lms (snd cms)) *
-     INODE.rep (fst bxps) ixp ilist icache *
+     INODE.rep (fst bxps) IFs ixp ilist icache *
      listmatch file_match flist ilist *
-     [[ dirty_blocks_rep flist ilist (M.mm _ dblocks) ]] *
      [[ locked (cache_rep mscache flist ilist) ]] *
      [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
     )%pred.
 
 
-  Definition rep_length_pimpl : forall bxps ixp flist ilist frees allocc icache mscache dblocks,
-    rep bxps ixp flist ilist frees allocc icache mscache dblocks =p=>
-    (rep bxps ixp flist ilist frees allocc icache mscache dblocks *
+  Definition rep_length_pimpl : forall bxps IFs ixp flist ilist frees allocc icache mscache,
+    rep bxps IFs ixp flist ilist frees allocc icache mscache =p=>
+    (rep bxps IFs ixp flist ilist frees allocc icache mscache *
      [[ length flist = ((INODE.IRecSig.RALen ixp) * INODE.IRecSig.items_per_val)%nat ]] *
      [[ length ilist = ((INODE.IRecSig.RALen ixp) * INODE.IRecSig.items_per_val)%nat ]])%pred.
   Proof.
@@ -348,19 +345,18 @@ Module BFILE.
   Qed.
 
   Definition rep_alt (bxps : BALLOCC.Alloc.Alloc.BmpSig.xparams * BALLOCC.Alloc.Alloc.BmpSig.xparams)
-                     ixp (flist : list bfile) ilist frees cms icache mscache msalloc dblocks :=
+                     IFs ixp (flist : list bfile) ilist frees cms icache mscache msalloc :=
     (exists lms,
       BALLOCC.rep (pick_balloc bxps msalloc) (pick_balloc frees msalloc) (BALLOCC.mk_memstate lms (pick_balloc cms msalloc)) *
      BALLOCC.rep (pick_balloc bxps (negb msalloc)) (pick_balloc frees (negb msalloc)) (BALLOCC.mk_memstate lms (pick_balloc cms (negb msalloc))) *
-     INODE.rep (pick_balloc bxps msalloc) ixp ilist icache *
+     INODE.rep (pick_balloc bxps msalloc) IFs ixp ilist icache *
      listmatch file_match flist ilist *
-     [[ dirty_blocks_rep flist ilist (M.mm _ dblocks) ]] *
      [[ locked (cache_rep mscache flist ilist) ]] *
      [[ BmapNBlocks (pick_balloc bxps msalloc) = BmapNBlocks (pick_balloc bxps (negb msalloc)) ]]
     )%pred.
 
-  Theorem rep_alt_equiv : forall bxps ixp flist ilist frees mscache allocc icache msalloc dblocks,
-    rep bxps ixp flist ilist frees allocc mscache icache dblocks <=p=> rep_alt bxps ixp flist ilist frees allocc icache mscache msalloc dblocks.
+  Theorem rep_alt_equiv : forall bxps IFs ixp flist ilist frees mscache allocc icache msalloc,
+    rep bxps IFs ixp flist ilist frees allocc mscache icache <=p=> rep_alt bxps IFs ixp flist ilist frees allocc icache mscache msalloc.
   Proof.
     unfold rep, rep_alt; split; destruct msalloc; simpl.
     - cancel.
@@ -373,46 +369,43 @@ Module BFILE.
       cancel.
   Qed.
 
+  Definition smrep_alt frees (dirty : Map.t (SS.t)) (ilist : list INODE.inode) b :=
+    (BALLOCC.smrep (pick_balloc frees b) * BALLOCC.smrep (pick_balloc frees (negb b)) * arrayN (smrep_single_helper dirty) 0 ilist)%pred.
+
+  Theorem smrep_alt_equiv: forall frees dirty ilist b,
+    smrep frees dirty ilist <=p=> smrep_alt frees dirty ilist b.
+  Proof.
+    unfold smrep, smrep_alt.
+    destruct b; cbn [pick_balloc].
+    all: split; cancel.
+  Qed.
+
   Definition clear_cache bf := mk_bfile (BFData bf) (BFAttr bf) None.
   Definition clear_caches bflist := map clear_cache bflist.
 
-  Theorem dirty_blocks_clear_caches: forall flist ilist,
-    dirty_blocks_rep (clear_caches flist) ilist <=p=> dirty_blocks_rep flist ilist.
-  Proof.
-    unfold dirty_blocks_rep.
-    intros flist.
-    generalize 0.
-    induction flist; cbn; intros; auto.
-    destruct ilist; cbn; auto.
-    rewrite IHflist.
-    split; cancel.
-    all: solve [or_r; cancel | repeat or_l; cancel].
-  Qed.
-
-  Theorem rep_clear_freelist : forall bxps ixp flist ilist frees allocc mscache icache dblocks,
-    rep bxps ixp flist ilist frees allocc mscache icache dblocks =p=>
-    rep bxps ixp flist ilist frees (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) mscache icache dblocks.
+  Theorem rep_clear_freelist : forall bxps IFs ixp flist ilist frees allocc mscache icache,
+    rep bxps IFs ixp flist ilist frees allocc mscache icache =p=>
+    rep bxps IFs ixp flist ilist frees (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) mscache icache.
   Proof.
     unfold rep; intros; cancel.
     rewrite <- BALLOCC.rep_clear_mscache_ok. cancel.
     rewrite <- BALLOCC.rep_clear_mscache_ok. cancel.
   Qed.
 
-  Theorem rep_clear_bfcache : forall bxps ixp flist ilist frees allocc mscache icache dblocks,
-    rep bxps ixp flist ilist frees allocc mscache icache dblocks =p=>
-    rep bxps ixp (clear_caches flist) ilist frees allocc (BFcache.empty _) icache dblocks.
+  Theorem rep_clear_bfcache : forall bxps IFs ixp flist ilist frees allocc mscache icache,
+    rep bxps IFs ixp flist ilist frees allocc mscache icache =p=>
+    rep bxps IFs ixp (clear_caches flist) ilist frees allocc (BFcache.empty _) icache.
   Proof.
     unfold rep; intros; cancel.
     unfold clear_caches.
     rewrite listmatch_map_l.
     unfold file_match, clear_cache; simpl.
     reflexivity.
-    rewrite dirty_blocks_clear_caches; auto.
 
     rewrite locked_eq.
     unfold cache_rep, clear_caches, clear_cache.
     rewrite map_map; simpl.
-    denote dirty_blocks_rep as Hd. clear Hd.
+    denote smrep as Hd. clear Hd.
     denote locked as Hl. clear Hl.
     generalize 0.
     induction flist; simpl; intros.
@@ -423,426 +416,33 @@ Module BFILE.
     exact unit.
   Qed.
 
-  Theorem rep_clear_icache: forall bxps ixp flist ilist frees allocc mscache icache dblocks,
-    rep bxps ixp flist ilist frees allocc mscache icache dblocks =p=>
-    rep bxps ixp flist ilist frees allocc mscache INODE.IRec.cache0 dblocks.
+  Theorem rep_clear_icache: forall bxps IFs ixp flist ilist frees allocc mscache icache,
+    rep bxps IFs ixp flist ilist frees allocc mscache icache =p=>
+    rep bxps IFs ixp flist ilist frees allocc mscache INODE.IRec.cache0.
   Proof.
     unfold BFILE.rep. cancel.
     apply INODE.rep_clear_cache.
   Qed.
 
-  Lemma file_dirty_pred_neq: forall i n a m,
-    i <> n -> file_dirty_pred n a m -> notindomain i m.
+  Lemma smrep_init: forall n,
+    emp <=p=> arrayN (smrep_single_helper (Map.empty _)) 0 (repeat INODE.inode0 n).
   Proof.
-    unfold file_dirty_pred.
+    intros n.
+    generalize 0 as st.
+    induction n; cbn; auto.
     intros.
-    destruct H0; cbv.
-    unfold lift_empty in *.
-    destruct_lift H0.
-    eauto.
-    destruct_lift H0.
-    eapply ptsto_ne; eauto.
-  Qed.
-
-  Fact file_dirty_pred_keep_blocks: forall f f' i i' inum,
-    BFData f' = BFData f ->
-    INODE.IBlocks i' = INODE.IBlocks i ->
-    file_dirty_pred inum (f', i') <=p=> file_dirty_pred inum (f, i).
-  Proof.
-    unfold file_dirty_pred, file_dirty_block.
-    intros; cbn.
-    setoid_rewrite H.
-    split; cancel; rewrite H0 in *; cancel.
-  Qed.
-
-  Fact file_dirty_pred_append_block: forall f f' i i' inum v bn,
-    BFData f' = BFData f ++ [(v, nil)]->
-    INODE.IBlocks i' = INODE.IBlocks i ++ [bn] ->
-    length (BFData f) = length (INODE.IBlocks i) ->
-    file_dirty_pred inum (f, i) =p=> file_dirty_pred inum (f', i').
-  Proof.
-    unfold file_dirty_pred, file_dirty_block.
-    intros; cbn.
-    rewrite H, H0. cancel.
-    autorewrite with lists in *.
-    or_l. cancel.
-    destruct (lt_dec off (length (BFData f))).
-    rewrite selN_app1 by auto.
-    eapply H5.
-    omega.
-    rewrite SetFacts.empty_iff; auto.
-    rewrite selN_app2 by omega.
-    destruct (off - _); auto.
-    or_r. cancel.
-    rewrite map_app.
-    rewrite fold_right_app.
-    eapply SetFacts.Subset_trans; eauto.
+    specialize (IHn (S st)).
+    rewrite IHn.
+    unfold smrep_single_helper, smrep_single.
     cbn.
-    cbv [SS.Subset].
-    intros.
-    eapply set_in_fold_right_add.
-    rewrite <- in_fold_right_iff in *.
-    rewrite InA_alt in *.
-    deex. auto.
-    autorewrite with lists in *.
-    cbn [length] in *.
-    destruct (lt_dec off (length (BFData f))).
-    rewrite selN_app1 in * by omega.
-    eapply H6; eauto; omega.
-    rewrite selN_app2 by omega.
-    destruct (off - _); auto.
-  Qed.
-
-  Lemma file_dirty_pred_keep_firstn_empty: forall f f' i i' inum n m,
-    BFData f' = firstn n (BFData f) ->
-    INODE.IBlocks i' = firstn n (INODE.IBlocks i) ->
-    length (BFData f) = length (INODE.IBlocks i) ->
-    file_dirty_pred inum (f, i) m ->
-    m inum = None ->
-    file_dirty_pred inum (f', i') m.
-  Proof.
-    intros.
-    destruct (lt_dec n (length (BFData f))).
-    + unfold file_dirty_pred, file_dirty_block in *.
-      intros; cbn.
-      rewrite H, H0 in *.
-      denote or as Ho; destruct Ho.
-      cbv [lift_empty] in *.
-      left.
-      intuition eauto.
-      apply subset_empty.
-      rewrite firstn_length in *.
-      rewrite Nat.min_glb_lt_iff in *.
-      rewrite selN_firstn by omega.
-      cbn in *.
-      denote snd as Hs. eapply Hs.
-      omega.
-      rewrite SetFacts.empty_iff. auto.
-      denote ptsto as Hp.
-      destruct_lift Hp.
-      cbv [ptsto] in *.
-      intuition congruence.
-    + rewrite firstn_oob in * by omega.
-      cbv [file_dirty_pred file_dirty_block snd fst] in *.
-      rewrite H, H0 in *.
-      eauto.
-  Unshelve.
-    all: exact unit.
-  Qed.
-
-  Lemma file_dirty_block_keep_firstn_nonempty: forall f f' i i' n blks,
-    BFData f' = firstn n (BFData f) ->
-    INODE.IBlocks i' = firstn n (INODE.IBlocks i) ->
-    length (BFData f) = length (INODE.IBlocks i) ->
-    let blks' := SS.inter blks (fold_right SS.add SS.empty (map (@wordToNat _) (firstn n (INODE.IBlocks i)))) in
-    file_dirty_block blks f i ->
-    file_dirty_block blks' f' i'.
-  Proof.
-    cbn; intros.
-    destruct (lt_dec n (length (BFData f))).
-    + unfold file_dirty_block in *.
-      rewrite H, H0 in *.
-      intuition.
-      rewrite <- firstn_map_comm.
-      eapply subset_inter_r.
-      rewrite firstn_length in *.
-      rewrite Nat.min_glb_lt_iff in *.
-      rewrite selN_firstn by omega.
-      denote nil as Hn. eapply Hn.
-      omega.
-      intros.
-      denote False as Hf. eapply Hf.
-      rewrite SS.inter_spec.
-      rewrite selN_firstn by omega.
-      intuition auto.
-      eapply set_in_fold_right_add.
-      erewrite <- selN_firstn.
-      erewrite <- selN_map.
-      eapply in_selN.
-      all: autorewrite with lists core.
-      all: try rewrite Nat.min_glb_lt_iff; intuition auto.
-    + rewrite firstn_oob in * by omega.
-      cbv [file_dirty_pred file_dirty_block] in *.
-      cbn [fst snd] in *.
-      rewrite H, H0 in *.
-      intuition.
-      eapply subset_inter_r.
-  Unshelve.
-    all: eauto.
-    all: exact unit.
-  Qed.
-
-  Lemma arrayN_file_match_oob: forall l i n m,
-    i < n \/ i >= n + length l ->
-    arrayN file_dirty_pred n l m -> notindomain i m.
-  Proof.
-    induction l; cbn; intros; auto.
-    cbv in *; auto.
-    revert H0.
-    unfold_sep_star.
-    intros.
-    destruct H0 as [?[?[?[?[?] ] ] ] ]; subst.
-    rewrite notindomain_mem_union.
-    split.
-    eapply file_dirty_pred_neq; [|eauto]; omega.
-    eapply IHl; [|eauto]; omega.
-  Qed.
-
-  Lemma dirty_blocks_rep_keep_blocks: forall flist ilist inum f i,
-    length ilist = length flist ->
-    INODE.IBlocks i = INODE.IBlocks (selN ilist inum INODE.inode0) ->
-    BFData f = BFData (selN flist inum bfile0) ->
-    dirty_blocks_rep (updN flist inum f) (updN ilist inum i) <=p=>
-    dirty_blocks_rep flist ilist.
-  Proof.
-    intros.
-    unfold dirty_blocks_rep.
-    rewrite combine_updN.
-    destruct (lt_dec inum (length flist)).
-    erewrite arrayN_except_upd, arrayN_except by simplen.
-    erewrite selN_combine by auto; cbn.
-    rewrite file_dirty_pred_keep_blocks; eauto.
-    rewrite updN_oob by simplen.
-    auto.
-  Qed.
-
-  Lemma dirty_blocks_rep_append_synced: forall flist ilist inum f i v off,
-    length ilist = length flist ->
-    INODE.IBlocks i = INODE.IBlocks (selN ilist inum INODE.inode0) ++ [off] ->
-    BFData f = BFData (selN flist inum bfile0) ++ [(v, nil)] ->
-    length (INODE.IBlocks (selN ilist inum INODE.inode0)) = length (BFData (selN flist inum bfile0)) ->
-    dirty_blocks_rep flist ilist =p=>
-    dirty_blocks_rep (updN flist inum f) (updN ilist inum i).
-  Proof.
-    intros.
-    unfold dirty_blocks_rep.
-    rewrite combine_updN.
-    destruct (lt_dec inum (length flist)).
-    erewrite arrayN_except_upd, arrayN_except by simplen.
-    erewrite selN_combine by auto; cbn.
-    rewrite file_dirty_pred_append_block; eauto.
-    rewrite updN_oob by simplen.
-    auto.
-  Qed.
-
-  Lemma arrayN_ex_file_dirty_notindomain: forall l n m,
-    arrayN_ex file_dirty_pred l n m -> notindomain n m.
-  Proof.
-    unfold arrayN_ex.
-    unfold_sep_star.
-    intros.
-    repeat deex.
-    rewrite notindomain_mem_union.
-    pose proof (Min.min_spec n (length l)).
-    split.
-    eapply arrayN_file_match_oob; [|eauto].
-    autorewrite with core.
-    omega.
-    eapply arrayN_file_match_oob; [|eauto].
-    autorewrite with core.
-    omega.
-  Qed.
-
-  Lemma dirty_blocks_rep_init: forall n bfiles,
-    dirty_blocks_rep bfiles (repeat INODE.inode0 n) Mem.empty_mem.
-  Proof.
-    unfold dirty_blocks_rep.
-    intros n bfiles.
-    generalize 0.
-    generalize dependent bfiles.
-    induction n; cbn; intros.
-    rewrite combine_l_nil.
-    cbv; auto.
-    destruct bfiles; cbn in *; try omega.
-    cbv; auto.
-    eapply sep_star_comm.
-    eapply sep_star_or_distr.
-    left.
-    eapply pimpl_apply; [| eapply IHn].
-    cancel.
-    unfold file_dirty_block; cbn.
-    intuition eauto; try reflexivity; omega.
-  Qed.
-
-  Lemma dirty_blocks_rep_firstn: forall flist ilist inum f' i' n (dblocks : DBlocks_type),
-    length flist = length ilist ->
-    let i := (selN ilist inum INODE.inode0) in
-    let f := (selN flist inum bfile0) in
-    BFData f' = firstn n (BFData f) ->
-    INODE.IBlocks i' = firstn n (INODE.IBlocks i) ->
-    length (INODE.IBlocks i) = length (BFData f) ->
-    dirty_blocks_rep flist ilist (M.mm _ dblocks) ->
-    dirty_blocks_rep (updN flist inum f') (updN ilist inum i') (M.mm _ (keep_dirty inum (map (@wordToNat _) (firstn n (INODE.IBlocks i))) dblocks)).
-  Proof.
-    cbv [dirty_blocks_rep].
-    intros.
-    rewrite combine_updN.
-    denote arrayN as Ha.
-    destruct (lt_dec inum (length ilist)).
-    eapply arrayN_except in Ha; simplen.
-    eapply arrayN_except_upd; simplen.
-    erewrite selN_combine in * by auto.
-    unfold keep_dirty.
-    destruct Map.find eqn:?.
-    rewrite M.mm_add_upd.
-    {
-      unfold file_dirty_pred at 2 in Ha.
-      eapply sep_star_or_distr in Ha.
-      destruct Ha; destruct_lifts;
-        denote arrayN_ex as Ha.
-      eapply arrayN_ex_file_dirty_notindomain in Ha.
-      cbv [notindomain M.mm] in *.
-      congruence.
-      eapply ptsto_upd' in Ha as Hb.
-      eapply pimpl_apply; [|exact Hb].
-      unfold file_dirty_pred.
-      cancel.
-      or_r.
-      cancel.
-      denote file_dirty_block as Hp.
-      eapply file_dirty_block_keep_firstn_nonempty in Hp; eauto.
-      eapply ptsto_valid' in Ha.
-      match goal with H: M.mm _ _ _ = Some ?a, H': Map.find _ _ = Some ?b |- _ =>
-        cbv [M.mm] in H;
-        replace a with b in * by congruence
-      end.
-      eauto.
-    }
-    denote arrayN_ex as Hs.
-    revert Hs.
-    unfold_sep_star.
-    intuition (repeat deex; repeat eexists); eauto.
-    eapply file_dirty_pred_keep_firstn_empty; eauto.
-    assert (mem_union m1 m2 inum = None).
-    denote M.mm as Hm; rewrite <- Hm.
-    cbv [M.mm]; eauto.
-    eapply mem_union_none_sel; eauto.
-    rewrite updN_oob by simplen.
-    eapply arrayN_file_match_oob with (i := inum) in Ha as ?.
-    unfold keep_dirty.
-    cbv [notindomain M.mm] in * |-.
-    denote Map.find as Hm.
-    rewrite Hm; auto.
-    right.
-    simplen.
-  Qed.
-
-  Lemma file_dirty_block_add: forall bn off s f i b v,
-    BFData b = updN (BFData f) off v ->
-    off < length (INODE.IBlocks i) ->
-    bn = # (selN (INODE.IBlocks i) off $0) ->
-    file_dirty_block s f i ->
-    file_dirty_block (SS.add bn s) b i.
-  Proof.
-    cbv [file_dirty_block] in *.
-    intuition subst; eauto.
-    eapply subset_add_in_l; filldef; eauto.
-    eapply set_in_fold_right_add.
-    eauto using in_map, in_selN.
-    rewrite SS.add_spec in *.
-    intuition eauto.
-    match goal with a: addr, b: addr |- _ => destruct (addr_eq_dec a b); subst end.
-    intuition.
-    denote (BFData _ = _) as Hb.
-    rewrite Hb.
-    rewrite selN_updN_ne by auto.
-    denote snd as Hs.
-    eapply Hs; eauto.
-  Unshelve.
-    all: eauto.
-    all: try exact unit.
-    all: exact nil.
+    split; cancel.
+    unfold SS.For_all. intros.
+    rewrite <- SetFacts.empty_iff; eauto.
   Qed.
 
   Definition block_belong_to_file ilist bn inum off :=
     off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
-
-  Lemma dirty_blocks_rep_upd: forall flist ilist inum b dblocks bn off v,
-    inum < length flist -> length flist = length ilist ->
-    block_belong_to_file ilist bn inum off ->
-    BFData b = updN (BFData (selN flist inum bfile0)) off v ->
-    dirty_blocks_rep flist ilist (M.mm _ dblocks) ->
-    dirty_blocks_rep (updN flist inum b) ilist (M.mm _ (put_dirty inum bn dblocks)).
-  Proof.
-    cbv [dirty_blocks_rep put_dirty get_dirty].
-    intros.
-    erewrite combine_updN_l.
-    rewrite M.mm_add_upd.
-    eapply arrayN_except_upd; [simplen|].
-    denote arrayN as Ha.
-    eapply arrayN_except in Ha; [|simplen].
-    eapply sep_star_or_distr in Ha.
-    erewrite selN_combine in * by eauto.
-    destruct Ha; destruct_lifts; denote arrayN_ex as Ha.
-    eapply notindomain_mem_upd; eauto.
-    eauto using arrayN_ex_file_dirty_notindomain.
-    eapply pimpl_or_r; [right; reflexivity|].
-    eexists.
-    eapply sep_star_lift_apply'.
-    eapply ptsto_mem_is.
-    eapply arrayN_ex_file_dirty_notindomain in Ha as ?.
-    cbv [M.mm notindomain] in *.
-    destruct Map.find eqn:?.
-    congruence.
-    cbv [block_belong_to_file fst snd] in *.
-    intuition subst.
-    eapply file_dirty_block_add; eauto.
-    unfold file_dirty_pred at 2.
-    cbn.
-    eapply sep_star_or_distr. right.
-    eapply sep_star_comm.
-    eapply pimpl_exists_r_star.
-    eexists.
-    eapply sep_star_assoc_2.
-    eapply ptsto_upd.
-    pred_apply; cancel.
-    cbv [block_belong_to_file] in *.
-    intuition subst.
-    eapply file_dirty_block_add; eauto.
-    denote ptsto as Hp.
-    eapply ptsto_valid' in Hp.
-    cbv [M.mm] in Hp.
-    rewrite Hp.
-    eauto.
-  Qed.
-
-  Lemma dirty_blocks_rep_upd_synced: forall flist ilist inum b off v,
-    inum < length flist -> length flist = length ilist ->
-    BFData b = updN (BFData (selN flist inum bfile0)) off (v, []) ->
-    dirty_blocks_rep flist ilist =p=>
-    dirty_blocks_rep (updN flist inum b) ilist.
-  Proof.
-    cbv [dirty_blocks_rep put_dirty get_dirty].
-    intros.
-    erewrite combine_updN_l.
-    rewrite arrayN_except_upd by simplen.
-    rewrite arrayN_except by simplen.
-    erewrite selN_combine in * by eauto.
-    denote BFData as Hb.
-    cancel.
-    unfold file_dirty_pred, file_dirty_block.
-    setoid_rewrite Hb.
-    cancel.
-    or_l.
-    cancel.
-    match goal with a: addr, b: addr |- _ => destruct (addr_eq_dec a b); subst end.
-    match goal with |- context [updN ?a ?b] => destruct (lt_dec b (length a)) end.
-    2: rewrite updN_oob, selN_oob by omega; eauto.
-    rewrite selN_updN_eq; auto.
-    rewrite selN_updN_ne by auto.
-    filldef.
-    eauto.
-    or_r.
-    cancel.
-    match goal with a: addr, b: addr |- _ => destruct (addr_eq_dec a b); subst end.
-    match goal with |- context [updN ?a ?b] => destruct (lt_dec b (length a)) end.
-    2: rewrite updN_oob, selN_oob by omega; eauto.
-    rewrite selN_updN_eq; auto.
-    rewrite selN_updN_ne by auto.
-    filldef.
-    eauto.
-  Qed.
 
   Definition block_is_unused freeblocks (bn : addr) := In bn freeblocks.
 
@@ -850,8 +450,8 @@ Module BFILE.
     { block_is_unused freeblocks bn } + { ~ block_is_unused freeblocks bn }
     := In_dec addr_eq_dec bn freeblocks.
 
-  Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp files ilist free allocc mscache icache dblocks m flag bn inum off,
-    (F * rep fsxp Ftop files ilist free allocc mscache icache dblocks)%pred m ->
+  Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp IFs files ilist free allocc mscache icache m flag bn inum off,
+    (F * rep fsxp IFs Ftop files ilist free allocc mscache icache)%pred m ->
     block_is_unused (pick_balloc free flag) bn ->
     block_belong_to_file ilist bn inum off ->
     False.
@@ -968,8 +568,8 @@ Module BFILE.
     auto.
   Qed.
 
-  Theorem rep_used_block_eq : forall F bxps ixp flist ilist m bn inum off frees allocc mscache icache dblocks,
-    (F * rep bxps ixp flist ilist frees allocc mscache icache dblocks)%pred (list2nmem m) ->
+  Theorem rep_used_block_eq : forall F bxps IFs ixp flist ilist m bn inum off frees allocc mscache icache,
+    (F * rep bxps IFs ixp flist ilist frees allocc mscache icache)%pred (list2nmem m) ->
     block_belong_to_file ilist bn inum off ->
     selN (BFData (selN flist inum bfile0)) off ($0, nil) = selN m bn ($0, nil).
   Proof.
@@ -1008,13 +608,225 @@ Module BFILE.
     all: eauto.
   Qed.
 
-  Theorem rep_safe_used: forall F bxps ixp flist ilist m bn inum off frees allocc mscache icache dblocks v,
-    (F * rep bxps ixp flist ilist frees allocc mscache icache dblocks)%pred (list2nmem m) ->
+  Lemma smrep_single_helper_put_dirty_oob: forall inum bn dblocks st ino,
+    inum <> st ->
+    smrep_single_helper (put_dirty inum bn dblocks) st ino <=p=>
+    smrep_single_helper dblocks st ino.
+  Proof.
+    unfold smrep_single_helper.
+    unfold put_dirty.
+    intros.
+    rewrite MapFacts.add_neq_o by auto.
+    auto.
+  Qed.
+
+  Lemma arrayN_smrep_single_helper_put_dirty_oob: forall ilist st inum bn dblocks,
+    inum < st \/ inum >= st + length ilist ->
+    arrayN (smrep_single_helper (put_dirty inum bn dblocks)) st ilist <=p=>
+    arrayN (smrep_single_helper dblocks) st ilist.
+  Proof.
+    induction ilist; cbn.
+    split; cancel.
+    intros.
+    rewrite smrep_single_helper_put_dirty_oob by omega.
+    rewrite IHilist by omega.
+    auto.
+  Qed.
+
+  Lemma arrayN_ex_smrep_single_helper_put_dirty: forall ilist inum bn dblocks,
+    arrayN_ex (smrep_single_helper (put_dirty inum bn dblocks)) ilist inum <=p=>
+    arrayN_ex (smrep_single_helper dblocks) ilist inum.
+  Proof.
+    unfold arrayN_ex.
+    intros.
+    destruct (lt_dec inum (length ilist)).
+    - rewrite arrayN_smrep_single_helper_put_dirty_oob.
+      rewrite arrayN_smrep_single_helper_put_dirty_oob.
+      auto.
+      autorewrite with core. omega.
+      rewrite firstn_length_l; omega.
+    - rewrite skipn_oob by omega.
+      rewrite firstn_oob by omega.
+      rewrite arrayN_smrep_single_helper_put_dirty_oob by omega.
+      rewrite arrayN_smrep_single_helper_put_dirty_oob by omega.
+      auto.
+  Qed.
+
+Lemma selN_NoDup_notin_firstn: forall T (l : list T) i x d,
+  i < length l ->
+  NoDup l ->
+  selN l i d = x ->
+  ~In x (firstn i l).
+Proof.
+  induction l; cbn; intros.
+  omega.
+  subst.
+  destruct i; cbn.
+  auto.
+  inversion H0; subst.
+  intuition subst.
+  eapply H3.
+  eapply in_selN; omega.
+  eapply IHl; eauto; omega.
+Qed.
+
+Lemma selN_NoDup_notin_skipn: forall T (l : list T) i x d,
+  i < length l ->
+  NoDup l ->
+  selN l i d = x ->
+  ~In x (skipn (S i) l).
+Proof.
+  induction l; cbn; intros.
+  omega.
+  subst.
+  inversion H0; subst.
+  destruct i; cbn.
+  auto.
+  intuition subst.
+  eapply IHl; eauto; omega.
+Qed.
+
+Lemma selN_NoDup_notin_removeN: forall T (l : list T) i x d,
+  i < length l ->
+  selN l i d = x ->
+  NoDup l ->
+  ~In x (removeN l i).
+Proof.
+  intros.
+  unfold removeN.
+  rewrite in_app_iff.
+  intuition.
+  eapply selN_NoDup_notin_firstn; eauto.
+  eapply selN_NoDup_notin_skipn; eauto.
+Qed.
+
+
+  Lemma smrep_single_add: forall dirty ino bn,
+    In bn (INODE.IBlocks ino) ->
+    smrep_single dirty ino =p=> smrep_single (SS.add #bn dirty) ino.
+  Proof.
+    unfold smrep_single.
+    cancel.
+    eapply in_selN_exists in H; deex.
+    rewrite listpred_nodup_piff.
+    2: eauto using weq.
+    cancel.
+    eapply listpred_pimpl_replace; cancel.
+    intuition.
+    destruct_lifts.
+    eapply ptsto_conflict with (a := #y) (m := m').
+    pred_apply; cancel.
+    unfold SS.For_all in *.
+    intuition.
+    rewrite SS.add_spec in *.
+    intuition. subst.
+    eapply in_map; auto.
+  Unshelve.
+    all: apply wzero.
+  Qed.
+
+
+  Lemma smrep_single_helper_put_dirty: forall inum bn dblocks ino,
+    In bn (INODE.IBlocks ino) ->
+    smrep_single_helper dblocks inum ino =p=>
+    smrep_single_helper (put_dirty inum #bn dblocks) inum ino.
+  Proof.
+    unfold smrep_single_helper.
+    unfold put_dirty.
+    intros.
+    rewrite MapFacts.add_eq_o by auto.
+    unfold get_dirty.
+    apply smrep_single_add. auto.
+  Qed.
+
+  Lemma smrep_upd: forall frees dblocks ilist inum bn,
+    goodSize addrlen bn ->
+    In $bn (INODE.IBlocks (selN ilist inum INODE.inode0)) ->
+    inum < length ilist ->
+    smrep frees dblocks ilist =p=> smrep frees (put_dirty inum bn dblocks) ilist.
+  Proof.
+    unfold smrep.
+    intros.
+    cancel.
+    rewrite arrayN_except with (i := inum) by auto.
+    rewrite arrayN_except with (i := inum) by auto.
+    rewrite arrayN_ex_smrep_single_helper_put_dirty.
+    cancel.
+    rewrite smrep_single_helper_put_dirty; eauto.
+    rewrite wordToNat_natToWord_idempotent' by eauto.
+    cancel.
+  Qed.
+
+  Lemma smrep_single_add_new: forall dirty ino ino' bn b,
+    INODE.IBlocks ino' = INODE.IBlocks ino ++ [bn] ->
+    #bn |->b * smrep_single dirty ino =p=> smrep_single (SS.add #bn dirty) ino'.
+  Proof.
+    unfold smrep_single.
+    cancel.
+    rewrite H.
+    rewrite listpred_app; cbn.
+    cancel.
+    apply listpred_pimpl_replace.
+    intros.
+    eapply in_selN_exists in H1; deex.
+    cancel.
+    rewrite H.
+    unfold SS.For_all in *.
+    intros x; intros.
+    rewrite map_app.
+    apply in_or_app.
+    rewrite SS.add_spec in *.
+    intuition. subst.
+    right.
+    cbn; auto.
+  Unshelve.
+    all: apply wzero.
+  Qed.
+
+
+  Lemma smrep_single_helper_add_dirty: forall inum bn dblocks ino ino' b,
+    INODE.IBlocks ino' = INODE.IBlocks ino ++ [bn] ->
+    #bn |-> b * smrep_single_helper dblocks inum ino =p=>
+    smrep_single_helper (put_dirty inum #bn dblocks) inum ino'.
+  Proof.
+    unfold smrep_single_helper.
+    unfold put_dirty.
+    intros.
+    rewrite MapFacts.add_eq_o by auto.
+    unfold get_dirty.
+    eapply smrep_single_add_new; auto.
+  Qed.
+
+  Lemma smrep_upd_add: forall frees dblocks ilist ilist' ino' inum bn b,
+    goodSize addrlen bn ->
+    inum < length ilist ->
+    let ino := (selN ilist inum INODE.inode0) in
+    ilist' = updN ilist inum ino' ->
+    INODE.IBlocks ino' = INODE.IBlocks ino ++ [$bn] ->
+    bn |-> b * smrep frees dblocks ilist =p=> smrep frees (put_dirty inum bn dblocks) ilist'.
+  Proof.
+    unfold smrep.
+    intros.
+    cancel.
+    rewrite arrayN_except with (i := inum) by auto.
+    rewrite arrayN_except_upd.
+    rewrite arrayN_ex_smrep_single_helper_put_dirty.
+    cancel.
+    replace bn with (# (@natToWord addrlen bn)) in *.
+    rewrite natToWord_wordToNat in *.
+    rewrite smrep_single_helper_add_dirty. cancel.
+    all: eauto.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+  Qed.
+
+
+  Theorem rep_safe_used: forall F bxps IFs ixp flist ilist m bn inum off frees allocc mscache icache v,
+    (F * rep bxps IFs ixp flist ilist frees allocc mscache icache)%pred (list2nmem m) ->
     block_belong_to_file ilist bn inum off ->
     let f := selN flist inum bfile0 in
     let f' := mk_bfile (updN (BFData f) off v) (BFAttr f) (BFCache f) in
     let flist' := updN flist inum f' in
-    (F * rep bxps ixp flist' ilist frees allocc mscache icache (put_dirty inum bn dblocks))%pred (list2nmem (updN m bn v)).
+    (F * rep bxps IFs ixp flist' ilist frees allocc mscache icache)%pred (list2nmem (updN m bn v)).
   Proof.
     unfold rep; intros.
     destruct_lift H.
@@ -1064,7 +876,6 @@ Module BFILE.
     rewrite selN_updN_eq by ( rewrite Heq; rewrite map_length; eauto ).
     cancel.
 
-    eapply dirty_blocks_rep_upd; cbn; eauto.
     rewrite locked_eq in *; unfold cache_rep in *.
     pred_apply.
     rewrite map_updN.
@@ -1077,10 +888,10 @@ Module BFILE.
     all: try exact None.
   Qed.
 
-  Theorem rep_safe_unused: forall F bxps ixp flist ilist m frees allocc mscache icache dblocks bn v flag,
-    (F * rep bxps ixp flist ilist frees allocc mscache icache dblocks)%pred (list2nmem m) ->
+  Theorem rep_safe_unused: forall F bxps IFs ixp flist ilist m frees allocc mscache icache bn v flag,
+    (F * rep bxps IFs ixp flist ilist frees allocc mscache icache)%pred (list2nmem m) ->
     block_is_unused (pick_balloc frees flag) bn ->
-    (F * rep bxps ixp flist ilist frees allocc mscache icache dblocks)%pred (list2nmem (updN m bn v)).
+    (F * rep bxps IFs ixp flist ilist frees allocc mscache icache)%pred (list2nmem (updN m bn v)).
   Proof.
     unfold rep, pick_balloc, block_is_unused; intros.
     destruct_lift H.
@@ -1145,8 +956,8 @@ Module BFILE.
     all: apply addr_eq_dec.
   Qed.
 
-  Theorem block_belong_to_file_bfdata_length : forall bxp ixp flist ilist frees allocc mscache icache dblocks m F inum off bn,
-    (F * rep bxp ixp flist ilist frees allocc mscache icache dblocks)%pred m ->
+  Theorem block_belong_to_file_bfdata_length : forall bxp IFs ixp flist ilist frees allocc mscache icache m F inum off bn,
+    (F * rep bxp IFs ixp flist ilist frees allocc mscache icache)%pred m ->
     block_belong_to_file ilist bn inum off ->
     off < length (BFData (selN flist inum BFILE.bfile0)).
   Proof.
@@ -1470,62 +1281,57 @@ Module BFILE.
     eapply bfcache_remove' in H; eauto.
   Qed.
 
-  Lemma rep_bfcache_remove : forall bxps ixp flist ilist frees allocc mscache icache dblocks inum f F,
+  Lemma rep_bfcache_remove : forall bxps IFs ixp flist ilist frees allocc mscache icache inum f F,
     (F * inum |-> f)%pred (list2nmem flist) ->
-    rep bxps ixp flist ilist frees allocc mscache icache dblocks =p=>
-    rep bxps ixp (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |}) ilist frees allocc
-      (BFcache.remove inum mscache) icache dblocks.
+    rep bxps IFs ixp flist ilist frees allocc mscache icache =p=>
+    rep bxps IFs ixp (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |}) ilist frees allocc
+      (BFcache.remove inum mscache) icache.
   Proof.
     unfold rep; intros.
     norml. unfold stars; cbn.
     rewrite listmatch_length_pimpl.
     cancel.
-    3: eapply bfcache_remove'; eauto.
     seprewrite.
     erewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 2.
     rewrite listmatch_length_pimpl; cancel.
     eapply listmatch_updN_selN; try simplen.
     unfold file_match; cancel.
-    unfold dirty_blocks_rep.
-    erewrite combine_updN_l.
-    rewrite arrayN_except_upd, arrayN_except by simplen.
-    seprewrite.
-    rewrite selN_combine by simplen.
-    rewrite <- file_dirty_pred_keep_blocks.
-    filldef.
-    cancel.
-    all: reflexivity.
+    eapply bfcache_remove'.
+    eauto.
+    sepauto.
   Unshelve.
-    exact INODE.inode0.
+    all: eauto using INODE.inode0.
   Qed.
 
   Hint Resolve bfcache_init bfcache_upd.
 
   Ltac assignms :=
     match goal with
-    [ fms : memstate |- LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (MSLL ?e) _ ] =>
+    [ fms : memstate |- LOG.rep _ _ _ ?ms _ _ =p=> LOG.rep _ _ _ (MSLL ?e) _ _ ] =>
       is_evar e; eassign (mk_memstate (MSAlloc fms) ms (MSAllocC fms) (MSIAllocC fms) (MSICache fms) (MSCache fms) (MSDBlocks fms)); simpl; eauto
     end.
 
-  Local Hint Extern 1 (LOG.rep _ _ _ ?ms _  =p=> LOG.rep _ _ _ (MSLL ?e) _ ) => assignms.
+  Local Hint Extern 1 (LOG.rep _ _ _ ?ms _ _ =p=> LOG.rep _ _ _ (MSLL ?e) _ _ ) => assignms.
 
   (*** specification *)
 
   Local Opaque Nat.div.
 
   Theorem shuffle_allocs_ok : forall lxp bxps ms cms,
-    {< F Fm m0 m frees,
+    {< F Fm Fs m0 sm m frees,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
            [[[ m ::: (Fm * BALLOCC.rep (fst bxps) (fst frees) (BALLOCC.mk_memstate ms (fst cms)) *
                            BALLOCC.rep (snd bxps) (snd frees) (BALLOCC.mk_memstate ms (snd cms))) ]]] *
+           [[ (Fs * BALLOCC.smrep (fst frees) * BALLOCC.smrep (snd frees))%pred sm ]] *
            [[ forall bn, bn < (BmapNBlocks (fst bxps)) * valulen -> In bn (fst frees) ]] *
            [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
     POST:hm' RET:^(ms',cms')  exists m' frees',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm hm' *
            [[[ m' ::: (Fm * BALLOCC.rep (fst bxps) (fst frees') (BALLOCC.mk_memstate ms' (fst cms')) *
-                            BALLOCC.rep (snd bxps) (snd frees') (BALLOCC.mk_memstate ms' (snd cms'))) ]]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+                            BALLOCC.rep (snd bxps) (snd frees') (BALLOCC.mk_memstate ms' (snd cms'))) ]]] *
+           [[ (Fs * BALLOCC.smrep (fst frees') * BALLOCC.smrep (snd frees'))%pred sm ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} shuffle_allocs lxp bxps ms cms.
   Proof.
     unfold shuffle_allocs.
@@ -1567,10 +1373,12 @@ Module BFILE.
   Local Hint Resolve INODE.IRec.Defs.items_per_val_gt_0 INODE.IRec.Defs.items_per_val_not_0 valulen_gt_0.
 
   Theorem init_ok : forall lxp bxps ibxp ixp ms,
-    {< F Fm m0 m l,
+    {< F Fm Fs m0 sm m l sl,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
            [[[ m ::: (Fm * arrayN (@ptsto _ _ _) 0 l) ]]] *
+           [[ (Fs * arrayN (@ptsto _ _ _) 0 sl)%pred sm ]] *
+           [[ length sl = length l ]] *
            [[ let data_bitmaps := (BmapNBlocks (fst bxps)) in
               let inode_bitmaps := (IAlloc.Sig.BMPLen ibxp) in
               let data_blocks := (data_bitmaps * valulen)%nat in
@@ -1588,18 +1396,20 @@ Module BFILE.
               data_bitmaps <= valulen * valulen /\
              inode_bitmaps <= valulen * valulen
            ]]
-    POST:hm' RET:ms'  exists m' n frees freeinodes freeinode_pred,
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxps ixp (repeat bfile0 n) (repeat INODE.inode0 n) frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')*
+    POST:hm' RET:ms'  exists m' n frees freeinodes freeinode_pred IFs Fs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+           [[[ m' ::: (Fm * rep bxps IFs ixp (repeat bfile0 n) (repeat INODE.inode0 n) frees (MSAllocC ms') (MSCache ms') (MSICache ms') *
                             @IAlloc.rep bfile freepred ibxp freeinodes freeinode_pred (MSIAlloc ms')) ]]] *
+            (* we don't care about the allocator bitmap blocks after this, so shove them into a frame *)
+           [[ (Fs' * IFs * smrep frees (MSDBlocks ms') (repeat INODE.inode0 n))%pred sm ]] *
            [[ n = ((IXLen ixp) * INODE.IRecSig.items_per_val)%nat /\ n > 1 ]] *
            [[ forall dl, length dl = n ->
                          Forall freepred dl ->
                          arrayN (@ptsto _ _ _) 0 dl =p=> freeinode_pred ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} init lxp bxps ibxp ixp ms.
   Proof.
-    unfold init, rep.
+    unfold init, rep, smrep.
 
     (* BALLOC.init_nofree *)
     prestep. norm. cancel.
@@ -1609,6 +1419,7 @@ Module BFILE.
     erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
     (* data alloc2 is the last chunk *)
     apply sep_star_assoc.
+    eauto.
     omega. omega.
     rewrite skipn_length; omega.
 
@@ -1619,6 +1430,14 @@ Module BFILE.
     erewrite arrayN_split with (i := (BmapNBlocks bxps_1) * valulen) at 1; repeat rewrite Nat.add_0_l.
     (* data region is the first chunk, and data alloc1 is the last chunk *)
     eassign(BmapStart bxps_1); cancel.
+    pred_apply.
+    erewrite arrayN_split with (i := BmapStart bxps_2). repeat rewrite Nat.add_0_l.
+    erewrite arrayN_split with (i := BmapStart bxps_1) (a := firstn _ _). repeat rewrite Nat.add_0_l.
+    erewrite arrayN_split with (i := (BmapNBlocks bxps_1) * valulen) at 1; repeat rewrite Nat.add_0_l.
+    rewrite arrayN_listpred_seq by eauto. rewrite Nat.add_0_r.
+    repeat rewrite firstn_length.
+    substl (length sl).
+    cancel.
     omega.
     rewrite skipn_length.
     rewrite firstn_length_l; omega.
@@ -1647,6 +1466,7 @@ Module BFILE.
     prestep. norm. cancel.
     intuition simpl. pred_apply.
     substl (IXStart ixp); cancel.
+    denote BALLOCC.smrep as Hs. exact Hs.
 
     rewrite firstn_firstn, firstn_length, skipn_length, firstn_length.
     repeat rewrite Nat.min_l with (n := (BmapStart bxps_1)) by omega.
@@ -1663,7 +1483,7 @@ Module BFILE.
     (* post condition *)
     prestep; unfold IAlloc.rep; cancel.
     apply file_match_init_ok.
-    apply dirty_blocks_rep_init.
+    rewrite <- smrep_init. cancel.
 
     substl (IXLen ixp).
     apply Rounding.div_lt_mul_lt; auto.
@@ -1692,14 +1512,14 @@ Module BFILE.
   Qed.
 
   Theorem getlen_ok : forall lxp bxps ixp inum ms,
-    {< F Fm Fi m0 m f flist ilist allocc frees,
+    {< F Fm Fi m0 sm m f flist ilist IFs allocc frees,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxps ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           [[[ m ::: (Fm * rep bxps IFs ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[[ m ::: (Fm * rep bxps ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms)) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+           [[[ m ::: (Fm * rep bxps IFs ixp flist ilist frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[ r = length (BFData f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSCache ms = MSCache ms' ]] *
@@ -1707,7 +1527,7 @@ Module BFILE.
            [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSDBlocks ms = MSDBlocks ms' ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} getlen lxp ixp inum ms.
   Proof.
     unfold getlen, rep.
@@ -1727,14 +1547,14 @@ Module BFILE.
   Qed.
 
   Theorem getattrs_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m0 m flist ilist allocc frees f,
+    {< F Fm Fi m0 sm m flist ilist IFs allocc frees f,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           [[[ m ::: (Fm * rep bxp IFs ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+           [[[ m ::: (Fm * rep bxp IFs ixp flist ilist frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[ r = BFAttr f ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
@@ -1742,7 +1562,7 @@ Module BFILE.
            [[ MSCache ms = MSCache ms' ]] *
            [[ MSDBlocks ms = MSDBlocks ms' ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} getattrs lxp ixp inum ms.
   Proof.
     unfold getattrs, rep.
@@ -1782,14 +1602,14 @@ Module BFILE.
   Qed.
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
-    {< F Fm Ff m0 m flist ilist allocc frees f,
+    {< F Fm Ff m0 sm m flist ilist IFs allocc frees f,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxps ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           [[[ m ::: (Fm * rep bxps IFs ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Ff * inum |-> f) ]]] 
     POST:hm' RET:ms'  exists m' flist' f' ilist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxps ixp flist' ilist' frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+           [[[ m' ::: (Fm * rep bxps IFs ixp flist' ilist' frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a (BFCache f) ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
@@ -1799,7 +1619,7 @@ Module BFILE.
               let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]] *
            [[ treeseq_ilist_safe inum ilist ilist' ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} setattrs lxp ixp inum a ms.
   Proof.
     unfold setattrs, rep.
@@ -1842,14 +1662,14 @@ Module BFILE.
   Qed.
 
   Theorem updattr_ok : forall lxp bxps ixp inum kv ms,
-    {< F Fm Fi m0 m flist ilist frees allocc f,
+    {< F Fm Fi m0 sm m flist ilist IFs frees allocc f,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxps ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           [[[ m ::: (Fm * rep bxps IFs ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms'  exists m' flist' ilist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxps ixp flist' ilist' frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+           [[[ m' ::: (Fm * rep bxps IFs ixp flist' ilist' frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (INODE.iattr_upd (BFAttr f) kv) (BFCache f) ]] *
            [[ MSDBlocks ms = MSDBlocks ms' ]] *
@@ -1857,7 +1677,7 @@ Module BFILE.
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} updattr lxp ixp inum kv ms.
   Proof.
     unfold updattr, rep.
@@ -1891,21 +1711,21 @@ Module BFILE.
   Qed.
 
   Theorem read_ok : forall lxp bxp ixp inum off ms,
-    {< F Fm Fi Fd m0 m flist ilist frees allocc f vs,
+    {< F Fm Fi Fd m0 sm m flist ilist IFs frees allocc f vs,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
            [[ off < length (BFData f) ]] *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(ms', r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+           [[[ m ::: (Fm * rep bxp IFs ixp flist ilist frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ r = fst vs /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' /\ MSDBlocks ms = MSDBlocks ms' /\
               MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} read lxp ixp inum off ms.
   Proof.
     unfold read, rep.
@@ -1937,16 +1757,16 @@ Module BFILE.
 
 
   Theorem write_ok : forall lxp bxp ixp inum off v ms,
-    {< F Fm Fi Fd m0 m flist ilist frees allocc f vs0,
+    {< F Fm Fi Fd m0 sm m flist ilist IFs frees allocc f vs0,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
            [[ off < length (BFData f) ]] *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs0) ]]]
     POST:hm' RET:ms'  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxp ixp flist' ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs ixp flist' ilist frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) (BFCache f) ]] *
@@ -1954,7 +1774,7 @@ Module BFILE.
            [[ MSCache ms = MSCache ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} write lxp ixp inum off v ms.
   Proof.
     unfold write, rep.
@@ -1993,7 +1813,6 @@ Module BFILE.
     erewrite selN_map by simplen.
     cancel.
 
-    eapply dirty_blocks_rep_upd_synced; cbn; simplen.
     eauto.
     eauto.
 
@@ -2035,25 +1854,27 @@ Module BFILE.
 
 
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
-    {< F Fm Fi Fd m0 m flist ilist frees f,
+    {< F Fm Fi Fd Fs m0 sm m flist ilist IFs frees f,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           [[[ m ::: (Fm * rep bxp IFs ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[ (Fs * IFs * smrep frees (MSDBlocks ms) ilist)%pred sm ]] *
            [[[ (BFData f) ::: Fd ]]]
-    POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' /\ MSDBlocks ms = MSDBlocks ms' ]] *
+    POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] * exists m',
-           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-           [[ r = OK tt  ]] * exists flist' ilist' frees' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' \/
+           [[ r = OK tt  ]] * exists flist' ilist' frees' f' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[ (Fs * IFs' * smrep frees' (MSDBlocks ms') ilist')%pred sm ]] *
            [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> (v, nil)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ [(v, nil)]) (BFAttr f) (BFCache f) ]] *
            [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
                          ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
            [[ treeseq_ilist_safe inum ilist ilist' ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} grow lxp bxp ixp inum v ms.
   Proof.
     unfold grow.
@@ -2061,6 +1882,7 @@ Module BFILE.
     denote rep as Hr.
     rewrite rep_alt_equiv with (msalloc := MSAlloc ms) in Hr.
     unfold rep_alt in Hr; destruct_lift Hr.
+    rewrite smrep_alt_equiv with (b := MSAlloc ms) in *. unfold smrep_alt in *.
     extract. seprewrite; subst.
     denote removeN as Hx.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
@@ -2097,7 +1919,7 @@ Module BFILE.
 
       cancel.
 
-      4: sepauto.
+      3: sepauto.
       5: eauto.
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
@@ -2110,13 +1932,15 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOCC.bn_valid_goodSize; eauto.
       seprewrite.
-      unfold dirty_blocks_rep.
-      rewrite combine_updN, arrayN_except, arrayN_except_upd by simplen.
-      rewrite selN_combine by simplen.
-      cancel.
-      eapply file_dirty_pred_append_block; cbn; eauto.
       eapply bfcache_upd; eauto.
       eauto.
+      rewrite <- smrep_upd_add; eauto.
+      cancel.
+      unfold smrep. destruct MSAlloc; cancel.
+      eauto.
+      eapply BALLOCC.bn_valid_goodSize; eauto.
+      sepauto.
+      cbn; auto.
       apply list2nmem_app; eauto.
 
       2: eauto using grow_treeseq_ilist_safe.
