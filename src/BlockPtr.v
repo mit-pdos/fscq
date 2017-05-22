@@ -649,8 +649,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
     all : cancel.
   Qed.
 
-  Lemma indrep_n_tree_balloc_goodSize: forall F bxp freelist ms indlvl Fs ir l m,
-    (F * BALLOCC.rep bxp freelist ms * indrep_n_tree indlvl bxp Fs ir l)%pred m ->
+  Lemma indrep_n_tree_balloc_goodSize: forall F1 F2 bxp freelist ms indlvl Fs ir l m1 m2,
+    (F1 * BALLOCC.rep bxp freelist ms)%pred m1 ->
+     (F2 * indrep_n_tree indlvl bxp Fs ir l)%pred m2 ->
       goodSize addrlen ir.
   Proof.
     intros.
@@ -659,7 +660,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite indrep_n_tree_valid in * by auto.
     destruct_lifts.
     eapply BALLOCC.bn_valid_goodSize; eauto.
-    eassign m. pred_apply; cancel.
   Qed.
 
   Lemma indrep_n_tree_length: forall indlvl F ir l1 l2 lfs bxp Fs m,
@@ -1018,7 +1018,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Local Hint Extern 1 (goodSize _ _) => match goal with
   | [H: context [indrep_n_tree _ _ _ ?i] |- goodSize _ ?i ] =>
-    eapply indrep_n_tree_balloc_goodSize; eapply pimpl_apply; [| eapply H]; cancel
+    match goal with H' : context [BALLOCC.rep ?B ?l] |- _ =>
+      eapply indrep_n_tree_balloc_goodSize with (bxp := B) (freelist := l); eapply pimpl_apply;
+      [| exact H' | | exact H]; cancel
+    end
   end.
 
   Hint Rewrite le_plus_minus_r using auto.
@@ -3201,29 +3204,33 @@ Qed.
   Qed.
 
   Theorem indgrow_ok : forall lxp bxp ir off bn ms,
-    {< F Fm m0 m l0 l1 l2 freelist,
+    {< F Fm Fs m0 sm m l0 l1 l2 freelist IFs0 IFs1 IFs2,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm hm *
            [[ off < NBlocks - NDirect ]] * [[ bn <> $0 ]] *
-           [[[ m ::: (Fm * indrep_n_tree 0 bxp (IRIndPtr ir) l0 *
-                           indrep_n_tree 1 bxp (IRDindPtr ir) l1 *
-                           indrep_n_tree 2 bxp (IRTindPtr ir) l2 * BALLOCC.rep bxp freelist ms) ]]]
+           [[[ m ::: (Fm * indrep_n_tree 0 bxp IFs0 (IRIndPtr ir) l0 *
+                           indrep_n_tree 1 bxp IFs1 (IRDindPtr ir) l1 *
+                           indrep_n_tree 2 bxp IFs2 (IRTindPtr ir) l2 * BALLOCC.rep bxp freelist ms) ]]] *
+           [[ (Fs * IFs0 * IFs1 * IFs2 * BALLOCC.smrep freelist)%pred sm ]]
     POST:hm' RET:^(ms, v, indptr', dindptr', tindptr')
-           exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm hm' *
            ([[ v = 0 ]] \/ [[ v <> 0 ]] *
-           exists freelist' l0' l1' l2',
+           exists freelist' l0' l1' l2' IFs0' IFs1' IFs2',
            [[ updN (l0 ++ l1 ++ l2) off bn = l0' ++ l1' ++ l2' ]] *
-           [[[ m' ::: (Fm * indrep_n_tree 0 bxp indptr' l0' *
-                            indrep_n_tree 1 bxp dindptr' l1' *
-                            indrep_n_tree 2 bxp tindptr' l2' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ m' ::: (Fm * indrep_n_tree 0 bxp IFs0' indptr' l0' *
+                            indrep_n_tree 1 bxp IFs1' dindptr' l1' *
+                            indrep_n_tree 2 bxp IFs2' tindptr' l2' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[ (Fs * IFs0' * IFs1' * IFs2' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ incl freelist' freelist ]])
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} indgrow lxp bxp ir off bn ms.
   Proof.
     unfold indgrow. prestep. norml.
     indrep_n_tree_extract_lengths.
     hoare.
-    all : or_r; cancel.
+    all: match goal with |- context [?a = 0] =>
+      destruct (addr_eq_dec a 0); [or_l|or_r]; cancel
+    end.
     all : match goal with
           | [|- _ = _ ] =>
             repeat rewrite updN_app2 by omega; try rewrite updN_app1 by omega; congruence
@@ -3237,20 +3244,22 @@ Qed.
   Local Hint Extern 1 ({{_}} Bind (indgrow _ _ _ _ _ _) _) => apply indgrow_ok : prog.
 
   Theorem grow_ok : forall lxp bxp ir bn ms,
-    {< F Fm m0 m l freelist,
+    {< F Fm Fs m0 sm m IFs l freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm hm *
            [[ length l < NBlocks ]] *
-           [[[ m ::: (Fm * rep bxp ir l * BALLOCC.rep bxp freelist ms) ]]]
+           [[[ m ::: (Fm * rep bxp IFs ir l * BALLOCC.rep bxp freelist ms) ]]] *
+           [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
     POST:hm' RET:^(ms, r)
            exists m',
-           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' \/
-           exists freelist' ir',
-           [[ r = OK ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm hm' \/
+           exists freelist' ir' IFs',
+           [[ r = OK ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' ir' (l ++ [bn]) * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]] *
+           [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ incl freelist' freelist ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} grow lxp bxp ir bn ms.
   Proof.
     unfold grow.
@@ -3262,13 +3271,14 @@ Qed.
     (* only update direct block *)
     prestep; norml.
     rewrite rep_piff_direct in Hx by omega.
-    unfold rep_direct in Hx; cancel.
+    unfold rep_direct in Hx; destruct_lift Hx.
+    cancel.
     or_r; cancel.
     rewrite rep_piff_direct by (autorewrite with lists; simpl; omega).
     unfold rep_direct; autorewrite with core lists; simpl.
     cancel; try omega.
     unfold indrep.
-    intros m' H'. pred_apply. autorewrite with core. cancel.
+    intros m' H'. destruct_lift H'. pred_apply. autorewrite with core. cancel.
     all : auto.
     substl l at 1. substl (length l).
     apply firstn_app_updN_eq; omega.
@@ -3279,7 +3289,7 @@ Qed.
     (* update indirect blocks *)
     step.
     + (* write 0 block *)
-      unfold rep in *. destruct_lifts.
+      unfold rep in *. destruct_lift Hx.
       rewrite indrep_length_pimpl in *. unfold indrep in *. destruct_lifts.
       indrep_n_tree_extract_lengths.
       hoare.
@@ -3290,6 +3300,7 @@ Qed.
       cancel.
       all : try rewrite app_length; simpl; try omega.
       - apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
+      - eauto.
       - substl l at 1.
         rewrite plus_comm.
         repeat match goal with [|- context [firstn ?a (?b ++ ?c)] ] =>
@@ -3301,11 +3312,12 @@ Qed.
         eapply list_same_skipn_selN; eauto; omega.
       - eapply list_same_skipn_ge; [ | eassumption ]. omega.
     + (* write nonzero block *)
-      unfold rep in *. destruct_lifts.
+      unfold rep in *. destruct_lift Hx.
       rewrite indrep_length_pimpl in *. unfold indrep in *. destruct_lifts.
       indrep_n_tree_extract_lengths.
       hoare.
       - rewrite mult_1_r. omega.
+      - psubst; cancel.
       - rewrite <- skipn_skipn' in *. repeat rewrite firstn_skipn in *.
         indrep_n_tree_extract_lengths.
         or_r. cancel; autorewrite with core.
@@ -3313,9 +3325,10 @@ Qed.
         rewrite firstn_app2. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
         rewrite firstn_app2. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
         (* `cancel` calls `simpl` which raises a Not_found exception here; don't know why *)
-        norm; repeat cancel_one; intuition cancel.
+        norm; intuition cancel.
         all : repeat rewrite app_length; try solve [auto | simpl; omega].
        -- apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
+       -- split; cancel.
        -- substl l at 1. cbn.
           match goal with [H : updN _ _ _ = _ |- _] => rewrite <- H end.
           rewrite plus_comm. erewrite firstn_S_selN.
@@ -3341,8 +3354,8 @@ Qed.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
-  Theorem xform_rep : forall xp ir l,
-    crash_xform (rep xp ir l) <=p=> rep xp ir l.
+  Theorem xform_rep : forall xp Fs ir l,
+    crash_xform (rep xp Fs ir l) <=p=> rep xp Fs ir l.
   Proof.
     unfold rep; intros; split.
     xform_norm.
