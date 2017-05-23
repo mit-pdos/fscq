@@ -28,16 +28,17 @@ Set Implicit Arguments.
    * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
 
-  Definition rep fsxp F tree ilist frees ms :=
+  Definition rep fsxp F tree ilist frees ms sm :=
     (exists bflist freeinodes freeinode_pred,
-     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) *
+     BFILE.rep fsxp.(FSXPBlockAlloc) sm fsxp.(FSXPInode) bflist ilist frees
+        (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) *
      IAlloc.rep BFILE.freepred fsxp freeinodes freeinode_pred (IAlloc.Alloc.mk_memstate (BFILE.MSLL ms) (BFILE.MSIAllocC ms)) *
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
-  Theorem rep_length : forall fsxp F tree ilist frees ms,
-    rep fsxp F tree ilist frees ms =p=>
-    (rep fsxp F tree ilist frees ms *
+  Theorem rep_length : forall fsxp F tree ilist frees ms sm,
+    rep fsxp F tree ilist frees ms sm =p=>
+    (rep fsxp F tree ilist frees ms sm *
      [[ length ilist = ((INODE.IRecSig.RALen (FSXPInode fsxp)) * INODE.IRecSig.items_per_val)%nat ]])%pred.
   Proof.
     unfold rep; intros.
@@ -46,10 +47,10 @@ Set Implicit Arguments.
     cancel.
   Qed.
 
-  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks ms v bn m flag,
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
+  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks ms sm v bn m flag,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     BFILE.block_is_unused (BFILE.pick_balloc freeblocks flag) bn ->
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem (updN m bn v)).
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     unfold rep in *.
@@ -58,8 +59,8 @@ Set Implicit Arguments.
     cancel.
   Qed.
 
-  Theorem dirtree_rep_used_block_eq : forall pathname F0 tree fsxp F ilist freeblocks ms inum off bn m f,
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
+  Theorem dirtree_rep_used_block_eq : forall pathname F0 tree fsxp F ilist freeblocks ms inum off bn m sm f,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
     selN (DFData f) off ($0, nil) = selN m bn ($0, nil).
@@ -75,12 +76,12 @@ Set Implicit Arguments.
     f_equal.
     f_equal.
 
-    rewrite subtree_extract in H3 by eassumption.
-    simpl in H3.
+    rewrite subtree_extract in * by eassumption.
+    simpl in *.
     apply eq_sym.
     eapply BFILE.rep_used_block_eq_Some_helper.
 
-    destruct_lift H3.
+    destruct_lifts.
     assert (inum < Datatypes.length dummy) as Hlt by ( eapply list2nmem_inbound; pred_apply; cancel ).
 
     pose proof (list2nmem_sel_inb dummy BFILE.bfile0 Hlt) as Hx.
@@ -116,18 +117,18 @@ Set Implicit Arguments.
     simpl in H0; destruct_lift H0; auto.
   Qed.
 
-  Theorem mscs_same_except_log_rep' : forall mscs1 mscs2 fsxp F tree ilist frees,
+  Theorem mscs_same_except_log_rep' : forall mscs1 mscs2 fsxp F tree ilist frees sm,
     BFILE.mscs_same_except_log mscs1 mscs2 ->
-    rep fsxp F tree ilist frees mscs1 =p=> rep fsxp F tree ilist frees mscs2.
+    rep fsxp F tree ilist frees mscs1 sm =p=> rep fsxp F tree ilist frees mscs2 sm.
   Proof.
     unfold BFILE.mscs_same_except_log; unfold rep; intros.
     intuition msalloc_eq.
     apply pimpl_refl.
   Qed.
 
-  Theorem mscs_same_except_log_rep : forall mscs1 mscs2 fsxp F tree ilist frees,
+  Theorem mscs_same_except_log_rep : forall mscs1 mscs2 fsxp F tree ilist frees sm,
     BFILE.mscs_same_except_log mscs1 mscs2 ->
-    rep fsxp F tree ilist frees mscs1 <=p=> rep fsxp F tree ilist frees mscs2.
+    rep fsxp F tree ilist frees mscs1 sm <=p=> rep fsxp F tree ilist frees mscs2 sm.
   Proof.
     split; eapply mscs_same_except_log_rep'; eauto.
     unfold BFILE.mscs_same_except_log in *; intuition eauto.

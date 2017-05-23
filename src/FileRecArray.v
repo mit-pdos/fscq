@@ -94,11 +94,11 @@ Module FileRecArray (FRA : FileRASig).
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms0;
     let^ (ms, ret) <- ForN i < nr
     Hashmap hm
-    Ghost [ bxp F Fm Fi crash m0 m flist f items ilist frees ]
+    Ghost [ bxp F Fm Fi crash m0 sm m flist f items ilist frees ]
     Loopvar [ ms ret ]
     Invariant
-      LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-      [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+      LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+      [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ RAData f ::: rep f items ]]] *
       [[ ret = None ->
@@ -111,7 +111,8 @@ Module FileRecArray (FRA : FileRASig).
       [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ MSCache ms = MSCache ms0 ]] *
       [[ MSIAllocC ms = MSIAllocC ms0 ]] *
-      [[ MSAllocC ms = MSAllocC ms0 ]] 
+      [[ MSAllocC ms = MSAllocC ms0 ]] *
+      [[ MSDBlocks ms = MSDBlocks ms0 ]]
     OnCrash  crash
     Begin
         If (is_some ret) {
@@ -158,27 +159,27 @@ Module FileRecArray (FRA : FileRASig).
     eapply ipack_length_eq; eauto.
   Qed.
 
-  Hint Extern 0 (okToUnify (BFILE.rep _ _ _ _ _ _ _ _) (BFILE.rep _ _ _ _ _ _ _ _)) => setoid_rewrite <- surjective_pairing : okToUnify.
+  Hint Extern 0 (okToUnify (BFILE.rep _ _ _ _ _ _ _ _ _ _) (BFILE.rep _ _ _ _ _ _ _ _ _ _)) => setoid_rewrite <- surjective_pairing : okToUnify.
 
   Theorem get_ok : forall lxp ixp bxp inum ix ms,
-    {< F Fm Fi m0 m flist f items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
           [[ ix < length items ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
           [[ r = selN items ix item0 ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ MSDBlocks ms' = MSDBlocks ms ]] *
           [[ MSAllocC ms' = MSAllocC ms]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} get lxp ixp inum ix ms.
   Proof.
     unfold get, rep.
@@ -200,16 +201,16 @@ Module FileRecArray (FRA : FileRASig).
   Qed.
 
   Theorem put_ok : forall lxp ixp bxp inum ix e ms,
-    {< F Fm Fi m0 m flist f items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
           [[ ix < length items /\ Rec.well_formed e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:ms' exists m' flist' f',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+          [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (updN items ix e) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
@@ -217,7 +218,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]] *
           [[ MSDBlocks ms' = MSDBlocks ms ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} put lxp ixp inum ix e ms.
   Proof.
     unfold put, rep.
@@ -291,11 +292,11 @@ Module FileRecArray (FRA : FileRASig).
   Qed.
 
   Theorem extend_ok : forall lxp ixp bxp inum e ms,
-    {< F Fm Fi m0 m flist f items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
           [[ Rec.well_formed e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET: ^(ms', r) exists m',
@@ -303,17 +304,17 @@ Module FileRecArray (FRA : FileRASig).
          [[ MSCache ms' = MSCache ms ]] *
          [[ MSIAllocC ms' = MSIAllocC ms ]] *
          ([[ isError r ]] * 
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' \/
           [[ r = OK tt  ]] *
           exists flist' f' ilist' frees',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+          [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} extend lxp bxp ixp inum e ms.
   Proof.
     unfold extend, rep.
@@ -329,22 +330,23 @@ Module FileRecArray (FRA : FileRASig).
 
 
   Theorem readall_ok : forall lxp ixp bxp inum ms,
-    {< F Fm Fi m0 m flist f items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
           [[ r = items ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
-          [[ MSAllocC ms' = MSAllocC ms ]]
+          [[ MSAllocC ms' = MSAllocC ms ]] *
+          [[ MSDBlocks ms' = MSDBlocks ms ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} readall lxp ixp inum ms.
   Proof.
     unfold readall, rep.
@@ -366,14 +368,14 @@ Module FileRecArray (FRA : FileRASig).
 
 
   Theorem init_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m0 m flist f ilist frees,
+    {< F Fm Fi m0 sm m flist f ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms' exists m' flist' f' ilist' frees',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+          [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: emp ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
@@ -381,7 +383,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init lxp bxp ixp inum ms.
   Proof.
     unfold init, rep.
@@ -400,19 +402,20 @@ Module FileRecArray (FRA : FileRASig).
 
 
   Theorem ifind_ok : forall lxp bxp ixp inum cond ms,
-    {< F Fm Fi m0 m flist f items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+          [[ MSDBlocks ms' = MSDBlocks ms ]] *
         ( [[ r = None /\ forall i, i < length items ->
                          cond (selN items i item0) i = false  ]]
           \/ exists st,
@@ -420,7 +423,7 @@ Module FileRecArray (FRA : FileRASig).
                          /\ (fst st) < length items
                          /\ snd st = selN items (fst st) item0 ]])
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} ifind lxp ixp inum cond ms.
   Proof.
     unfold ifind, rep.
@@ -485,23 +488,23 @@ Module FileRecArray (FRA : FileRASig).
     Ret r.
 
   Theorem get_array_ok : forall lxp ixp bxp inum ix ms,
-    {< F Fm Fi Fe m0 m flist f items e ilist frees,
+    {< F Fm Fi Fe m0 sm m flist f items e ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe * ix |-> e ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
           [[ r = e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ MSAllocC ms' = MSAllocC ms]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} get_array lxp ixp inum ix ms.
   Proof.
     unfold get_array.
@@ -513,17 +516,17 @@ Module FileRecArray (FRA : FileRASig).
 
 
   Theorem put_array_ok : forall lxp ixp bxp inum ix e ms,
-    {< F Fm Fi Fe m0 m flist f items e0 ilist frees,
+    {< F Fm Fi Fe m0 sm m flist f items e0 ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
           [[ Rec.well_formed e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe * ix |-> e0 ]]]
     POST:hm' RET:ms' exists m' flist' f' items',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+          [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * ix |-> e ]]] *
@@ -531,8 +534,9 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
-          [[ MSAllocC ms' = MSAllocC ms ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+          [[ MSAllocC ms' = MSAllocC ms ]] *
+          [[ MSDBlocks ms' = MSDBlocks ms ]]
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} put_array lxp ixp inum ix e ms.
   Proof.
     unfold put_array.
@@ -542,11 +546,11 @@ Module FileRecArray (FRA : FileRASig).
   Qed.
 
   Theorem extend_array_ok : forall lxp bxp ixp inum e ms,
-    {< F Fm Fi Fe m0 m flist f items ilist frees,
+    {< F Fm Fi Fe m0 sm m flist f items ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
           [[ Rec.well_formed e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe ]]]
@@ -555,11 +559,11 @@ Module FileRecArray (FRA : FileRASig).
          [[ MSCache ms' = MSCache ms ]] *
          [[ MSIAllocC ms' = MSIAllocC ms ]] *
          ([[ isError r ]] * 
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' \/
           [[ r = OK tt ]] *
           exists flist' f' items' ilist' frees',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+          [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * (length items) |-> e *
@@ -568,7 +572,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} extend_array lxp bxp ixp inum e ms.
   Proof.
     unfold extend_array.
@@ -590,26 +594,27 @@ Module FileRecArray (FRA : FileRASig).
 
 
   Theorem ifind_array_ok : forall lxp bxp ixp inum cond ms,
-    {< F Fm Fi m0 m flist f items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+          [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+          [[ MSDBlocks ms' = MSDBlocks ms ]] *
         ( [[ r = None    /\ forall i, i < length items ->
                             cond (selN items i item0) i = false ]] \/
           exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
           [[[ items ::: arrayN_ex (@ptsto _ addr_eq_dec _) items (fst st) * (fst st) |-> (snd st) ]]] )
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} ifind_array lxp ixp inum cond ms.
   Proof.
     unfold ifind_array; intros.

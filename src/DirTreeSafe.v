@@ -120,13 +120,13 @@ Set Implicit Arguments.
   Qed.
 
 
-  Theorem dirtree_update_safe_inum : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms v bn inum off m flag,
+  Theorem dirtree_update_safe_inum : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     exists tree',
-    (F0 * rep fsxp F tree' ilist freeblocks ms)%pred (list2nmem (updN m bn v)) /\
+    (F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/
      exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
      tree' = dirtree_update_inode tree inum off v).
@@ -151,29 +151,14 @@ Set Implicit Arguments.
       eapply dirtree_update_free; eauto.
   Qed.
 
-  (* This lemma is just for compatibility with old proofs.. *)
-  Theorem dirtree_update_safe : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms v bn inum off m flag,
-    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
-    BFILE.block_belong_to_file ilist_newest bn inum off ->
-    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
-    exists tree',
-    (F0 * rep fsxp F tree' ilist freeblocks ms)%pred (list2nmem (updN m bn v)) /\
-    (tree' = tree \/ tree' = dirtree_update_inode tree inum off v).
-  Proof.
-    intros; destruct v.
-    edestruct dirtree_update_safe_inum; intuition eauto.
-    repeat deex; intuition eauto.
-  Qed.
-
   Theorem dirtree_update_safe_pathname :
-    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms v bn inum off m flag,
+    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     exists tree',
-    (F0 * rep fsxp F tree' ilist freeblocks ms)%pred (list2nmem (updN m bn v)) /\
+    (F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/
      exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
      let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') in
@@ -206,17 +191,17 @@ Set Implicit Arguments.
   Qed.
 
   Theorem dirtree_update_safe_pathname_pred :
-    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms v bn inum off m flag,
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
+    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
-    (F0 * rep fsxp F tree ilist freeblocks ms \/
+    (F0 * rep fsxp F tree ilist freeblocks ms sm \/
      exists pathname' f',
      [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
      let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') in
      let tree' := update_subtree pathname' (TreeFile inum f'new) tree in
-     F0 * rep fsxp F tree' ilist freeblocks ms)%pred (list2nmem (updN m bn v)).
+     F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     edestruct dirtree_update_safe_pathname; eauto.
@@ -251,9 +236,9 @@ Set Implicit Arguments.
   Qed.
 
 
-  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' frees msc ms icache
+  Theorem dirlist_safe_mkfile : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks
                                       dnum tree_elem name inum m flist' bxp ixp F Fm,
-   (Fm * BFILE.rep bxp ixp flist' ilist' frees msc ms icache)%pred m ->
+   (Fm * BFILE.rep bxp IFs ixp flist' ilist' frees msc ms icache dblocks)%pred m ->
    (F * inum |-> BFILE.bfile0 )%pred (list2nmem flist') ->
     BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
     tree_names_distinct (TreeDir dnum tree_elem) ->

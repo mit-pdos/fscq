@@ -214,8 +214,8 @@ Import ListNotations.
         eauto.
   Qed.
 
-  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees ms,
-    (F * rep fsxp Ftop tree ilist frees ms)%pred m ->
+  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees ms sm,
+    (F * rep fsxp Ftop tree ilist frees ms sm)%pred m ->
     tree_inodes_distinct tree.
   Proof.
     unfold rep, tree_inodes_distinct; intros.
@@ -1537,13 +1537,13 @@ Import ListNotations.
         + eapply IHl; eauto.
   Qed.
 
-  Lemma rep_tree_distinct_impl : forall fsxp Ftop tree ilist frees ms,
-    rep fsxp Ftop tree ilist frees ms =p=> rep fsxp Ftop tree ilist frees ms *
+  Lemma rep_tree_distinct_impl : forall fsxp Ftop tree ilist frees ms sm,
+    rep fsxp Ftop tree ilist frees ms sm =p=> rep fsxp Ftop tree ilist frees ms sm *
       [[ tree_names_distinct tree ]] *
       [[ tree_inodes_distinct tree ]].
   Proof.
     unfold pimpl; intros.
-    assert ((emp * rep fsxp Ftop tree ilist frees ms)%pred m) by ( pred_apply; cancel ).
+    assert ((emp * rep fsxp Ftop tree ilist frees ms sm)%pred m) by ( pred_apply; cancel ).
     eapply rep_tree_names_distinct in H0 as H0'.
     eapply rep_tree_inodes_distinct in H0 as H0''.
     pred_apply; cancel.
