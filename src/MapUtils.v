@@ -503,4 +503,148 @@ Require Import FMapAVL.
 Module AddrMap_AVL := FMapAVL.Make(Nat_as_OT).
 Module AddrMap := MapDefs Nat_as_OT AddrMap_AVL.
 
+Require Import MSetAVL.
+Require Import MSetFacts.
+Require Import Structures.OrdersEx.
 
+Module SetDefs (OT : OrderedType) (M : S with Module E := OT).
+  Module SS := M.
+  Module SetFacts := WFacts SS.
+
+  Lemma subset_add: forall x s,
+    SS.Subset s (SS.add x s).
+  Proof.
+    cbv.
+    intros.
+    rewrite M.add_spec.
+    auto.
+  Qed.
+
+  Lemma subset_add_in_l: forall s v s',
+    SS.In v s' ->
+    SS.Subset s s' ->
+    SS.Subset (SS.add v s) s'.
+  Proof.
+    cbv [SS.Subset].
+    intros.
+    rewrite SS.add_spec in *.
+    intuition subst; eauto.
+    match goal with H: _ |- _ => rewrite H end.
+    auto.
+  Qed.
+
+  Lemma set_in_fold_right_add: forall x l s,
+    In x l ->
+    SS.In x (fold_right SS.add s l).
+  Proof.
+    induction l; cbn.
+    intuition.
+    intros.
+    rewrite SS.add_spec.
+    intuition subst; eauto.
+    left.
+    reflexivity.
+  Qed.
+
+  Lemma in_fold_right_iff: forall x l,
+    InA OT.eq x l <-> SS.In x (fold_right SS.add SS.empty l).
+  Proof.
+    induction l; cbn; auto.
+    intuition.
+    inversion H.
+    rewrite SetFacts.empty_iff in H.
+    intuition.
+    rewrite SS.add_spec in *.
+    intuition.
+    inversion H1; subst; auto.
+  Qed.
+
+  Lemma in_fold_right_remove: forall l a s,
+    SS.In a (fold_right SS.remove s l) ->
+    SS.In a s /\ ~InA SS.E.eq a l.
+  Proof.
+    induction l; cbn; intros.
+    intuition auto.
+    inversion H0.
+    rewrite SS.remove_spec in *.
+    intuition subst.
+    eapply IHl; eauto.
+    inversion H; subst.
+    congruence.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma in_fold_right_not_added: forall l a s,
+    ~InA SS.E.eq a l -> SS.In a (fold_right SS.add s l) ->
+    SS.In a s.
+  Proof.
+    induction l; cbn; intros.
+    auto.
+    rewrite SS.add_spec in *.
+    intuition eauto.
+    contradiction H.
+    eauto.
+  Qed.
+
+  Lemma in_fold_right_remove_notin: forall l a s,
+    ~InA SS.E.eq a l -> SS.In a s -> SS.In a (fold_right SS.remove s l).
+  Proof.
+    induction l; cbn; intros.
+    auto.
+    rewrite SS.remove_spec.
+    intuition auto.
+  Qed.
+
+  Lemma subset_fold_add_remove_tail: forall n l s t,
+    SS.Subset s (fold_right SS.add t l) ->
+    SS.Subset (fold_right SS.remove s (skipn n l)) (fold_right SS.add t (firstn n l)).
+  Proof.
+    cbv [SS.Subset].
+    induction n, l; cbn; intros; auto.
+    rewrite SS.remove_spec in *.
+    intuition eauto.
+    setoid_rewrite SS.add_spec in H.
+    eapply in_fold_right_remove in H1.
+    intuition eauto.
+    eapply H in H0.
+    intuition auto.
+    eapply in_fold_right_not_added; eauto.
+    rewrite SS.add_spec.
+    eapply in_fold_right_remove in H0.
+    intuition idtac.
+    eapply H in H1.
+    rewrite SS.add_spec in *.
+    intuition auto.
+    right.
+    eapply IHn; eauto.
+    eapply in_fold_right_remove_notin; eauto.
+  Qed.
+
+  Lemma subset_inter_l: forall s t,
+    SS.Subset (SS.inter s t) s.
+  Proof.
+    cbv; intros.
+    rewrite M.inter_spec in *.
+    intuition.
+  Qed.
+
+  Lemma subset_inter_r: forall s t,
+    SS.Subset (SS.inter s t) t.
+  Proof.
+    cbv; intros.
+    rewrite M.inter_spec in *.
+    intuition.
+  Qed.
+
+  Lemma subset_empty: forall s,
+    SS.Subset SS.empty s.
+  Proof.
+    cbv. intros.
+    rewrite SetFacts.empty_iff in *.
+    intuition.
+  Qed.
+
+End SetDefs.
+
+Module AddrSet_AVL := MSetAVL.Make (OrdersEx.Nat_as_OT).
+Module AddrSet := SetDefs OrdersEx.Nat_as_OT AddrSet_AVL.

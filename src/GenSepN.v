@@ -301,6 +301,53 @@ Proof.
     apply list2nmem_array.
 Qed.
 
+Lemma listpred_ptsto_list2nmem: forall T t (l : list T),
+  listpred (fun a => a |->?)%pred t (list2nmem l) ->
+  Permutation.Permutation t (seq 0 (length l)).
+Proof.
+  unfold list2nmem.
+  intros.
+  eapply Permutation.NoDup_Permutation.
+  eapply listpred_nodup; eauto.
+  decide equality.
+  intuition.
+  eapply ptsto_conflict; eauto.
+  apply seq_NoDup.
+  split; intros.
+  eapply listpred_remove in H; eauto.
+  destruct_lift H.
+  eapply ptsto_valid in H.
+  eapply in_seq.
+  destruct (lt_dec x (length l)); try omega.
+  rewrite selN_oob in H by (autorewrite with lists; omega).
+  congruence.
+  intros.
+  eauto using ptsto_conflict.
+  destruct (In_dec Nat.eq_dec x t).
+  eapply listpred_remove in H; eauto.
+  eauto using ptsto_conflict.
+  eapply listpred_ptsto_notindomain in H; eauto.
+  cbv [notindomain list2nmem] in *.
+  denote seq as Hs.
+  eapply in_seq in Hs.
+  erewrite selN_map in * by omega.
+  congruence.
+Unshelve.
+  all: try exact Nat.eq_dec.
+  destruct l; cbn in *; eauto; omega.
+Qed.
+
+
+Lemma arrayN_ptsto_linked: forall S V t l,
+  arrayN (ptsto (V:=S)) 0 l =p=> listpred (fun a => exists v, a |-> v) t ->
+  @listpred _ _ Nat.eq_dec V (fun a => a |->?) (seq 0 (length l)) =p=> listpred (fun a => a |->?) t.
+Proof.
+  intros.
+  pose proof list2nmem_array as Hp.
+  eapply H in Hp.
+  eapply listpred_permutation.
+  eapply listpred_ptsto_list2nmem; auto.
+Qed.
 
 (* Alternative variants of [list2nmem] that are more induction-friendly *)
 Definition list2nmem_off (A: Type) (start : nat) (l: list A) : (nat -> option A) :=

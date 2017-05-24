@@ -453,6 +453,21 @@ Proof.
   exfalso; auto.
 Qed.
 
+Lemma Forall_combine_r: forall A B F G (a : list A) (b : list B),
+  length a = length b ->
+  (forall x, F x <-> G (snd x)) ->
+  Forall F (combine a b) <-> Forall G b.
+Proof.
+  induction a; destruct b; cbn in *; try congruence; intros.
+  split; constructor.
+  split; intros H'; inversion H'; constructor; subst.
+  eapply H0 in H3; auto.
+  eapply IHa; auto.
+  eapply H0; auto.
+  apply IHa; auto.
+Qed.
+
+
 Lemma Forall_append: forall A f (l1 l2:list A),
   Forall f l1 -> Forall f l2 -> Forall f (l1 ++ l2).
 Proof.

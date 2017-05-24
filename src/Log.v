@@ -34,7 +34,7 @@ Require Import DiskSet.
 Require Import RelationClasses.
 Require Import Morphisms.
 
-
+Import SyncedMem.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -51,7 +51,7 @@ Module LOG.
   }.
 
   Definition memstate := (mstate * cachestate)%type.
-  Definition mk_memstate mm (ll : GLog.memstate) : memstate := 
+  Definition mk_memstate mm (ll : GLog.memstate) : memstate :=
     (mk_mstate mm (fst ll), (snd ll)).
   Definition mk_memstate0 (cs: cachestate) := (mk_mstate vmap0 GLog.mk_memstate0, cs).
 
@@ -81,81 +81,86 @@ Module LOG.
   | RecoveringTxn (old : diskstate)
   .
 
-  Definition rep_inner xp st ms hm :=
+  Definition rep_inner xp st ms sm hm :=
   let '(cm, mm) := (MSTxn ms, MSGLog ms) in
   (match st with
     | NoTxn ds =>
       [[ Map.Empty cm ]] *
+      [[ sm_ds_valid sm ds ]] *
       GLog.rep xp (GLog.Cached ds) mm hm
     | ActiveTxn ds cur =>
       [[ map_valid cm ds!! ]] *
       [[ map_replay cm ds!! cur ]] *
+      [[ sm_ds_valid sm (pushd cur ds) ]] *
       GLog.rep xp (GLog.Cached ds) mm hm
     | FlushingTxn ds =>
+      [[ sm_ds_valid sm ds ]] *
       GLog.would_recover_any xp ds hm
     | RollbackTxn d =>
       [[ Map.Empty cm ]] *
+      [[ sm_ds_valid sm (d, nil) ]] *
       GLog.rep xp (GLog.Rollback d) mm hm
     | RecoveringTxn d =>
       [[ Map.Empty cm ]] *
+      [[ sm_ds_valid sm (d, nil) ]] *
       GLog.rep xp (GLog.Recovering d) mm hm
   end)%pred.
 
-  Definition rep xp F st ms hm :=
+  Definition rep xp F st ms sm hm :=
     (exists raw, BUFCACHE.rep (snd ms) raw *
-      [[ (F * rep_inner xp st (fst ms) hm)%pred raw ]])%pred.
+      [[ (F * rep_inner xp st (fst ms) sm hm)%pred raw ]])%pred.
 
-  Definition intact xp F ds hm :=
+  Definition intact xp F ds sm hm :=
     (exists ms,
-      rep xp F (NoTxn ds) ms hm \/
-      exists new, rep xp F (ActiveTxn ds new) ms hm)%pred.
+      rep xp F (NoTxn ds) ms sm hm \/
+      exists new, rep xp F (ActiveTxn ds new) ms sm hm)%pred.
 
-  Definition recover_any xp F ds hm :=
-    (exists ms, rep xp F (FlushingTxn ds) ms hm)%pred.
+  Definition recover_any xp F ds sm hm :=
+    (exists ms, rep xp F (FlushingTxn ds) ms sm hm)%pred.
 
-  Theorem sync_invariant_rep : forall xp F st ms hm,
+  Theorem sync_invariant_rep : forall xp F st ms sm hm,
     sync_invariant F ->
-    sync_invariant (rep xp F st ms hm).
+    sync_invariant (rep xp F st ms sm hm).
   Proof.
     unfold rep; destruct st; intros; eauto.
   Qed.
   Hint Resolve sync_invariant_rep.
 
-  Theorem sync_invariant_intact : forall xp F ds hm,
+  Theorem sync_invariant_intact : forall xp F ds sm hm,
     sync_invariant F ->
-    sync_invariant (intact xp F ds hm).
+    sync_invariant (intact xp F ds sm hm).
   Proof.
     unfold intact; auto.
   Qed.
 
-  Theorem sync_invariant_recover_any : forall xp F ds hm,
+  Theorem sync_invariant_recover_any : forall xp F ds sm hm,
     sync_invariant F ->
-    sync_invariant (recover_any xp F ds hm).
+    sync_invariant (recover_any xp F ds sm hm).
   Proof.
     unfold recover_any; auto.
   Qed.
   Hint Resolve sync_invariant_intact sync_invariant_recover_any.
 
-  Lemma active_intact : forall xp F old new ms hm,
-    rep xp F (ActiveTxn old new) ms hm =p=> intact xp F old hm.
+  Lemma active_intact : forall xp F old new ms sm hm,
+    rep xp F (ActiveTxn old new) ms sm hm =p=> intact xp F old sm hm.
   Proof.
     unfold intact; cancel.
   Qed.
 
-  Lemma notxn_intact : forall xp F old ms hm,
-    rep xp F (NoTxn old) ms hm =p=> intact xp F old hm.
+  Lemma notxn_intact : forall xp F old ms sm hm,
+    rep xp F (NoTxn old) ms sm hm =p=> intact xp F old sm hm.
   Proof.
     unfold intact; cancel.
   Qed.
 
-  Lemma flushing_any : forall xp F ds ms hm,
-    rep xp F (FlushingTxn ds) ms hm =p=> recover_any xp F ds hm.
+  Lemma flushing_any : forall xp F ds ms sm hm,
+    rep xp F (FlushingTxn ds) ms sm hm =p=> recover_any xp F ds sm hm.
   Proof.
     unfold recover_any; cancel.
   Qed.
 
-  Lemma intact_any : forall xp F ds hm,
-    intact xp F ds hm =p=> recover_any xp F ds hm.
+  Lemma intact_any : forall xp F ds sm hm,
+    intact xp F ds sm hm =p=> recover_any xp F ds sm hm.
   Proof.
     unfold intact, recover_any, rep, rep_inner; cancel.
     apply GLog.cached_recover_any.
@@ -163,71 +168,43 @@ Module LOG.
     Unshelve. all: eauto.
   Qed.
 
-  Lemma notxn_any : forall xp F ds ms hm,
-    rep xp F (NoTxn ds) ms hm =p=> recover_any xp F ds hm.
+  Lemma notxn_any : forall xp F ds ms sm hm,
+    rep xp F (NoTxn ds) ms sm hm =p=> recover_any xp F ds sm hm.
   Proof.
     unfold intact, recover_any, rep, rep_inner; cancel.
     apply GLog.cached_recover_any.
     Unshelve. all: eauto.
   Qed.
 
-  Lemma active_notxn : forall xp F old new ms hm,
-    rep xp F (ActiveTxn old new) ms hm =p=>
-    rep xp F (NoTxn old) (mk_mstate vmap0 (MSGLog (fst ms)), (snd ms)) hm.
+  Lemma active_notxn : forall xp F old new ms sm hm,
+    rep xp F (ActiveTxn old new) ms sm hm =p=>
+    rep xp F (NoTxn old) (mk_mstate vmap0 (MSGLog (fst ms)), (snd ms)) sm hm.
   Proof.
     unfold rep, rep_inner; cancel.
   Qed.
 
-  Lemma intact_dsupd_latest : forall xp F ds a v hm gms,
-    GLog.dset_match xp (GLog.effective ds (length gms)) gms ->
-    intact xp F (dsupd (ds!!, nil) a v) hm =p=>
-    recover_any xp F (dsupd ds a v) hm.
-  Proof.
-    unfold dsupd at 1, d_map at 1; simpl; intros.
-    rewrite <- dsupd_latest.
-    unfold intact, rep, rep_inner.
-    unfold recover_any, rep, rep_inner; cancel.
-    rewrite GLog.cached_dsupd_latest_recover_any; eauto.
-    rewrite GLog.cached_dsupd_latest_recover_any; eauto.
-    Unshelve. all: eauto.
-  Qed.
-
-  Lemma intact_dssync_vecs_latest : forall xp F ds al hm gms,
-    GLog.dset_match xp (GLog.effective ds (length gms)) gms ->
-    intact xp F (dssync_vecs (ds!!, nil) al) hm =p=>
-    recover_any xp F (dssync_vecs ds al) hm.
-  Proof.
-    unfold dssync_vecs at 1, d_map at 1; simpl; intros.
-    rewrite <- dssync_vecs_latest.
-    unfold intact, rep, rep_inner.
-    unfold recover_any, rep, rep_inner; cancel.
-    rewrite GLog.cached_dssync_vecs_latest_recover_any; eauto.
-    rewrite GLog.cached_dssync_vecs_latest_recover_any; eauto.
-    Unshelve. all: eauto.
-  Qed.
-
-  Lemma active_dset_match_pimpl : forall xp F ds d hm ms,
-    rep xp F (ActiveTxn ds d) ms hm <=p=>
-    rep xp F (ActiveTxn ds d) ms hm * 
+  Lemma active_dset_match_pimpl : forall xp F ds d hm sm ms,
+    rep xp F (ActiveTxn ds d) ms sm hm <=p=>
+    rep xp F (ActiveTxn ds d) ms sm hm *
       [[ exists gms, GLog.dset_match xp (GLog.effective ds (length gms)) gms ]].
   Proof.
     unfold rep, rep_inner, GLog.rep; intros; split; cancel.
     eexists; eauto.
   Qed.
 
-  Lemma notxn_dset_match_pimpl : forall xp F ds hm ms,
-    rep xp F (NoTxn ds) ms hm <=p=>
-    rep xp F (NoTxn ds) ms hm * 
+  Lemma notxn_dset_match_pimpl : forall xp F ds hm sm ms,
+    rep xp F (NoTxn ds) ms sm hm <=p=>
+    rep xp F (NoTxn ds) ms sm hm *
       [[ exists gms, GLog.dset_match xp (GLog.effective ds (length gms)) gms ]].
   Proof.
     unfold rep, rep_inner, GLog.rep; intros; split; cancel.
     eexists; eauto.
   Qed.
 
-  Lemma rep_inner_hashmap_subset : forall xp ms hm hm',
+  Lemma rep_inner_hashmap_subset : forall xp ms hm sm hm',
     (exists l, hashmap_subset l hm hm')
-    -> forall st, rep_inner xp st ms hm
-        =p=> rep_inner xp st ms hm'.
+    -> forall st, rep_inner xp st ms sm hm
+        =p=> rep_inner xp st ms sm hm'.
   Proof.
     intros.
     destruct st; unfold rep_inner, GLog.would_recover_any.
@@ -237,39 +214,41 @@ Module LOG.
     auto.
   Qed.
 
-  Lemma rep_hashmap_subset : forall xp F ms hm hm',
+  Lemma rep_hashmap_subset : forall xp F ms hm sm hm',
     (exists l, hashmap_subset l hm hm')
-    -> forall st, rep xp F st ms hm
-        =p=> rep xp F st ms hm'.
+    -> forall st, rep xp F st ms sm hm
+        =p=> rep xp F st ms sm hm'.
   Proof.
     unfold rep; intros; cancel.
     erewrite rep_inner_hashmap_subset; eauto.
   Qed.
 
-  Lemma intact_hashmap_subset : forall xp F ds hm hm',
+  Lemma intact_hashmap_subset : forall xp F ds hm sm hm',
     (exists l, hashmap_subset l hm hm')
-    -> intact xp F ds hm
-        =p=> intact xp F ds hm'.
+    -> intact xp F ds sm hm
+        =p=> intact xp F ds sm hm'.
   Proof.
     unfold intact; intros; cancel;
     erewrite rep_hashmap_subset; eauto.
     all: cancel.
   Qed.
 
-  Lemma rep_inner_notxn_pimpl : forall xp d ms hm,
-    rep_inner xp (NoTxn (d, nil)) ms hm
-    =p=> exists ms', rep_inner xp (RecoveringTxn d) ms' hm.
+  Lemma rep_inner_notxn_pimpl : forall xp d ms sm hm,
+    rep_inner xp (NoTxn (d, nil)) ms sm hm
+    =p=> exists ms', rep_inner xp (RecoveringTxn d) ms' sm hm.
   Proof.
     unfold rep_inner; intros.
     rewrite GLog.cached_recovering.
     norm'l. cancel.
     eassign (mk_mstate vmap0 ms'); auto.
     apply map_empty_vmap0.
+    eapply H2 in H0.
+    inversion H0; auto.
   Qed.
 
-  Lemma rep_inner_rollbacktxn_pimpl : forall xp d ms hm,
-    rep_inner xp (RollbackTxn d) ms hm
-    =p=> rep_inner xp (RecoveringTxn d) ms hm.
+  Lemma rep_inner_rollbacktxn_pimpl : forall xp d ms sm hm,
+    rep_inner xp (RollbackTxn d) ms sm hm
+    =p=> rep_inner xp (RecoveringTxn d) ms sm hm.
   Proof.
     unfold rep_inner; intros.
     rewrite GLog.rollback_recovering.
@@ -421,6 +400,74 @@ Module LOG.
   Local Hint Resolve KNoDup_map_elements.
   Local Hint Resolve MapProperties.eqke_equiv.
 
+  Lemma possible_crash_list2nmem_synced: forall d' d,
+    possible_crash d (list2nmem d') ->
+    Forall (fun v => snd v = nil) d'.
+  Proof.
+    induction d' using rev_ind; intros.
+    constructor.
+    apply Forall_app.
+    eapply IHd'.
+    eapply possible_crash_mem_except in H.
+    rewrite list2nmem_except_last in *.
+    eauto.
+    specialize (H (length d')); cbn in *.
+    erewrite list2nmem_sel_inb in *.
+    intuition.
+    congruence.
+    rewrite selN_app2 in * by auto.
+    rewrite Nat.sub_diag in *; cbn in *.
+    repeat deex.
+    inversion H; subst; auto.
+    inversion H; subst; auto.
+    rewrite app_length; cbn; omega.
+  Unshelve.
+    all: auto.
+  Qed.
+
+  Lemma sm_vs_valid_crash_xform: forall ds sm d n,
+    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+    sm_ds_valid sm ds ->
+    sm_vs_valid sm d.
+  Proof.
+    intros.
+    unfold crash_xform, diskIs in *.
+    deex.
+    eapply sm_vs_valid_all_synced.
+    eapply sm_ds_valid_nthd; eauto.
+    eauto using possible_crash_list2nmem_length.
+    eauto using possible_crash_list2nmem_synced.
+  Qed.
+
+  Lemma sm_vs_valid_disk_synced: forall d d',
+    crash_xform (diskIs (list2nmem d')) (list2nmem d) ->
+    sm_vs_valid (sm_disk_synced d) d.
+  Proof.
+    intros.
+    apply crash_xform_diskIs in H.
+    destruct_lift H.
+    unfold diskIs in *; subst.
+    eapply possible_crash_list2nmem_synced in H0.
+    unfold sm_disk_synced, sm_vs_valid.
+    rewrite Forall_forall in *.
+    intuition.
+    erewrite list2nmem_sel_inb in H1.
+    congruence.
+    autorewrite with lists; auto.
+    unfold vs_synced.
+    rewrite H0; auto.
+    eapply in_selN; auto.
+  Unshelve.
+    all: constructor.
+  Qed.
+
+  Local Hint Resolve sm_vs_valid_upd_synced vs_synced_updN_synced
+     sm_ds_valid_synced sm_ds_valid_pushd_l sm_ds_valid_pushd_r
+     sm_ds_valid_pushd sm_ds_valid_dsupd sm_ds_valid_pushd_latest
+     sm_ds_valid_dssync list2nmem_inbound ptsto_upd'
+     sm_ds_valid_dsupd_vecs sm_ds_valid_dssync_vecs.
+
+
   Definition init_ok : forall xp cs,
     {< F l d m,
     PRE:hm   BUFCACHE.rep cs d *
@@ -432,9 +479,10 @@ Module LOG.
              LogLen xp = (LogDescLen xp * DiskLogHash.PaddedLog.DescSig.items_per_val)%nat /\
              goodSize addrlen ((LogHeader xp) + length l) ]] *
           [[ sync_invariant F ]]
-    POST:hm' RET: ms exists d,
-          rep xp F (NoTxn (d, nil)) ms hm' *
+    POST:hm' RET: ms exists d sm l,
+          rep xp F (NoTxn (d, nil)) ms sm hm' *
           [[[ d ::: arrayN (@ptsto _ _ _) 0 d ]]] *
+          [[ arrayN (@ptsto _ _ _) 0 l sm ]] * [[ length l = length d ]] *
           [[ length d = (LogHeader xp) - (DataStart xp) ]]
     XCRASH:hm_crash any
     >} init xp cs.
@@ -442,19 +490,23 @@ Module LOG.
     unfold init, rep.
     step.
     step.
+    apply sm_ds_valid_synced.
+    apply sm_vs_valid_disk_exact.
     apply list2nmem_array.
+    apply list2nmem_array.
+    autorewrite with lists. auto.
   Qed.
 
 
   Theorem begin_ok: forall xp ms,
-    {< F ds,
+    {< F sm ds,
     PRE:hm
-      rep xp F (NoTxn ds) ms hm
+      rep xp F (NoTxn ds) ms sm hm
     POST:hm' RET:r
-      rep xp F (ActiveTxn ds ds!!) r hm' *
+      rep xp F (ActiveTxn ds ds!!) r sm hm' *
       [[ readOnly ms r ]]
     CRASH:hm'
-      exists ms', rep xp F (NoTxn ds) ms' hm'
+      exists ms', rep xp F (NoTxn ds) ms' sm hm'
     >} begin xp ms.
   Proof.
     unfold begin.
@@ -464,14 +516,14 @@ Module LOG.
 
 
   Theorem abort_ok : forall xp ms,
-    {< F ds m,
+    {< F ds sm m,
     PRE:hm
-      rep xp F (ActiveTxn ds m) ms hm
+      rep xp F (ActiveTxn ds m) ms sm hm
     POST:hm' RET:r
-      rep xp F (NoTxn ds) r hm' *
+      rep xp F (NoTxn ds) r sm hm' *
       [[ (exists ms0, readOnly ms0 ms) -> readOnly ms r ]]
     CRASH:hm'
-      exists ms', rep xp F (NoTxn ds) ms' hm'
+      exists ms', rep xp F (NoTxn ds) ms' sm hm'
     >} abort xp ms.
   Proof.
     unfold abort.
@@ -486,15 +538,15 @@ Module LOG.
 
 
   Theorem read_ok: forall xp ms a,
-    {< F Fm ds m v,
+    {< F Fm ds sm m v,
     PRE:hm
-      rep xp F (ActiveTxn ds m) ms hm *
+      rep xp F (ActiveTxn ds m) ms sm hm *
       [[[ m ::: Fm * a |-> v ]]]
     POST:hm' RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' hm' * [[ r = fst v ]] *
+      rep xp F (ActiveTxn ds m) ms' sm hm' * [[ r = fst v ]] *
       [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm'
-      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' sm hm'
     >} read xp a ms.
   Proof.
     unfold read.
@@ -517,17 +569,16 @@ Module LOG.
     intuition; pred_apply; cancel.
   Qed.
 
-
   Theorem write_ok : forall xp ms a v,
-    {< F Fm ds m vs,
+    {< F Fm ds m sm vs,
     PRE:hm
-      rep xp F (ActiveTxn ds m) ms hm * [[ a <> 0 ]] *
+      rep xp F (ActiveTxn ds m) ms sm hm * [[ a <> 0 ]] *
       [[[ m ::: (Fm * a |-> vs) ]]]
     POST:hm' RET:ms'
-      exists m', rep xp F (ActiveTxn ds m') ms' hm' *
+      exists m', rep xp F (ActiveTxn ds m') ms' sm hm' *
       [[[ m' ::: (Fm * a |-> (v, nil)) ]]]
     CRASH:hm'
-      exists m' ms', rep xp F (ActiveTxn ds m') ms' hm'
+      exists m' ms', rep xp F (ActiveTxn ds m') ms' sm hm'
     >} write xp a v ms.
   Proof.
     unfold write.
@@ -538,6 +589,7 @@ Module LOG.
     erewrite <- replay_disk_length.
     eapply list2nmem_ptsto_bound; eauto.
 
+    rewrite replay_disk_add; eauto.
     rewrite replay_disk_add.
     eapply list2nmem_updN; eauto.
   Qed.
@@ -546,18 +598,20 @@ Module LOG.
   Set Regular Subst Tactic.
 
   Theorem dwrite_ok : forall xp ms a v,
-    {< F Fm ds vs,
+    {< F Fm Fs ds sm vs,
     PRE:hm
-      rep xp F (ActiveTxn ds ds!!) ms hm *
+      rep xp F (ActiveTxn ds ds!!) ms sm hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ (Fs * a |->?)%pred sm ]] *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms' exists ds',
-      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+    POST:hm' RET:ms' exists ds' sm',
+      rep xp F (ActiveTxn ds' ds'!!) ms' sm' hm' *
       [[[ ds'!! ::: (Fm * a |-> (v, vsmerge vs)) ]]] *
+      [[ (Fs * a |-> false)%pred sm' ]] *
       [[ ds' = dsupd ds a (v, vsmerge vs) ]]
     XCRASH:hm'
-      recover_any xp F ds hm' \/
-      recover_any xp F (dsupd ds a (v, vsmerge vs)) hm'
+      recover_any xp F ds sm hm' \/
+      recover_any xp F (dsupd ds a (v, vsmerge vs)) (Mem.upd sm a false) hm'
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, recover_any.
@@ -574,25 +628,29 @@ Module LOG.
     (* crash conditions *)
     xcrash.
     or_l; cancel; xform_normr; cancel.
+    eauto.
 
     or_r; cancel.
     xform_normr; cancel.
+    eauto.
 
     Unshelve. all: eauto.
   Qed.
 
 
   Theorem dsync_ok : forall xp ms a,
-    {< F Fm ds vs,
+    {< F Fm Fs ds sm vs,
     PRE:hm
-      rep xp F (ActiveTxn ds ds!!) ms hm *
+      rep xp F (ActiveTxn ds ds!!) ms sm hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ (Fs * a |->?)%pred sm ]] *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms' exists ds',
-      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
-      [[ ds' = dssync ds a ]]
+    POST:hm' RET:ms' exists ds' sm',
+      rep xp F (ActiveTxn ds' ds'!!) ms' sm' hm' *
+      [[ ds' = dssync ds a ]] *
+      [[ (Fs * a |-> true)%pred sm' ]]
     CRASH:hm'
-      recover_any xp F ds hm'
+      recover_any xp F ds sm hm'
     >} dsync xp a ms.
   Proof.
     unfold dsync, recover_any.
@@ -604,16 +662,15 @@ Module LOG.
     Unshelve. eauto.
   Qed.
 
-
   Theorem flushall_ok : forall xp ms,
-    {< F ds,
+    {< F sm ds,
     PRE:hm
-      rep xp F (NoTxn ds) ms hm *
+      rep xp F (NoTxn ds) ms sm hm *
       [[ sync_invariant F ]]
     POST:hm' RET:ms'
-      rep xp F (NoTxn (ds!!, nil)) ms' hm'
+      rep xp F (NoTxn (ds!!, nil)) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds hm'
+      recover_any xp F ds sm hm'
     >} flushall xp ms.
   Proof.
     unfold flushall, recover_any.
@@ -624,14 +681,14 @@ Module LOG.
 
 
   Theorem flushsync_ok : forall xp ms,
-    {< F ds,
+    {< F sm ds,
     PRE:hm
-      rep xp F (NoTxn ds) ms hm *
+      rep xp F (NoTxn ds) ms sm hm *
       [[ sync_invariant F ]]
     POST:hm' RET:ms'
-      rep xp F (NoTxn (ds!!, nil)) ms' hm'
+      rep xp F (NoTxn (ds!!, nil)) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds hm'
+      recover_any xp F ds sm hm'
     >} flushsync xp ms.
   Proof.
     unfold flushsync, recover_any.
@@ -641,14 +698,14 @@ Module LOG.
   Qed.
 
   Theorem flushall_noop_ok : forall xp ms,
-    {< F ds,
+    {< F sm ds,
     PRE:hm
-      rep xp F (NoTxn ds) ms hm *
+      rep xp F (NoTxn ds) ms sm hm *
       [[ sync_invariant F ]]
     POST:hm' RET:ms'
-      rep xp F (NoTxn ds) ms' hm'
+      rep xp F (NoTxn ds) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds hm'
+      recover_any xp F ds sm hm'
     >} flushall_noop xp ms.
   Proof.
     unfold flushall_noop, recover_any.
@@ -658,14 +715,14 @@ Module LOG.
   Qed.
 
   Theorem flushsync_noop_ok : forall xp ms,
-    {< F ds,
+    {< F sm ds,
     PRE:hm
-      rep xp F (NoTxn ds) ms hm *
+      rep xp F (NoTxn ds) ms sm hm *
       [[ sync_invariant F ]]
     POST:hm' RET:ms'
-      rep xp F (NoTxn ds) ms' hm'
+      rep xp F (NoTxn ds) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds hm'
+      recover_any xp F ds sm hm'
     >} flushsync_noop xp ms.
   Proof.
     unfold flushsync_noop, recover_any.
@@ -680,16 +737,16 @@ Module LOG.
   Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
 
   Theorem commit_ok : forall xp ms,
-    {< F ds m,
-     PRE:hm  rep xp F (ActiveTxn ds m) ms hm *
+    {< F sm ds m,
+     PRE:hm  rep xp F (ActiveTxn ds m) ms sm hm *
             [[ sync_invariant F ]]
      POST:hm' RET:^(ms',r)
           ([[ r = true ]] *
-            rep xp F (NoTxn (pushd m ds)) ms' hm') \/
+            rep xp F (NoTxn (pushd m ds)) ms' sm hm') \/
           ([[ r = false ]] *
             [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
-            rep xp F (NoTxn ds) ms' hm')
-     XCRASH:hm' recover_any xp F (pushd m ds) hm'
+            rep xp F (NoTxn ds) ms' sm hm')
+     XCRASH:hm' recover_any xp F (pushd m ds) sm hm'
     >} commit xp ms.
   Proof.
     unfold commit, recover_any.
@@ -719,14 +776,14 @@ Module LOG.
 
   (* a pseudo-commit for read-only transactions *)
   Theorem commit_ro_ok : forall xp ms,
-    {< F ds,
+    {< F sm ds,
     PRE:hm
-      rep xp F (ActiveTxn ds ds!!) ms hm
+      rep xp F (ActiveTxn ds ds!!) ms sm hm
     POST:hm' RET:r
-      rep xp F (NoTxn ds) r hm' *
+      rep xp F (NoTxn ds) r sm hm' *
       [[ (exists ms0, readOnly ms0 ms) -> readOnly ms r ]]
     CRASH:hm'
-      exists ms', rep xp F (NoTxn ds) ms' hm'
+      exists ms', rep xp F (NoTxn ds) ms' sm hm'
     >} commit_ro xp ms.
   Proof.
     intros.
@@ -742,16 +799,16 @@ Module LOG.
 
   Definition after_crash xp F ds cs hm :=
     (exists raw, BUFCACHE.rep cs raw *
-     [[ ( exists d n ms, [[ n <= length (snd ds) ]] *
-       F * (rep_inner xp (NoTxn (d, nil)) ms hm \/
-            rep_inner xp (RollbackTxn d) ms hm) *
+     [[ ( exists d sm n ms, [[ n <= length (snd ds) ]] *
+       F * (rep_inner xp (NoTxn (d, nil)) ms sm hm \/
+            rep_inner xp (RollbackTxn d) ms sm hm) *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      )%pred raw ]])%pred.
 
   Definition before_crash xp F ds hm :=
     (exists cs raw, BUFCACHE.rep cs raw *
-     [[ ( exists d n ms, [[ n <= length (snd ds) ]] *
-       F * (rep_inner xp (RecoveringTxn d) ms hm) *
+     [[ ( exists d sm n ms, [[ n <= length (snd ds) ]] *
+       F * (rep_inner xp (RecoveringTxn d) ms sm hm) *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      )%pred raw ]])%pred.
 
@@ -776,10 +833,11 @@ Module LOG.
     PRE:hm
       after_crash xp F ds cs hm *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms' 
-      exists d n, [[ n <= length (snd ds) ]] *
-      rep xp F (NoTxn (d, nil)) ms' hm' *
-      [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+    POST:hm' RET:ms'
+      exists d sm n, [[ n <= length (snd ds) ]] *
+      rep xp F (NoTxn (d, nil)) ms' sm hm' *
+      [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
+      [[ arrayN (@ptsto _ _ _) 0 (repeat true (length d)) sm ]]
     XCRASH:hm'
       before_crash xp F ds hm'
     >} recover xp cs.
@@ -799,6 +857,9 @@ Module LOG.
     prestep. norm. cancel.
     intuition simpl; eauto.
     pred_apply; cancel.
+    eapply sm_ds_valid_synced.
+    eapply sm_vs_valid_disk_synced; eauto.
+    apply list2nmem_array.
 
     norm'l.
     repeat xcrash_rewrite.
@@ -813,6 +874,8 @@ Module LOG.
     cancel.
     eassign (mk_mstate vmap0 x1); eauto.
     intuition simpl; eauto.
+    eapply sm_ds_valid_synced.
+    eapply sm_vs_valid_disk_synced; eauto.
   Qed.
 
 
@@ -849,8 +912,8 @@ Module LOG.
   Qed.
 
 
-  Lemma crash_xform_any : forall xp F ds hm,
-    crash_xform (recover_any xp F ds hm) =p=>
+  Lemma crash_xform_any : forall xp F ds sm hm,
+    crash_xform (recover_any xp F ds sm hm) =p=>
       exists cs, after_crash xp (crash_xform F) ds cs hm.
   Proof.
     unfold recover_any, after_crash, rep, rep_inner; intros.
@@ -866,20 +929,22 @@ Module LOG.
     intuition simpl; eauto.
 
     or_l; cancel.
+    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
     cancel.
     or_r; cancel.
     eassign (mk_mstate vmap0 ms); eauto.
     eauto.
+    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
   Qed.
 
 
   Lemma after_crash_notxn : forall xp cs F ds hm,
     after_crash xp F ds cs hm =p=>
-      exists d n ms, [[ n <= length (snd ds) ]] *
-      (rep xp F (NoTxn (d, nil)) ms hm \/
-        rep xp F (RollbackTxn d) ms hm) *
+      exists d n sm ms, [[ n <= length (snd ds) ]] *
+      (rep xp F (NoTxn (d, nil)) ms sm hm \/
+        rep xp F (RollbackTxn d) ms sm hm) *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
     unfold after_crash, recover_any, rep, rep_inner.
@@ -887,6 +952,7 @@ Module LOG.
     denote or as Hor; apply sep_star_or_distr in Hor.
     destruct Hor; destruct_lift H.
     or_l; cancel.
+    eauto.
     or_r; cancel.
     intuition simpl. eassumption.
     auto.
@@ -895,8 +961,8 @@ Module LOG.
 
   Lemma after_crash_notxn_singular : forall xp cs F d hm,
     after_crash xp F (d, nil) cs hm =p=>
-      exists d' ms, (rep xp F (NoTxn (d', nil)) ms hm \/
-                      rep xp F (RollbackTxn d') ms hm) *
+      exists d' sm ms, (rep xp F (NoTxn (d', nil)) ms sm hm \/
+                      rep xp F (RollbackTxn d') ms sm hm) *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     intros; rewrite after_crash_notxn; cancel.
@@ -927,6 +993,7 @@ Module LOG.
     or_l; cancel.
     eassign (mk_mstate vmap0 ms'); cancel.
     auto.
+    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
     eapply crash_xform_diskIs_trans; eauto.
 
@@ -935,16 +1002,17 @@ Module LOG.
     or_r; cancel.
     eassign (mk_mstate vmap0 ms'); cancel.
     auto.
+    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
-  Lemma after_crash_idem' : forall xp d ms hm (F : rawpred),
+  Lemma after_crash_idem' : forall xp d ms sm hm (F : rawpred),
     F (list2nmem d) ->
-    crash_xform (rep_inner xp (NoTxn (d, nil)) ms hm
-              \/ rep_inner xp (RollbackTxn d) ms hm) =p=>
-    exists d' ms',(rep_inner xp (NoTxn (d', nil)) ms' hm \/
-                   rep_inner xp (RollbackTxn d') ms' hm) *
+    crash_xform (rep_inner xp (NoTxn (d, nil)) ms sm hm
+              \/ rep_inner xp (RollbackTxn d) ms sm hm) =p=>
+    exists d' ms' sm',(rep_inner xp (NoTxn (d', nil)) ms' sm' hm \/
+                   rep_inner xp (RollbackTxn d') ms' sm' hm) *
                    [[ (crash_xform F) (list2nmem d') ]].
   Proof.
     unfold rep_inner; intros.
@@ -952,19 +1020,21 @@ Module LOG.
     rewrite GLog.crash_xform_cached; cancel.
     eassign (mk_mstate vmap0 ms').
     or_l; cancel.
+    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     eapply crash_xform_diskIs_pred; eauto.
 
     rewrite GLog.crash_xform_rollback; cancel.
     eassign (mk_mstate vmap0 ms').
     or_r; cancel.
+    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     eapply crash_xform_diskIs_pred; eauto.
   Qed.
 
-  Hint Extern 0 (okToUnify (LOG.rep_inner  _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _ _) (LOG.rep_inner _ _ _ _ _)) => constructor : okToUnify.
 
   (* TODO: Would be better to rewrite using hashmap_subset. *)
   Instance rep_proper_iff :
-    Proper (eq ==> piff ==> eq ==> eq ==> eq ==> pimpl) rep.
+    Proper (eq ==> piff ==> eq ==> eq ==> eq ==> eq ==> pimpl) rep.
   Proof.
     unfold Proper, respectful; intros.
     unfold rep; cancel.
@@ -972,7 +1042,7 @@ Module LOG.
   Qed.
 
   Instance intact_proper_iff :
-    Proper (eq ==> piff ==> eq ==> eq ==> pimpl) intact.
+    Proper (eq ==> piff ==> eq ==> eq ==> eq ==> pimpl) intact.
   Proof.
     unfold Proper, respectful; intros.
     unfold intact; cancel; or_l.
@@ -1002,46 +1072,48 @@ Module LOG.
     intuition simpl; eauto.
   Qed.
 
-  Lemma notxn_after_crash_diskIs : forall xp F n ds d ms hm,
+  Lemma notxn_after_crash_diskIs : forall xp F n ds d ms sm hm,
     crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
     n <= length (snd ds) ->
-    rep xp F (NoTxn (d, nil)) ms hm =p=> after_crash xp F ds (snd ms) hm.
+    rep xp F (NoTxn (d, nil)) ms sm hm =p=> after_crash xp F ds (snd ms) hm.
   Proof.
     unfold rep, after_crash, rep_inner; intros.
     safecancel.
     or_l; cancel.
     eauto.
+    eauto.
     auto.
   Qed.
 
-  Lemma rollbacktxn_after_crash_diskIs : forall xp F n d ds ms hm,
+  Lemma rollbacktxn_after_crash_diskIs : forall xp F n d ds ms sm hm,
     crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
     n <= length (snd ds) ->
-    rep xp F (RollbackTxn d) ms hm =p=> after_crash xp F ds (snd ms) hm.
+    rep xp F (RollbackTxn d) ms sm hm =p=> after_crash xp F ds (snd ms) hm.
   Proof.
     unfold rep, after_crash, rep_inner; intros.
     safecancel.
     or_r; cancel.
     eauto.
+    eauto.
     auto.
   Qed.
 
   (** idempred includes both before-crash cand after-crash cases *)
-  Definition idempred xp F ds hm :=
-    (recover_any xp F ds hm \/
+  Definition idempred xp F ds sm hm :=
+    (recover_any xp F ds sm hm \/
       before_crash xp F ds hm \/
       exists cs, after_crash xp F ds cs hm)%pred.
 
-  Theorem sync_invariant_idempred : forall xp F ds hm,
+  Theorem sync_invariant_idempred : forall xp F ds sm hm,
     sync_invariant F ->
-    sync_invariant (idempred xp F ds hm).
+    sync_invariant (idempred xp F ds sm hm).
   Proof.
     unfold idempred; auto.
   Qed.
   Hint Resolve sync_invariant_idempred.
 
-  Theorem idempred_idem : forall xp F ds hm,
-    crash_xform (idempred xp F ds hm) =p=>
+  Theorem idempred_idem : forall xp F ds sm hm,
+    crash_xform (idempred xp F ds sm hm) =p=>
       exists cs, after_crash xp (crash_xform F) ds cs hm.
   Proof.
     unfold idempred; intros.
@@ -1051,52 +1123,52 @@ Module LOG.
     rewrite after_crash_idem; cancel.
   Qed.
 
-  Theorem recover_any_idempred : forall xp F ds hm,
-    recover_any xp F ds hm =p=> idempred xp F ds hm.
+  Theorem recover_any_idempred : forall xp F ds sm hm,
+    recover_any xp F ds sm hm =p=> idempred xp F ds sm hm.
   Proof.
     unfold idempred; cancel.
   Qed.
 
-  Theorem intact_idempred : forall xp F ds hm,
-    intact xp F ds hm =p=> idempred xp F ds hm.
+  Theorem intact_idempred : forall xp F ds sm hm,
+    intact xp F ds sm hm =p=> idempred xp F ds sm hm.
   Proof.
     intros.
     rewrite intact_any.
     apply recover_any_idempred.
   Qed.
 
-  Theorem notxn_idempred : forall xp F ds ms hm,
-    rep xp F (NoTxn ds) ms hm =p=> idempred xp F ds hm.
+  Theorem notxn_idempred : forall xp F ds ms sm hm,
+    rep xp F (NoTxn ds) ms sm hm =p=> idempred xp F ds sm hm.
   Proof.
     intros.
     rewrite notxn_intact.
     apply intact_idempred.
   Qed.
 
-  Theorem active_idempred : forall xp F ds ms d hm,
-    rep xp F (ActiveTxn ds d) ms hm =p=> idempred xp F ds hm.
+  Theorem active_idempred : forall xp F ds ms d sm hm,
+    rep xp F (ActiveTxn ds d) ms sm hm =p=> idempred xp F ds sm hm.
   Proof.
     intros.
     rewrite active_intact.
     apply intact_idempred.
   Qed.
 
-  Theorem after_crash_idempred : forall xp F ds cs hm,
-    after_crash xp F ds cs hm =p=> idempred xp F ds hm.
+  Theorem after_crash_idempred : forall xp F ds cs sm hm,
+    after_crash xp F ds cs hm =p=> idempred xp F ds sm hm.
   Proof.
     unfold idempred; intros.
     or_r; cancel.
   Qed.
 
-  Theorem before_crash_idempred : forall xp F ds hm,
-    before_crash xp F ds hm =p=> idempred xp F ds hm.
+  Theorem before_crash_idempred : forall xp F ds sm hm,
+    before_crash xp F ds hm =p=> idempred xp F ds sm hm.
   Proof.
     unfold idempred; intros.
     or_r; or_l; cancel.
   Qed.
 
   Instance idempred_proper_iff :
-    Proper (eq ==> piff ==> eq ==> eq ==> pimpl) idempred.
+    Proper (eq ==> piff ==> eq ==> eq ==> eq ==> pimpl) idempred.
   Proof.
     unfold Proper, respectful; intros.
     unfold idempred; cancel.
@@ -1128,9 +1200,9 @@ Module LOG.
     intuition simpl; eauto.
   Qed.
 
-  Theorem crash_xform_intact : forall xp F ds hm,
-    crash_xform (intact xp F ds hm) =p=>
-      exists ms d n, rep xp (crash_xform F) (NoTxn (d, nil)) ms hm *
+  Theorem crash_xform_intact : forall xp F ds sm hm,
+    crash_xform (intact xp F ds sm hm) =p=>
+      exists ms d n, rep xp (crash_xform F) (NoTxn (d, nil)) ms sm hm *
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
         [[ n <= length (snd ds) ]].
   Proof.
@@ -1146,19 +1218,23 @@ Module LOG.
     safecancel.
     eassign (mk_mstate (MSTxn x_1) dummy1).
     cancel. auto.
+    eapply sm_ds_valid_synced.
+    eapply sm_vs_valid_crash_xform; eauto.
     eauto.
     eauto.
 
     safecancel.
     eassign (mk_mstate vmap0 dummy1).
-    cancel. auto. eauto. auto.
+    cancel. auto.
+    eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
+    eauto. auto.
   Qed.
 
-  Theorem crash_xform_idempred : forall xp F ds hm,
-    crash_xform (idempred xp F ds hm) =p=>
-      exists ms d n,
-        (rep xp (crash_xform F) (NoTxn (d, nil)) ms hm \/
-          rep xp (crash_xform F) (RollbackTxn d) ms hm) *
+  Theorem crash_xform_idempred : forall xp F ds sm hm,
+    crash_xform (idempred xp F ds sm hm) =p=>
+      exists ms d sm n,
+        (rep xp (crash_xform F) (NoTxn (d, nil)) ms sm hm \/
+          rep xp (crash_xform F) (RollbackTxn d) ms sm hm) *
         [[ n <= length (snd ds) ]] *
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
@@ -1180,12 +1256,16 @@ Module LOG.
       safecancel.
       or_l; cancel.
       eassign (mk_mstate (Map.empty valu) dummy1).
-      cancel. auto. eassumption. auto.
+      cancel. auto.
+      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
+      eassumption. auto.
 
       safecancel.
       or_r; cancel.
       eassign (mk_mstate (Map.empty valu) dummy1).
-      cancel. auto. eassumption. auto.
+      cancel. auto.
+      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
+      eassumption. auto.
 
     - apply crash_xform_sep_star_dist in Hx;
       rewrite GLog.crash_xform_recovering in Hx;
@@ -1198,14 +1278,19 @@ Module LOG.
 
       safecancel.
       or_l; cancel.
-      eassign (mk_mstate (Map.empty valu) dummy4).
-      cancel. auto. eassumption.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      cancel. auto.
+      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
+      eassumption.
       eapply crash_xform_diskIs_trans; eauto.
+
 
       safecancel.
       or_r; cancel.
-      eassign (mk_mstate (Map.empty valu) dummy4).
-      cancel. auto. eassumption.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      cancel. auto.
+      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
+      eassumption.
       eapply crash_xform_diskIs_trans; eauto.
 
     - apply crash_xform_sep_star_dist in Hx.
@@ -1217,17 +1302,23 @@ Module LOG.
       destruct_lift H0.
       safecancel.
       or_l; cancel.
-      eassign (mk_mstate (Map.empty valu) dummy4).
-      cancel. auto. eassumption.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      cancel. auto.
+      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
+      eassumption.
       eapply crash_xform_diskIs_trans; eauto.
 
       rewrite GLog.crash_xform_rollback in H0.
       destruct_lift H0.
       safecancel.
       or_r; cancel.
-      eassign (mk_mstate (Map.empty valu) dummy3).
-      cancel. auto. eassumption.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      cancel. auto.
+      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto; eauto.
+      eassumption.
       eapply crash_xform_diskIs_trans; eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
@@ -1256,19 +1347,19 @@ Module LOG.
     ms <- write xp (a + i) v ms;
     Ret ms.
 
-  Notation arrayP := (arrayN (@ptsto _ addr_eq_dec valuset)).
+  Notation arrayP := (arrayN (@ptsto _ addr_eq_dec _)).
 
   Theorem read_array_ok : forall xp ms a i,
-    {< F Fm ds m vs,
-    PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
+    {< F Fm ds m sm vs,
+    PRE:hm   rep xp F (ActiveTxn ds m) ms sm hm *
           [[ i < length vs]] *
           [[[ m ::: Fm * arrayP a vs ]]]
     POST:hm' RET:^(ms', r)
-          rep xp F (ActiveTxn ds m) ms' hm' *
+          rep xp F (ActiveTxn ds m) ms' sm hm' *
           [[ r = fst (selN vs i ($0, nil)) ]] *
           [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm' exists ms',
-          rep xp F (ActiveTxn ds m) ms' hm'
+          rep xp F (ActiveTxn ds m) ms' sm hm'
     >} read_array xp a i ms.
   Proof.
     unfold read_array.
@@ -1282,21 +1373,22 @@ Module LOG.
 
 
   Theorem write_array_ok : forall xp a i v ms,
-    {< F Fm ds m vs,
-    PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
+    {< F Fm ds sm m vs,
+    PRE:hm   rep xp F (ActiveTxn ds m) ms sm hm *
           [[[ m ::: Fm * arrayP a vs ]]] *
           [[ i < length vs /\ a <> 0 ]]
     POST:hm' RET:ms' exists m',
-          rep xp F (ActiveTxn ds m') ms' hm' *
+          rep xp F (ActiveTxn ds m') ms' sm hm' *
           [[[ m' ::: Fm * arrayP a (updN vs i (v, nil)) ]]]
     CRASH:hm' exists m' ms',
-          rep xp F (ActiveTxn ds m') ms' hm'
+          rep xp F (ActiveTxn ds m') ms' sm hm'
     >} write_array xp a i v ms.
   Proof.
     unfold write_array.
     prestep. norm. cancel.
     unfold rep_inner; intuition.
     pred_apply; cancel.
+    eauto.
     subst; pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto.
     rewrite surjective_pairing with (p := selN vs i ($0, nil)).
@@ -1311,15 +1403,15 @@ Module LOG.
   Hint Extern 1 ({{_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} Bind (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _ ?a _) (rep _ _ _ ?a _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ ?a _ _) (rep _ _ _ ?a _ _)) => constructor : okToUnify.
 
   Definition read_range A xp a nr (vfold : A -> valu -> A) v0 ms :=
     let^ (ms, r) <- ForN i < nr
     Hashmap hm
-    Ghost [ F Fm crash ds m vs ms0 ]
+    Ghost [ F Fm crash ds sm m vs ms0 ]
     Loopvar [ ms pf ]
     Invariant
-      rep xp F (ActiveTxn ds m) ms hm *
+      rep xp F (ActiveTxn ds m) ms sm hm *
       [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]] *
       [[ (exists ms00, readOnly ms00 ms0) -> readOnly ms0 ms ]]
@@ -1334,10 +1426,10 @@ Module LOG.
   Definition write_range xp a l ms :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
-    Ghost [ F Fm crash ds vs ]
+    Ghost [ F Fm crash ds sm vs ]
     Loopvar [ ms ]
     Invariant
-      exists m, rep xp F (ActiveTxn ds m) ms hm *
+      exists m, rep xp F (ActiveTxn ds m) ms sm hm *
       [[[ m ::: (Fm * arrayP a (vsupsyn_range vs (firstn i l))) ]]]
     OnCrash crash
     Begin
@@ -1348,27 +1440,29 @@ Module LOG.
 
 
   Theorem read_range_ok : forall A xp a nr vfold (v0 : A) ms,
-    {< F Fm ds m vs,
+    {< F Fm ds sm m vs,
     PRE:hm
-      rep xp F (ActiveTxn ds m) ms hm *
+      rep xp F (ActiveTxn ds m) ms sm hm *
       [[ nr <= length vs ]] *
       [[[ m ::: (Fm * arrayP a vs) ]]]
     POST:hm' RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' hm' *
+      rep xp F (ActiveTxn ds m) ms' sm hm' *
       [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]] *
       [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm'
-      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' sm hm'
     >} read_range xp a nr vfold v0 ms.
   Proof.
     unfold read_range; intros.
-    safestep. auto. auto.
+    safestep. auto. auto. eauto.
     subst; pred_apply; cancel.
 
     eapply readOnly_refl; eauto.
     eauto.
     safestep.
     unfold rep_inner; cancel.
+    subst; denote (Map.elements (MSTxn a1)) as Hx; rewrite <- Hx.
+    eauto.
     eapply lt_le_trans; eauto.
     subst; denote (Map.elements (MSTxn a1)) as Hx; rewrite <- Hx.
     pred_apply; cancel.
@@ -1456,23 +1550,23 @@ Module LOG.
   Qed.
 
   Theorem write_range_ok : forall xp a l ms,
-    {< F Fm ds m vs,
+    {< F Fm ds m sm vs,
     PRE:hm
-      rep xp F (ActiveTxn ds m) ms hm *
+      rep xp F (ActiveTxn ds m) ms sm hm *
       [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ a <> 0 /\ length l <= length vs ]]
     POST:hm' RET:ms'
-      exists m', rep xp F (ActiveTxn ds m') ms' hm' *
+      exists m', rep xp F (ActiveTxn ds m') ms' sm hm' *
       [[[ m' ::: (Fm * arrayP a (vsupsyn_range vs l)) ]]]
     CRASH:hm' exists ms' m',
-      rep xp F (ActiveTxn ds m') ms' hm'
+      rep xp F (ActiveTxn ds m') ms' sm hm'
     >} write_range xp a l ms.
   Proof.
     unfold write_range; intros.
     step.
 
     safestep.
-    unfold rep_inner; cancel. eauto.
+    unfold rep_inner; cancel. eauto. eauto.
     rewrite vsupsyn_range_length; auto.
     omega.
     rewrite firstn_length_l; omega.
@@ -1487,6 +1581,7 @@ Module LOG.
     pred_apply; cancel.
     apply GLog.rep_hashmap_subset; eauto.
     auto.
+    auto.
     Unshelve. exact tt. eauto.
   Qed.
 
@@ -1495,10 +1590,10 @@ Module LOG.
   Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms :=
     let^ (ms, pf, ret) <- ForN i < nr
     Hashmap hm
-    Ghost [ F Fm crash ds m vs ms0 ]
+    Ghost [ F Fm crash ds sm m vs ms0 ]
     Loopvar [ ms pf ret ]
     Invariant
-      rep xp F (ActiveTxn ds m) ms hm *
+      rep xp F (ActiveTxn ds m) ms sm hm *
       [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ ret = None ->
         cond pf = false ]] *
@@ -1524,18 +1619,18 @@ Module LOG.
     Ret ^(ms, ret).
 
   Theorem read_cond_ok : forall A xp a nr vfold (v0 : A) cond ms,
-    {< F Fm ds m vs,
+    {< F Fm ds sm m vs,
     PRE:hm
-      rep xp F (ActiveTxn ds m) ms hm *
+      rep xp F (ActiveTxn ds m) ms sm hm *
       [[ nr <= length vs /\ cond v0 = false ]] *
       [[[ m ::: (Fm * arrayP a vs) ]]]
     POST:hm' RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' hm' *
+      rep xp F (ActiveTxn ds m) ms' sm hm' *
       ( exists v, [[ r = Some v /\ cond v = true ]] \/
       [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]]) *
       [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm'
-      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' sm hm'
     >} read_cond xp a nr vfold v0 cond ms.
   Proof.
     unfold read_cond; intros.
@@ -1546,6 +1641,8 @@ Module LOG.
     safestep.
 
     unfold rep_inner; cancel.
+    denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
+    eauto.
     eapply lt_le_trans; eauto.
     denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
     subst; pred_apply; cancel.
@@ -1652,7 +1749,7 @@ Module LOG.
 
   Lemma dsync_vssync_vecs_partial : forall al n vsl F m,
     (F * listmatch (fun vs a => a |-> vs) vsl al)%pred (list2nmem m) ->
-    (F * listmatch (fun vs a => a |-> vs \/ a |=> fst vs) vsl al)%pred 
+    (F * listmatch (fun vs a => a |-> vs \/ a |=> fst vs) vsl al)%pred
         (list2nmem (vssync_vecs m (firstn n al))).
   Proof.
     unfold listmatch; induction al; destruct vsl;
@@ -1680,19 +1777,56 @@ Module LOG.
   Qed.
 
 
+  Lemma sm_upd_vecs_listpred_ptsto: forall a sm F,
+    (F * listpred (fun a => (fst a) |->?) a)%pred sm ->
+    (F * listpred (fun a => (fst a) |-> false) a)%pred (sm_upd_vecs sm a).
+  Proof.
+    induction a; intros.
+    cbn in *; auto.
+    rewrite sm_upd_vecs_cons.
+    cbn in *.
+    destruct_lifts.
+    eapply pimpl_apply.
+    2: eapply ptsto_upd'. cancel.
+    eapply pimpl_apply in H.
+    eapply IHa in H.
+    2: cancel.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma sm_sync_vecs_listpred_ptsto: forall a sm F,
+    (F * listpred (fun a => a |->?) a)%pred sm ->
+    (F * listpred (fun a => a |-> true) a)%pred (sm_sync_vecs sm a).
+  Proof.
+    induction a; intros.
+    cbn in *; auto.
+    rewrite sm_sync_vecs_cons.
+    cbn in *.
+    destruct_lifts.
+    eapply pimpl_apply.
+    2: eapply ptsto_upd'. cancel.
+    eapply pimpl_apply in H.
+    eapply IHa in H.
+    2: cancel.
+    pred_apply; cancel.
+  Qed.
+
+
   Theorem dwrite_vecs_ok : forall xp ms avl,
-    {< F Fm ds ovl,
+    {< F Fs Fm ds sm ovl,
     PRE:hm
-      rep xp F (ActiveTxn ds ds!!) ms hm *
+      rep xp F (ActiveTxn ds ds!!) ms sm hm *
       [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]] *
+      [[ (Fs * listpred (fun e => (fst e) |->?) avl)%pred sm ]] *
       [[ NoDup (map fst avl) /\ sync_invariant F ]]
-    POST:hm' RET:ms' exists ds',
-      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+    POST:hm' RET:ms' exists ds' sm',
+      rep xp F (ActiveTxn ds' ds'!!) ms' sm' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]] *
+      [[ (Fs * listpred (fun e => (fst e) |-> false) avl)%pred sm' ]] *
       [[ ds' = (dsupd_vecs ds avl) ]]
     XCRASH:hm'
-      recover_any xp F ds hm' \/
-      recover_any xp F (dsupd_vecs ds avl) hm'
+      recover_any xp F ds sm hm' \/
+      recover_any xp F (dsupd_vecs ds avl) (sm_upd_vecs sm avl) hm'
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs.
@@ -1702,34 +1836,40 @@ Module LOG.
     step; subst.
     apply map_valid_map0.
     rewrite dsupd_vecs_latest; apply dwrite_vsupd_vecs_ok; auto.
-
+    eapply sm_upd_vecs_listpred_ptsto; eauto.
 
     (* crash conditions *)
     xcrash.
     or_l; unfold recover_any, rep; cancel.
     xform_normr; cancel.
     eassign x; eassign (mk_mstate vmap0 (MSGLog ms_1), x0); simpl; eauto.
+    unfold rep_inner.
     pred_apply; cancel.
+    eauto.
 
     or_r; unfold recover_any, rep; cancel.
     xform_normr; cancel.
     eassign x; eassign (mk_mstate vmap0 (MSGLog ms_1), x0); simpl; eauto.
+    unfold rep_inner.
     pred_apply; cancel.
+    eauto.
   Qed.
 
 
   Theorem dsync_vecs_ok : forall xp ms al,
-    {< F Fm ds vsl,
+    {< F Fs Fm ds sm vsl,
     PRE:hm
-      rep xp F (ActiveTxn ds ds!!) ms hm *
+      rep xp F (ActiveTxn ds ds!!) ms sm hm *
       [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]] *
+      [[ (Fs * listpred (fun a => a |->?) al)%pred sm ]] *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms' exists ds',
-      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+    POST:hm' RET:ms' exists ds' sm',
+      rep xp F (ActiveTxn ds' ds'!!) ms' sm' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]] *
+      [[ (Fs * listpred (fun a => a |-> true) al)%pred sm' ]] *
       [[ ds' = dssync_vecs ds al ]]
     CRASH:hm'
-      recover_any xp F ds hm'
+      recover_any xp F ds sm hm'
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs, recover_any.
@@ -1742,7 +1882,92 @@ Module LOG.
     rewrite <- replay_disk_vssync_vecs_comm.
     f_equal; auto.
     apply dsync_vssync_vecs_ok; auto.
+    apply sm_sync_vecs_listpred_ptsto; eauto.
 
+    Unshelve. eauto.
+  Qed.
+
+  Lemma sm_vs_valid_listpred_Forall: forall l F sm vs,
+    (F * listpred (fun a => a |-> true) l)%pred sm ->
+    sm_vs_valid sm vs ->
+    Forall (fun a => vs_synced a vs) l.
+  Proof.
+    induction l; intros.
+    constructor.
+    constructor.
+    cbn in H.
+    eapply pimpl_apply, ptsto_valid with (a := a) in H.
+    2: cancel.
+    eapply sm_vs_valid_vs_synced; eauto.
+    eapply IHl; eauto.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma sm_ds_valid_listpred_Forall: forall l F sm ds,
+    (F * listpred (fun a => a |-> true) l)%pred sm ->
+    sm_ds_valid sm ds ->
+    Forall (fun a => ds_synced a ds) l.
+  Proof.
+    induction l; intros.
+    constructor.
+    constructor.
+    cbn in H.
+    eapply pimpl_apply, ptsto_valid with (a := a) in H.
+    2: cancel.
+    eapply sm_ds_valid_ds_synced; eauto.
+    eapply IHl; eauto.
+    pred_apply; cancel.
+  Qed.
+
+  (* alternative spec for syncing only the unsynced subset of a list *)
+  Theorem dsync_vecs_additional_ok' : forall xp ms al,
+    {< F Fs Fm ds sm all synced vsl,
+    PRE:hm
+      rep xp F (ActiveTxn ds ds!!) ms sm hm *
+      [[ all = al ++ synced ]] *
+      [[ (Fs * listpred (fun a => a |->?) al * listpred (fun a => a |-> true) synced)%pred sm ]] *
+      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl all ]]] *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms' exists ds' sm',
+      rep xp F (ActiveTxn ds' ds'!!) ms' sm' hm' *
+      [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl all ]]] *
+      [[ (Fs * listpred (fun a => a |-> true) all)%pred sm' ]] *
+      [[ ds' = dssync_vecs ds all ]]
+    CRASH:hm'
+      recover_any xp F ds sm hm'
+    >} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs, recover_any.
+    step.
+    eapply listmatch_ptsto_list2nmem_inbound.
+    pred_apply; rewrite listmatch_sym; eauto.
+    eassign (firstn (length al) vsl).
+    erewrite <- firstn_skipn with (l := vsl) (n := length al) at 1.
+    rewrite listmatch_app_rev. cancel.
+    rewrite firstn_length_l in *; auto.
+    destruct_lifts.
+    erewrite listmatch_length_pimpl in H.
+    destruct_lift H.
+    autorewrite with lists in *; omega.
+
+    step; subst; try rewrite dssync_vecs_latest.
+    apply map_valid_vssync_vecs; auto.
+    rewrite <- replay_disk_vssync_vecs_comm.
+    f_equal; auto.
+    erewrite <- vssync_vecs_nop with (vs := ds!!).
+    rewrite vssync_vecs_app', vssync_vecs_app_comm.
+    apply dsync_vssync_vecs_ok; auto.
+
+    eapply sm_vs_valid_listpred_Forall; eauto.
+    rewrite listpred_app.
+    eapply pimpl_apply.
+    2: eapply sm_sync_vecs_listpred_ptsto. cancel.
+    pred_apply; cancel.
+
+    rewrite dssync_vecs_app.
+    rewrite dssync_vecs_nop with (l := synced); auto.
+    eapply sm_ds_valid_listpred_Forall; eauto.
+    eapply sm_ds_valid_dssync_vecs'; eauto.
     Unshelve. eauto.
   Qed.
 
@@ -1751,10 +1976,10 @@ Module LOG.
   Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
-  Lemma idempred_hashmap_subset : forall xp F ds hm hm',
+  Lemma idempred_hashmap_subset : forall xp F ds sm hm hm',
     (exists l, hashmap_subset l hm hm')
-    -> idempred xp F ds hm
-       =p=> idempred xp F ds hm'.
+    -> idempred xp F ds sm hm
+       =p=> idempred xp F ds sm hm'.
   Proof.
     unfold idempred, recover_any, after_crash, before_crash; cancel.
     rewrite rep_hashmap_subset by eauto.
@@ -1779,9 +2004,9 @@ Module LOG.
     intuition simpl; eauto.
   Qed.
 
-  Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F ds al hm,
-    crash_xform (LOG.intact xp F (dssync_vecs ds al) hm) =p=>
-    LOG.idempred xp (crash_xform F) ds hm.
+  Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F sm ds al hm,
+    crash_xform (LOG.intact xp F (dssync_vecs ds al) sm hm) =p=>
+    LOG.idempred xp (crash_xform F) ds sm hm.
   Proof.
     intros.
     rewrite crash_xform_intact.
@@ -1796,30 +2021,10 @@ Module LOG.
   Qed.
 
 
-  Lemma crash_xform_intact_dssync_vecs_latest_idempred : forall xp F ds al hm gms,
-    GLog.dset_match xp ds gms ->
-    crash_xform (intact xp F (dssync_vecs (ds!!, nil) al) hm) =p=>
-    LOG.idempred xp (crash_xform F) ds hm.
-  Proof.
-    intros.
-    rewrite crash_xform_intact.
-    xform_norm.
-    apply crash_xform_diskIs_vssync_vecs in H3.
-    rewrite notxn_after_crash_diskIs.
-    simpl.
-    rewrite after_crash_idempred.
-    cancel.
-    eassign (length ds_2).
-    pred_apply.
-    repeat rewrite nthd_oob.
-    auto.
-    all: simpl; auto.
-  Qed.
-
-  Lemma crash_xform_cached_before: forall fsxp F d hm ms ds n,
+  Lemma crash_xform_cached_before: forall fsxp F d hm ms ds sm n,
     n <= length (snd ds) ->
     crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-    crash_xform (rep (FSXPLog fsxp) F (LOG.NoTxn (d, [])) ms hm)
+    crash_xform (rep (FSXPLog fsxp) F (LOG.NoTxn (d, [])) ms sm hm)
         =p=> crash_xform (before_crash (FSXPLog fsxp) F ds hm).
   Proof.
     intros.
@@ -1838,7 +2043,8 @@ Module LOG.
     cancel.
     rewrite MLog.rep_synced_pimpl.
     cancel.
-    intuition simpl; auto.
+    intuition simpl; eauto.
+    intuition simpl; eauto.
   Qed.
 
 
