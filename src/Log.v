@@ -165,6 +165,7 @@ Module LOG.
     unfold intact, recover_any, rep, rep_inner; cancel.
     apply GLog.cached_recover_any.
     apply GLog.cached_recover_any.
+    eapply sm_ds_valid_pushd_r; eauto.
     Unshelve. all: eauto.
   Qed.
 
@@ -181,6 +182,7 @@ Module LOG.
     rep xp F (NoTxn old) (mk_mstate vmap0 (MSGLog (fst ms)), (snd ms)) sm hm.
   Proof.
     unfold rep, rep_inner; cancel.
+    eapply sm_ds_valid_pushd_r; eauto.
   Qed.
 
   Lemma active_dset_match_pimpl : forall xp F ds d hm sm ms,
@@ -242,8 +244,6 @@ Module LOG.
     norm'l. cancel.
     eassign (mk_mstate vmap0 ms'); auto.
     apply map_empty_vmap0.
-    eapply H2 in H0.
-    inversion H0; auto.
   Qed.
 
   Lemma rep_inner_rollbacktxn_pimpl : forall xp d ms sm hm,
