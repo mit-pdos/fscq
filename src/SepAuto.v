@@ -99,7 +99,8 @@ Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
 
 (* Split first match case into two levels to avoid Coq bug 5156 *)
 Ltac pred_apply := match goal with
-  | [ |- _ ?m ] => match goal with
+  | [ |- _ ?m ] => (is_evar m; fail 1) ||
+    match goal with
     | [ H: _ m |- _ ] => pred_apply' H
     end
   | [ |- exists _, _ ] => eexists; pred_apply
