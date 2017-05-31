@@ -461,7 +461,8 @@ Module LOG.
     all: constructor.
   Qed.
 
-  Local Hint Resolve sm_vs_valid_upd_synced vs_synced_updN_synced
+  Local Hint Resolve sm_vs_valid_upd_synced sm_vs_valid_same_upd_synced
+     vs_synced_updN_synced
      sm_ds_valid_synced sm_ds_valid_pushd_l sm_ds_valid_pushd_r
      sm_ds_valid_pushd sm_ds_valid_dsupd sm_ds_valid_pushd_latest
      sm_ds_valid_dssync list2nmem_inbound ptsto_upd'
@@ -529,11 +530,11 @@ Module LOG.
     unfold abort.
     safestep.
     step using dems; subst; simpl.
-    pred_apply; cancel.
+    pred_apply; cancel_with eauto.
     eapply readOnlyLL; eauto; try reflexivity; simpl; dems.
     pimpl_crash; norm. cancel.
     eassign (mk_mstate vmap0 (MSGLog ms_1)).
-    intuition; pred_apply; cancel.
+    intuition; pred_apply; cancel_with eauto.
   Qed.
 
 
@@ -590,10 +591,10 @@ Module LOG.
     eapply list2nmem_ptsto_bound; eauto.
 
     rewrite replay_disk_add; eauto.
-    rewrite replay_disk_add.
-    eapply list2nmem_updN; eauto.
-  Qed.
 
+    rewrite replay_disk_add.
+    eapply list2nmem_updN. eauto.
+  Qed.
 
   Set Regular Subst Tactic.
 
@@ -899,6 +900,7 @@ Module LOG.
     or_l; cancel.
     eassign (mk_mstate vmap0 ms); eauto.
     auto.
+    eapply sm_ds_valid_disk_unsynced.
     intuition simpl; eauto.
     eapply crash_xform_diskIs_trans; eauto.
 
@@ -907,6 +909,7 @@ Module LOG.
     or_r; cancel.
     eassign (mk_mstate vmap0 ms); eauto.
     auto.
+    eapply sm_ds_valid_disk_unsynced.
     intuition simpl; eauto.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.

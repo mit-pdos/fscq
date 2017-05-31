@@ -327,6 +327,22 @@ Module SyncedMem.
     eapply H; eauto.
   Qed.
 
+  Lemma sm_vs_valid_same_upd_synced: forall sm i d v,
+    sm_vs_valid sm d ->
+    sm_vs_valid sm (updN d i (v, nil)).
+  Proof.
+    unfold sm_vs_valid, Mem.upd; cbn.
+    intros.
+    rewrite length_updN in *.
+    intuition.
+    - eapply H; eauto.
+    - destruct (addr_eq_dec a i); subst.
+      + unfold vs_synced.
+        rewrite selN_updN_eq; auto.
+      + apply vs_synced_updN_synced.
+        eapply H; eauto.
+  Qed.
+
   Lemma sm_vs_valid_vssync': forall sm vs a,
     sm_vs_valid sm vs -> sm_vs_valid sm (vssync vs a).
   Proof.
@@ -511,6 +527,22 @@ Module SyncedMem.
     destruct selN as [? l] eqn:H'.
     rewrite H' in *.
     destruct l; cbn in *; congruence.
+  Qed.
+
+  Definition sm_disk_unsynced : syncedmem := fun _ => Some false.
+
+  Lemma sm_vs_valid_disk_unsynced: forall d,
+    sm_vs_valid sm_disk_unsynced d.
+  Proof.
+    unfold sm_vs_valid; firstorder. discriminate.
+  Qed.
+  Local Hint Resolve sm_vs_valid_disk_unsynced.
+
+  Lemma sm_ds_valid_disk_unsynced: forall ds,
+    sm_ds_valid sm_disk_unsynced ds.
+  Proof.
+    unfold sm_ds_valid; intros.
+    induction (fst ds :: snd ds); constructor; auto.
   Qed.
 
   Definition sm_set_vecs (b : bool) (sm : syncedmem) (a : list addr) :=
