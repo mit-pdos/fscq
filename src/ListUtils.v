@@ -531,6 +531,16 @@ Proof.
     constructor; auto.
 Qed.
 
+Lemma concat_repeat: forall T n k (x : T),
+  concat (repeat (repeat x k) n) = repeat x (n * k).
+Proof.
+  intros.
+  erewrite concat_hom_repeat.
+  autorewrite with lists.
+  eauto.
+  apply Forall_repeat; auto.
+Qed.
+
 
 (** crush any small goals.  Do NOT use for big proofs! *)
 Ltac small_t' := intros; autorewrite with core; autorewrite with core in *;
@@ -1980,6 +1990,14 @@ Proof.
   inversion H0; subst; eauto.
 Qed.
 
+Lemma in_nodup_split : forall T (a : T) l1 l2,
+  In a (l1 ++ l2) -> NoDup (l1 ++ l2) -> ~ In a l2 -> In a l1.
+Proof.
+  induction l1; simpl; intros; eauto.
+  intuition; subst.
+  inversion H0; subst; eauto.
+Qed.
+
 Lemma NoDup_app_comm : forall T (l1 l2 : list T),
   NoDup (l1 ++ l2) ->
   NoDup (l2 ++ l1).
@@ -2006,6 +2024,23 @@ Proof.
     apply in_or_app. apply in_app_or in H0. intuition.
   - eapply IHl1.
     apply NoDup_app_comm in H3. rewrite <- app_assoc in H3. eauto.
+Qed.
+
+Lemma in_nodup_firstn_not_skipn: forall T (l : list T) n x,
+  NoDup l ->
+  In x (firstn n l) -> ~In x (skipn n l).
+Proof.
+  intros.
+  erewrite <- firstn_skipn in H.
+  eapply not_In_NoDup_app; eauto.
+Qed.
+
+Lemma in_nodup_not_skipn_firstn: forall T (l : list T) n x,
+  NoDup l -> In x l ->
+  ~In x (skipn n l) -> In x (firstn n l).
+Proof.
+  intros.
+  eapply in_nodup_split; rewrite ?firstn_skipn; eauto.
 Qed.
 
 Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,

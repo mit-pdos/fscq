@@ -674,6 +674,34 @@ Proof.
   apply H; solve [eapply in_combine_l; eauto | eapply in_combine_r; eauto].
 Qed.
 
+Lemma listmatch_nodup: forall AT AEQ V (a : list AT) (b : list V) (F : @pred AT AEQ V) m,
+  (F * listmatch (fun x y => x |-> y) a b)%pred m -> NoDup a.
+Proof.
+  induction a; cbn; intros.
+  constructor.
+  destruct b; cbn in *.
+  unfold listmatch in *. destruct_lifts. congruence.
+  rewrite listmatch_cons in H.
+  constructor.
+  unfold listmatch in H.
+  intro H'.
+  eapply in_selN_exists in H'.
+  destruct H' as [? [? Hs] ].
+  destruct_lifts.
+  rewrite listpred_pick in H.
+  unfold pprd, prod_curry in *.
+  2: eapply in_selN.
+  erewrite selN_combine in H by auto.
+  2: rewrite combine_length_eq; eauto.
+  rewrite Hs in H.
+  destruct_lifts.
+  eapply ptsto_conflict_F with (a := a) (m := m).
+  pred_apply. cancel.
+  eapply IHa with (b := b) (m := m). pred_apply. cancel.
+Unshelve.
+  all: eauto.
+Qed.
+
 Lemma arrayN_listpred_seq : forall V l st n,
   length l = n ->
   arrayN (@ptsto _ _ V) st l =p=> listpred (fun a => a |->?) (seq st n).
