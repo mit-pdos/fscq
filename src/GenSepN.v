@@ -266,6 +266,22 @@ Proof.
   apply eq_sym; apply H5; auto.
 Qed.
 
+Lemma list2nmem_except_last : forall T (l : list T) x,
+  mem_except (list2nmem (l ++ x::nil)) (length l) = list2nmem l.
+Proof.
+  unfold mem_except, list2nmem.
+  intros.
+  eapply functional_extensionality; cbn; intros a.
+  destruct Nat.eq_dec.
+  rewrite selN_oob; auto.
+  autorewrite with lists. omega.
+  rewrite map_app; cbn.
+  destruct (lt_dec a (length l)).
+  rewrite selN_app; eauto.
+  autorewrite with lists; eauto.
+  repeat rewrite selN_oob; auto.
+  all: autorewrite with lists; cbn; omega.
+Qed.
 
 Theorem list2nmem_array: forall  A (l : list A),
   arrayN (@ptsto _ eq_nat_dec A) 0 l (list2nmem l).
