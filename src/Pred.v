@@ -2756,4 +2756,50 @@ Proof.
   unfold ptsto; intuition.
 Qed.
 
+Lemma diskIs_sep_star_split : forall AT AEQ V (m : @mem AT AEQ V) (p q : @pred AT AEQ V),
+  (p * q)%pred m ->
+  exists (mp mq : @mem AT AEQ V),
+  p mp /\ q mq /\ (diskIs m =p=> diskIs mp * diskIs mq).
+Proof.
+  unfold_sep_star; intros.
+  repeat deex.
+  do 2 eexists.
+  intuition eauto.
+  unfold pimpl, diskIs; intros.
+  do 2 eexists; intuition eauto.
+Qed.
+
+Lemma diskIs_sep_star_combine : forall AT AEQ V (mp mq : @mem AT AEQ V) (p q : @pred AT AEQ V),
+  p mp ->
+  q mq ->
+  (diskIs mp * diskIs mq) =p=> diskIs (mem_union mp mq) * [[ (p * q)%pred (mem_union mp mq) ]].
+Proof.
+  unfold_sep_star; unfold pimpl, diskIs; intros.
+  repeat deex; intuition.
+  do 2 eexists.
+  rewrite mem_union_empty_mem'.
+  intuition.
+  rewrite mem_disjoint_comm.
+  apply mem_disjoint_empty_mem.
+  unfold lift_empty; intros; intuition.
+  do 2 eexists; intuition.
+Qed.
+
+Lemma diskIs_sep_star_upd : forall AT AEQ V (m : @mem AT AEQ V) m0 p a v v0,
+  m0 a = Some v0 ->
+  (p * diskIs m0)%pred m ->
+  (p * diskIs (Mem.upd m0 a v))%pred (Mem.upd m a v).
+Proof.
+  unfold_sep_star; unfold diskIs; intros.
+  repeat deex.
+  do 2 eexists.
+  intuition.
+  3: eauto.
+  erewrite mem_union_comm by eauto.
+  rewrite <- mem_union_upd. apply mem_union_comm.
+  eapply mem_disjoint_upd; eauto. eapply mem_disjoint_comm; eauto.
+  eapply mem_disjoint_comm.
+  eapply mem_disjoint_upd; eauto. eapply mem_disjoint_comm; eauto.
+Qed.
+
 Global Opaque pred.

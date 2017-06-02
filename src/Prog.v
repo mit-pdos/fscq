@@ -127,10 +127,9 @@ Inductive exec : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -
     exec m vm hm (Debug s a) (Finished m vm hm tt)
 | XRdtsc : forall m vm hm t,
     exec m vm hm (Rdtsc) (Finished m vm hm t)
-| XStep : forall T m vm hm (p: prog T) m' m'' vm' hm' v,
+| XStep : forall T m vm hm (p: prog T) m' vm' hm' v,
     step m vm hm p m' vm' hm' v ->
-    possible_sync m' m'' ->
-    exec m vm hm p (Finished m'' vm' hm' v)
+    exec m vm hm p (Finished m' vm' hm' v)
 | XBindFinish : forall m vm hm T (p1: prog T) m' vm' hm' (v: T)
                   T' (p2: T -> prog T') out,
     exec m vm hm p1 (Finished m' vm' hm' v) ->
