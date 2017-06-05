@@ -461,8 +461,52 @@ Module LOG.
     all: constructor.
   Qed.
 
-  Local Hint Resolve sm_vs_valid_upd_synced sm_vs_valid_same_upd_synced
-     vs_synced_updN_synced
+
+  Lemma listpred_ptsto_combine_ex : forall AT AEQ V a b,
+    length a = length b ->
+    listpred (pprd (fun y x => @ptsto AT AEQ V x y)) (List.combine b a) =p=> listpred (fun x => x |->?) a.
+  Proof.
+    induction a; cbn; intros;
+      destruct b; cbn in *; try congruence.
+    rewrite IHa by omega.
+    cancel.
+  Qed.
+
+  Lemma listpred_ptsto_combine_same : forall AT AEQ V f k a b,
+    length a = length b ->
+    (forall (x : AT) (y : V), In (y, x) (filter (fun x => f (snd x)) (List.combine b a)) -> y = k) ->
+    listpred (pprd (fun y x => @ptsto AT AEQ V x y)) (filter (fun x => f (snd x)) (List.combine b a)) =p=> listpred (fun x => x |-> k) (filter f a).
+  Proof.
+    intros.
+    setoid_rewrite filter_In in H0.
+    generalize dependent b.
+    generalize dependent a.
+    induction a; cbn; intros;
+      destruct b; cbn in *; try congruence.
+    denote In as Hi.
+    destruct f eqn:Hf; cbn in *; eauto.
+    rewrite IHa; auto.
+    cancel.
+    erewrite Hi with (y := v); eauto.
+    intuition.
+    eapply Hi; split; eauto.
+    rewrite IHa; eauto.
+    intuition.
+    eapply Hi; split; eauto.
+  Qed.
+
+  Lemma listpred_ptsto_combine_same' : forall AT AEQ V (F : (V * AT) -> @pred AT AEQ V) k a b,
+    length a = length b ->
+    (forall x y, In (y, x) (List.combine b a) -> F (y, x) =p=> x |-> k) ->
+    listpred F (List.combine b a) =p=> listpred (fun x => x |-> k) a.
+  Proof.
+    induction a; cbn; intros;
+      destruct b; cbn in *; try congruence.
+    rewrite IHa, H0 by (auto; omega). cancel.
+  Qed.
+
+
+  Local Hint Resolve sm_vs_valid_upd_synced vs_synced_updN_synced
      sm_ds_valid_synced sm_ds_valid_pushd_l sm_ds_valid_pushd_r
      sm_ds_valid_pushd sm_ds_valid_dsupd sm_ds_valid_pushd_latest
      sm_ds_valid_dssync list2nmem_inbound ptsto_upd'
@@ -530,11 +574,11 @@ Module LOG.
     unfold abort.
     safestep.
     step using dems; subst; simpl.
-    pred_apply; cancel_with eauto.
+    pred_apply; cancel.
     eapply readOnlyLL; eauto; try reflexivity; simpl; dems.
     pimpl_crash; norm. cancel.
     eassign (mk_mstate vmap0 (MSGLog ms_1)).
-    intuition; pred_apply; cancel_with eauto.
+    intuition; pred_apply; cancel.
   Qed.
 
 
@@ -1973,6 +2017,145 @@ Module LOG.
     eapply sm_ds_valid_dssync_vecs'; eauto.
     Unshelve. eauto.
   Qed.
+
+  Hint Resolve Nat.eqb_eq.
+  Hint Rewrite sort_by_index_length split_length_l split_length_r : lists.
+
+  (* alternative spec for syncing only the unsynced subset of a list *)
+  Theorem dsync_vecs_additional_ok : forall xp ms al,
+    {< F Fs Fm ds sm all vsl sml,
+    PRE:hm
+      rep xp F (ActiveTxn ds ds!!) ms sm hm *
+      [[ (Fs * listmatch (fun b a => a |-> b) sml all)%pred sm ]] *
+      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl all ]]] *
+      [[ forall i, i < length all -> In (selN all i 0) al \/ selN sml i false = true ]] *
+      [[ incl al all ]] * [[ NoDup al (* not strictly necessary, but useful *)]] *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms' exists ds' sm',
+      rep xp F (ActiveTxn ds' ds'!!) ms' sm' hm' *
+      [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl all ]]] *
+      [[ (Fs * listpred (fun a => a |-> true) all)%pred sm' ]] *
+      [[ ds' = dssync_vecs ds all ]]
+    CRASH:hm'
+      recover_any xp F ds sm hm'
+    >} dsync_vecs xp al ms.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply dsync_vecs_additional_ok'.
+    intros. norml.
+    assert (NoDup all).
+    eapply listmatch_nodup with (m := sm) (b := sml).
+    pred_apply. rewrite listmatch_sym. cancel.
+    assert (length sml = length all) by eauto using listmatch_length_r.
+    assert (length vsl = length all) by eauto using listmatch_length_r.
+    cancel.
+
+    (* split synced from all in syncedmem *)
+    unfold listmatch.
+    erewrite listpred_partition with (f := fun x => inb al (snd x)).
+    rewrite partition_eq_filter; cbn [fst snd].
+    rewrite listpred_permutation with (a := filter _ _).
+    2: eapply Permutation.Permutation_sym, filter_elements_permutation; auto.
+    2: rewrite map_snd_combine; auto.
+    erewrite <- listpred_ptsto_combine_ex.
+    rewrite <- sort_by_index_combine with (f := Nat.eqb) (la := sml) (lb := all); eauto.
+    eassign 0. repeat eassign true.
+    cancel.
+    erewrite filter_ext.
+    rewrite listpred_ptsto_combine_same; auto.
+    solve [apply pimpl_refl | apply sep_star_comm].
+    2: intros; cbn.
+    2: match goal with |- ?X = ?Y ?y =>
+        match eval pattern y in X with
+        | ?X' y => unify X' Y end end; auto.
+    intros x y Hi.
+    rewrite filter_In in Hi. destruct Hi as [Ha Hb].
+    denote selN as Hs.
+    unfold inb in Hb.
+    eapply in_selN_exists in Ha.
+    destruct Ha as [i [Hc Ha] ].
+    erewrite selN_combine in Ha by auto.
+    rewrite <- Ha in *.
+    destruct in_dec; cbn in *; try congruence.
+    rewrite combine_length_eq2 in Hc by auto.
+    eapply Hs in Hc.
+    intuition eauto.
+    inversion Ha; eauto.
+    autorewrite with lists; auto.
+    intros.
+    eapply in_combine_ex_l; eauto; omega.
+
+    (* split unsynced from all on disk *)
+    unfold listmatch.
+    rewrite listpred_permutation.
+    cancel. solve [reflexivity].
+    shelve.
+    rewrite combine_app.
+    erewrite partition_permutation_app.
+    rewrite partition_eq_filter.
+    cbn [fst snd].
+    apply Permutation.Permutation_app.
+    rewrite <- filter_elements_permutation with (a := al); auto.
+    rewrite sort_by_index_combine; auto.
+    rewrite map_snd_combine; auto.
+    intros.
+    eapply in_combine_ex_l; auto; omega.
+    rewrite <- filter_r; auto.
+    autorewrite with lists; auto.
+    Unshelve.
+    2: autorewrite with lists.
+    2: replace (length vsl) with (length all) by auto.
+    2: erewrite filter_selN_length with (l := all); eauto.
+    eapply pimpl_ok2. eauto.
+    cancel.
+
+    (* reassemble disk pred *)
+    unfold listmatch.
+    rewrite listpred_permutation.
+    cancel.
+    rewrite combine_app by (rewrite split_length_l, sort_by_index_length; auto).
+    symmetry.
+    eapply Permutation.Permutation_trans.
+    apply partition_permutation_app.
+    rewrite partition_eq_filter.
+    cbn [fst snd].
+    apply Permutation.Permutation_app.
+    rewrite <- filter_elements_permutation with (a := al); auto.
+    rewrite sort_by_index_combine; auto.
+    rewrite map_snd_combine; auto.
+    intros.
+    eapply in_combine_ex_l; auto; omega.
+    cbn beta.
+    erewrite filter_ext.
+    erewrite filter_r; auto.
+    2: intros; cbn.
+    2: match goal with |- ?X = ?Y ?y =>
+        match eval pattern y in X with
+        | ?X' y => unify X' Y end end; auto.
+    cbn. reflexivity.
+
+    (* reassemble syncedmem pred *)
+    unfold listmatch.
+    apply listpred_permutation.
+    eapply Permutation.Permutation_trans.
+    apply partition_permutation_app.
+    rewrite partition_eq_filter; cbn [fst snd].
+    apply Permutation.Permutation_app; try reflexivity.
+    apply permutation_filter; auto.
+
+    (* reorder sync vec arguments *)
+    apply dssync_vecs_permutation.
+    symmetry.
+    eapply Permutation.Permutation_trans.
+    eapply partition_permutation_app.
+    rewrite partition_eq_filter; cbn [fst snd].
+    apply Permutation.Permutation_app; try reflexivity.
+    apply permutation_filter; auto.
+  Unshelve.
+    all: solve [exact 0 | exact ($0, [])].
+  Qed.
+
 
 
   Hint Extern 1 ({{_}} Bind (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.

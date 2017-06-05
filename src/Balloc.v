@@ -1732,6 +1732,7 @@ Module BALLOC.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (smrep ?l) (smrep ?l)) => constructor : okToUnify.
 
 
   Lemma sep_star_reorder_helper : forall a b c d : (@pred _ addr_eq_dec valuset),
@@ -2142,6 +2143,7 @@ Module BALLOCC.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (smrep ?l) (smrep ?l)) => constructor : okToUnify.
 
   Lemma sep_star_reorder_helper : forall a b c d : (@pred _ addr_eq_dec valuset),
     ((a * b) * (c * d)) =p=> d * (a * b * c).
