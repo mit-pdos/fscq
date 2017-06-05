@@ -229,6 +229,20 @@ Proof.
   congruence.
 Qed.
 
+Lemma dssync_vecs_permutation: forall ds l l',
+  Permutation.Permutation l l' ->
+  dssync_vecs ds l = dssync_vecs ds l'.
+Proof.
+  intros.
+  induction H; cbn; auto.
+  repeat rewrite ?dssync_vecs_cons, ?dssync_vecs_dssync_comm.
+  f_equal; auto.
+  repeat rewrite ?dssync_vecs_cons.
+  rewrite dssync_comm.
+  reflexivity.
+  congruence.
+Qed.
+
 Module SyncedMem.
 
   Definition syncedmem := @Mem.mem _ addr_eq_dec bool.

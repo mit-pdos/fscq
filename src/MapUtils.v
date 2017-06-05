@@ -648,3 +648,27 @@ End SetDefs.
 
 Module AddrSet_AVL := MSetAVL.Make (OrdersEx.Nat_as_OT).
 Module AddrSet := SetDefs OrdersEx.Nat_as_OT AddrSet_AVL.
+
+Module AddrSetFacts.
+
+  Lemma nodup_elements: forall t,
+    NoDup (AddrSet_AVL.elements t).
+  Proof.
+    intros.
+    rewrite <- NoDup_NoDupA_eq.
+    apply AddrSet_AVL.elements_spec2w.
+    intuition.
+  Qed.
+
+  Lemma elements_spec1 : forall s x,
+    In x (AddrSet_AVL.elements s) <-> AddrSet_AVL.In x s.
+  Proof.
+    intros.
+    rewrite <- AddrSet_AVL.elements_spec1.
+    rewrite InA_alt.
+    intuition.
+    eexists; eauto.
+    destruct H; intuition (subst; auto).
+  Qed.
+
+End AddrSetFacts.

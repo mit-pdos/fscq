@@ -1140,6 +1140,13 @@ Proof.
   rewrite repeat_length; auto.
 Qed.
 
+Lemma synced_list_map_fst_map : forall (vsl : list valuset),
+  synced_list (map fst vsl) = map (fun x => (fst x, nil)) vsl.
+Proof.
+  unfold synced_list; induction vsl; simpl; auto.
+  f_equal; auto.
+Qed.
+
 Lemma vsupsyn_range_synced_list : forall a b,
   length a = length b ->
   vsupsyn_range a b = synced_list b.
