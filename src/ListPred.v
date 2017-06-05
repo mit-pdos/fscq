@@ -312,6 +312,17 @@ Section LISTPRED.
     rewrite H; intuition.
   Qed.
 
+  Lemma listpred_partition: forall f (l : list T),
+    let p := partition f l in
+    listpred l <=p=> listpred (fst p) * listpred (snd p).
+  Proof.
+    cbn; induction l; cbn.
+    split; cancel.
+    destruct partition eqn:?; cbn in *; intros.
+    rewrite IHl.
+    destruct f; split; cancel.
+  Qed.
+
 End LISTPRED.
 
 Theorem listpred_lift : forall T l AT AEQ V prd F G,
@@ -618,6 +629,18 @@ Section LISTMATCH.
     induction l1; intros.
     - rewrite combine_l_nil. split; cancel.
     - simpl. rewrite IHl1. auto.
+  Qed.
+
+  Lemma listpred_exis_listmatch: forall (a : list A),
+    listpred (fun a => exists b, prd a b) a =p=> exists b, listmatch a b.
+  Proof.
+    induction a; cbn; intros.
+    exists nil.
+    unfold listmatch. pred_apply; cancel.
+    rewrite IHa.
+    cancel.
+    rewrite listmatch_cons with (b := b0).
+    cancel.
   Qed.
 
 End LISTMATCH.
