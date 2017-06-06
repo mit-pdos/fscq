@@ -653,7 +653,8 @@ Module INODE.
     simplen.
     cancel.
     cancel; eauto.
-    Unshelve. exact irec0.
+  Unshelve.
+    all: solve [eauto | exact irec0].
   Qed.
 
 
@@ -933,7 +934,10 @@ Module INODE.
     unfold rep in H; destruct_lift H; cancel.
     extract at inum.
     unfold inode_match in H.
-    destruct_lifts; auto.
+    erewrite selN_combine in * by auto.
+    destruct_lifts; eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
   Lemma inode_rep_bn_nonzero_pimpl : forall bxp IFs xp l c,
