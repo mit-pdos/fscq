@@ -101,7 +101,7 @@ Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
 Ltac pred_apply := match goal with
   | [ |- _ ?m ] => (is_evar m; fail 1) ||
     match goal with
-    | [ H: _ m |- _ ] => pred_apply' H
+    | [ H: _ ?m' |- _ ] => unify m m'; pred_apply' H
     end
   | [ |- exists _, _ ] => eexists; pred_apply
   end.
