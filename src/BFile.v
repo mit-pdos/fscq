@@ -496,6 +496,24 @@ Module BFILE.
     all: eauto; constructor.
   Qed.
 
+  Lemma smrep_single_helper_clear_dirty: forall inum ino dblocks,
+    smrep_single_helper dblocks inum ino =p=>
+    smrep_single_helper (clear_dirty inum dblocks) inum INODE.inode0 *
+    listpred (fun a => a |->?) (map (@wordToNat addrlen) (INODE.IBlocks ino)).
+  Proof.
+    cbn; intros.
+    unfold clear_dirty, smrep_single_helper.
+    rewrite listpred_map.
+    rewrite M.find_remove_eq.
+    unfold smrep_single.
+    cancel.
+    apply listpred_pimpl_replace.
+    cancel.
+    unfold SS.For_all.
+    setoid_rewrite SetFacts.empty_iff.
+    intuition.
+  Qed.
+
   Definition block_belong_to_file ilist bn inum off :=
     off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
@@ -1292,6 +1310,21 @@ Qed.
     omega.
   Unshelve.
     exact bfile0.
+  Qed.
+
+  Lemma file_match_length: forall F flist ilist inum di df m,
+    (F * listmatch file_match flist ilist)%pred m ->
+    inum < length flist -> inum < length ilist ->
+    length (INODE.IBlocks (selN ilist inum di)) = length (BFData (selN flist inum df)).
+  Proof.
+    intros.
+    rewrite listmatch_isolate in H by eauto.
+    unfold file_match in H; destruct_lifts.
+    symmetry.
+    eapply listmatch_length_r with (m := m).
+    pred_apply.
+    rewrite listmatch_map_r.
+    solve [apply pimpl_refl | apply sep_star_comm].
   Qed.
 
   Lemma odd_nonzero : forall n,
@@ -3130,27 +3163,33 @@ Qed.
     step.
     prestep. norml.
     rewrite rep_alt_equiv with (msalloc := MSAlloc ms) in *.
-    unfold rep_alt in *. destruct_lifts.
+    match goal with H: context [rep_alt] |- _ =>
+      unfold rep_alt, smrep in H; destruct_lift H end.
     cancel; msalloc_eq.
     sepauto.
 
-    rewrite INODE.rep_bxp_switch in H by eassumption.
+    rewrite INODE.rep_bxp_switch in *|- by eassumption.
     step.
-    rewrite INODE.inode_rep_bn_valid_piff in H; destruct_lift H.
-    rewrite <- Forall_map;
-    apply forall_skipn; solve [intuition sepauto].
-    rewrite arrayN_except by (autorewrite with core; sepauto).
-    rewrite selN_combine by sepauto.
+    rewrite <- Forall_map.
+    match goal with H: context [INODE.rep] |- context [pick_balloc ?a ?b] =>
+      rewrite INODE.inode_rep_bn_valid_piff with (bxp := pick_balloc a b) in H; destruct_lift H
+    end.
+    intuition sepauto.
+    rewrite listmatch_isolate by sepauto.
+    unfold file_match at 2.
     erewrite <- listmatch_ptsto_listpred.
-    cbn; rewrite listmatch_split at 1.
-    rewrite <- skipn_map_comm; cancel.
+    cancel.
+    rewrite arrayN_except by sepauto.
+    rewrite smrep_single_helper_clear_dirty.
+    cancel.
 
     prestep; norm. cancel.
-    intuition eauto.
+    intuition auto.
     pred_apply.
     erewrite INODE.rep_bxp_switch by eassumption.
     cancel.
-    sepauto.
+    apply list2nmem_array_pick. sepauto.
+    pred_apply. cancel.
 
     seprewrite.
     safestep.
@@ -3159,12 +3198,13 @@ Qed.
     cbv [rep_alt].
     erewrite <- INODE.rep_bxp_switch by eassumption.
     unfold cuttail.
-    rewrite arrayN_file_match_length_piff in * by omega; destruct_lifts.
-    denote (length _ = length _) as Hx. repeat rewrite Hx.
+    match goal with H: context [listmatch file_match flist ilist] |- _ =>
+      erewrite file_match_length by solve [pred_apply' H; cancel | sepauto]
+    end.
     rewrite Nat.sub_diag.
     cancel.
-    erewrite combine_updN, arrayN_except_upd by (autorewrite with core; sepauto).
-    cancel.
+    rewrite listmatch_updN_removeN by sepauto.
+    unfold file_match, listmatch. cancel.
     4: erewrite <- surjective_pairing, <- pick_upd_balloc_lift;
       auto using ilist_safe_upd_nil.
     (* There might be a better way to do this *)
@@ -3173,8 +3213,12 @@ Qed.
     rewrite <- pick_negb_upd_balloc.
     repeat rewrite <- pick_upd_balloc_lift.
     cancel.
-    autorewrite with lists; eauto.
     eapply bfcache_remove'; sepauto.
+    unfold smrep. cancel.
+    rewrite arrayN_except_upd by sepauto.
+    rewrite arrayN_ex_smrep_single_helper_clear_dirty.
+    cancel.
+    destruct MSAlloc; cancel.
     rewrite selN_updN_ne; auto.
     cancel.
     cancel.
@@ -3196,14 +3240,13 @@ Qed.
       LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') sm hm' *
       [[ ms = (MSLL ms') ]] *
       [[ BFILE.MSinitial ms' ]]
-      (* TODO prove smrep on recovery *)
     CRASH:hm' LOG.rep lxp F (LOG.NoTxn ds) ms sm hm'
     >} recover ms.
   Proof.
     unfold recover; intros.
     step.
     step.
-    unfold MSinitial; eauto.
+    unfold MSinitial; intuition.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (recover _ ) _) => apply recover_ok : prog.
@@ -3229,7 +3272,7 @@ Qed.
   Qed.
 
   Theorem cache_put_ok : forall inum ms c,
-    {< F Fm Fi m0 sm m lxp bxp ixp flist ilist IFs frees allocc f,
+    {< F Fm Fi m0 sm m lxp bxp ixp flist ilist frees allocc f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
            [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
@@ -3237,7 +3280,7 @@ Qed.
     POST:hm' RET:ms'
            exists f' flist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
-           [[[ m ::: (Fm * rep bxp IFs ixp flist' ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           [[[ m ::: (Fm * rep bxp sm ixp flist' ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (BFAttr f) (Some c) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
@@ -3255,10 +3298,11 @@ Qed.
     intuition idtac.
     2: sepauto.
     pred_apply; cancel.
-    erewrite combine_updN_l, arrayN_except_upd by sepauto.
-    rewrite arrayN_except, selN_combine by sepauto.
+    erewrite <- updN_selN_eq with (l := ilist) at 2.
+    rewrite listmatch_updN_removeN by sepauto.
+    rewrite listmatch_isolate by sepauto.
+    unfold file_match.
     cancel.
-    autorewrite with lists; eauto.
     eauto using bfcache_put.
     eauto.
   Unshelve.
