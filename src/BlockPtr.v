@@ -3407,6 +3407,7 @@ Qed.
   Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _) _) => apply grow_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (@selN (@pred _ _ bool) ?l _ _) (@selN (@pred _ _ bool) ?l _ _)) => constructor : okToUnify.
 
   Theorem xform_rep : forall xp Fs ir l,
     crash_xform (rep xp Fs ir l) <=p=> rep xp Fs ir l.
