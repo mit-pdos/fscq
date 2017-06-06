@@ -466,26 +466,31 @@ Module INODE.
 
   Arguments Rec.well_formed : simpl never.
 
+  Lemma inode_match_init_emp: forall bxp,
+    inode_match bxp (inode0, emp) IRec.Defs.item0 <=p=> emp.
+  Proof.
+    unfold inode_match.
+    unfold IRec.Defs.item0 at 1.
+    rewrite Rec.of_word_zero_reczero; cbn.
+    intros.
+    rewrite Ind.rep_piff_direct by (cbn; omega).
+    unfold Ind.rep_direct.
+    split; cancel; rewrite ?Ind.indrep_0 by auto; try cancel.
+    constructor.
+    setoid_rewrite Rec.of_word_zero_reczero.
+    repeat constructor.
+    apply list_same_repeat.
+  Qed.
+
   Lemma inode_match_init_ok : forall bxp n,
     emp =p=> listmatch (inode_match bxp) (repeat (inode0, emp) n) (repeat IRec.Defs.item0 n).
   Proof.
     induction n; simpl; intros.
     unfold listmatch; cancel.
-    rewrite IHn.
     rewrite listmatch_cons.
+    rewrite <- IHn.
+    rewrite inode_match_init_emp.
     cancel.
-    unfold inode_match.
-    rewrite Ind.rep_piff_direct by (cbn; omega).
-    rewrite sep_star_assoc.
-    apply sep_star_lift_r'.
-    apply pimpl_and_split.
-    unfold pimpl, lift; intros; auto.
-    unfold Ind.rep_direct; cancel.
-    rewrite Ind.indrep_0 by (compute; auto). cancel.
-    apply Forall_nil.
-    repeat constructor.
-    eapply list_same_repeat.
-    auto.
   Qed.
 
 
@@ -510,9 +515,11 @@ Module INODE.
     cbv; auto.
     step.
     unfold IRec.rep. cancel.
+    rewrite combine_repeat.
     apply inode_match_init_ok.
-    split; cancel.
     apply IRec.cache_rep_empty.
+    autorewrite with lists; auto.
+    apply Ind.pred_fold_left_repeat_emp.
   Qed.
 
   Theorem getlen_ok : forall lxp bxp xp inum cache ms,
@@ -531,12 +538,14 @@ Module INODE.
   Proof.
     unfold getlen, rep; pose proof irec0.
     safestep.
-    sepauto.
+    simplen.
     step.
 
     extract.
     denote Ind.rep as Hx; unfold Ind.rep in Hx; destruct_lift Hx.
     seprewrite; subst; eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
@@ -556,11 +565,14 @@ Module INODE.
   Proof.
     unfold getattrs, rep.
     safestep.
-    sepauto.
+    simplen.
 
     step.
     extract.
+    destruct_lifts.
     seprewrite; subst; eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
@@ -580,22 +592,28 @@ Module INODE.
   Proof.
     unfold setattrs, rep.
     safestep.
-    sepauto.
+    simplen.
 
     step.
     irec_wf.
     sepauto.
 
     safestep.
-    eapply listmatch_updN_selN; simplen.
-    instantiate (1 := mk_inode (IBlocks ino) attr).
+    erewrite combine_updN_l.
+    eapply listmatch_updN_selN;
+      rewrite ?combine_length_eq by auto; simplen.
+    eassign (mk_inode (IBlocks ino) attr).
+    erewrite selN_combine with (b0 := emp) by auto.
     unfold inode_match; cancel; sepauto.
+    auto.
+    simplen.
     sepauto.
 
     eauto.
     cancel.
     cancel; eauto.
     Unshelve. exact irec0.
+    all: eauto.
   Qed.
 
 
@@ -617,19 +635,22 @@ Module INODE.
   Proof.
     unfold updattr, rep.
     safestep.
+    simplen.
+
+    safestep.
+    filldef; abstract (destruct kv; cbn; subst; irec_wf).
     sepauto.
 
     safestep.
-    filldef; abstract (destruct kv; simpl; subst; irec_wf).
-    sepauto.
+    rewrite combine_updN.
+    eapply listmatch_updN_selN; erewrite ?selN_combine; simplen.
+    4, 5: sepauto.
+    seprewrite.
+    eassign (@emp addr addr_eq_dec bool).
+    unfold inode_match; cancel.
+    rewrite updN_selN_eq. auto.
 
-    safestep.
-    eapply listmatch_updN_selN; simplen.
-    instantiate (1 := mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
-    unfold inode_match; cancel; sepauto.
-
-    sepauto.
-    auto.
+    simplen.
     cancel.
     cancel; eauto.
     Unshelve. exact irec0.
@@ -653,15 +674,17 @@ Module INODE.
   Proof.
     unfold getbnum, rep.
     safestep.
-    sepauto.
+    simplen.
 
     prestep; norml.
     extract; seprewrite.
-    cancel.
+    cancel; eauto.
     step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
     cancel.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
@@ -681,17 +704,21 @@ Module INODE.
   Proof.
     unfold getallbnum, rep.
     safestep.
-    sepauto.
+    simplen.
 
     prestep; norml.
     extract; seprewrite.
     cancel.
     step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
     cancel.
+  Unshelve.
+    all: eauto.
   Qed.
 
+
+  Local Hint Extern 0 (okToUnify (listmatch ?f _ ?b) (listmatch ?f _ ?b)) => constructor : okToUnify.
 
   Theorem shrink_ok : forall lxp bxp xp inum nr cache ms,
     {< F Fm Fi Fs m0 sm m IFs ilist ino freelist,
@@ -712,33 +739,42 @@ Module INODE.
   Proof.
     unfold shrink, rep.
     safestep.
-    sepauto.
+    simplen.
 
     extract; seprewrite.
-    step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    safestep.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match at 2. rewrite selN_combine by simplen. cancel.
+    Ind.psubst.
+    rewrite Ind.pred_fold_left_selN_removeN. cancel.
     step.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
-    smash_rec_well_formed.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lifts. auto.
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end.
+    smash_rec_well_formed.
     sepauto.
 
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end.
     safestep.
-    2: sepauto.
-    rewrite listmatch_updN_removeN by omega.
+    4, 5: sepauto.
+    rewrite combine_updN, listmatch_updN_removeN.
     cancel.
-    unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
-    2: eauto.
-    cancel. unfold cuttail.
-    match goal with [H : context [Ind.rep _ ?x ?l] |- context [length ?l] ] =>
-      unfold Ind.rep in H; destruct_lift H; substl (length l)
+    unfold BPtrSig.upd_len, BPtrSig.IRLen, cuttail; simpl.
+    cancel.
+    match goal with [H : context [Ind.rep _ _ ?x ?l] |- context [length ?l] ] =>
+      unfold Ind.rep in H; unfold BPtrSig.IRLen in H; destruct_lift H;
+      substl (length l); cancel
     end.
-    cancel.
     apply forall_firstn; auto.
+    simplen.
+    simplen.
+    rewrite Ind.pred_fold_left_updN_removeN by simplen.
+    split; cancel.
+    simplen.
     cancel; auto.
-    Unshelve. exact IRec.Defs.item0.
+    cancel; auto.
+  Unshelve.
+    all: solve [eauto | exact (inode0, emp) | exact IRec.Defs.item0].
   Qed.
 
   Theorem reset_ok : forall lxp bxp xp inum nr attr cache ms,
@@ -761,34 +797,42 @@ Module INODE.
   Proof.
     unfold reset, rep.
     safestep.
-    sepauto.
+    simplen.
 
     extract; seprewrite.
-    step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    safestep.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
+    Ind.psubst.
+    rewrite Ind.pred_fold_left_selN_removeN. cancel.
     step.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
     smash_rec_well_formed.
     repeat match goal with |- let (_, _) := ?y in _ => destruct y; intuition idtac end.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lifts. auto.
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end. auto.
     sepauto.
 
     safestep.
-    2: sepauto.
-    2, 3: eauto.
-    rewrite listmatch_updN_removeN by omega.
+    4, 5, 6: sepauto.
+    rewrite combine_updN, listmatch_updN_removeN.
     unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
     rewrite rep_upd_attrs. cbn.
     unfold cuttail.
-    match goal with [H : context [Ind.rep _ ?x ?l] |- context [length ?l] ] =>
+    match goal with [H : context [Ind.rep _ _ ?x ?l] |- context [length ?l] ] =>
       unfold Ind.rep in H; destruct_lift H; substl (length l)
     end.
     cancel.
     auto using forall_firstn.
+    simplen.
+    simplen.
+    rewrite Ind.pred_fold_left_updN_removeN. split; cancel.
+    simplen.
+    simplen.
     cancel; auto.
-    Unshelve. exact IRec.Defs.item0.
+    cancel; auto.
+  Unshelve.
+    all: solve [eauto | exact IRec.Defs.item0 | exact (inode0, emp)].
   Qed.
 
   Lemma grow_wellformed : forall (a : BPtrSig.irec) inum reclist cache F1 F2 F3 F4 m xp,
@@ -831,29 +875,38 @@ Module INODE.
   Proof.
     unfold grow, rep.
     safestep.
-    sepauto.
+    simplen.
 
     extract; seprewrite.
-    step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end.
+    safestep.
+    eauto.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
+    Ind.psubst.
+    rewrite Ind.pred_fold_left_selN_removeN. cancel.
     step.
     eapply grow_wellformed; eauto.
+    simplen.
     sepauto.
 
     step.
     or_r; cancel.
-    2: sepauto.
-    rewrite listmatch_updN_removeN by omega.
-    cancel.
-    unfold inode_match, BPtrSig.IRAttrs in *; simpl.
+    4: sepauto.
+    rewrite combine_updN, listmatch_updN_removeN.
     cancel.
     substl (IAttr (selN ilist inum inode0)); eauto.
-    apply Forall_app; auto.
-    eapply BALLOCC.bn_valid_roundtrip; eauto.
+    eauto using Forall_app, BALLOCC.bn_valid_roundtrip.
+    simplen.
+    simplen.
+    rewrite Ind.pred_fold_left_updN_removeN by simplen.
+    split; cancel.
+    simplen.
+    cancel; auto.
     cancel; auto.
 
-    Unshelve. all: eauto; exact emp.
+  Unshelve.
+    all: eauto; exact emp.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
@@ -897,8 +950,8 @@ Module INODE.
     apply in_selN; eauto.
   Qed.
 
-  Lemma crash_xform_inode_match : forall xp Fs a b,
-    crash_xform (inode_match xp Fs a b) <=p=> inode_match xp Fs a b.
+  Lemma crash_xform_inode_match : forall xp a b,
+    crash_xform (inode_match xp a b) <=p=> inode_match xp a b.
   Proof.
     unfold inode_match; split.
     xform_norm.
