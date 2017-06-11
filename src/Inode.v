@@ -13,7 +13,6 @@ Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Setoid.
 Require Import Rec.
-Require Import FunctionalExtensionality.
 Require Import NArith.
 Require Import WordAuto.
 Require Import RecArrayUtils LogRecArray.
@@ -22,9 +21,11 @@ Require Import Balloc.
 Require Import ListPred.
 Require Import FSLayout.
 Require Import AsyncDisk.
+Require Import DiskSet.
 Require Import BlockPtr.
 Require Import GenSepAuto.
 Require Import Errno.
+Require Import SyncedMem.
 
 Import ListNotations.
 
