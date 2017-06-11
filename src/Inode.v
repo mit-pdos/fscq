@@ -924,6 +924,38 @@ Module INODE.
 
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
+  Lemma inode_match_sm_sync_invariant: forall bxp x y,
+    inode_match bxp x y <=p=> (inode_match bxp x y * [[ SyncedMem.sm_sync_invariant (snd x) ]])%pred.
+  Proof.
+    intros.
+    unfold inode_match.
+    destruct x.
+    split.
+    do 2 intro. destruct_lifts.
+    pred_apply. cancel.
+    admit.
+    cancel.
+  Admitted.
+
+  Lemma rep_IFs_sync_invariant: forall bxp IFs ixp ilist icache m F,
+    (F * INODE.rep bxp IFs ixp ilist icache)%pred m ->
+    SyncedMem.sm_sync_invariant IFs.
+  Proof.
+    unfold INODE.rep.
+    intros.
+    destruct_lifts.
+    rewrite SyncedMem.sm_sync_invariant_piff by eauto.
+    eapply Ind.sm_sync_invariant_pred_fold_left.
+    rewrite listmatch_lift_l in H.
+    destruct_lifts.
+    erewrite <- Forall_combine_r; try eassumption.
+    split; intro H'; exact H'.
+    eassign (fun x y => inode_match bxp x y).
+    intros.
+    rewrite inode_match_sm_sync_invariant.
+    destruct x; cbn.
+    split; cancel.
+  Qed.
 
   Lemma inode_rep_bn_valid_piff : forall bxp IFs xp l c,
     rep bxp IFs xp l c <=p=> rep bxp IFs xp l c *
@@ -966,15 +998,35 @@ Module INODE.
     rewrite Ind.xform_rep; cancel.
   Qed.
 
+  Lemma listmatch_inode_match_sm_sync_invariant: forall bxp inodes lfs l,
+    length inodes = length lfs ->
+    listmatch (inode_match bxp) (combine inodes lfs) l =p=>
+    listmatch (inode_match bxp) (combine inodes lfs) l * [[ sm_sync_invariant (pred_fold_left lfs) ]].
+  Proof.
+    intros.
+    intros m H'. pred_apply; cancel.
+    eapply Ind.sm_sync_invariant_pred_fold_left.
+    eapply listmatch_lift_l with (P := fun x => sm_sync_invariant (snd x)) in H'.
+    destruct_lifts.
+    eapply Forall_combine_r; eauto.
+    intuition.
+    eassign (fun x y => inode_match bxp x y).
+    intro x. destruct x. intros.
+    rewrite inode_match_sm_sync_invariant.
+    split; cancel.
+  Qed.
 
   Theorem xform_rep : forall bxp Fs xp l c,
-    crash_xform (rep bxp Fs xp l c) <=p=> rep bxp Fs xp l c.
+    crash_xform (rep bxp Fs xp l c) <=p=> rep bxp Fs xp l c * [[ sm_sync_invariant Fs ]].
   Proof.
     unfold rep; intros; split.
     xform_norm.
     rewrite IRec.xform_rep.
     rewrite xform_listmatch_idem.
+    rewrite listmatch_inode_match_sm_sync_invariant by auto.
+
     cancel.
+    eapply sm_sync_invariant_piff; eauto.
     apply crash_xform_inode_match.
 
     cancel.

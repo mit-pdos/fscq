@@ -35,6 +35,7 @@ Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import StringUtils.
 Require Import Balloc.
+Require Import SyncedMem.
 
 
 Import ListNotations.
@@ -796,53 +797,53 @@ Module BFILE.
     auto using arrayN_ex_smrep_single_helper_remove.
   Qed.
 
-Lemma selN_NoDup_notin_firstn: forall T (l : list T) i x d,
-  i < length l ->
-  NoDup l ->
-  selN l i d = x ->
-  ~In x (firstn i l).
-Proof.
-  induction l; cbn; intros.
-  omega.
-  subst.
-  destruct i; cbn.
-  auto.
-  inversion H0; subst.
-  intuition subst.
-  eapply H3.
-  eapply in_selN; omega.
-  eapply IHl; eauto; omega.
-Qed.
+  Lemma selN_NoDup_notin_firstn: forall T (l : list T) i x d,
+    i < length l ->
+    NoDup l ->
+    selN l i d = x ->
+    ~In x (firstn i l).
+  Proof.
+    induction l; cbn; intros.
+    omega.
+    subst.
+    destruct i; cbn.
+    auto.
+    inversion H0; subst.
+    intuition subst.
+    eapply H3.
+    eapply in_selN; omega.
+    eapply IHl; eauto; omega.
+  Qed.
 
-Lemma selN_NoDup_notin_skipn: forall T (l : list T) i x d,
-  i < length l ->
-  NoDup l ->
-  selN l i d = x ->
-  ~In x (skipn (S i) l).
-Proof.
-  induction l; cbn; intros.
-  omega.
-  subst.
-  inversion H0; subst.
-  destruct i; cbn.
-  auto.
-  intuition subst.
-  eapply IHl; eauto; omega.
-Qed.
+  Lemma selN_NoDup_notin_skipn: forall T (l : list T) i x d,
+    i < length l ->
+    NoDup l ->
+    selN l i d = x ->
+    ~In x (skipn (S i) l).
+  Proof.
+    induction l; cbn; intros.
+    omega.
+    subst.
+    inversion H0; subst.
+    destruct i; cbn.
+    auto.
+    intuition subst.
+    eapply IHl; eauto; omega.
+  Qed.
 
-Lemma selN_NoDup_notin_removeN: forall T (l : list T) i x d,
-  i < length l ->
-  selN l i d = x ->
-  NoDup l ->
-  ~In x (removeN l i).
-Proof.
-  intros.
-  unfold removeN.
-  rewrite in_app_iff.
-  intuition.
-  eapply selN_NoDup_notin_firstn; eauto.
-  eapply selN_NoDup_notin_skipn; eauto.
-Qed.
+  Lemma selN_NoDup_notin_removeN: forall T (l : list T) i x d,
+    i < length l ->
+    selN l i d = x ->
+    NoDup l ->
+    ~In x (removeN l i).
+  Proof.
+    intros.
+    unfold removeN.
+    rewrite in_app_iff.
+    intuition.
+    eapply selN_NoDup_notin_firstn; eauto.
+    eapply selN_NoDup_notin_skipn; eauto.
+  Qed.
 
 
   Lemma smrep_single_add: forall dirty ino bn,
@@ -1392,13 +1393,20 @@ Qed.
   Hint Rewrite resolve_selN_bfile0 using reflexivity : defaults.
   Hint Rewrite resolve_selN_vs0 using reflexivity : defaults.
 
-  Lemma bfcache_init' : forall len start,
-    arrayN cache_ptsto start (map BFCache (repeat bfile0 len))
-      (BFM.mm _ (BFcache.empty _)).
+  Lemma bfcache_emp: forall ilist flist,
+    Forall (fun f => BFCache f = None) flist ->
+    locked (cache_rep (BFcache.empty (Dcache_type * addr)) flist ilist).
   Proof.
-    induction len; simpl; intros.
+    intros.
+    unfold cache_rep.
+    rewrite locked_eq.
+    generalize 0.
+    generalize dependent flist.
+    induction flist; cbn; intros.
     eapply BFM.mm_init.
-    eapply pimpl_apply; [ | apply IHlen ].
+    inversion H; subst.
+    eapply pimpl_apply; [|apply IHflist; eauto].
+    substl (BFCache a).
     cancel.
   Qed.
 
@@ -1406,9 +1414,7 @@ Qed.
     locked (cache_rep (BFcache.empty _) (repeat bfile0 len) ilist).
   Proof.
     intros.
-    rewrite locked_eq.
-    unfold cache_rep.
-    eapply bfcache_init'.
+    auto using bfcache_emp, Forall_repeat.
   Qed.
 
   Lemma bfcache_upd : forall mscache inum flist ilist F f d a,
@@ -3234,8 +3240,7 @@ Qed.
 
   Theorem recover_ok : forall ms,
     {< F ds sm lxp,
-    PRE:hm  LOG.rep lxp F (LOG.NoTxn ds) ms sm hm *
-      [[ arrayN (@ptsto _ _ _) 0 (repeat true (length ds!!)) sm ]]
+    PRE:hm  LOG.rep lxp F (LOG.NoTxn ds) ms sm hm
     POST:hm' RET:ms'
       LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') sm hm' *
       [[ ms = (MSLL ms') ]] *
@@ -3460,30 +3465,104 @@ Qed.
     simpl; omega.
   Qed.
 
-  Lemma xform_rep : forall bxp ixp flist ilist IFs frees allocc mscache icache,
-    crash_xform (rep bxp IFs ixp flist ilist frees allocc mscache icache) =p=>
+  Lemma flist_crash_caches_cleared: forall flist flist',
+    flist_crash flist flist' ->
+    Forall (fun f => BFCache f = None) flist'.
+  Proof.
+    unfold flist_crash.
+    induction flist; cbn; intros; inversion H; constructor.
+    unfold file_crash in *.
+    deex.
+    auto.
+    auto.
+  Qed.
+
+  Lemma smrep_single_helper_sm_sync_all: forall dblocks inum ino sm,
+    smrep_single_helper dblocks inum ino sm ->
+    smrep_single_helper (Map.empty _ ) inum ino (sm_sync_all sm).
+  Proof.
+    unfold smrep_single_helper, smrep_single, SS.For_all.
+    intros.
+    rewrite MapFacts.empty_o.
+    eapply sm_sync_all_sep_star_swap; eauto.
+    unfold lift_empty, sm_sync_all.
+    setoid_rewrite SetFacts.empty_iff.
+    intuition.
+    denote None as Hm. rewrite Hm. auto.
+    intros.
+    eapply sm_sync_all_listpred_swap; eauto.
+    cbn. intros.
+    destruct_lifts.
+    destruct_lift H2.
+    setoid_rewrite SetFacts.empty_iff.
+    eexists.
+    eapply sm_sync_all_sep_star_swap; eauto.
+    pred_apply. cancel.
+    intros.
+    apply sm_sync_invariant_lift_empty.
+    pred_apply. cancel.
+  Unshelve.
+    all: exact unit.
+  Qed.
+
+  Lemma arrayN_smrep_single_helper_sm_sync_all: forall dblocks ilist i sm,
+    arrayN (smrep_single_helper dblocks) i ilist sm ->
+    arrayN (smrep_single_helper (Map.empty _)) i ilist (sm_sync_all sm).
+  Proof.
+  induction ilist; cbn; intros; auto.
+  eapply sm_sync_all_sep_star_swap; eauto.
+  intros.
+  eauto using smrep_single_helper_sm_sync_all.
+  Qed.
+
+  Lemma smrep_sm_sync_all: forall frees dblocks ilist sm,
+    smrep frees dblocks ilist sm ->
+    smrep frees (Map.empty _) ilist (SyncedMem.sm_sync_all sm).
+  Proof.
+    unfold smrep, BALLOCC.smrep.
+    intros.
+    eapply sm_sync_all_sep_star_swap_r; eauto.
+    intros.
+    eapply sm_sync_all_arrayN_swap; eauto.
+    cbn; intros.
+    eauto using smrep_single_helper_sm_sync_all.
+  Unshelve.
+    exact INODE.inode0.
+  Qed.
+
+  Lemma sep_star_smrep_sm_synced: forall IFs ilist frees dblocks sm Fs,
+    sm_sync_invariant IFs ->
+    ((Fs * IFs) * smrep frees dblocks ilist)%pred sm ->
+    ((any * IFs) * smrep frees (Map.empty _) ilist)%pred sm_synced.
+  Proof.
+    intros.
+    apply sep_star_assoc_2.
+    eapply sm_synced_sep_star_l with (p := any).
+    apply sep_star_assoc_1.
+    eapply sm_sync_all_sep_star_swap; eauto.
+    intros.
+    eapply sm_sync_all_sep_star_swap_l; eauto.
+    firstorder.
+    eauto using smrep_sm_sync_all.
+  Qed.
+
+  Lemma xform_rep : forall bxp ixp flist ilist sm frees allocc mscache icache dblocks,
+    crash_xform (rep bxp sm ixp flist ilist frees allocc mscache icache dblocks) =p=>
       exists flist', [[ flist_crash flist flist' ]] *
-      rep bxp IFs ixp flist' ilist frees allocc (BFcache.empty _) icache.
+      rep bxp sm_synced ixp flist' ilist frees allocc (BFcache.empty _) icache (Map.empty _).
   Proof.
     unfold rep; intros.
     xform_norm.
     rewrite INODE.xform_rep, BALLOCC.xform_rep, BALLOCC.xform_rep.
     rewrite xform_file_list.
+    do 2 intro. destruct_lifts.
+    pred_apply.
     cancel.
 
-    rewrite locked_eq; unfold cache_rep.
-    denote cache_rep as Hc; clear Hc.
-    generalize dependent flist. generalize 0.
-    induction fs'; simpl in *; intros.
-    eapply BFM.mm_init.
-    denote flist_crash as Hx; inversion Hx; subst.
-    denote! (file_crash _ _) as Hy; inversion Hy; intuition subst.
-    simpl.
-    eapply pimpl_trans. apply pimpl_refl. 2: eapply IHfs'. cancel.
-    eauto.
-
-  Unshelve.
-    all: eauto.
+    apply bfcache_emp.
+    eauto using flist_crash_caches_cleared.
+    eapply sep_star_smrep_sm_synced; eauto.
+    pred_apply' H; cancel.
   Qed.
 
   Lemma xform_file_match_ptsto : forall F a vs f ino,
@@ -3511,7 +3590,7 @@ Qed.
     (F * i |-> f)%pred (list2nmem fs) ->
     crash_xform (rep bxp sm ixp fs ilist frees allocc mscache icache dblocks) =p=>
       exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
-      rep bxp sm ixp fs' ilist frees allocc (BFcache.empty _) icache dblocks *
+      rep bxp sm_synced ixp fs' ilist frees allocc (BFcache.empty _) icache (Map.empty _) *
       [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' i * i |-> f')%pred (list2nmem fs') ]].
   Proof.
     unfold rep; intros.
