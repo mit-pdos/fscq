@@ -659,6 +659,22 @@ Proof.
   rewrite IHa; auto.
 Qed.
 
+Lemma updN_concat' : forall T (l : list (list T)) l' off k x ld,
+  k <> 0 ->
+  off < k * length l ->
+  Forall (fun y => length y = k) l ->
+  l' = updN (selN l (off / k) ld) (off mod k) x ->
+  updN (concat l) off x = concat (updN l (off / k) l').
+Proof.
+  intros.
+  subst.
+  erewrite Nat.div_mod with (x := off) at 1 by eauto.
+  rewrite plus_comm, mult_comm.
+  erewrite updN_concat; auto.
+  erewrite selN_inb; eauto.
+  indrep_n_tree_bound.
+Qed.
+
 Lemma selN_app1 : forall t l l' (d:t) n,
   n < length l -> selN (l ++ l') n d = selN l n d.
 Proof.
