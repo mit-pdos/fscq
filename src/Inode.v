@@ -931,11 +931,12 @@ Module INODE.
     unfold inode_match.
     destruct x.
     split.
-    do 2 intro. destruct_lifts.
+    intros m H'. destruct_lifts.
     pred_apply. cancel.
-    admit.
+    eapply Ind.rep_IFs_sync_invariant with (m := m).
+    pred_apply. cancel.
     cancel.
-  Admitted.
+  Qed.
 
   Lemma rep_IFs_sync_invariant: forall bxp IFs ixp ilist icache m F,
     (F * INODE.rep bxp IFs ixp ilist icache)%pred m ->

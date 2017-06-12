@@ -3474,9 +3474,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     unfold rep, indrep.
     intros.
     destruct_lifts.
-    apply H3.
-    psubst.
-  Admitted.
+    eapply sm_sync_invariant_piff; eauto.
+    repeat eapply sm_sync_invariant_sep_star;
+      eapply indrep_n_tree_sm_sync_invariant with (m := m).
+    all: pred_apply; cancel.
+  Qed.
 
   Theorem xform_rep : forall xp Fs ir l,
     crash_xform (rep xp Fs ir l) <=p=> rep xp Fs ir l.
