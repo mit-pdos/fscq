@@ -2452,7 +2452,7 @@ Module BFILE.
       [[ MSICache ms = MSICache ms' ]] *
       [[ MSAllocC ms' = MSAllocC ms]]
     XCRASH:hm'
-      LOG.recover_any lxp F ds sm hm'
+      LOG.recover_any lxp F ds hm'
     >} sync lxp ixp ms.
   Proof.
     unfold sync, rep.
@@ -2473,7 +2473,7 @@ Module BFILE.
       [[ MSICache ms = MSICache ms' ]] *
       [[ MSAllocC ms' = MSAllocC ms]]
     XCRASH:hm'
-      LOG.recover_any lxp F ds sm hm'
+      LOG.recover_any lxp F ds hm'
     >} sync_noop lxp ixp ms.
   Proof.
     unfold sync_noop, rep.
@@ -2551,9 +2551,9 @@ Module BFILE.
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) (BFCache f) ]]
     XCRASH:hm'
-           LOG.recover_any lxp F ds sm hm' \/
+           LOG.recover_any lxp F ds hm' \/
            exists bn, [[ block_belong_to_file ilist bn inum off ]] *
-           LOG.recover_any lxp F (dsupd ds bn (v, vsmerge vs)) (Mem.upd sm bn false) hm'
+           LOG.recover_any lxp F (dsupd ds bn (v, vsmerge vs)) hm'
     >} dwrite lxp ixp inum off v ms.
   Proof.
     unfold dwrite.
@@ -2639,7 +2639,7 @@ Module BFILE.
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]]
-    CRASH:hm' LOG.recover_any lxp F ds sm hm'
+    CRASH:hm' LOG.recover_any lxp F ds hm'
     >} datasync lxp ixp inum ms.
   Proof.
     unfold datasync, synced_file, rep.
@@ -2666,9 +2666,10 @@ Module BFILE.
     auto.
     apply AddrSetFacts.nodup_elements.
 
-    safestep.
-    5: sepauto.
-    reflexivity.
+    prestep. norm. cancel.
+    intuition auto.
+    2: sepauto.
+    pred_apply. cancel.
     seprewrite.
     rewrite listmatch_isolate with (b := ilist) by sepauto.
     rewrite removeN_updN, selN_updN_eq by sepauto.

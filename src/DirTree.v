@@ -883,9 +883,9 @@ Module DIRTREE.
            [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                            ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     XCRASH:hm'
-           LOG.recover_any fsxp.(FSXPLog) F ds sm hm' \/
-           exists bn sm', [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-           LOG.recover_any fsxp.(FSXPLog) F (dsupd ds bn (v, vsmerge vs)) sm' hm'
+           LOG.recover_any fsxp.(FSXPLog) F ds hm' \/
+           exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+           LOG.recover_any fsxp.(FSXPLog) F (dsupd ds bn (v, vsmerge vs)) hm'
     >} dwrite fsxp inum off v mscs.
   Proof.
     unfold dwrite, rep.
@@ -894,11 +894,13 @@ Module DIRTREE.
     cbn [tree_pred] in *. destruct_lifts.
     cancel.
     eapply list2nmem_inbound; eauto.
-    step; msalloc_eq.
-    cancel.
+    prestep. norm. cancel.
+    intuition auto; msalloc_eq.
+    pred_apply; cancel.
 
     rewrite <- subtree_absorb by eauto.
-    pred_apply. cancel.
+    cancel.
+    auto.
 
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file.
@@ -925,7 +927,7 @@ Module DIRTREE.
            [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                            ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     CRASH:hm'
-           LOG.recover_any fsxp.(FSXPLog) F ds sm hm'
+           LOG.recover_any fsxp.(FSXPLog) F ds hm'
     >} datasync fsxp inum mscs.
   Proof.
     unfold datasync, rep.
@@ -957,7 +959,7 @@ Module DIRTREE.
            [[ MSAllocC mscs' = MSAllocC mscs ]] *
            [[ MSICache mscs' = MSICache mscs ]]
     XCRASH:hm'
-           LOG.recover_any fsxp.(FSXPLog) F ds sm hm'
+           LOG.recover_any fsxp.(FSXPLog) F ds hm'
      >} sync fsxp mscs.
   Proof.
     unfold sync, rep.
@@ -974,7 +976,7 @@ Module DIRTREE.
            [[ MSCache mscs' = MSCache mscs ]] *
            [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
     XCRASH:hm'
-           LOG.recover_any fsxp.(FSXPLog) F ds sm hm'
+           LOG.recover_any fsxp.(FSXPLog) F ds hm'
      >} sync_noop fsxp mscs.
   Proof.
     unfold sync_noop, rep.

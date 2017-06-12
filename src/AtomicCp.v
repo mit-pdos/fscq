@@ -531,7 +531,7 @@ Module ATOMICCP.
                   (synced_dirfile file) dstbase dstname dstfile (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
       exists ds' sm' ts' mscs',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
        [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts']]
       >} copydata fsxp srcinum tinum mscs.
@@ -539,14 +539,13 @@ Module ATOMICCP.
     unfold copydata, tree_with_tmp; intros.
     step.
     eassign srcpath. cancel.
-    step.
-    eassign srcpath. cancel.
-    pred_apply.
-    cancel.
+    prestep. norm. cancel.
+    eassign srcpath. intuition eauto.
+    pred_apply. cancel.
+    pred_apply. cancel.
     step.
     2: eassign tmppath; cancel.
     msalloc_eq; eauto.
-    pred_apply; cancel.
     step.
     denote! (forall _, treeseq_pred _ _ -> treeseq_pred _ _) as Ht.
     specialize (Ht tmppath).
@@ -569,18 +568,15 @@ Module ATOMICCP.
     eapply treeseq_tssync_tree_rep.
     eapply treeseq_upd_tree_rep.
     eauto.
+    2: eauto.
 
     or_r.
     cancel.
     2: eauto.
-    simpl.
-    pred_apply. cancel.
     unfold synced_dirfile.
     erewrite ptsto_0_list2nmem_mem_eq with (d := (DFData file)) by eauto.
     erewrite ptsto_0_list2nmem_mem_eq with (d := (DFData f')) by eauto.
-    simpl.
     cancel.
-    eauto.
 
     eapply treeseq_pred_pushd.
     2: eapply treeseq_tssync_tree_rep.
@@ -617,7 +613,7 @@ Module ATOMICCP.
 
     (* crash during upd *)
     xcrash; eauto.
-    rewrite H20.
+    match goal with H: (_, _) = _ |- _ => rewrite H end.
     eapply treeseq_upd_tree_rep.
     eassumption.
 
@@ -659,7 +655,7 @@ Module ATOMICCP.
                   (synced_dirfile file) dstbase dstname dstfile (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
      exists ds' sm' ts' mscs',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
        [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts']]
     >} copy2temp fsxp srcinum tinum mscs.
@@ -786,7 +782,7 @@ Module ATOMICCP.
           [[ tree_with_dst Ftree srcpath [temp_fn] srcinum file dstbase dstname (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
       exists ds' ts' mscs',
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
        [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]]
     >} copy_and_rename fsxp srcinum tinum dstbase dstname mscs.
@@ -1211,9 +1207,9 @@ Module ATOMICCP.
       [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm mscs' (t, nil) (d, nil) ]] *
       [[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dstfile) (t, nil) ]]
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists ts' ds' mscs' dstfile',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
       [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm mscs' ts' ds' ]] *
       [[ treeseq_pred (tree_rep (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile') ts' ]] *
       [[ file_crash dstfile dstfile' ]]

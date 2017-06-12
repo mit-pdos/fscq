@@ -390,7 +390,7 @@ Module TREESEQ.
          [[ r = DFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]] *
          [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]]
   CRASH:hm'
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} AFS.file_get_attr fsxp inum mscs.
   Proof.
     intros.
@@ -421,7 +421,7 @@ Module TREESEQ.
          (exists v, r = OK v /\ Some v = find_name fnlist (TStree ts !!))%type ]] *
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
       [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]]
-    CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+    CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} AFS.lookup fsxp dnum fnlist mscs.
   Proof.
     intros.
@@ -451,7 +451,7 @@ Module TREESEQ.
            [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]] *
            [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]]
     CRASH:hm'
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} AFS.read_fblock fsxp inum off mscs.
   Proof.
     intros.
@@ -845,9 +845,9 @@ Module TREESEQ.
         [[ f' = mk_dirfile (DFData f) attr ]] *
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
    XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists d ds' ts' mscs' tree' ilist' f',
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
          [[ MSAlloc mscs' = MSAlloc mscs ]] *
          [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
          [[ forall pathname',
@@ -954,9 +954,9 @@ Module TREESEQ.
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
   XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists d ds' sm' ts' mscs' tree' ilist' f' frees',
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
          [[ MSAlloc mscs' = MSAlloc mscs ]] *
          [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
          [[ forall pathname',
@@ -1645,9 +1645,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        [[[ (DFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ DFAttr f' = DFAttr f ]]
     XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
-       exists ds' sm' ts' mscs' bn,
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       exists ds' ts' mscs' bn,
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
          [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
          [[ MSAlloc mscs' = MSAlloc mscs ]] *
          [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
@@ -3014,7 +3014,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
          [[ MSAlloc mscs = MSAlloc mscs' ]] *
          [[ (Ftree * pathname |-> File inum (synced_dirfile f))%pred (dir2flatmem2 (TStree ts' !!)) ]]
     XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.file_sync fsxp inum mscs.
   Proof.
     intros.
@@ -3083,7 +3083,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) (MSLL mscs') sm hm' *
        [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ((ts !!), nil) (ds!!, nil)]]
     XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.tree_sync fsxp mscs.
   Proof.
     intros.
@@ -3271,9 +3271,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> Nothing
                  * (cwd ++ dstbase ++ [dstname]) |-> File srcnum srcfile)%pred (dir2flatmem2 (TStree ts' !!)) ]])
     XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists d ds' ts' ilist' frees' tree' mscs',
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
        [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds']] *
        [[ forall pathname',
@@ -3505,9 +3505,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]])
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d ds' ts' mscs' tree' ilist' frees',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
         [[ MSAlloc mscs' = MSAlloc mscs ]] *
         [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds']] *
         [[ forall pathname',

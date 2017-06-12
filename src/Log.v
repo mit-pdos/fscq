@@ -115,8 +115,8 @@ Module LOG.
       rep xp F (NoTxn ds) ms sm hm \/
       exists new, rep xp F (ActiveTxn ds new) ms sm hm)%pred.
 
-  Definition recover_any xp F ds sm hm :=
-    (exists ms, rep xp F (FlushingTxn ds) ms sm hm)%pred.
+  Definition recover_any xp F ds hm :=
+    (exists ms sm, rep xp F (FlushingTxn ds) ms sm hm)%pred.
 
   Theorem sync_invariant_rep : forall xp F st ms sm hm,
     sync_invariant F ->
@@ -133,9 +133,9 @@ Module LOG.
     unfold intact; auto.
   Qed.
 
-  Theorem sync_invariant_recover_any : forall xp F ds sm hm,
+  Theorem sync_invariant_recover_any : forall xp F ds hm,
     sync_invariant F ->
-    sync_invariant (recover_any xp F ds sm hm).
+    sync_invariant (recover_any xp F ds hm).
   Proof.
     unfold recover_any; auto.
   Qed.
@@ -154,23 +154,24 @@ Module LOG.
   Qed.
 
   Lemma flushing_any : forall xp F ds ms sm hm,
-    rep xp F (FlushingTxn ds) ms sm hm =p=> recover_any xp F ds sm hm.
+    rep xp F (FlushingTxn ds) ms sm hm =p=> recover_any xp F ds hm.
   Proof.
     unfold recover_any; cancel.
   Qed.
 
   Lemma intact_any : forall xp F ds sm hm,
-    intact xp F ds sm hm =p=> recover_any xp F ds sm hm.
+    intact xp F ds sm hm =p=> recover_any xp F ds hm.
   Proof.
     unfold intact, recover_any, rep, rep_inner; cancel.
     apply GLog.cached_recover_any.
+    eauto.
     apply GLog.cached_recover_any.
     eapply sm_ds_valid_pushd_r; eauto.
     Unshelve. all: eauto.
   Qed.
 
   Lemma notxn_any : forall xp F ds ms sm hm,
-    rep xp F (NoTxn ds) ms sm hm =p=> recover_any xp F ds sm_synced hm.
+    rep xp F (NoTxn ds) ms sm hm =p=> recover_any xp F ds hm.
   Proof.
     unfold intact, recover_any, rep, rep_inner; cancel.
     apply GLog.cached_recover_any.
@@ -650,8 +651,8 @@ Module LOG.
       [[ (Fs * a |-> false)%pred sm' ]] *
       [[ ds' = dsupd ds a (v, vsmerge vs) ]]
     XCRASH:hm'
-      recover_any xp F ds sm hm' \/
-      recover_any xp F (dsupd ds a (v, vsmerge vs)) (Mem.upd sm a false) hm'
+      recover_any xp F ds hm' \/
+      recover_any xp F (dsupd ds a (v, vsmerge vs)) hm'
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, recover_any.
@@ -690,7 +691,7 @@ Module LOG.
       [[ ds' = dssync ds a ]] *
       [[ (Fs * a |-> true)%pred sm' ]]
     CRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} dsync xp a ms.
   Proof.
     unfold dsync, recover_any.
@@ -710,12 +711,13 @@ Module LOG.
     POST:hm' RET:ms'
       rep xp F (NoTxn (ds!!, nil)) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} flushall xp ms.
   Proof.
     unfold flushall, recover_any.
     hoare.
     xcrash.
+    eauto.
     Unshelve. eauto.
   Qed.
 
@@ -728,12 +730,13 @@ Module LOG.
     POST:hm' RET:ms'
       rep xp F (NoTxn (ds!!, nil)) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} flushsync xp ms.
   Proof.
     unfold flushsync, recover_any.
     hoare.
     xcrash.
+    eauto.
     Unshelve. eauto.
   Qed.
 
@@ -745,12 +748,13 @@ Module LOG.
     POST:hm' RET:ms'
       rep xp F (NoTxn ds) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} flushall_noop xp ms.
   Proof.
     unfold flushall_noop, recover_any.
     hoare.
     xcrash.
+    eauto.
     Unshelve. eauto.
   Qed.
 
@@ -762,12 +766,13 @@ Module LOG.
     POST:hm' RET:ms'
       rep xp F (NoTxn ds) ms' sm hm'
     XCRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} flushsync_noop xp ms.
   Proof.
     unfold flushsync_noop, recover_any.
     hoare.
     xcrash.
+    eauto.
     Unshelve. eauto.
   Qed.
 
@@ -786,7 +791,7 @@ Module LOG.
           ([[ r = false ]] *
             [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
             rep xp F (NoTxn ds) ms' sm hm')
-     XCRASH:hm' recover_any xp F (pushd m ds) sm hm'
+     XCRASH:hm' recover_any xp F (pushd m ds) hm'
     >} commit xp ms.
   Proof.
     unfold commit, recover_any.
@@ -799,17 +804,20 @@ Module LOG.
     unfold GLog.would_recover_any.
     cancel.
     constructor; auto.
+    eauto.
 
     step.
     step.
     step.
     xcrash.
+    eauto.
     step.
     xcrash.
     rewrite GLog.cached_recover_any.
     unfold GLog.would_recover_any.
     cancel.
     constructor; auto.
+    eauto.
     Unshelve. all: eauto.
   Qed.
 
@@ -951,8 +959,8 @@ Module LOG.
   Qed.
 
 
-  Lemma crash_xform_any : forall xp F ds sm hm,
-    crash_xform (recover_any xp F ds sm hm) =p=>
+  Lemma crash_xform_any : forall xp F ds hm,
+    crash_xform (recover_any xp F ds hm) =p=>
       exists cs, after_crash xp (crash_xform F) ds cs hm.
   Proof.
     unfold recover_any, after_crash, rep, rep_inner; intros.
@@ -986,7 +994,7 @@ Module LOG.
         rep xp F (RollbackTxn d) ms sm_synced hm) *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
-    unfold after_crash, recover_any, rep, rep_inner.
+    unfold after_crash, rep, rep_inner.
     intros. norm. cancel.
     denote or as Hor; apply sep_star_or_distr in Hor.
     destruct Hor; destruct_lift H.
@@ -1134,21 +1142,21 @@ Module LOG.
   Qed.
 
   (** idempred includes both before-crash cand after-crash cases *)
-  Definition idempred xp F ds sm hm :=
-    (recover_any xp F ds sm hm \/
+  Definition idempred xp F ds hm :=
+    (recover_any xp F ds hm \/
       before_crash xp F ds hm \/
       exists cs, after_crash xp F ds cs hm)%pred.
 
-  Theorem sync_invariant_idempred : forall xp F ds sm hm,
+  Theorem sync_invariant_idempred : forall xp F ds hm,
     sync_invariant F ->
-    sync_invariant (idempred xp F ds sm hm).
+    sync_invariant (idempred xp F ds hm).
   Proof.
     unfold idempred; auto.
   Qed.
   Hint Resolve sync_invariant_idempred.
 
-  Theorem idempred_idem : forall xp F ds sm hm,
-    crash_xform (idempred xp F ds sm hm) =p=>
+  Theorem idempred_idem : forall xp F ds hm,
+    crash_xform (idempred xp F ds hm) =p=>
       exists cs, after_crash xp (crash_xform F) ds cs hm.
   Proof.
     unfold idempred; intros.
@@ -1158,14 +1166,14 @@ Module LOG.
     rewrite after_crash_idem; cancel.
   Qed.
 
-  Theorem recover_any_idempred : forall xp F ds sm hm,
-    recover_any xp F ds sm hm =p=> idempred xp F ds sm hm.
+  Theorem recover_any_idempred : forall xp F ds hm,
+    recover_any xp F ds hm =p=> idempred xp F ds hm.
   Proof.
     unfold idempred; cancel.
   Qed.
 
   Theorem intact_idempred : forall xp F ds sm hm,
-    intact xp F ds sm hm =p=> idempred xp F ds sm hm.
+    intact xp F ds sm hm =p=> idempred xp F ds hm.
   Proof.
     intros.
     rewrite intact_any.
@@ -1173,7 +1181,7 @@ Module LOG.
   Qed.
 
   Theorem notxn_idempred : forall xp F ds ms sm hm,
-    rep xp F (NoTxn ds) ms sm hm =p=> idempred xp F ds sm hm.
+    rep xp F (NoTxn ds) ms sm hm =p=> idempred xp F ds hm.
   Proof.
     intros.
     rewrite notxn_intact.
@@ -1181,29 +1189,29 @@ Module LOG.
   Qed.
 
   Theorem active_idempred : forall xp F ds ms d sm hm,
-    rep xp F (ActiveTxn ds d) ms sm hm =p=> idempred xp F ds sm hm.
+    rep xp F (ActiveTxn ds d) ms sm hm =p=> idempred xp F ds hm.
   Proof.
     intros.
     rewrite active_intact.
     apply intact_idempred.
   Qed.
 
-  Theorem after_crash_idempred : forall xp F ds cs sm hm,
-    after_crash xp F ds cs hm =p=> idempred xp F ds sm hm.
+  Theorem after_crash_idempred : forall xp F ds cs hm,
+    after_crash xp F ds cs hm =p=> idempred xp F ds hm.
   Proof.
     unfold idempred; intros.
     or_r; cancel.
   Qed.
 
-  Theorem before_crash_idempred : forall xp F ds sm hm,
-    before_crash xp F ds hm =p=> idempred xp F ds sm hm.
+  Theorem before_crash_idempred : forall xp F ds hm,
+    before_crash xp F ds hm =p=> idempred xp F ds hm.
   Proof.
     unfold idempred; intros.
     or_r; or_l; cancel.
   Qed.
 
   Instance idempred_proper_iff :
-    Proper (eq ==> piff ==> eq ==> eq ==> eq ==> pimpl) idempred.
+    Proper (eq ==> piff ==> eq ==> eq ==> pimpl) idempred.
   Proof.
     unfold Proper, respectful; intros.
     unfold idempred; cancel.
@@ -1261,8 +1269,8 @@ Module LOG.
     eauto using sm_ds_valid_synced, sm_vs_valid_sm_synced.
   Qed.
 
-  Theorem crash_xform_idempred : forall xp F ds sm hm,
-    crash_xform (idempred xp F ds sm hm) =p=>
+  Theorem crash_xform_idempred : forall xp F ds hm,
+    crash_xform (idempred xp F ds hm) =p=>
       exists ms d n,
         (rep xp (crash_xform F) (NoTxn (d, nil)) ms sm_synced hm \/
           rep xp (crash_xform F) (RollbackTxn d) ms sm_synced hm) *
@@ -1854,8 +1862,8 @@ Module LOG.
       [[ (Fs * listpred (fun e => (fst e) |-> false) avl)%pred sm' ]] *
       [[ ds' = (dsupd_vecs ds avl) ]]
     XCRASH:hm'
-      recover_any xp F ds sm hm' \/
-      recover_any xp F (dsupd_vecs ds avl) (sm_upd_vecs sm avl) hm'
+      recover_any xp F ds hm' \/
+      recover_any xp F (dsupd_vecs ds avl) hm'
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs.
@@ -1898,7 +1906,7 @@ Module LOG.
       [[ (Fs * listpred (fun a => a |-> true) al)%pred sm' ]] *
       [[ ds' = dssync_vecs ds al ]]
     CRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs, recover_any.
@@ -1963,7 +1971,7 @@ Module LOG.
       [[ (Fs * listpred (fun a => a |-> true) all)%pred sm' ]] *
       [[ ds' = dssync_vecs ds all ]]
     CRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs, recover_any.
@@ -2019,7 +2027,7 @@ Module LOG.
       [[ (Fs * listpred (fun a => a |-> true) all)%pred sm' ]] *
       [[ ds' = dssync_vecs ds all ]]
     CRASH:hm'
-      recover_any xp F ds sm hm'
+      recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
   Proof.
     intros.
@@ -2144,10 +2152,10 @@ Module LOG.
   Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
-  Lemma idempred_hashmap_subset : forall xp F ds sm hm hm',
+  Lemma idempred_hashmap_subset : forall xp F ds hm hm',
     (exists l, hashmap_subset l hm hm')
-    -> idempred xp F ds sm hm
-       =p=> idempred xp F ds sm hm'.
+    -> idempred xp F ds hm
+       =p=> idempred xp F ds hm'.
   Proof.
     unfold idempred, recover_any, after_crash, before_crash; cancel.
     rewrite rep_hashmap_subset by eauto.
@@ -2173,8 +2181,8 @@ Module LOG.
   Qed.
 
   Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F sm ds al hm,
-    crash_xform (LOG.intact xp F (dssync_vecs ds al) sm hm) =p=>
-    LOG.idempred xp (crash_xform F) ds sm_synced hm.
+    crash_xform (intact xp F (dssync_vecs ds al) sm hm) =p=>
+    idempred xp (crash_xform F) ds hm.
   Proof.
     intros.
     rewrite crash_xform_intact.

@@ -190,7 +190,7 @@ Theorem read_from_block_ok: forall fsxp inum mscs block_off byte_off read_length
           [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]] *
           [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_from_block fsxp inum mscs block_off byte_off read_length.
 Proof.
 	unfold read_from_block, AByteFile.rep; intros.
@@ -269,7 +269,7 @@ Theorem read_middle_blocks_ok: forall fsxp inum mscs block_off num_of_full_block
           [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]] *
           [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_middle_blocks fsxp inum mscs block_off num_of_full_blocks.
 Proof.
 unfold read_middle_blocks, AByteFile.rep.
@@ -360,7 +360,7 @@ Theorem read_last_ok: forall fsxp inum mscs off n,
           [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]] *
           [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_last fsxp inum mscs off n.
 Proof.
 	unfold read_last, AByteFile.rep; intros; step.
@@ -395,7 +395,7 @@ Theorem read_middle_ok: forall fsxp inum mscs off n,
           [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]] *
           [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_middle fsxp inum mscs off n.
 Proof.
 	unfold read_middle, AByteFile.rep; intros; step.
@@ -479,7 +479,7 @@ Theorem read_first_ok: forall fsxp inum mscs block_off byte_off n,
           [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]] *
           [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_first fsxp inum mscs block_off byte_off n.
 Proof.
   unfold read_first, AByteFile.rep; intros; step.
@@ -543,7 +543,7 @@ Theorem read_ok: forall fsxp inum mscs off n,
           [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts ds ]] *
           [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read fsxp inum mscs off n.
 Proof.   
   unfold read, AByteFile.rep; intros; step.
@@ -738,13 +738,13 @@ POST:hm' RET:^(mscs')  exists bn fy' f' ds' ts' sm',
   [[ MSAlloc mscs' = MSAlloc mscs ]]
 
 XCRASH:hm'
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
-  exists bn ds' sm' ts' mscs',
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+  exists bn ds' ts' mscs',
   let old_blocks := selN (DFData f) block_off valuset0 in
   let head_pad := firstn byte_off (valu2list (fst old_blocks)) in
   let tail_pad := skipn (byte_off + length data) (valu2list (fst old_blocks))in
   let new_block := list2valu (head_pad ++ data ++ tail_pad) in
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
   [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds']] *
   [[ ds' = dsupd ds bn (new_block, vsmerge old_blocks) ]] *
   [[ ts' = tsupd ts pathname block_off (new_block, vsmerge old_blocks) ]] *
@@ -928,14 +928,14 @@ POST:hm' RET:^(mscs')  exists ts' fy' f' ds' sm' bnl,
      [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 (TStree ts' !!)) ]]
      
 XCRASH:hm'
-  exists i ds' sm' ts' mscs' bnl,
+  exists i ds' ts' mscs' bnl,
   
     let new_blocks := map list2valu (list_split_chunk 
                    i valubytes (firstn (i * valubytes) data)) in
                   
     let old_blocks := get_sublist (DFData f) block_off i in
   
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
   [[ i <= num_of_full_blocks ]] *
    [[ ds' = dsupd_iter ds bnl (combine new_blocks (map vsmerge old_blocks)) ]] *
    [[ ts' = tsupd_iter ts pathname block_off
@@ -1154,12 +1154,12 @@ POST:hm' RET:^(mscs')  exists bn fy' f' ds' ts' sm',
   [[ MSAlloc mscs' = MSAlloc mscs ]])
 
 XCRASH:hm'
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
   exists bn ds' ts' mscs',
   let old_blocks := selN (DFData f) block_off valuset0 in
   let tail_pad := skipn (length data) (valu2list (fst old_blocks))in
   let new_block := list2valu (data ++ tail_pad) in
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
   [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds']] *
   [[ ds' = dsupd ds bn (new_block, vsmerge old_blocks) ]] *
   [[ ts' = tsupd ts pathname block_off (new_block, vsmerge old_blocks) ]] *
@@ -1237,7 +1237,7 @@ XCRASH:hm'
                    i valubytes (firstn (i * valubytes) (data ++ tail_pad))) in
     let old_blocks := get_sublist (DFData f) block_off i in
   
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
   [[ i <= (roundup (length data) valubytes / valubytes) ]] *
    [[ ds' = dsupd_iter ds bnl (combine new_blocks (map vsmerge old_blocks)) ]] *
    [[ ts' = tsupd_iter ts pathname block_off
@@ -1981,7 +1981,7 @@ XCRASH:hm'
                         (firstn (i * valubytes) (head_pad ++ data ++ tail_pad))) in
     let old_blocks := get_sublist (DFData f) block_off i in
   
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
   [[ i <= (roundup (length head_pad + length data) valubytes / valubytes) ]] *
   [[ ds' = dsupd_iter ds bnl (combine new_blocks (map vsmerge old_blocks)) ]] *
   [[ ts' = tsupd_iter ts pathname block_off
@@ -3152,7 +3152,7 @@ XCRASH:hm'
                         (firstn (i * valubytes) (head_pad ++ data ++ tail_pad))) in
     let old_blocks := get_sublist (DFData f) block_off i in
   
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
   [[ i <= (roundup (length head_pad + length data) valubytes / valubytes) ]] *
   [[ ds' = dsupd_iter ds bnl (combine new_blocks (map vsmerge old_blocks)) ]] *
   [[ ts' = tsupd_iter ts pathname block_off
@@ -3213,7 +3213,7 @@ POST:hm' RET:^(mscs', r)
             [[[ (ByFData tfy') ::: (arrayN (ptsto (V:= byteset)) 0 (map (fun x => (x, nil:list byte)) (map fst copy_data))) ]]] * [[ ByFAttr tfy' = ByFAttr fy]])))
 XCRASH:hm'
   exists ds' ts' mscs' sm',
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
    [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
    [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts']]
   >} copydata fsxp srcinum tinum mscs.
@@ -3426,7 +3426,7 @@ Hint Extern 1 ({{_}} Bind (copydata _ _ _ _) _) => apply copydata_ok : prog.
             [[[ (ByFData tfy') ::: (arrayN (ptsto (V:= byteset)) 0 (map (fun x => (x, nil:list byte)) (map fst copy_data))) ]]] * [[ ByFAttr tfy' = ByFAttr fy]])))
     XCRASH:hm'
      exists ds' ts' mscs' sm',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
        [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts']]
     >} copy2temp fsxp srcinum tinum mscs.
