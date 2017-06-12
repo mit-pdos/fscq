@@ -518,10 +518,10 @@ Module ATOMICCP.
       [[[ DFData file ::: (Off0 |-> v0) ]]] *
       [[[ DFData tfile ::: (Off0 |-> t0) ]]]
     POST:hm' RET:^(mscs', r)
-      exists ds' ts',
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm hm' *
+      exists ds' ts' sm',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
        [[ MSAlloc mscs = MSAlloc mscs' ]] *
-       [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts' ]] *
         (([[ isError r ]] *
           exists f', [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum 
@@ -530,9 +530,9 @@ Module ATOMICCP.
              [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum 
                   (synced_dirfile file) dstbase dstname dstfile (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
-      exists ds' ts' mscs',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
+      exists ds' sm' ts' mscs',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts']]
       >} copydata fsxp srcinum tinum mscs.
    Proof.
@@ -645,10 +645,10 @@ Module ATOMICCP.
                 tfile dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ DFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
-      exists ds' ts',
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm hm' *
+      exists ds' sm' ts',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
        [[ MSAlloc mscs = MSAlloc mscs' ]] *
-       [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts' ]] *
         (([[ r = false ]] *
           exists f',
@@ -658,9 +658,9 @@ Module ATOMICCP.
              [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum 
                   (synced_dirfile file) dstbase dstname dstfile (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
-     exists ds' ts' mscs',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
+     exists ds' sm' ts' mscs',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts']]
     >} copy2temp fsxp srcinum tinum mscs.
   Proof.

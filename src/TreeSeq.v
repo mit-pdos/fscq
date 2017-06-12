@@ -268,7 +268,7 @@ Module TREESEQ.
 
   Ltac distinct_names :=
     match goal with
-      [ H: (_ * rep _ _ ?tree _ _ _)%pred (list2nmem _) |- tree_names_distinct ?tree ] => 
+      [ H: (_ * rep _ _ ?tree _ _ _ _)%pred (list2nmem _) |- tree_names_distinct ?tree ] =>
         eapply rep_tree_names_distinct; eapply H
     end.
 
@@ -955,10 +955,10 @@ Module TREESEQ.
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
   XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
-       exists d ds' ts' mscs' tree' ilist' f' frees',
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm hm' *
+       exists d ds' sm' ts' mscs' tree' ilist' f' frees',
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' sm' hm' *
          [[ MSAlloc mscs' = MSAlloc mscs ]] *
-         [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
+         [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
          [[ forall pathname',
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
@@ -2698,14 +2698,14 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     destruct (find_subtree pathname (TStree ts !!)); [ destruct d | ]; simpl in *; eauto.
   Qed.
 
-  Lemma treeseq_in_ds_file_sync' : forall  Fm Ftop fsxp mscs ds ts al pathname inum  f,
-    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+  Lemma treeseq_in_ds_file_sync' : forall  Fm Ftop fsxp sm mscs ds ts al pathname inum  f,
+    treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ->
     treeseq_pred (treeseq_safe pathname (MSAlloc mscs) ts !!) ts ->
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     Datatypes.length al = Datatypes.length (DFData f) ->
     (length al = length (DFData f) /\ forall i, i < length al ->
                 BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
-    treeseq_in_ds Fm Ftop fsxp mscs (ts_file_sync pathname ts) (dssync_vecs ds al).
+    treeseq_in_ds Fm Ftop fsxp sm mscs (ts_file_sync pathname ts) (dssync_vecs ds al).
   Proof.
     unfold treeseq_in_ds.
     intros.

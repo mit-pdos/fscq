@@ -2546,7 +2546,7 @@ Module BFILE.
            [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            (* spec about files on the latest diskset *)
-           [[[ ds'!! ::: (Fm  * rep bxp sm ixp flist' ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           [[[ ds'!! ::: (Fm  * rep bxp sm' ixp flist' ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) (BFCache f) ]]
@@ -2595,8 +2595,13 @@ Module BFILE.
     eauto.
 
     erewrite arrayN_except by eauto.
-    erewrite smrep_single_helper_return_dirty by eauto.
     rewrite arrayN_ex_smrep_single_helper_put_dirty.
+    eapply pimpl_trans.
+    eapply pimpl_trans.
+    2: eapply pimpl_sep_star; [reflexivity | eapply smrep_single_helper_return_dirty].
+    cancel; solve [apply pimpl_refl | apply sep_star_comm].
+    auto.
+    sepauto.
     rewrite smrep_single_helper_put_remove_dirty. cancel.
     eauto.
 

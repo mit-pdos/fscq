@@ -191,11 +191,11 @@ Module DTCrash.
     rewrite flist_crash_xform_ptsto. cancel. eauto.
   Qed.
 
-  Lemma xform_tree_rep : forall xp F t ilist frees ms msll',
-     crash_xform (rep xp F t ilist frees ms) =p=> 
+  Lemma xform_tree_rep : forall xp F t ilist frees ms msll' sm,
+     crash_xform (rep xp F t ilist frees ms sm) =p=>
      exists t',
       [[ tree_crash t t' ]] * 
-      rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty msll').
+      rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty msll') sm.
   Proof.
     unfold rep; intros.
     xform_norm.
