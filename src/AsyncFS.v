@@ -24,6 +24,7 @@ Require Import FSLayout.
 Require Import Cache.
 Require Import Errno.
 Require Import AsyncDisk.
+Require Import SyncedMem.
 Require Import GroupLog.
 Require Import DiskLogHash.
 Require Import SuperBlock.
@@ -159,16 +160,16 @@ Module AFS.
     | [ r : BFILE.memstate,
         H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ],
         Hi: context [IAlloc.Alloc.rep _ _ _ _ ?x_]
-        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
+        |- LOG.rep ?xp ?F ?d ?ms _ _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ _ * _ ] =>
         equate d d'; equate ms' (MSLL (
-        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.MSCache x_) (MSICache r) (MSCache r)
+        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.MSCache x_) (MSICache r) (MSCache r) (MSDBlocks r)
         ));
         equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
     | [ r : BFILE.memstate,
         H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ]
-        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
+        |- LOG.rep ?xp ?F ?d ?ms _ _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ _ * _ ] =>
         equate d d'; equate ms' (MSLL (
-        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.Alloc.freelist0) (MSICache r) (MSCache r)
+        BFILE.mk_memstate (MSAlloc r) ms (MSAllocC r) (IAlloc.Alloc.freelist0) (MSICache r) (MSCache r) (MSDBlocks r)
         ));
         equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
     end.
@@ -572,6 +573,7 @@ Module AFS.
        [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
        exists d n sm, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm hm' *
+       [[ sm = sm_synced ]] *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
        [[ BFILE.MSinitial ms ]]
      XCRASH:hm'

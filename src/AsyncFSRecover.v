@@ -128,21 +128,22 @@ Module AFS_RECOVER.
       (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs);
       try eassumption.
     cancel.
-    safestep; subst. 2: eauto.
+    safestep; subst.
     simpl_idempred_r.
-    eassumption.
     simpl_idempred_r.
-    rewrite <- LOG.before_crash_idempred.
-
-    cancel. auto.
-
     cancel.
-    safestep; subst. 2:eassumption.
+    SepAuto.xcrash_rewrite.
+    cancel.
+    rewrite LOG.before_crash_idempred.
+    cancel.
+
+    simpl_idempred_r; auto.
+    safestep; subst.
     simpl_idempred_r.
-    eauto.
-    simpl_idempred_r.
-    rewrite <- LOG.before_crash_idempred.
-    cancel. auto.
+    cancel.
+    SepAuto.xcrash_rewrite.
+    rewrite LOG.before_crash_idempred.
+    cancel.
   Qed.
 
 
@@ -314,16 +315,16 @@ Module AFS_RECOVER.
       [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs')
       exists ds' sm' tree' al,
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm hm' *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
         [[ ds' = dssync_vecs ds al ]] *
         [[[ ds'!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree' ilist frees mscs' sm')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum (synced_dirfile f)) tree ]]
     REC:vm',hm' RET:r exists mscs fsxp,
-      exists d,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm hm' *
+      exists d sm',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' hm' *
        ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
-         exists flist' F' IFs,
-         [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) IFs (FSXPInode fsxp) flist' ilist frees
+         exists flist' F',
+         [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) sm' (FSXPInode fsxp) flist' ilist frees
                                    (BFILE.MSAllocC mscs) (BFILE.MSCache mscs) (BFILE.MSICache mscs) (BFILE.MSDBlocks mscs)) ]]] *
          [[[ flist' ::: (arrayN_ex (@ptsto _ addr_eq_dec _) flist' inum *
                          exists c, inum |-> BFILE.synced_file (dirfile_to_bfile f c)) ]]]
@@ -337,11 +338,11 @@ Module AFS_RECOVER.
 
     (* build a new idemcrash predicate that carries the XCRASH facts *)
     instantiate (1 :=  (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform
-         (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm
+         (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v v0 hm
       \/ (exists d tree',
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) sm hm *
-           [[[ d ::: v0 ✶ DirTreeRep.rep fsxp v1 tree' v6 v5 mscs ]]] *
-           [[ tree' = update_subtree v3 (TreeFile inum (synced_dirfile v4)) v2 ]])) ]]))%pred).
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) v0 hm *
+           [[[ d ::: v1 ✶ DirTreeRep.rep fsxp v2 tree' v7 v6 mscs v0 ]]] *
+           [[ tree' = update_subtree v4 (TreeFile inum (synced_dirfile v5)) v3 ]])) ]]))%pred).
     apply pimpl_refl.
     cancel. xform_dist. cancel.
     simpl.
@@ -396,7 +397,7 @@ Module AFS_RECOVER.
       rewrite BFILE.xform_rep, IAlloc.xform_rep in Hx.
       destruct_lift Hx.
       recover_ro_ok. cancel.
-      instantiate (mscs0 := BFILE.mk_memstate _ (MSLL ms) _ _ _ _). cancel.
+      instantiate (mscs0 := BFILE.mk_memstate _ (MSLL ms) _ _ _ _ _). cancel.
       or_r; cancel.
 
       eapply pimpl_apply; [| eapply DirTreePred.flist_crash_synced_file; eauto].
@@ -408,11 +409,10 @@ Module AFS_RECOVER.
       do 3 (xform_norm; cancel).
       rewrite <- LOG.before_crash_idempred.
       eauto.
-      auto.
 
     Unshelve.
       all: eauto.
-      all: try solve [do 5 econstructor].
+      all: solve [do 5 econstructor].
   Qed.
 
 (*
