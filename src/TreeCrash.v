@@ -18,6 +18,7 @@ Require Import Array.
 Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
 Require Import DiskSet.
+Require Import SyncedMem.
 Require Import GenSepAuto.
 Require Import BFileCrash.
 Require Import Omega.
@@ -195,7 +196,7 @@ Module DTCrash.
      crash_xform (rep xp F t ilist frees ms sm) =p=>
      exists t',
       [[ tree_crash t t' ]] * 
-      rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty msll') sm.
+      rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty msll') sm_synced.
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -209,13 +210,11 @@ Module DTCrash.
     destruct_lift H0.
     unfold IAlloc.rep; cancel.
     rewrite <- BFILE.rep_clear_freelist.
-    rewrite <- BFILE.rep_clear_bfcache.
     rewrite <- BFILE.rep_clear_icache.
     rewrite <- IAlloc.rep_clear_cache.
     cancel.
     eauto.
-    erewrite BFILE.flist_crash_clear_caches by eauto.
-    pred_apply; cancel. eauto.
+    cancel; auto.
     intros; eapply BFILE.freepred_file_crash; eauto.
   Grab Existential Variables.
     all: exact (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 1)).

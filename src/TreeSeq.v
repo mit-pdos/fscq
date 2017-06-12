@@ -370,7 +370,7 @@ Module TREESEQ.
 
   Ltac distinct_names' :=
     repeat match goal with
-      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- tree_names_distinct (TStree ?ts !!) ] => 
+      | [ H: treeseq_in_ds _ _ _ _ _ ?ts _ |- tree_names_distinct (TStree ?ts !!) ] =>
         eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
         destruct_lift Hpred;
         eapply rep_tree_names_distinct; eassumption
