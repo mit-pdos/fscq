@@ -14,10 +14,8 @@ benches = [
     ("largefile", "./largefile /tmp/ft"),
     ("mailbench", "./mailbench.sh /home/alex/sv6 /tmp/ft"),
     ("app-bench", "./app-bench.sh /home/alex/xv6 /tmp/ft"),
-    ("sqlite",    "./sqlitebench.sh /tmp/ft"),
+    ("tpcc",    "./tpcc.sh /tmp/ft ~/py-tpcc/"),
 ]
-
-benches = [x for x in benches if x[0] == "mailbench"]
 
 import os
 import sys
