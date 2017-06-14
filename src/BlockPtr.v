@@ -1006,7 +1006,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
         erewrite listmatch_combine_l_length_r with (a := A) (b := B) (c := C) (prd := P); auto;
         pred_apply' H; cancel)
     | [ H : context [listmatch _ (combine ?A ?B) _] |- context [length ?B] ] =>
-      replace (length B) with (length A) in * by auto
+      replace (length B) with (length A) by auto
 
     | [ H : context [listmatch _ ?A ?b] |- context [length ?b] ] =>
       replace (length b) with (length A) in * by (
@@ -1040,6 +1040,14 @@ Module BlockPtr (BPtr : BlockPtrSig).
         autorewrite with lists in *; try omega; try erewrite snd_pair by eauto
     | [|- context [selN ?l ?n] ] => rewrite listmatch_isolate with (i := n) (a := combine l _);
         autorewrite with lists in *; try rewrite selN_combine; try omega; try erewrite snd_pair by eauto;
+        cbn [fst snd] in *
+    | [H: context [listmatch _ (combine ?l _)] |- context [selN ?l ?n] ] =>
+        rewrite listmatch_isolate with (i := n) (a := combine l _) in H;
+        autorewrite with lists in *; erewrite ?selN_combine in H; try omega; erewrite ?snd_pair by eauto;
+        cbn [fst snd] in *
+    | [H: context [listmatch _ _ ?l] |- context [selN ?l ?n] ] =>
+        rewrite listmatch_isolate with (i := n) (b := l) in H;
+        autorewrite with lists in *; erewrite ?selN_combine in H; try omega; erewrite ?snd_pair by eauto;
         cbn [fst snd] in *
   end.
 
@@ -1283,6 +1291,459 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Local Hint Extern 1 ({{_}} Bind (indread _ _ _ _ ) _) => apply indread_ok : prog.
   Opaque indread.
+
+  Definition indread_aligned indlvl lxp (indbns : list waddr) ms :=
+    ForEach bn rest (rev indbns)
+      Hashmap hm
+      Ghost [ F Fm l_part fsl bxp crash m0 sm m ]
+      Loopvar [ ms r ]
+      Invariant
+        LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+        [[ length indbns = length fsl ]] *
+        [[ r = concat (skipn (length rest) l_part) ]] *
+        [[[ m ::: Fm * listmatch (fun x l' => indrep_n_tree indlvl bxp (snd x) # (fst x) l') (combine (rev indbns) (rev fsl)) (rev l_part) ]]]
+      OnCrash crash
+      Begin
+        let^ (ms, blks) <- indread indlvl lxp # bn ms;
+        Ret ^(ms, blks ++ r)
+      Rof ^(ms, nil).
+
+  Hint Rewrite rev_length rev_involutive rev_app_distr : lists.
+
+  Theorem indread_aligned_ok : forall indlvl lxp indbns ms,
+    {< F Fm m0 sm m bxp fsl l_part,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * listmatch (fun x l => indrep_n_tree indlvl bxp (snd x) # (fst x) l) (combine indbns fsl) l_part) ]]] *
+           [[ length fsl = length indbns ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[ r = concat l_part ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
+    >} indread_aligned indlvl lxp indbns ms.
+  Proof.
+    unfold indread_aligned.
+    step.
+    eassign l_part.
+    autorewrite with lists core.
+    rewrite skipn_oob; auto.
+    indrep_n_tree_bound.
+    rewrite <- combine_rev by auto.
+    rewrite listmatch_rev. cancel.
+    assert (length l_part = length fsl) by indrep_n_tree_bound.
+    prestep. norml.
+    denote app as Hr.
+    apply f_equal with (f := @rev _) in Hr.
+    autorewrite with lists in Hr; cbn [rev] in Hr; subst.
+    autorewrite with lists in *.
+    cbn [length] in *.
+    denote listmatch as Hl.
+    erewrite list_isolate with (l := fsl) (d := emp) in Hl, H by eauto.
+    erewrite list_isolate with (l := l_part) (d := nil) in Hl, H by (substl (length l_part); eauto).
+    autorewrite with lists in Hl, H.
+    cbn [rev app] in Hl, H.
+    repeat rewrite app_assoc_reverse in Hl, H.
+    rewrite combine_app in Hl, H.
+    cbn [app combine] in Hl, H.
+    rewrite listmatch_app_rev, listmatch_cons in Hl.
+    cancel.
+    step.
+    indrep_n_tree_bound.
+    autorewrite with lists core.
+    rewrite skipn_app_r_ge by indrep_n_tree_bound.
+    erewrite skipn_selN_skipn by indrep_n_tree_bound.
+    cbn.
+    autorewrite with core lists.
+    rewrite min_l by omega.
+    autorewrite with core.
+    rewrite firstn_rev by auto.
+    autorewrite with lists core.
+    replace (length l_part - length prefix) with (S (length lst')) by omega.
+    auto.
+    rewrite <- listmatch_app, listmatch_cons.
+    cancel.
+    cancel.
+    auto using LOG.active_intact.
+    left.
+    autorewrite with core lists.
+    rewrite Min.min_assoc, Nat.min_id.
+    congruence.
+    indrep_n_tree_bound.
+    indrep_n_tree_bound.
+    step.
+    eauto using LOG.intact_hashmap_subset.
+  Unshelve.
+    all: constructor.
+  Qed.
+
+  Local Hint Extern 1 ({{_}} Bind (indread_aligned _ _ _ _ ) _) => apply indread_aligned_ok : prog.
+
+  Fixpoint indread_to_aligned indlvl lxp ir start ms :=
+    let N := (NIndirect ^ S indlvl) in
+    If (addr_eq_dec ir 0) {
+      Ret ^(ms, repeat $0 (N - start))
+    } else {
+      let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
+      match indlvl with
+      | 0 =>
+        Ret ^(ms, skipn start indbns)
+      | S indlvl' =>
+        let N := (NIndirect ^ S indlvl') in
+        let^ (ms, r) <- indread_aligned indlvl' lxp (skipn (S (start / N)) indbns) ms;
+        let ir' := selN indbns (start / N) $0 in
+        let^ (ms, r') <- indread_to_aligned indlvl' lxp # ir' (start mod N) ms;
+        Ret ^(ms, r' ++ r)
+      end
+    }.
+
+  Theorem indread_to_aligned_ok : forall indlvl lxp ir start ms,
+    let N := NIndirect ^ S indlvl in
+    {< F Fm IFs m0 sm m bxp l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: Fm * indrep_n_tree indlvl bxp IFs ir l ]]] *
+           [[ start < length l ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[ r = skipn start l ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
+    >} indread_to_aligned indlvl lxp ir start ms.
+  Proof.
+    induction indlvl; cbn [indread_to_aligned].
+    - hoare.
+      rewrite indrep_n_helper_0 in *; destruct_lifts.
+      autorewrite with core.
+      rewrite skipn_repeat; auto.
+      rewrite indrep_n_helper_valid by auto.
+      cancel.
+      rewrite firstn_oob by indrep_n_tree_bound.
+      auto.
+    - step.
+      step.
+      erewrite indrep_n_tree_repeat_concat with (m := list2nmem m).
+      3: pred_apply; cancel.
+      rewrite skipn_repeat; eauto.
+      indrep_n_tree_bound.
+      step.
+      rewrite indrep_n_helper_valid by auto. cancel.
+      rewrite firstn_oob by indrep_n_tree_bound.
+      step.
+      match goal with |- context [skipn ?k] =>
+        rewrite listmatch_split with (n := S k)
+      end.
+      rewrite skipn_combine by auto.
+      cancel.
+      repeat match goal with |- context [match ?x with _ => _ end] => destruct x end;
+        cbn [length] in *; autorewrite with core; congruence.
+      step.
+      indrep_n_extract. cancel.
+      indrep_n_tree_bound.
+      indrep_n_tree_bound.
+      eapply lt_le_trans; [eapply Nat.mod_upper_bound|]; auto.
+      indrep_n_extract.
+      erewrite indrep_n_length_pimpl in *.
+      destruct_lifts.
+      match goal with H: context [selN] |- _ => rewrite H; omega end.
+      indrep_n_tree_bound.
+      indrep_n_tree_bound.
+      step.
+      erewrite <- skipn_hom_concat by eauto.
+      auto.
+  Unshelve.
+    all: solve [eauto | exact $0].
+  Qed.
+
+  Opaque indread_to_aligned.
+  Local Hint Extern 1 ({{_}} Bind (indread_to_aligned _ _ _ _ _ ) _) => apply indread_to_aligned_ok : prog.
+
+  Fixpoint indread_from_aligned indlvl lxp ir len ms :=
+    let N := (NIndirect ^ S indlvl) in
+    If (addr_eq_dec ir 0) {
+      Ret ^(ms, repeat $0 len)
+    } else {
+      let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
+      match indlvl with
+      | 0 =>
+        Ret ^(ms, firstn len indbns)
+      | S indlvl' =>
+        let N := (NIndirect ^ S indlvl') in
+        let^ (ms, r) <- indread_aligned indlvl' lxp (firstn (len / N) indbns) ms;
+        If (addr_eq_dec (len mod N) 0) {
+          Ret ^(ms, r)
+        } else {
+          let ir' := selN indbns (len / N) $0 in
+          let^ (ms, r') <- indread_from_aligned indlvl' lxp # ir' (len mod N) ms;
+          Ret ^(ms, r ++ r')
+        }
+      end
+    }.
+
+
+  Theorem indread_from_aligned_ok : forall indlvl lxp ir len ms,
+    let N := NIndirect ^ S indlvl in
+    {< F Fm IFs m0 sm m bxp l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: Fm * indrep_n_tree indlvl bxp IFs ir l ]]] *
+           [[ len <= length l ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[ r = firstn len l ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
+    >} indread_from_aligned indlvl lxp ir len ms.
+  Proof.
+    induction indlvl; cbn [indread_from_aligned].
+    + hoare.
+      rewrite indrep_n_helper_0 in *; destruct_lifts.
+      autorewrite with core.
+      rewrite firstn_repeat; auto.
+      rewrite repeat_length in *; omega.
+      rewrite indrep_n_helper_valid by auto.
+      cancel.
+      f_equal.
+      rewrite firstn_oob by indrep_n_tree_bound.
+      auto.
+    + step.
+      step.
+      erewrite indrep_n_tree_repeat_concat with (m := list2nmem m).
+      3: pred_apply; cancel.
+      rewrite firstn_repeat; eauto.
+      indrep_n_tree_bound.
+      indrep_n_tree_bound.
+      step.
+      rewrite indrep_n_helper_valid by auto. cancel.
+      rewrite firstn_oob by indrep_n_tree_bound.
+      step.
+      match goal with |- context [firstn ?k] =>
+        rewrite listmatch_split with (n := k)
+      end.
+      rewrite firstn_combine_comm.
+      cancel.
+      indrep_n_tree_bound.
+      step.
+      step.
+      erewrite <- concat_hom_firstn by eauto.
+      rewrite mul_div by mult_nonzero. auto.
+      denote listmatch as Hl; pose proof Hl.
+      prestep. norml.
+      indrep_n_extract.
+      erewrite indrep_n_length_pimpl in *.
+      destruct_lifts.
+      match goal with H: context [selN] |- _ => rename H into Hr end.
+      cancel; hoare.
+      - rewrite Hr; auto using mod_le_r.
+      - erewrite <- firstn_hom_concat by eauto.
+        auto.
+      - indrep_n_tree_bound.
+        denote le as He.
+        destruct (le_lt_eq_dec _ _ He); subst.
+        indrep_n_tree_bound.
+        rewrite Nat.mod_mul in * by auto.
+        congruence.
+      - indrep_n_tree_bound.
+        denote le as He.
+        destruct (le_lt_eq_dec _ _ He); subst.
+        indrep_n_tree_bound.
+        rewrite Nat.mod_mul in * by auto.
+        congruence.
+  Unshelve.
+    all: solve [eauto | exact $0].
+  Qed.
+
+  Local Hint Extern 1 ({{_}} Bind (indread_from_aligned _ _ _ _ _ ) _) => apply indread_from_aligned_ok : prog.
+
+  Definition indread_multiple_blocks indlvl lxp (indbns : list waddr) start len ms :=
+    let N := NIndirect ^ S indlvl in
+    (* reads up to N blocks if start mod N = 0 *)
+    let^ (ms, rl) <- indread_to_aligned indlvl lxp #(selN indbns (start / N) $0) (start mod N) ms;
+    let start' := start + (N - start mod N) in
+    let len' := len - (N - start mod N) in
+    let^ (ms, rm) <- indread_aligned indlvl lxp (firstn (len' / N) (skipn (start' / N) indbns)) ms;
+    let len'' := len' mod N in
+    let start'' := start' + (len' / N * N) in
+    let^ (ms, rr) <- indread_from_aligned indlvl lxp #(selN indbns (start'' / N) $0) len'' ms;
+    Ret ^(ms, rl ++ (rm ++ rr)).
+
+  Theorem indread_multiple_blocks_ok : forall indlvl lxp indbns start len ms,
+    let N := NIndirect ^ S indlvl in
+    {< F Fm m0 sm m bxp l_part fsl,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * listmatch (fun x l => indrep_n_tree indlvl bxp (snd x) #(fst x) l) (combine indbns fsl) l_part) ]]] *
+           [[ start < length (concat l_part) ]] *
+           [[ (N - start mod N) < len ]] *
+           [[ start + len < length (concat l_part) ]] *
+           [[ length indbns = length fsl ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[ r = firstn len (skipn start (concat l_part)) ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
+    >} indread_multiple_blocks indlvl lxp indbns start len ms.
+  Proof.
+    cbv [indread_multiple_blocks].
+    prestep. norml.
+    denote listmatch as Hl. pose proof Hl.
+    assert (length indbns = length l_part) by indrep_n_tree_bound.
+    cancel.
+    indrep_n_extract. cancel.
+    indrep_n_tree_bound.
+    indrep_n_tree_bound.
+    indrep_n_extract.
+    erewrite indrep_n_length_pimpl in *.
+    destruct_lifts.
+    match goal with H: context [selN] |- _ => rewrite H; auto end.
+    indrep_n_tree_bound.
+    indrep_n_tree_bound.
+    step.
+    match goal with |- context [firstn ?m (skipn ?k _)] =>
+      rewrite listmatch_split with (n := k);
+      rewrite listmatch_split with (n := m) (a := skipn _ _)
+    end.
+    rewrite <- firstn_combine_comm.
+    rewrite <- skipn_combine by eauto.
+    cancel.
+    autorewrite with core. congruence.
+    denote (list2nmem m) as Hm. pose proof Hm.
+    indrep_n_extract.
+    rewrite Nat.div_add in * by auto.
+    hoare.
+    - erewrite indrep_n_length_pimpl in *.
+      destruct_lifts.
+      match goal with H: context [selN] |- _ => rewrite H; auto end.
+    - erewrite <- skipn_selN.
+      rewrite <- firstn_hom_concat by eauto using forall_skipn.
+      erewrite skipn_hom_concat by eauto.
+      indrep_n_extract; [ | solve [indrep_n_tree_bound].. ].
+      erewrite indrep_n_length_pimpl in *; destruct_lifts.
+      rewrite firstn_app.
+      rewrite firstn_oob with (n := len).
+      autorewrite with core.
+      match goal with H: context [selN] |- _ => rewrite H end.
+      f_equal.
+      match goal with |- context [?a mod ?b] => destruct (addr_eq_dec 0 (a mod b));
+        try (substl (a mod b)) end.
+      + cbn [skipn firstn].
+        autorewrite with core.
+        repeat f_equal.
+        match goal with |- context [(?a + ?b) / ?b] =>
+          replace ((a + b) / b) with ((a + 1 * b) / b) by (do 2 f_equal; omega)
+        end.
+        rewrite Nat.div_add, plus_comm; auto.
+      + rewrite <- roundup_eq by auto.
+        unfold roundup.
+        rewrite Nat.div_mul by auto.
+        rewrite divup_eq_div_plus_1 by auto.
+        rewrite plus_comm; auto.
+      + autorewrite with core.
+        match goal with H: context [selN] |- _ => rewrite H end.
+        omega.
+    - apply Nat.div_lt_upper_bound; auto.
+      eapply le_lt_trans.
+      apply plus_le_compat_l, div_mul_le.
+      rewrite plus_assoc_reverse.
+      rewrite le_plus_minus_r by omega.
+      indrep_n_tree_bound.
+    - apply Nat.div_lt_upper_bound; auto.
+      eapply le_lt_trans.
+      apply plus_le_compat_l, div_mul_le.
+      rewrite plus_assoc_reverse.
+      rewrite le_plus_minus_r by omega.
+      indrep_n_tree_bound.
+  Unshelve.
+    all: solve [eauto | apply emp | exact $0].
+  Qed.
+
+  Local Hint Extern 1 ({{_}} Bind (indread_multiple_blocks _ _ _ _ _ _ ) _) => apply indread_multiple_blocks_ok : prog.
+
+  Fixpoint indread_range indlvl lxp (root : addr) start len ms :=
+    let N := NIndirect ^ indlvl in
+    If (addr_eq_dec len 0) {
+      Ret ^(ms, nil)
+    } else {
+      (* not necessary, but it makes the proof much easier *)
+      If (addr_eq_dec (start + len) (NIndirect * N)) {
+        indread_to_aligned indlvl lxp root start ms
+      } else {
+        If (addr_eq_dec root 0) {
+          Ret ^(ms, repeat $0 len)
+        } else {
+          let^ (ms, indbns) <- IndRec.read lxp root 1 ms;
+          match indlvl with
+          | 0 =>
+             Ret ^(ms, firstn len (skipn start indbns))
+          | S indlvl' =>
+            If (le_dec len (N - start mod N)) {
+              indread_range indlvl' lxp #(selN indbns (start / N) $0) (start mod N) len ms
+            } else {
+              indread_multiple_blocks indlvl' lxp indbns start len ms
+            }
+          end
+        }
+      }
+    }.
+
+  Theorem indread_range_ok : forall indlvl lxp ir start len ms,
+  {< F Fm Fs m0 sm m bxp l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: Fm * indrep_n_tree indlvl Fs bxp ir l ]]] *
+           [[ start + len <= length l ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[ r = firstn len (skipn start l) ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
+    >} indread_range indlvl lxp ir start len ms.
+  Proof.
+    induction indlvl; cbn [indread_range].
+    + hoare.
+      rewrite firstn_oob; indrep_n_tree_bound.
+      rewrite indrep_n_helper_0 in *.
+      destruct_lifts.
+      rewrite skipn_repeat, firstn_repeat; auto.
+      rewrite repeat_length in *; omega.
+      rewrite indrep_n_helper_valid by auto. cancel.
+      repeat f_equal.
+      apply firstn_oob.
+      indrep_n_tree_bound.
+    + step; step.
+      hoare.
+      rewrite firstn_oob; indrep_n_tree_bound.
+      step.
+      step.
+      erewrite indrep_n_tree_repeat_concat with (m := list2nmem m).
+      3: pred_apply; cancel.
+      rewrite skipn_repeat, firstn_repeat; auto.
+      indrep_n_tree_bound.
+      match goal with H: _ + _ <= length ?l * _ |- _ =>
+        replace (length l) with NIndirect in *; indrep_n_tree_bound
+      end.
+      indrep_n_tree_bound.
+      step.
+      rewrite indrep_n_helper_valid by auto. cancel.
+      rewrite firstn_oob by indrep_n_tree_bound.
+      denote listmatch as Hl. pose proof Hl.
+      step.
+      indrep_n_extract.
+      erewrite indrep_n_length_pimpl in *.
+      destruct_lifts.
+      hoare.
+      erewrite skipn_hom_concat by eauto.
+      rewrite firstn_app_l; auto.
+      match goal with H: context [selN] |- _ => rename H into Hr end.
+      autorewrite with core; rewrite Hr.
+      omega.
+      indrep_n_tree_bound.
+      indrep_n_tree_bound.
+      hoare.
+      indrep_n_tree_bound.
+      match goal with H: _ + _ <= length ?l * _ |- _ =>
+        replace (length l) with NIndirect in *; indrep_n_tree_bound
+      end.
+  Unshelve.
+    apply emp.
+  Qed.
+
+  Local Hint Extern 1 ({{_}} Bind (indread_range _ _ _ _ _ _ ) _) => apply indread_range_ok : prog.
 
   Fixpoint indclear_all indlvl lxp bxp root ms :=
     If (addr_eq_dec root 0) {
@@ -2975,6 +3436,31 @@ Module BlockPtr (BPtr : BlockPtrSig).
       Ret ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns ++ dindbns ++ tindbns)))
     }.
 
+  Definition indread_range_helper indlvl lxp bn start len ms :=
+    let localstart := fold_left plus (map (fun i => NIndirect ^ S i) (seq 0 indlvl)) 0 in
+    let maxlen := NIndirect ^ S indlvl in
+    If (lt_dec localstart (start + len)) {
+      If (lt_dec start (localstart + maxlen)) {
+        let start' := start - localstart in
+        let len' := len - (localstart - start) in
+        let len'' := Nat.min len' (maxlen - start') in
+        indread_range indlvl lxp bn start' len'' ms
+      } else {
+        Ret ^(ms, nil)
+      }
+    } else {
+      Ret ^(ms, nil)
+    }.
+
+  Definition read_range lxp ir start len ms :=
+    rdir <- Ret (firstn len (skipn start (IRBlocks ir)));
+    let len := len - (NDirect - start) in
+    let start := start - NDirect in
+    let^ (ms, rind) <- indread_range_helper 0 lxp (IRIndPtr ir) start len ms;
+    let^ (ms, rdind) <- indread_range_helper 1 lxp (IRDindPtr ir) start len ms;
+    let^ (ms, rtind) <- indread_range_helper 2 lxp (IRTindPtr ir) start len ms;
+    Ret ^(ms, rdir ++ rind ++ rdind ++ rtind).
+
   Definition indshrink_helper indlvl lxp bxp bn nl ms :=
     let start := fold_left plus (map (fun i => NIndirect ^ S i) (seq 0 indlvl)) 0 in
     let len := NIndirect ^ S indlvl in
@@ -3094,6 +3580,69 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite <- firstn_sum_split. rewrite firstn_skipn.
     congruence.
   Qed.
+
+  Theorem indread_range_helper_ok : forall lxp bn indlvl start len ms,
+    let localstart := fold_left plus (map (fun i => NIndirect ^ S i) (seq 0 indlvl)) 0 in
+    {< F Fm IFs m0 sm m l bxp,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * indrep_n_tree indlvl bxp IFs bn l) ]]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           let len' := (len - (localstart - start)) in
+           [[ r = firstn len' (skipn (start - localstart) l) ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
+    >} indread_range_helper indlvl lxp bn start len ms.
+  Proof.
+    unfold indread_range_helper.
+    step; indrep_n_tree_extract_lengths; hoare.
+    substl (length l).
+    let H := fresh in
+    edestruct Min.min_spec as [ [? H]|[? H] ]; rewrite H; clear H.
+    omega.
+    omega.
+    let H := fresh in
+    edestruct Min.min_spec as [ [? H]|[? H] ]; rewrite H; clear H.
+    auto.
+    rewrite firstn_oob.
+    rewrite firstn_oob; auto.
+    autorewrite with core.
+    omega.
+    autorewrite with core.
+    omega.
+    rewrite skipn_oob, firstn_nil by omega. auto.
+    rewrite sub_le_eq_0 by omega.
+    auto.
+  Qed.
+
+  Local Hint Extern 1 ({{_}} Bind (indread_range_helper _ _ _ _ _ _ ) _) => apply indread_range_helper_ok : prog.
+
+  Theorem read_range_ok : forall lxp bxp ir start len ms,
+    {< F Fm IFs m0 sm m l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: Fm * rep bxp IFs ir l ]]] *
+           [[ start + len <= length l ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[ r = firstn len (skipn start l) ]]
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
+    >} read_range lxp ir start len ms.
+  Proof.
+    unfold read_range, rep, indrep.
+    hoare.
+    autorewrite with core.
+    substl l.
+    match goal with H: context [firstn NIndirect ?l] |- _ =>
+      rename l into ind
+    end.
+    rewrite firstn_app.
+    rewrite skipn_app_split.
+    rewrite firstn_app.
+    f_equal.
+    rewrite firstn_double_skipn by omega; auto.
+    (* TODO finish proving this and use read_range to implement BFILE.shrink *)
+  Abort.
 
   Lemma indrec_ptsto_pimpl : forall ibn indrec,
     IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
