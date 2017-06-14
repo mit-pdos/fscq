@@ -19,6 +19,8 @@
 ===
 
 - dwrite without calling flushall in GroupLog
+- better fallback behavior in flushall in GroupLog
+- use BlockPtr read_range for BFILE.shrink
 
 - prove [umount_ok]
 
