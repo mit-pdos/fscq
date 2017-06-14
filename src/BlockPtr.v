@@ -2075,20 +2075,14 @@ Module BlockPtr (BPtr : BlockPtrSig).
     + step.
       rewrite indrep_n_helper_0 by auto.
       cancel.
-    + prestep. norm. repeat cancel.
-      intuition idtac.
-      pred_apply. cancel.
-      pred_apply; cancel.
+    + step.
       rewrite Hf; cancel.
-      auto.
-      eauto.
     + step.
       rewrite indrep_n_helper_valid by auto; cancel.
       prestep. norm. repeat cancel.
       intuition idtac.
       rewrite indrep_n_helper_valid by auto.
-      pred_apply; cancel.
-      eexists; eauto.
+      pred_apply; cancel; reflexivity.
       pred_apply; cancel.
       auto.
       auto.
