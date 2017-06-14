@@ -323,6 +323,16 @@ Section LISTPRED.
     destruct f; split; cancel.
   Qed.
 
+  Lemma listpred_rev: forall l,
+    listpred l <=p=> listpred (rev l).
+  Proof.
+    induction l; cbn; intros.
+    split; cancel.
+    rewrite listpred_app.
+    rewrite IHl.
+    split; cancel.
+  Qed.
+
 End LISTPRED.
 
 Theorem listpred_lift : forall T l AT AEQ V prd F G,
@@ -641,6 +651,16 @@ Section LISTMATCH.
     cancel.
     rewrite listmatch_cons with (b := b0).
     cancel.
+  Qed.
+
+  Lemma listmatch_rev: forall a b,
+    listmatch a b <=p=> listmatch (rev a) (rev b).
+  Proof.
+    unfold listmatch.
+    intros.
+    rewrite listpred_rev.
+    repeat rewrite rev_length.
+    split; cancel; rewrite ?combine_rev by auto; cancel.
   Qed.
 
 End LISTMATCH.

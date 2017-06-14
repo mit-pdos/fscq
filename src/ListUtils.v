@@ -1183,6 +1183,20 @@ Proof.
   inversion H.
 Qed.
 
+Lemma skipn_app_split: forall T (a b : list T) n,
+  skipn n (a ++ b) = skipn n a ++ skipn (n - length a) b.
+Proof.
+  intros.
+  destruct (lt_dec n (length a)).
+  rewrite skipn_app_l by omega.
+  rewrite not_le_minus_0 by omega.
+  auto.
+  replace n with (length a + (n - length a)) at 1 by omega.
+  rewrite skipn_app_r.
+  rewrite skipn_oob with (l := a) by omega.
+  auto.
+Qed.
+
 Lemma removeN_app_r : forall T (b a : list T) i,
   removeN (a ++ b) (length a + i) = a ++ (removeN b i).
 Proof.
@@ -1564,6 +1578,58 @@ Proof.
     reflexivity.
     simpl in *; rewrite mult_comm in *; simpl in *; rewrite mult_comm in *.
     apply Nat.div_str_pos; omega.
+Qed.
+
+Lemma skipn_hom_concat: forall T k (l : list (list T)) n,
+  Forall (fun x => length x = k) l ->
+  k <> 0 ->
+  skipn n (concat l) = skipn (n mod k) (selN l (n / k) nil) ++ concat (skipn (S (n / k)) l).
+Proof.
+  induction l; cbn; intros.
+  repeat rewrite skipn_nil; auto.
+  inversion H; subst.
+  destruct (lt_dec n (length a)).
+  rewrite skipn_app_l by omega.
+  rewrite Nat.mod_small by auto.
+  rewrite Nat.div_small by auto.
+  auto.
+  replace n with (length a + (n - (length a))) at 1 by omega.
+  rewrite skipn_app_r.
+  rewrite IHl by auto.
+  rewrite mod_subt by omega.
+  rewrite div_ge_subt by auto.
+  rewrite <- Nat.div_small_iff in * by auto.
+  destruct (n / length a) eqn:?.
+  congruence.
+  cbn.
+  rewrite Nat.sub_0_r.
+  reflexivity.
+Qed.
+
+Lemma firstn_hom_concat: forall T k (l : list (list T)) n,
+  Forall (fun x => length x = k) l ->
+  k <> 0 ->
+  firstn n (concat l) = concat (firstn (n / k) l) ++ firstn (n mod k) (selN l (n / k) nil).
+Proof.
+  induction l; cbn; intros.
+  repeat rewrite firstn_nil; auto.
+  inversion H; subst.
+  destruct (lt_dec n (length a)).
+  rewrite firstn_app_l by omega.
+  rewrite Nat.mod_small by auto.
+  rewrite Nat.div_small by auto.
+  auto.
+  rewrite firstn_app by omega.
+  rewrite firstn_oob by omega.
+  rewrite IHl by auto.
+  rewrite mod_subt by omega.
+  rewrite div_ge_subt by auto.
+  rewrite <- Nat.div_small_iff in * by auto.
+  destruct (n / length a) eqn:?.
+  congruence.
+  cbn.
+  rewrite Nat.sub_0_r.
+  auto using app_assoc.
 Qed.
 
 Lemma selN_selN_hom : forall T (l : list (list T)) k off def,
@@ -3411,6 +3477,72 @@ Proof.
   split.
   apply NoDup_rev_1.
   apply NoDup_rev_2.
+Qed.
+
+Lemma selN_rev: forall T n (l : list T) d,
+  n < length l ->
+  selN (rev l) n d = selN l (length l - S n) d.
+Proof.
+  induction l; cbn; auto.
+  intros.
+  destruct (lt_dec n (length l)).
+  rewrite selN_app1 by (rewrite rev_length; auto).
+  rewrite IHl by auto.
+  destruct (length l - n) eqn:?; try omega.
+  f_equal; omega.
+  rewrite selN_app2 by (rewrite rev_length; omega).
+  rewrite rev_length.
+  repeat match goal with |- context [?a - ?b] =>
+    destruct (a - b) eqn:?; try omega
+  end.
+  auto.
+Qed.
+
+Lemma firstn_rev: forall T (l : list T) n, firstn n (rev l) = rev (skipn (length l - n) l).
+Proof.
+  induction l using rev_ind; cbn; intros.
+  auto using firstn_nil.
+  rewrite rev_app_distr; cbn.
+  rewrite app_length; cbn.
+  rewrite plus_comm.
+  rewrite skipn_app_split.
+  rewrite rev_app_distr.
+  rewrite <- Nat.sub_add_distr.
+  rewrite plus_comm with (n := n).
+  rewrite Nat.sub_add_distr.
+  rewrite Nat.add_sub.
+  destruct n.
+  repeat rewrite skipn_oob by (cbn; omega).
+  auto.
+  cbn.
+  congruence.
+Qed.
+
+Lemma combine_rev: forall A B (a : list A) (b : list B),
+  length a = length b ->
+  rev (combine a b) = combine (rev a) (rev b).
+Proof.
+  induction a; destruct b; cbn; intros; auto.
+  congruence.
+  rewrite combine_app; cbn.
+  f_equal; auto.
+  repeat rewrite rev_length; auto.
+Qed.
+
+Lemma list_isolate: forall T (l : list T) m n d,
+  length l = m + 1 + n ->
+  l = firstn m l ++ [selN l m d] ++ rev (firstn n (rev l)).
+Proof.
+  intros.
+  erewrite <- firstn_skipn at 1.
+  f_equal.
+  cbn.
+  erewrite skipn_selN_skipn.
+  f_equal.
+  rewrite firstn_rev by auto.
+  rewrite rev_involutive.
+  f_equal; omega.
+  omega.
 Qed.
 
 Lemma filter_length : forall A f (l : list A),
