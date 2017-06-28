@@ -16,6 +16,7 @@ Require Import ProofIrrelevance.
 Require Import BasicProg.
 Require Import Array.
 Require Import Bytes.
+Require Import Mem.
 Require Import Cache. 
 
 Set Implicit Arguments.
@@ -32,9 +33,29 @@ Qed.
 
 Hint Resolve sync_invariant_possible_sync.
 
-Definition pred_upd_w (pre: @pred addr addr_eq_dec _) (a: addr) (v: valu):=
-  fun m => forall (m': @Mem.mem addr addr_eq_dec _), 
-  exists vs, m' a = Some vs -> m = Mem.upd m' a (v, vsmerge vs) -> pre m' . 
+Definition pred_upd_w (pre: pred) (a: addr) (v: valu) : pred :=
+  fun (m: @mem _ addr_eq_dec valuset) => 
+    match m a with
+    | None => False
+    | Some vs => let (v', ovs) := vs in
+                          match ovs with
+                          | nil => False
+                          | h :: t => v = v' /\ pre (upd m a (h, t))
+                          end
+    end.                  
+
+Lemma definition_is_ok: forall pre a v vs m,
+m a = Some vs -> pre m <-> pred_upd_w pre a v (upd m a (v, vsmerge vs)).
+Proof.
+    unfold pred_upd_w; simpl; intros.
+    - unfold vsmerge; destruct vs; simpl.
+    rewrite upd_eq; auto.
+    rewrite upd_repeat.
+    rewrite upd_nop; auto.
+    split; intros; auto.
+    destruct H0; auto.
+Qed.
+
 
 Definition prog_secure T (p : prog T) (pre : pred) (post : pred) :=
   forall m1 m2 mp F1 F2 out1 vm hm,
@@ -58,7 +79,7 @@ Definition prog_secure T (p : prog T) (pre : pred) (post : pred) :=
    (F2 * diskIs mc)%pred m2').
 
 Definition addr_is_in {AT AEQ V} (a: AT) (pre: pred):=
-  forall (m: @Mem.mem AT AEQ V), pre m -> indomain a m.
+  forall (m: @mem AT AEQ V), pre m -> indomain a m.
 
 Theorem read_secure:
   forall a pre,
@@ -73,7 +94,6 @@ Proof.
   unfold sep_star_impl in Hx.
   repeat deex.
   edestruct H; intros; eauto.
-  
   
   pose proof H1 as Hx.
   unfold sep_star in Hx. 
@@ -132,16 +152,10 @@ Proof.
          admit. (* Possible to prove from H2 H3 H4 H7 H11 H16 *)
      + eapply diskIs_sep_star_upd. 2: eauto. eauto.
      + eapply diskIs_sep_star_upd. 2: eauto. eauto.
-     + intros.
-         assert (A: m4 = m').
-         * apply functional_extensionality; intros.
-            destruct (addr_eq_dec a x1);
-            subst. rewrite H5; rewrite H3; eauto.
-            erewrite <- Mem.upd_ne.
-            rewrite H9.
-            apply Mem.upd_ne.
-            all: omega.
-         * subst; eauto.
+     + rewrite upd_eq; auto.
+         rewrite upd_repeat.
+         rewrite upd_nop; auto.
+         admit. (* Possible to solve from H4 H5 H21 *)
   - (* Failed *)
     exfalso.
     admit. (* Possible to prove from H4 H10 *)
@@ -224,6 +238,19 @@ Proof.
     do 4 eexists; intuition eauto.
 Qed.
 
+Lemma alertmodified_secure_frame:
+  forall F,
+  prog_secure (AlertModified) F F.
+Proof.
+  unfold prog_secure; intros.
+  inv_exec.
+  left.
+  do 6 eexists; intuition.
+  eauto.
+  eauto.
+  eauto.
+Qed.
+
 Theorem pimpl_secure:
   forall T (p : prog T) pre pre' post post',
   pre' =p=> pre ->
@@ -250,19 +277,6 @@ Proof.
   all: cancel.
 Qed.
 
-Lemma alertmodified_secure_frame:
-  forall F,
-  prog_secure (AlertModified) F F.
-Proof.
-  unfold prog_secure; intros.
-  inv_exec.
-  left.
-  do 6 eexists; intuition.
-  eauto.
-  eauto.
-  eauto.
-Qed.
-
 Lemma ret_secure_frame_impl_l:
   forall T (x : T) F F',
   F =p=> F' ->
@@ -275,51 +289,63 @@ Proof.
   eauto.
 Qed.
 
-Transparent BUFCACHE.read.
+Import BUFCACHE.
+
+Lemma addr_is_in_find: forall a cs v m,
+    MapUtils.AddrMap.Map.find a (CSMap cs) = Some v ->
+    addr_is_in a (rep cs m).
+Proof.
+    intros.
+    unfold addr_is_in, indomain; intros.
+    unfold rep in *.
+    destruct_lift H0.
+    eapply addr_valid_mem_valid in H as Hx.
+    2: eauto.
+    deex.
+    eapply MemPred.mem_pred_extract with (a:=a) in H0; eauto.
+    unfold cachepred in H0 at 2.
+    rewrite H in H0.
+    destruct v_2;
+    destruct_lift H0;
+    apply sep_star_comm in H0;
+    apply ptsto_subset_valid in H0;
+    deex; eexists; eauto.
+Qed.
 
 Theorem cache_writeback_secure:
   forall a cs m,
-  addr_is_in a (BUFCACHE.rep cs m) ->
-  prog_secure (BUFCACHE.writeback a cs) (BUFCACHE.rep cs m) 
-                                                                    (BUFCACHE.rep cs m \/ exists w, (pred_upd_w (BUFCACHE.rep cs m) a w)).
+  prog_secure (writeback a cs) (rep cs m) (rep cs m \/ exists w, (pred_upd_w (rep cs m) a w)).
 Proof.
-   unfold BUFCACHE.writeback in *; simpl in *; intros.
+   unfold writeback in *; simpl in *; intros.
    destruct (MapUtils.AddrMap.Map.find a (CSMap cs)) eqn:D; simpl in *.
    - destruct p; simpl in *.
       destruct b; simpl in *.
-      + eapply bind_secure.
-          * apply write_secure; eauto.
-          * intros.
-             apply ret_secure_frame_impl_l; cancel.
+      + eapply bind_secure; [ apply write_secure; eauto | intros; apply ret_secure_frame_impl_l; cancel].
+          eapply addr_is_in_find; eauto.
       + apply ret_secure_frame_impl_l; cancel.
   - apply ret_secure_frame_impl_l; cancel.
 Qed.
 
 Theorem cache_evict_secure:
   forall a cs m,
-  addr_is_in a (BUFCACHE.rep cs m) ->
-  prog_secure (BUFCACHE.evict a cs) (BUFCACHE.rep cs m) 
-                                                            (BUFCACHE.rep cs m \/ exists w, (pred_upd_w (BUFCACHE.rep cs m) a w)).
+  prog_secure (evict a cs) (rep cs m) (rep cs m \/ exists w, (pred_upd_w (rep cs m) a w)).
 Proof.
-  unfold BUFCACHE.evict in *; simpl in *; intros.
-  eapply bind_secure.
-  - apply cache_writeback_secure; eauto.
-  - intros.
-    destruct (MapUtils.AddrMap.Map.find a (CSMap x)) eqn:D; simpl in *.
-    apply ret_secure_frame.
-    apply ret_secure_frame.
+  unfold evict in *; simpl in *; intros.
+  eapply bind_secure; [ apply cache_writeback_secure; eauto | intros ].
+  destruct (MapUtils.AddrMap.Map.find a (CSMap x)) eqn:D; simpl in *.
+  apply ret_secure_frame.
+  apply ret_secure_frame.
 Qed.
 
 Theorem cache_maybe_evict_secure:
   forall m cs,
-  prog_secure (BUFCACHE.maybe_evict cs) (BUFCACHE.rep cs m) 
-                                                                     (BUFCACHE.rep cs m \/ exists a w, (pred_upd_w (BUFCACHE.rep cs m) a w)).
+  prog_secure (maybe_evict cs) (rep cs m) (rep cs m \/ exists a w, (pred_upd_w (rep cs m) a w)).
 Proof.
-  unfold BUFCACHE.maybe_evict in *; simpl in *; intros.
+  unfold maybe_evict in *; simpl in *; intros.
   destruct (lt_dec (CSCount cs) (CSMaxCount cs)); simpl.
   - apply ret_secure_frame_impl_l; cancel.
   -  destruct (MapUtils.AddrMap.Map.find 0 (CSMap cs)) eqn:D.
-      + eapply bind_secure.
+      + eapply bind_secure; intros.
       
           * assert (A: {| CSMap := CSMap cs;
                                  CSMaxCount := CSMaxCount cs;
@@ -327,72 +353,56 @@ Proof.
                                  CSEvict := CSEvict cs |} = cs).
              destruct cs; simpl; eauto.
              rewrite A; apply cache_evict_secure.
-             unfold addr_is_in; intros.
-             unfold indomain.
-             admit. (* XXX *)
-          * intros; apply ret_secure_frame_impl_l; cancel.
+          * apply ret_secure_frame_impl_l; cancel.
       + destruct (MapUtils.AddrMap.Map.elements (CSMap cs)) eqn:D0.
           * eapply ret_secure_frame_impl_l; cancel.
           * destruct p; simpl in *.
              eapply bind_secure.
              ** eapply cache_evict_secure.
-                 unfold addr_is_in; intros.
-                 unfold indomain.
-                 admit. (* XXX *)
             ** intros; apply ret_secure_frame_impl_l; cancel.
-Admitted.
+Qed.
 
+Transparent read.
 Theorem cache_read_secure:
   forall a m cs,
-  addr_is_in a (BUFCACHE.rep cs m) ->
-  prog_secure (BUFCACHE.read a cs) (BUFCACHE.rep cs m) 
-                                                            (BUFCACHE.rep cs m \/ exists a w, (pred_upd_w (BUFCACHE.rep cs m) a w)).
+  addr_is_in a (rep cs m) ->
+  prog_secure (read a cs) (rep cs m) (rep cs m \/ exists a w, (pred_upd_w (rep cs m) a w))%pred.
 Proof.
-    unfold BUFCACHE.read in *; simpl in *; intros.
+    unfold read in *; simpl in *; intros.
     eapply bind_secure; [ apply cache_maybe_evict_secure |  intros ].
     destruct (MapUtils.AddrMap.Map.find a (CSMap x)) eqn:D.
     - destruct p; apply ret_secure_frame.
     - eapply bind_secure; [ apply alertmodified_secure_frame| intros].
-      eapply bind_secure; [apply read_secure | intros; apply ret_secure_frame].
+      eapply bind_secure; [apply read_secure | intros; apply ret_secure_frame_impl_l; cancel].
+      
       unfold addr_is_in; intros.
       destruct H0.
       eauto.
       destruct_lift H0.
-      admit. (* XXX *)
-Admitted.
-    
-    destruct (lt_dec (CSCount cs) (CSMaxCount cs)); simpl.
-  - apply ret_secure_frame_impl_l; cancel.
-  -  destruct (MapUtils.AddrMap.Map.find 0 (CSMap cs)) eqn:D.
-      + eapply bind_secure.
-      
-          * assert (A: {| CSMap := CSMap cs;
-                                 CSMaxCount := CSMaxCount cs;
-                                 CSCount := CSCount cs;
-                                 CSEvict := CSEvict cs |} = cs).
-             destruct cs; simpl; eauto.
-             rewrite A; apply cache_evict_secure.
-             unfold addr_is_in; intros.
-             unfold indomain.
-             admit. (* XXX *)
-          * intros; apply ret_secure_frame_impl_l; cancel.
-      + destruct (MapUtils.AddrMap.Map.elements (CSMap cs)) eqn:D0.
-          * eapply ret_secure_frame_impl_l; cancel.
-          * destruct p; simpl in *.
-             eapply bind_secure.
-             ** eapply cache_evict_secure.
-                 unfold addr_is_in; intros.
-                 unfold indomain.
-                 admit. (* XXX *)
-            ** intros; apply ret_secure_frame_impl_l; cancel.
-Admitted.
+      unfold pred_upd_w in *.
+      destruct (m0 dummy) eqn:D0.
+      destruct p.
+      destruct l.
+      inversion H0.
+      destruct H0; subst.
+      apply H in H1.
+      destruct (addr_eq_dec a dummy).
+      subst.
+      eexists; eauto.
+      eapply indomain_upd_ne; eauto.
+      inversion H0.
+Qed.
 
-
-
-
-
-
-
+Transparent write.
+Theorem cache_write_secure:
+  forall a v m cs,
+  prog_secure (write a v cs) (rep cs m) (rep cs m \/ exists a w, (pred_upd_w (rep cs m) a w))%pred.
+Proof.
+  unfold write in *; simpl in *; intros.
+  eapply bind_secure; [ apply cache_maybe_evict_secure |  intros ].
+  destruct (MapUtils.AddrMap.Map.find a (CSMap x)) eqn:D;
+  eapply ret_secure_frame.
+Qed.
 
 
 

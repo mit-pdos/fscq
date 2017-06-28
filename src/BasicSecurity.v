@@ -29,6 +29,35 @@ Qed.
 
 Hint Resolve sync_invariant_possible_sync.
 
+
+(* 
+    Meaning of the definition:
+      Take two memories 
+          m1 = x \union mp
+          m2 = y \union mp
+      Assume: 
+          F1 x
+          F2 y
+          pre mp
+          If p executes with m1 vm hm, then produces out1
+       Then:
+          there exists two memories such that
+              m1' = x' \union mr
+              m2' = y' \union mr
+          memories are m1'(m2') vm' hm' after executing p on m1(m2)
+          output of both executions is r
+          post mr
+        OR
+          "same for crash"
+*)
+(* Frames does not say for the remainder memory is unchanged or not. *)
+(* 
+    Can we say
+      Defintion pequal P Q := forall m, P m <-> Q m.
+      Lemma exists_diskIs: forall F, exists p m, F m -> pequal F ([[ P ]] * diskIs m).
+*)
+
+
 Definition prog_secure T (p : prog T) (pre : pred) (post : pred) :=
   forall m1 m2 mp F1 F2 out1 vm hm,
 
