@@ -404,24 +404,101 @@ Proof.
   eapply ret_secure_frame.
 Qed.
 
+Transparent sync.
+Theorem cache_sync_secure:
+  forall a cs m,
+  prog_secure (sync a cs) (rep cs m) (rep cs m \/ exists w, (pred_upd_w (rep cs m) a w)).
+Proof.
+  unfold sync in *; simpl in *; intros.
+  eapply bind_secure; [ apply cache_writeback_secure |  intros; apply ret_secure_frame ].
+Qed.
 
 
+Module TwoLevel.
+Module L1.
 
+  (* Memory represented as an array of indices *)
+  
+  Record array_rep := {
+    Log : list valuset;
+    Data : list valuset
+  }.
+  
+  Definition rep (arr: array_rep) : @pred addr addr_eq_dec _ :=
+    (arrayN (@ptsto addr _ _) 0 (Log arr) * arrayN (@ptsto addr _ _) (length (Log arr)) (Data arr))%pred.
 
+  Definition read_log arr i def:=
+    if lt_dec i (length (Log arr)) then
+      v <- Read i; Ret v
+    else
+      Ret def.
 
+  Definition write_log arr i v def:=
+    if lt_dec i (length (Log arr)) then
+      _ <- Write i v; 
+      let vs := selN (Log arr) i def in
+      Ret ({| Log:= updN (Log arr) i (v, vsmerge vs); Data:= (Data arr) |})
+    else
+      Ret arr.
+  
+  Definition read_data arr i def:=
+    if lt_dec i (length (Data arr)) then
+      v <- Read (i + (length (Log arr))); Ret v
+    else
+      Ret def.
 
+  Definition write_data arr i v def:=
+    if lt_dec i (length (Data arr)) then
+      _ <- Write (i + (length (Log arr))) v; 
+      let vs := selN (Data arr) i def in
+      Ret ({| Log:= Log arr; Data:= updN (Data arr) i (v, vsmerge vs) |})
+    else
+      Ret arr.
 
+End L1.
 
+Module L2.
+Import L1.
 
+  Variable file_size: nat. 
+  Definition file:= list valuset.
+  Definition file_rep:= list file.
+  
+  Fixpoint rep_inner n (fr: file_rep) :=
+    match fr with
+    | nil => emp
+    | f::t => (arrayN (@ptsto addr _ _) n f * rep_inner (n + file_size) t)%pred
+    end.
+  
+  Definition rep (fr: file_rep) := rep_inner 0 fr.
+  
+  
+  Definition upd_file (fr: file_rep) fn bn vs fdef:= updN fr fn (updN (selN fr fn fdef) bn vs).
 
+  Definition read_from_file arr (fr: file_rep) fn bn vsdef:=
+    if lt_dec fn (length fr) then
+      if lt_dec bn file_size then
+        vs <- read_data arr (file_size * fn + bn) vsdef; 
+        Ret (arr, vs)
+      else
+        Ret (arr, vsdef)
+    else
+      Ret (arr, vsdef).
+  
+  Definition write_to_file arr fr fn bn v fdef vsdef:=
+    if lt_dec fn (length fr) then
+      let file := selN fr fn fdef in
+      if lt_dec bn file_size then
+        arr' <- write_data arr (file_size * fn + bn) v vsdef; 
+        let vs := selN file bn vsdef in
+        Ret (arr', upd_file fr fn bn (v, vsmerge vs) fdef)
+      else
+        Ret (arr, fr)
+    else
+      Ret (arr, fr).
 
-
-
-
-
-
-
-
+End L2.
+End TwoLevel.
 
 
 
