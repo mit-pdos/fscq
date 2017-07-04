@@ -56,8 +56,7 @@ Proof.
     destruct H0; auto.
 Qed.
 
-
-Definition prog_secure T (p : prog T) (pre : pred) (post : pred) :=
+Definition prog_secure T (p : prog T) (pre : pred) (post : pred):=
   forall m1 m2 mp F1 F2 out1 vm hm,
 
   (F1 * diskIs mp)%pred m1 ->
@@ -79,9 +78,92 @@ Definition prog_secure T (p : prog T) (pre : pred) (post : pred) :=
    (F2 * diskIs mc)%pred m2').
 
 Definition addr_is_in {AT AEQ V} (a: AT) (pre: pred):=
-  forall (m: @mem AT AEQ V), pre m -> indomain a m.
+  forall (m: @mem AT AEQ V), pre m -> indomain a m.  
+  
+Definition valu0:= bytes2valu  (natToWord (valubytes*8) 0).
+  
+Lemma addr_is_in_id:
+  forall AT AEQ V a vs,
+  @addr_is_in AT AEQ V a (a |-> vs).
+Proof.
+  unfold addr_is_in; intros.
+  destruct H.
+  eexists; eauto.
+Qed.
 
-Theorem read_secure:
+Lemma pred_upd_w_pimpl:
+  forall a vs v,
+  pred_upd_w (a |-> vs) a v ⇨⇨ a |-> (v, vsmerge vs).
+Proof.
+  unfold pred_upd_w, pimpl; intros.
+  destruct (m a) eqn:D.
+  destruct p.
+  destruct l.
+  inversion H.
+  destruct H; subst.
+  destruct H0.
+  rewrite upd_eq in H; auto.
+  inversion H.
+  unfold vsmerge; split; eauto.
+  intros.
+  specialize (H0 a').
+  apply H0 in H1 as Hx.
+  rewrite upd_ne in Hx; auto.
+  inversion H.
+Qed.
+
+Lemma addr_is_in_find: forall a cs v m,
+    MapUtils.AddrMap.Map.find a (CSMap cs) = Some v ->
+    addr_is_in a (BUFCACHE.rep cs m).
+Proof.
+    intros.
+    unfold addr_is_in, indomain; intros.
+    unfold BUFCACHE.rep in *.
+    destruct_lift H0.
+    eapply BUFCACHE.addr_valid_mem_valid in H as Hx.
+    2: eauto.
+    deex.
+    eapply MemPred.mem_pred_extract with (a:=a) in H0; eauto.
+    unfold BUFCACHE.cachepred in H0 at 2.
+    rewrite H in H0.
+    destruct v_2;
+    destruct_lift H0;
+    apply sep_star_comm in H0;
+    apply ptsto_subset_valid in H0;
+    deex; eexists; eauto.
+Qed.
+
+Lemma mem_union_disjoint_sel:
+  forall AT AEQ V (m1 m2: @mem AT AEQ V) a v,
+  mem_disjoint m1 m2 ->
+  m1 a = Some v ->
+  mem_union m1 m2 a = m1 a.
+Proof.
+ intros. 
+ apply mem_union_sel_l; auto.
+ eapply mem_disjoint_either; eauto.
+Qed.
+       
+
+
+(* Basic Commands *)
+
+Theorem pimpl_secure:
+  forall T (p : prog T) pre pre' post post',
+  pre' =p=> pre ->
+  post =p=> post' ->
+  prog_secure p pre post ->
+  prog_secure p pre' post'.
+Proof.
+  unfold prog_secure; intros.
+  apply H in H4.
+  specialize (H1 _ _ _ _ _ _ _ _ H2 H3 H4 H5).
+  intuition; repeat deex.
+  left.
+  do 6 eexists; intuition eauto.
+Qed.
+
+Theorem read_secure':
   forall a pre,
   addr_is_in a pre ->
   prog_secure (Read a) pre pre.
@@ -107,22 +189,36 @@ Proof.
      left.
      repeat eexists.
      + econstructor.
-         econstructor.
-         admit. (* Possible to prove from H2 H3 H4 H7 H11 H16 *)
+       econstructor.
+       rewrite mem_union_comm; auto.
+       rewrite mem_union_comm in H16; auto.
+       erewrite mem_union_disjoint_sel in H16; eauto.
+       apply mem_union_addr; eauto.
+       rewrite mem_disjoint_comm; auto.
+       rewrite mem_disjoint_comm; auto.
      + eauto.
      + eauto.
      + eauto.
   - (* Failed *)
-    exfalso.
-    admit. (* Possible to prove from H4 H10 *)
+    apply mem_union_none_sel in H9.
+    destruct H9.
+    rewrite H5 in H9; inversion H9.
   - (* Crashed *)
     right.
     repeat eexists; eauto.
-  Unshelve.
-  constructor.
-Admitted.
+Qed.
+
+Theorem read_secure:
+  forall a vs,
+  prog_secure (Read a) (a|->vs) (a|->vs).
+Proof.
+  intros.
+  apply read_secure'.
+  apply addr_is_in_id.
+Qed.
+
   
-Theorem write_secure:
+Theorem write_secure':
   forall a v pre,
   addr_is_in a pre ->
   prog_secure (Write a v) pre (pred_upd_w pre a v).
@@ -148,33 +244,40 @@ Proof.
      left.
      repeat eexists.
      + econstructor.
-         econstructor.
-         admit. (* Possible to prove from H2 H3 H4 H7 H11 H16 *)
+       econstructor.
+       rewrite mem_union_comm; auto.
+       rewrite mem_union_comm in H21; auto.
+       erewrite mem_union_disjoint_sel in H21; eauto.
+       apply mem_union_addr; eauto.
+       rewrite mem_disjoint_comm; auto.
+       rewrite mem_disjoint_comm; auto.
      + eapply diskIs_sep_star_upd. 2: eauto. eauto.
      + eapply diskIs_sep_star_upd. 2: eauto. eauto.
      + rewrite upd_eq; auto.
-         rewrite upd_repeat.
-         rewrite upd_nop; auto.
-         admit. (* Possible to solve from H4 H5 H21 *)
+       rewrite upd_repeat.
+       rewrite upd_nop; auto.
+       erewrite <- mem_union_disjoint_sel; eauto.
+       rewrite mem_union_comm; eauto.
+       rewrite mem_disjoint_comm; auto.
+       rewrite mem_disjoint_comm; auto.
   - (* Failed *)
-    exfalso.
-    admit. (* Possible to prove from H4 H10 *)
+    apply mem_union_none_sel in H14.
+    destruct H14.
+    rewrite H5 in H9; inversion H9.
   - (* Crashed *)
     right.
     repeat eexists; eauto.
-Admitted.
+Qed.
 
-Theorem ret_secure:
-  forall T (x : T),
-  prog_secure (Ret x) emp emp.
+Theorem write_secure:
+  forall a v vs,
+  prog_secure (Write a v) (a |-> vs) (a |-> (v, vsmerge vs)).
 Proof.
-  unfold prog_secure; intros.
-  inv_exec.
-  left.
-  do 6 eexists; intuition.
-  eauto.
-  eauto.
-  eauto.
+  intros.
+  eapply pimpl_secure; [eauto | |].
+  2: apply write_secure'.
+  apply pred_upd_w_pimpl.
+  apply addr_is_in_id.
 Qed.
 
 Theorem bind_secure:
@@ -251,19 +354,18 @@ Proof.
   eauto.
 Qed.
 
-Theorem pimpl_secure:
-  forall T (p : prog T) pre pre' post post',
-  pre' =p=> pre ->
-  post =p=> post' ->
-  prog_secure p pre post ->
-  prog_secure p pre' post'.
+
+Theorem ret_secure:
+  forall T (x : T),
+  prog_secure (Ret x) emp emp.
 Proof.
   unfold prog_secure; intros.
-  apply H in H4.
-  specialize (H1 _ _ _ _ _ _ _ _ H2 H3 H4 H5).
-  intuition; repeat deex.
+  inv_exec.
   left.
-  do 6 eexists; intuition eauto.
+  do 6 eexists; intuition.
+  eauto.
+  eauto.
+  eauto.
 Qed.
 
 Lemma ret_secure_frame:
@@ -291,27 +393,7 @@ Qed.
 
 Import BUFCACHE.
 
-Lemma addr_is_in_find: forall a cs v m,
-    MapUtils.AddrMap.Map.find a (CSMap cs) = Some v ->
-    addr_is_in a (rep cs m).
-Proof.
-    intros.
-    unfold addr_is_in, indomain; intros.
-    unfold rep in *.
-    destruct_lift H0.
-    eapply addr_valid_mem_valid in H as Hx.
-    2: eauto.
-    deex.
-    eapply MemPred.mem_pred_extract with (a:=a) in H0; eauto.
-    unfold cachepred in H0 at 2.
-    rewrite H in H0.
-    destruct v_2;
-    destruct_lift H0;
-    apply sep_star_comm in H0;
-    apply ptsto_subset_valid in H0;
-    deex; eexists; eauto.
-Qed.
-
+Module V1.
 Theorem cache_writeback_secure:
   forall a cs m,
   prog_secure (writeback a cs) (rep cs m) (rep cs m \/ exists w, (pred_upd_w (rep cs m) a w)).
@@ -320,11 +402,12 @@ Proof.
    destruct (MapUtils.AddrMap.Map.find a (CSMap cs)) eqn:D; simpl in *.
    - destruct p; simpl in *.
       destruct b; simpl in *.
-      + eapply bind_secure; [ apply write_secure; eauto | intros; apply ret_secure_frame_impl_l; cancel].
+      + eapply bind_secure; [ apply write_secure'; eauto | intros; apply ret_secure_frame_impl_l; cancel].
           eapply addr_is_in_find; eauto.
       + apply ret_secure_frame_impl_l; cancel.
   - apply ret_secure_frame_impl_l; cancel.
 Qed.
+
 
 Theorem cache_evict_secure:
   forall a cs m,
@@ -373,7 +456,7 @@ Proof.
     destruct (MapUtils.AddrMap.Map.find a (CSMap x)) eqn:D.
     - destruct p; apply ret_secure_frame.
     - eapply bind_secure; [ apply alertmodified_secure_frame| intros].
-      eapply bind_secure; [apply read_secure | intros; apply ret_secure_frame_impl_l; cancel].
+      eapply bind_secure; [apply read_secure' | intros; apply ret_secure_frame_impl_l; cancel].
       
       unfold addr_is_in; intros.
       destruct H0.
@@ -412,7 +495,35 @@ Proof.
   unfold sync in *; simpl in *; intros.
   eapply bind_secure; [ apply cache_writeback_secure |  intros; apply ret_secure_frame ].
 Qed.
+End V1.
 
+Module V2.
+Theorem cache_writeback_secure:
+  forall a cs vs,
+  prog_secure (writeback a cs) (a|->vs) (a|-> vs \/ exists v, a|-> (v, vsmerge vs))%pred.
+Proof.
+  unfold writeback in *; simpl in *; intros.
+  destruct (MapUtils.AddrMap.Map.find a (CSMap cs)) eqn:D; simpl in *.
+  - destruct p; simpl in *.
+    destruct b; simpl in *.
+    + eapply bind_secure; 
+      [ apply write_secure; eauto | 
+        intros; apply ret_secure_frame_impl_l; cancel].
+    + apply ret_secure_frame_impl_l; cancel.
+  - apply ret_secure_frame_impl_l; cancel.
+Qed.
+
+Theorem cache_evict_secure:
+  forall a cs vs,
+  prog_secure (evict a cs) (a|->vs) (a|-> vs \/ exists v, a|-> (v, vsmerge vs))%pred.
+Proof.
+  unfold evict in *; simpl in *; intros.
+  eapply bind_secure; [ apply cache_writeback_secure; eauto | intros ].
+  destruct (MapUtils.AddrMap.Map.find a (CSMap x)) eqn:D; simpl in *.
+  apply ret_secure_frame.
+  apply ret_secure_frame.
+Qed.
+End V2.
 
 Module TwoLevel.
 Module L1.
@@ -498,6 +609,59 @@ Import L1.
       Ret (arr, fr).
 
 End L2.
+
+
+Theorem read_log_secure:
+  forall arr i v def,
+  prog_secure (L1.read_log arr i def)(i|-> v) (i|-> v).
+Proof.
+  intros.
+  unfold L1.read_log.
+  destruct (lt_dec i (length (L1.Log arr))).
+  eapply bind_secure.
+  apply read_secure.
+  intros; apply ret_secure_frame.
+  apply ret_secure_frame.
+Qed.
+
+Theorem write_log_secure:
+  forall arr i v vs def,
+  prog_secure (L1.write_log arr i v def)(i|-> vs) (i|-> vs \/ i|-> (v, vsmerge vs)).
+Proof.
+  intros.
+  unfold L1.write_log.
+  destruct (lt_dec i (length (L1.Log arr))).
+  eapply bind_secure.
+  apply write_secure.
+  intros; apply ret_secure_frame_impl_l; cancel.
+  apply ret_secure_frame_impl_l; cancel.
+Qed.
+
+Theorem read_data_secure:
+  forall arr i v def,
+  prog_secure (L1.read_data arr i def)((i+length(L1.Log arr))|-> v) ((i+length(L1.Log arr))|-> v).
+Proof.
+  intros.
+  unfold L1.read_data.
+  destruct (lt_dec i (length (L1.Data arr))).
+  eapply bind_secure.
+  apply read_secure.
+  intros; apply ret_secure_frame.
+  apply ret_secure_frame.
+Qed.
+
+Theorem write_data_secure:
+  forall arr i v vs def,
+  prog_secure (L1.write_data arr i v def)((i+length(L1.Log arr))|-> vs) ((i+length(L1.Log arr))|-> vs \/ (i+length(L1.Log arr))|-> (v, vsmerge vs)).
+Proof.
+  intros.
+  unfold L1.write_data.
+  destruct (lt_dec i (length (L1.Data arr))).
+  eapply bind_secure.
+  apply write_secure.
+  intros; apply ret_secure_frame_impl_l; cancel.
+  apply ret_secure_frame_impl_l; cancel.
+Qed.
 End TwoLevel.
 
 
