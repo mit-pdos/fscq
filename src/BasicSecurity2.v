@@ -572,19 +572,20 @@ Module L2.
 Import L1.
 
   Variable file_size: nat. 
-  Definition file:= list valuset.
+  Record file := { 
+     Meta: list valuset;
+     Data: list valuset
+     }.
   Definition file_rep:= list file.
   
-  Fixpoint rep_inner n (fr: file_rep) :=
-    match fr with
-    | nil => emp
-    | f::t => (arrayN (@ptsto addr _ _) n f * rep_inner (n + file_size) t)%pred
-    end.
+  Definition rep (fr: file_rep) := arrayN  (@ptsto addr _ _) 0 fr.
   
-  Definition rep (fr: file_rep) := rep_inner 0 fr.
-  
-  
-  Definition upd_file (fr: file_rep) fn bn vs fdef:= updN fr fn (updN (selN fr fn fdef) bn vs).
+  Definition upd_file (fr: file_rep) fn bn vs fdef:= 
+          let file :=  (selN fr fn fdef) in
+          updN fr fn  {| 
+                                Meta:= Meta file;
+                                Data:= (updN (Data file) bn vs)
+                            |}.
 
   Definition read_from_file arr (fr: file_rep) fn bn vsdef:=
     if lt_dec fn (length fr) then
@@ -601,13 +602,13 @@ Import L1.
       let file := selN fr fn fdef in
       if lt_dec bn file_size then
         arr' <- write_data arr (file_size * fn + bn) v vsdef; 
-        let vs := selN file bn vsdef in
+        let vs := selN (Data file) bn vsdef in
         Ret (arr', upd_file fr fn bn (v, vsmerge vs) fdef)
       else
         Ret (arr, fr)
     else
       Ret (arr, fr).
-
+  
 End L2.
 
 
@@ -662,6 +663,96 @@ Proof.
   intros; apply ret_secure_frame_impl_l; cancel.
   apply ret_secure_frame_impl_l; cancel.
 Qed.
+
+
+
+
+Module NewDef.
+Inductive prog_secure_strict: forall T AT AEQ V, prog T -> @pred AT AEQ V -> @pred AT AEQ V -> Prop :=
+| PSRet : forall T AT AEQ V (v: T), 
+      @prog_secure_strict T AT AEQ V (Ret v) emp emp
+| PSRead : forall V a (vs: V),
+      @prog_secure_strict _ _ addr_eq_dec _ (Read a) (a|->vs) (a|->vs)
+| PSWrite : forall a v vs,
+      @prog_secure_strict _ _ addr_eq_dec _ (Write a v) (a |-> vs)%pred (a |-> (v, vsmerge vs))%pred
+| PSBind : forall AT AEQ V T1 T2 (p1 : prog T1) (p2 : T1 -> prog T2) (pre post1 post2: @pred AT AEQ V),
+      prog_secure_strict p1 pre post1 ->
+      (forall x, prog_secure_strict (p2 x) post1 post2) ->
+      prog_secure_strict (Bind p1 p2) pre post2
+| PSImpl : forall T AT AEQ V (p : prog T) (pre pre' post post': @pred AT AEQ V),
+      pre' =p=> pre ->
+      post =p=> post' ->
+      prog_secure_strict p pre post ->
+      prog_secure_strict p pre' post'
+| PSFrame : forall T AT AEQ V (p : prog T) (pre post F: @pred AT AEQ V),
+  prog_secure_strict p pre post ->
+  prog_secure_strict p (F * pre)%pred (F * post)%pred.
+
+Hint Constructors prog_secure_strict.
+
+Lemma ret_secure_strict_frame : forall T AT AEQ V (v: T) (F: @pred AT AEQ V) ,
+    prog_secure_strict (Ret v) F F.
+Proof.
+  intros; eapply PSImpl.
+  3: eapply PSFrame.
+  3: eauto.
+  cancel.
+  cancel.
+Qed.
+
+Lemma ret_secure_strict_frame_pimpl : forall T AT AEQ V (v: T) (F F': @pred AT AEQ V) ,
+    F =p=> F' ->
+    prog_secure_strict (Ret v) F F'.
+Proof.
+  intros; eapply PSImpl.
+  3: eapply PSFrame.
+  3: eauto.
+  cancel.
+  cancel.
+Qed.
+
+Hint Resolve ret_secure_strict_frame.
+Hint Resolve ret_secure_strict_frame_pimpl.
+
+Theorem read_data_secure_strict:
+  forall V arr i (v: V) def,
+  @prog_secure_strict _ _ addr_eq_dec _ (L1.read_data arr i def)((i+length(L1.Log arr))|-> v) ((i+length(L1.Log arr))|-> v).
+Proof.
+  intros.
+  unfold L1.read_data.
+  destruct (lt_dec i (length (L1.Data arr))); eauto.
+Qed.
+
+Theorem write_data_secure_strict:
+  forall arr i v vs def,
+  @prog_secure_strict _ _ addr_eq_dec _ (L1.write_data arr i v def)((i+length(L1.Log arr))|-> vs) ((i+length(L1.Log arr))|-> vs \/ (i+length(L1.Log arr))|-> (v, vsmerge vs)).
+Proof.
+  intros.
+  unfold L1.write_data.
+  destruct (lt_dec i (length (L1.Data arr))); eauto.
+  econstructor; eauto.
+  intros; apply ret_secure_strict_frame_pimpl; cancel.
+  apply ret_secure_strict_frame_pimpl; cancel.
+Qed.
+
+Hint Resolve read_data_secure_strict.
+Hint Resolve write_data_secure_strict.
+
+
+Theorem read_from_file_secure_strict:
+  forall arr fr fn bn vsdef (f: L2.file),
+      @prog_secure_strict _ _ addr_eq_dec _ (L2.read_from_file arr fr fn bn vsdef) (fn|-> f) (fn|-> f).
+Proof.
+    intros.
+    unfold L2.read_from_file.
+    destruct (lt_dec fn (length fr)); eauto.
+    destruct (lt_dec bn L2.file_size); eauto.
+    econstructor; eauto.
+Admitted.
+
+End NewDef.
+
+
 End TwoLevel.
 
 
