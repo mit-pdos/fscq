@@ -50,7 +50,6 @@ Hint Resolve sync_invariant_possible_sync.
         OR
           "same for crash"
 *)
-(* Frames does not say for the remainder memory is unchanged or not. *)
 (* 
     Can we say
       Defintion pequal P Q := forall m, P m <-> Q m.
