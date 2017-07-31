@@ -3921,7 +3921,8 @@ Proof.
   rewrite plus_comm, mult_comm.
   erewrite updN_concat; auto.
   erewrite selN_inb; eauto.
-  indrep_n_tree_bound.
+  apply Nat.div_lt_upper_bound; auto.
+  apply Nat.mod_bound_pos; omega.
 Qed.
 
 
