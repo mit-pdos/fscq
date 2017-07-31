@@ -1630,11 +1630,11 @@ Import ListNotations.
           inversion H; constructor; eauto.
   Qed.
 
-  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms inum off v bn m f,
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
+  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms sm inum off v bn m f,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms)%pred (list2nmem (updN m bn v)).
+    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     apply rep_tree_names_distinct in H as Hnames.
