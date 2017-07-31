@@ -282,9 +282,8 @@ Module LogRecArray (RA : RASig).
   Proof.
     unfold ifind, rep.
     safestep. eauto.
-    eassign m.
-    pred_apply; cancel.
-    eauto.
+    eassign items.
+    eauto. eauto. eauto.
 
     safestep.
     safestep.
