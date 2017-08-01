@@ -614,6 +614,27 @@ Hint Resolve write_secure.
 Import L1.
 
 
+Theorem prog_secure_is_noninterference :
+  forall T AT AEQ V (p : prog T) (wc: @mem addr addr_eq_dec valuset -> @mem AT  AEQ V -> Prop) pre post a v1 v2 m1 m2 m mp vm hm,
+  prog_secure wc p pre post ->
+  (a |+> v1 * diskIs m)%pred m1 ->
+  (a |+> v2 * diskIs m)%pred m2 ->
+  wc m mp ->
+  pre mp ->
+  forall m1' vm' hm' v,
+  exec m1 vm hm p (Finished m1' vm' hm' v) ->
+  exists m2' vm'' hm'',
+  exec m2 vm hm p (Finished m2' vm'' hm'' v).
+Proof.
+  unfold prog_secure; intros.
+  specialize (H _ _ _ _ _ _ _ _ _ H0 H1 H2 H3 H4).
+  intuition; repeat deex; try congruence.
+  do 3 eexists.
+  inversion H5; subst.
+  eauto.
+Qed.
+
+
 
 Lemma list2nmem_mem_except_diskIs:
   forall A (l: list A) m a def,
