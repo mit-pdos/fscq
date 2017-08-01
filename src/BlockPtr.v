@@ -645,7 +645,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     auto.
     inversion H3; subst.
     apply IHl; auto.
-    apply sm_sync_invariant_sep_star; auto.
   Qed.
 
   Theorem indrep_n_tree_sm_sync_invariant : forall bxp indlvl Fs ir l F m,
@@ -702,7 +701,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
     indrep_n_helper Fs bxp ibn l <=p=> indrep_n_helper Fs bxp ibn l * [[ length l = NIndirect ]].
   Proof.
     intros.
-    split; [> intros m H; apply indrep_n_helper_length in H as HH; pred_apply | ]; cancel.
+    split.
+    - intros m H.
+      pred_apply; cancel.
+      eapply indrep_n_helper_length with (m := m).
+      pred_apply; cancel.
+    - cancel.
   Qed.
 
   Lemma indrep_n_length_pimpl : forall indlvl bxp ibn Fs l,
@@ -711,7 +715,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Proof.
     induction indlvl; simpl; intros.
     intros; split; intros m H; destruct_lift H; pred_apply; cancel.
-    erewrite indrep_n_helper_length; eauto; omega.
+    erewrite indrep_n_helper_length with (m := m); eauto; try omega.
+    pred_apply; cancel.
     intros; split; intros m H; destruct_lift H; pred_apply; cancel.
     rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in H; destruct_lift H.
     rewrite listmatch_lift_r in H; destruct_lift H.
