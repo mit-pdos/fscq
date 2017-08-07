@@ -3615,6 +3615,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Local Hint Extern 1 ({{_}} Bind (indread_range_helper _ _ _ _ _ _ ) _) => apply indread_range_helper_ok : prog.
 
+(*
   Theorem read_range_ok : forall lxp bxp ir start len ms,
     {< F Fm IFs m0 sm m l,
     PRE:hm
@@ -3641,6 +3642,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite firstn_double_skipn by omega; auto.
     (* TODO finish proving this and use read_range to implement BFILE.shrink *)
   Abort.
+*)
 
   Lemma indrec_ptsto_pimpl : forall ibn indrec,
     IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
