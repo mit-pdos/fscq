@@ -214,6 +214,7 @@ Module DTCrash.
     rewrite <- IAlloc.rep_clear_cache.
     cancel.
     eauto.
+    pred_apply.
     cancel; auto.
     intros; eapply BFILE.freepred_file_crash; eauto.
   Grab Existential Variables.
