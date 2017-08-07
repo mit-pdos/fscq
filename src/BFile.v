@@ -3568,7 +3568,6 @@ Module BFILE.
     apply bfcache_emp.
     eauto using flist_crash_caches_cleared.
     eapply sep_star_smrep_sm_synced; eauto.
-    pred_apply' H; cancel.
   Qed.
 
   Lemma xform_file_match_ptsto : forall F a vs f ino,
@@ -3619,6 +3618,8 @@ Module BFILE.
     simpl.
     eapply pimpl_trans. apply pimpl_refl. 2: eapply IHfs'. cancel.
     eauto.
+
+    eapply sep_star_smrep_sm_synced; eauto.
 
     apply list2nmem_ptsto_cancel.
     erewrite <- flist_crash_length; eauto.
