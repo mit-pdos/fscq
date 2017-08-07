@@ -2037,12 +2037,13 @@ Module PaddedLog.
     rep xp (Synced (padded_log old ++ padded_log new)) hm.
   Proof.
     unfold rep; simpl; intros; unfold rep_contents; cancel.
-    setoid_rewrite ndesc_log_padded_app.
-    setoid_rewrite ndata_log_padded_app.
-    rewrite ndesc_log_padded_log, ndata_log_padded_log.
-    setoid_rewrite map_app.
-    setoid_rewrite vals_nonzero_app.
-    setoid_rewrite vals_nonzero_padded_log.
+    repeat rewrite ndesc_log_padded_app.
+    repeat rewrite ndata_log_padded_app.
+    repeat rewrite ndesc_log_padded_log.
+    repeat rewrite ndata_log_padded_log.
+    repeat rewrite map_app.
+    repeat rewrite vals_nonzero_app.
+    repeat rewrite vals_nonzero_padded_log.
     cancel.
 
     rewrite Desc.array_rep_synced_app_rev.
