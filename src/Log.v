@@ -1128,6 +1128,8 @@ Module LOG.
     safecancel.
     or_l; cancel.
     eauto using sm_ds_valid_synced, sm_vs_valid_sm_synced.
+    eauto.
+    auto.
   Qed.
 
   Lemma rollbacktxn_after_crash_diskIs : forall xp F n d ds ms sm hm,
@@ -1139,6 +1141,8 @@ Module LOG.
     safecancel.
     or_r; cancel.
     eauto using sm_ds_valid_synced, sm_vs_valid_sm_synced.
+    eauto.
+    auto.
   Qed.
 
   (** idempred includes both before-crash cand after-crash cases *)
@@ -1262,11 +1266,14 @@ Module LOG.
     eassign (mk_mstate (MSTxn x_1) dummy1).
     cancel. auto.
     eauto using sm_ds_valid_synced, sm_vs_valid_sm_synced.
+    eauto.
+    eauto.
 
     safecancel.
     eassign (mk_mstate vmap0 dummy1).
     cancel. auto.
     eauto using sm_ds_valid_synced, sm_vs_valid_sm_synced.
+    eauto. auto.
   Qed.
 
   Theorem crash_xform_idempred : forall xp F ds hm,
