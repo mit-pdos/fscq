@@ -2135,14 +2135,19 @@ Module BFILE.
     2: sepauto.
     2: cbn; sepauto.
     pred_apply. cancel.
-    rewrite listmatch_isolate with (a := updN _ _ _) by simplen.
+    rewrite listmatch_isolate with (a := updN _ _ _).
     rewrite removeN_updN, selN_updN_eq by simplen.
     unfold file_match.
     cancel; eauto.
-    rewrite listmatch_isolate with (a := updN _ _ _) by simplen.
+    rewrite listmatch_isolate with (a := updN _ _ _).
     rewrite removeN_updN, selN_updN_eq by simplen.
     erewrite selN_map by simplen.
     cancel.
+
+    simplen.
+    simplen.
+    simplen.
+    simplen.
 
     eauto.
     eauto.
