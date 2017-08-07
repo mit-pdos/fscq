@@ -423,6 +423,7 @@ Module BFILE.
   Proof.
     unfold BFILE.rep. cancel.
     apply INODE.rep_clear_cache.
+    cancel.
   Qed.
 
   Lemma smrep_init: forall n,
@@ -1086,7 +1087,7 @@ Module BFILE.
     rewrite listmatch_length_pimpl.
     cancel.
     rewrite listmatch_map_r.
-    rewrite listmatch_sym. cancel.
+    rewrite listmatch_sym. apply pimpl_refl.
     denote Forall2 as Hf.
     eapply forall2_forall in Hf.
     rewrite Forall_forall in Hf.
@@ -1306,8 +1307,8 @@ Module BFILE.
     cancel.
     rewrite listmatch_map_l.
     rewrite listmatch_sym.
-    cancel. reflexivity.
-    erewrite listmatch_length_r by (pred_apply' H; cancel).
+    cancel. apply pimpl_refl.
+    erewrite listmatch_length_r by (pred_apply' H; apply pimpl_refl).
     omega.
   Unshelve.
     exact bfile0.
