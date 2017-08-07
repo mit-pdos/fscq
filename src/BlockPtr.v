@@ -3184,7 +3184,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
         - step.
           safestep.
           indrep_n_extract; [cancel | try solve [indrep_n_tree_bound]..].
-          rewrite Nat.min_l by omega.
           indrep_n_tree_bound.
           match goal with |- ?a mod ?b < ?c => replace c with b; auto end.
           symmetry. apply Forall_selN. eauto.
