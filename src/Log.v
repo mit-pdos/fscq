@@ -1311,14 +1311,14 @@ Module LOG.
       eassign (mk_mstate (Map.empty valu) dummy1).
       cancel. auto.
       eauto using sm_ds_valid_synced, sm_vs_valid_sm_synced.
-      auto.
+      eassumption. auto.
 
       safecancel.
       or_r; cancel.
       eassign (mk_mstate (Map.empty valu) dummy1).
       cancel. auto.
       eauto using sm_ds_valid_synced, sm_vs_valid_sm_synced.
-      auto.
+      eassumption. auto.
 
     - apply crash_xform_sep_star_dist in Hx;
       rewrite GLog.crash_xform_recovering in Hx;
