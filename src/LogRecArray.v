@@ -283,7 +283,8 @@ Module LogRecArray (RA : RASig).
     unfold ifind, rep.
     safestep. eauto.
     eassign items.
-    eauto. eauto. eauto.
+    pred_apply_instantiate; cancel.
+    eauto.
 
     safestep.
     safestep.
@@ -294,7 +295,7 @@ Module LogRecArray (RA : RASig).
     step.
     cancel.
 
-    step.
+    safestep.
     destruct a; cancel.
     match goal with
     | [ H: forall _, Some _ = Some _ -> _ |- _ ] =>
