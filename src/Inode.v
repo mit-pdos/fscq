@@ -378,8 +378,12 @@ Module INODE.
     rep bxp IFs xp ilist cache <=p=> rep bxp' IFs xp ilist cache.
   Proof.
     intros. unfold rep.
-    split; cancel; apply listmatch_piff_replace.
+    split; norm; unfold stars; simpl.
+    all : intuition eauto.
+    all : rewrite listmatch_piff_replace.
+    all : try cancel.
     all : intros; unfold inode_match, BALLOCC.bn_valid.
+    all : destruct x.
     all : rewrite Ind.rep_bxp_switch by (eassumption||symmetry; eassumption).
     all : rewrite H in *.
     all : split; cancel.
