@@ -571,10 +571,12 @@ Module LOG.
     safestep.
     step using dems; subst; simpl.
     pred_apply; cancel.
+    eapply sm_ds_valid_pushd_r; eauto.
     eapply readOnlyLL; eauto; try reflexivity; simpl; dems.
     pimpl_crash; norm. cancel.
     eassign (mk_mstate vmap0 (MSGLog ms_1)).
     intuition; pred_apply; cancel.
+    eapply sm_ds_valid_pushd_r; eauto.
   Qed.
 
 
@@ -631,6 +633,11 @@ Module LOG.
     eapply list2nmem_ptsto_bound; eauto.
 
     rewrite replay_disk_add; eauto.
+
+    eapply sm_ds_valid_pushd.
+    eapply sm_vs_valid_same_upd_synced.
+    eapply sm_ds_valid_pushd_l; eauto.
+    eapply sm_ds_valid_pushd_r; eauto.
 
     rewrite replay_disk_add.
     eapply list2nmem_updN. eauto.
