@@ -1244,6 +1244,7 @@ Module AFS.
     safecancel.
     2: reflexivity. cancel.
     rewrite LOG.recover_any_idempred; cancel.
+    pred_apply; cancel.
     step.
     step.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
