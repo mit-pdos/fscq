@@ -230,7 +230,8 @@ Module CacheOneDir.
            [[ BFILE.BFCache f' = Some cache ]] *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
-           [[ MSIAllocC ms' = MSIAllocC ms ]]
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+           [[ MSDBlocks ms' = MSDBlocks ms ]]
     CRASH:hm'
            LOG.intact lxp F m0 sm hm'
     >} init_cache lxp ixp dnum ms.
@@ -278,6 +279,7 @@ Module CacheOneDir.
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
+           [[ MSDBlocks ms' = MSDBlocks ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\ inum <> 0 /\
