@@ -256,6 +256,7 @@ Module CacheOneDir.
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
+           [[ MSDBlocks ms' = MSDBlocks ms ]] *
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
            LOG.intact lxp F m0 sm hm'
