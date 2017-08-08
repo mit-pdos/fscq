@@ -1273,7 +1273,7 @@ Module DIRTREE.
     prestep; norm'l.
 
     (* lock the old BFILE.rep again, but not the new one. *)
-    denote! ( (Fm * BFILE.rep _ _ _ _ _ _ (MSCache mscs) _ * _)%pred (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
+    denote! ( (Fm * BFILE.rep _ _ _ _ _ _ _ (MSCache mscs) _ _ * _)%pred (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
 
     intuition; inv_option_eq; repeat deex; destruct_pairs.
     denote find_name as Htree.
@@ -1298,7 +1298,7 @@ Module DIRTREE.
     step.
 
     (* lock an old BFILE.rep *)
-    denote! ( ((Fm * BFILE.rep _ _ _ _ _  _ (MSCache a) _ ) * _)%pred (list2nmem m)) as Hm1; rewrite <- locked_eq in Hm1.
+    denote! ( ((Fm * BFILE.rep _ _ _ _ _ _ _ (MSCache a) _ _) * _)%pred (list2nmem m)) as Hm1; rewrite <- locked_eq in Hm1.
 
     (* namei for dstpath, find out pruning subtree before step *)
     denote (tree_dir_names_pred' l0 _) as Hx1.
@@ -1334,7 +1334,7 @@ Module DIRTREE.
     destruct_branch; destruct_branch; [ | step ].
 
     (* lock an old BFILE.rep; we have a new one from namei *)
-    denote! ( (_* BFILE.rep _ _ _ _ _ _ (MSCache a0) _ )%pred (list2nmem m)) as Hm2; rewrite <- locked_eq in Hm2.
+    denote! ( (_* BFILE.rep _ _ _ _ _ _ _ (MSCache a0) _ _)%pred (list2nmem m)) as Hm2; rewrite <- locked_eq in Hm2.
 
     prestep; norm'l.
     intuition; inv_option_eq; repeat deex; destruct_pairs.
@@ -1354,7 +1354,7 @@ Module DIRTREE.
 
     safecancel. eauto.
 
-    denote! ( (Fm * _ * BFILE.rep _ _ _ _ _ _ (MSCache a4) _ )%pred (list2nmem m')) as Hm3; rewrite <- locked_eq in Hm3.
+    denote! ( (Fm * _ * BFILE.rep _ _ _ _ _ _ _ (MSCache a4) _ _)%pred (list2nmem m')) as Hm3; rewrite <- locked_eq in Hm3.
 
     (* grafting back *)
     destruct_branch.
@@ -1368,7 +1368,7 @@ Module DIRTREE.
     pose proof (ptsto_subtree_exists _ Hx3 Hx4) as Hx.
     destruct Hx; intuition.
 
-    denote! ( ((Fm * BFILE.rep _ _ _ _ _ (MSAllocC a1) _ _) * _)%pred (list2nmem m')) as Hm4; rewrite <- locked_eq in Hm4.
+    denote! ( ((Fm * BFILE.rep _ _ _ _ _ _ (MSAllocC a1) _ _ _) * _)%pred (list2nmem m')) as Hm4; rewrite <- locked_eq in Hm4.
 
     (* must unify [find_subtree] in [delete]'s precondition with
        the root tree node.  have to do this manually *)
