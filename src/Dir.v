@@ -503,6 +503,7 @@ Module DIR.
   Notation MSCache := BFILE.MSCache.
   Notation MSAllocC := BFILE.MSAllocC.
   Notation MSIAllocC := BFILE.MSIAllocC.
+  Notation MSDBlocks := BFILE.MSDBlocks.
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
     {< F Fm Fi m0 sm m dmap ilist frees f,
@@ -551,7 +552,8 @@ Module DIR.
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
-             [[ MSIAllocC ms' = MSIAllocC ms ]]
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
+             [[ MSDBlocks ms' = MSDBlocks ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} readdir lxp ixp dnum ms.
