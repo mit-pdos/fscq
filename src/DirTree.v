@@ -439,6 +439,9 @@ Module DIRTREE.
     all: try exact unit.
     all: try exact None; eauto.
     all: intros; try exact tt.
+
+  Show.
+
   Qed.
 
   Hint Extern 1 ({{_}} Bind (namei _ _ _ _) _) => apply namei_ok : prog.
