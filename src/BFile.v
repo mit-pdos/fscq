@@ -2864,7 +2864,8 @@ Module BFILE.
       [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ MSCache ms = MSCache ms0 ]] *
       [[ MSIAllocC ms = MSIAllocC ms0 ]] *
-      [[ MSAllocC ms = MSAllocC ms0 ]]
+      [[ MSAllocC ms = MSAllocC ms0 ]] *
+      [[ MSDBlocks ms = MSDBlocks ms0 ]]
     OnCrash  crash
     Begin
       let^ (ms, v) <- read_array lxp ixp inum a i ms;
@@ -2932,6 +2933,7 @@ Module BFILE.
       [[ MSCache ms = MSCache ms0 ]] *
       [[ MSIAllocC ms = MSIAllocC ms0 ]] *
       [[ MSAllocC ms = MSAllocC ms0 ]] *
+      [[ MSDBlocks ms = MSDBlocks ms0 ]] *
       [[ ret = None ->
         pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
       [[ ret = None ->
