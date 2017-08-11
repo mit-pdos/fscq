@@ -435,16 +435,10 @@ Module DIRTREE.
     unfold find_name; rewrite Hx; eauto.
 
     Grab Existential Variables.
-
-  Show.
-
     all: try exact unit.
     all: try exact None.
     all: intros; try exact tt.
     all: try congruence.
-
-  Show.
-
   Qed.
 
   Hint Extern 1 ({{_}} Bind (namei _ _ _ _) _) => apply namei_ok : prog.
