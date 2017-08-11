@@ -56,7 +56,7 @@ Module AFS_RECOVER.
   POST:hm' RET:^(mscs',r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
          [[ r = DFAttr f ]]
-  REC:vm', hm' RET:r exists mscs fsxp,
+  REC:hm' RET:r exists mscs fsxp,
          exists d sm' n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
@@ -106,7 +106,7 @@ Module AFS_RECOVER.
     POST:hm' RET:^(mscs', r)
            LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
            [[ r = fst vs ]]
-    REC:vm',hm' RET:r exists mscs fsxp,
+    REC:hm' RET:r exists mscs fsxp,
          exists d sm' n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
@@ -167,7 +167,7 @@ Module AFS_RECOVER.
         [[[ d ::: (Fm * DirTreeRep.rep fsxp Ftop tree' ilist' frees' mscs' sm)]]] *
         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
         [[ f' = mk_dirfile (setlen (DFData f) sz ($0, nil)) (DFAttr f) ]]
-    REC:vm',hm' RET:r exists mscs fsxp,
+    REC:hm' RET:r exists mscs fsxp,
       (exists d sm' n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
@@ -282,7 +282,7 @@ Module AFS_RECOVER.
        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
        [[[ (DFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ DFAttr f' = DFAttr f ]]
-    REC:vm',hm' RET:r exists mscs fsxp,
+    REC:hm' RET:r exists mscs fsxp,
       exists d sm', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' hm' *
       ((exists n, 
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
@@ -319,7 +319,7 @@ Module AFS_RECOVER.
         [[ ds' = dssync_vecs ds al ]] *
         [[[ ds'!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree' ilist frees mscs' sm')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum (synced_dirfile f)) tree ]]
-    REC:vm',hm' RET:r exists mscs fsxp,
+    REC:hm' RET:r exists mscs fsxp,
       exists d sm',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' hm' *
        ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/

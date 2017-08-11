@@ -198,7 +198,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm_crash cra
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 
-Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : vm_rec , hm_rec crash >>} p1 >> p2" :=
+Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    exists idemcrash,
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
@@ -231,10 +231,10 @@ Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : vm_rec , hm_re
    (Bind p1 rxOK)%pred
    (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
-   hm at level 0, hm' at level 0, vm_rec at level 0, hm_rec at level 0,
+   hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
 
-Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : vm_rec , hm_rec crash >>X} p1 >> p2" :=
+Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >>X} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
    corr3
@@ -258,7 +258,7 @@ Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : vm_rec , hm_r
    (Bind p1 rxOK)%pred
    (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
-   hm at level 0, hm' at level 0, vm_rec at level 0, hm_rec at level 0,
+   hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
 
 
