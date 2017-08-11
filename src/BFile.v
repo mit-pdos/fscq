@@ -2041,13 +2041,15 @@ Module BFILE.
 
     safestep.
     repeat extract. seprewrite.
+    5: reflexivity.
     4: sepauto.
-    4: eauto.
+    2: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
     seprewrite.
-    eapply dirty_blocks_rep_keep_blocks; cbn; simplen.
-    eauto.
+    rewrite <- smrep_upd_keep_blocks.
+    cancel.
+    reflexivity.
 
     denote (list2nmem m') as Hm'.
     rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
