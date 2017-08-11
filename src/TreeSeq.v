@@ -328,14 +328,13 @@ Module TREESEQ.
     intuition.
   Qed.
 
-  Lemma treeseq_in_ds_tree_pred_nth: forall Fm Ftop fsxp mscs ts ds n,
-   (exists sm, treeseq_in_ds Fm Ftop fsxp sm mscs ts ds) ->
+  Lemma treeseq_in_ds_tree_pred_nth: forall Fm Ftop fsxp mscs ts ds n sm,
+   treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ->
    (exists bfms sm,
     Fm ✶ rep fsxp Ftop (TStree (nthd n ts)) (TSilist (nthd n ts)) (TSfree (nthd n ts)) bfms sm)%pred (list2nmem (nthd n ds)).
   Proof.
     intros.
     unfold treeseq_in_ds in H.
-    deex.
     intuition.
     unfold tree_rep in H0.
     eapply NEforall2_d_in with (x := nthd n ts) in H0 as H0'.
@@ -375,7 +374,7 @@ Module TREESEQ.
         eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
         destruct_lift Hpred;
         eapply rep_tree_names_distinct; eassumption
-      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- tree_names_distinct (TStree (nthd ?n ?ts)) ] => 
+      | [ H: treeseq_in_ds _ _ _ _ _ ?ts _ |- tree_names_distinct (TStree (nthd ?n ?ts)) ] => 
         eapply treeseq_in_ds_tree_pred_nth in H as Hpred;
         destruct_lift Hpred;
         eapply rep_tree_names_distinct; eassumption
