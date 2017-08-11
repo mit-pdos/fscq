@@ -1577,4 +1577,54 @@ Module ATOMICCP.
     exact Mem.empty_mem.
   Qed.
 
+
+  Theorem copy_and_rename_with_recover_ok : forall fsxp srcinum tinum (dstbase: list string) (dstname:string) mscs,
+    {X<< Fm Ftop Ftree ds sm ts srcpath file dstfile tfile v0,
+    PRE:hm
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ]] *
+      [[ treeseq_pred (treeseq_safe [temp_fn] (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts ]] *
+      [[ tree_with_tmp Ftree srcpath [temp_fn] srcinum file tinum
+                tfile dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
+      [[[ DFData file ::: (Off0 |-> v0) ]]] *
+      [[ dirtree_inum (TStree ts!!) = the_dnum ]]
+    POST:hm' RET:^(mscs', r)
+      exists ds' sm' ts',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
+       [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]] *
+       (([[r = false ]] *
+        (exists f',
+         [[ tree_with_tmp Ftree srcpath [temp_fn] srcinum file tinum
+                f' dstbase dstname dstfile (dir2flatmem2 (TStree ts'!!)) ]])) \/
+       ([[r = true ]] *
+          [[ tree_with_dst Ftree srcpath [temp_fn] srcinum file dstbase dstname (dir2flatmem2 (TStree ts'!!)) ]]))
+    REC:hm' RET:r
+      [[ isError r ]] * any \/
+      exists d sm' t mscs',
+      [[ r = OK (mscs', fsxp) ]] *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') sm' hm' *
+      [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm' mscs' (t, nil) (d, nil) ]] *
+      [[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dstfile) (t, nil) ]]
+    >>X} copy_and_rename fsxp srcinum tinum dstbase dstname mscs >> atomic_cp_recover.
+  Proof.
+    unfold forall_helper; intros.
+    eapply pimpl_ok3; intros.
+    eapply corr3_from_corr2_rx.
+    apply copy_and_rename_ok.
+    apply atomic_cp_recover_ok.
+    safecancel.
+    eauto.
+    eauto.
+    eauto.
+    eauto.
+    eauto.
+    eauto.
+    step.
+
+    eassign_idempred.
+    
+  Admitted.
+
 End ATOMICCP.

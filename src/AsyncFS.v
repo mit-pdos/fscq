@@ -765,23 +765,6 @@ Module AFS.
     end.
 
 
-  Ltac eassign_idempred :=
-    match goal with
-    | [ H : crash_xform ?realcrash =p=> crash_xform ?body |- ?realcrash =p=> (_ ?hm') ] =>
-      let t := eval pattern hm' in body in
-      match eval pattern hm' in body with
-      | ?bodyf hm' =>
-        instantiate (1 := (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm) ]])%pred))
-      end
-    | [ |- ?body =p=> (_ ?hm) ] =>
-      let t := eval pattern hm in body in
-      match eval pattern hm in body with
-      | ?bodyf hm =>
-        instantiate (1 := (fun hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm') ]])%pred));
-        try (cancel; xform_norm; cancel)
-      end
-    end.
-
   (* Dumb and fast version of intuition *)
   Ltac intuition' :=
     match goal with
