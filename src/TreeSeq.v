@@ -3088,8 +3088,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
       [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ]]
     POST:hm' RET:^(mscs')
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) (MSLL mscs') sm hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ((ts !!), nil) (ds!!, nil)]]
+      exists sm',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) (MSLL mscs') sm' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ((ts !!), nil) (ds!!, nil)]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.tree_sync fsxp mscs.

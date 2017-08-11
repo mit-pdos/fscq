@@ -1122,7 +1122,8 @@ Module AFS.
       [[ MSCache mscs' = MSCache mscs ]] *
       [[ MSICache mscs' = MSICache mscs ]] *
       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-      [[ MSIAllocC mscs' = MSIAllocC mscs ]]
+      [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+      [[ MSDBlocks mscs' = MSDBlocks mscs ]]
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} tree_sync fsxp mscs.
