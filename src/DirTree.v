@@ -435,9 +435,13 @@ Module DIRTREE.
     unfold find_name; rewrite Hx; eauto.
 
     Grab Existential Variables.
+
+  Show.
+
     all: try congruence.
     all: try exact unit.
-    all: try exact None; eauto.
+    all: try exact None.
+    all: try exact tt.
     all: intros; try exact tt.
 
   Show.
