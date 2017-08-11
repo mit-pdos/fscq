@@ -2456,7 +2456,8 @@ Module BFILE.
       [[ MSCache ms' = MSCache ms ]] *
       [[ MSIAllocC ms = MSIAllocC ms' ]] *
       [[ MSICache ms = MSICache ms' ]] *
-      [[ MSAllocC ms' = MSAllocC ms]]
+      [[ MSAllocC ms' = MSAllocC ms ]] *
+      [[ MSDBlocks ms' = MSDBlocks ms ]]
     XCRASH:hm'
       LOG.recover_any lxp F ds hm'
     >} sync lxp ixp ms.

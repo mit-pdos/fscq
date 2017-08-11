@@ -960,7 +960,8 @@ Module DIRTREE.
            [[ MSAlloc mscs' = negb (MSAlloc mscs) ]] *
            [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
            [[ MSAllocC mscs' = MSAllocC mscs ]] *
-           [[ MSICache mscs' = MSICache mscs ]]
+           [[ MSICache mscs' = MSICache mscs ]] *
+           [[ MSDBlocks mscs' = MSDBlocks mscs ]]
     XCRASH:hm'
            LOG.recover_any fsxp.(FSXPLog) F ds hm'
      >} sync fsxp mscs.
