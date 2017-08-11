@@ -2672,7 +2672,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eapply tree_safe_file_sync_1; eauto.
   Qed.
 
-  Lemma treeseq_in_ds_file_sync: forall  Fm Ftop fsxp mscs mscs' sm ds ts al pathname inum  f,
+  Lemma treeseq_in_ds_file_sync: forall  Fm Ftop fsxp mscs mscs' sm sm' ds ts al pathname inum  f,
     treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ->
     treeseq_pred (treeseq_safe pathname (MSAlloc mscs) ts !!) ts ->
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
@@ -2680,9 +2680,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     (length al = length (DFData f) /\ forall i, i < length al ->
                 BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
     MSAlloc mscs = MSAlloc mscs' ->
-    (Fm * rep fsxp Ftop (TStree (ts_file_sync pathname ts) !!) (TSilist ts !!) (TSfree ts !!) mscs' sm)%pred
+    (Fm * rep fsxp Ftop (TStree (ts_file_sync pathname ts) !!) (TSilist ts !!) (TSfree ts !!) mscs' sm')%pred
         (list2nmem (dssync_vecs ds al) !!) ->
-    treeseq_in_ds Fm Ftop fsxp sm mscs' (ts_file_sync pathname ts) (dssync_vecs ds al).
+    treeseq_in_ds Fm Ftop fsxp sm' mscs' (ts_file_sync pathname ts) (dssync_vecs ds al).
   Proof.
     unfold treeseq_in_ds.
     intros.
@@ -3008,10 +3008,10 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       [[ treeseq_pred (treeseq_safe pathname (MSAlloc mscs) (ts !!)) ts ]] *
       [[ (Ftree * pathname |-> File inum f)%pred (dir2flatmem2 (TStree ts!!)) ]]
     POST:hm' RET:^(mscs')
-      exists ds' al,
+      exists ds' al sm',
        let ts' := ts_file_sync pathname ts in
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm hm' *
-         [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds']] *
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
+         [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds']] *
           [[ forall pathname',
              treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
              treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
