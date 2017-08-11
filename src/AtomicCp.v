@@ -800,8 +800,8 @@ Module ATOMICCP.
     eapply tree_with_tmp_tmp_dst in H14 as Hdst; eauto. repeat deex.
     safecancel.
     eassign (@nil string). simpl. rewrite H13; eauto.
-    cancel.
-  
+    pred_apply; cancel.
+
     step.
     step.
 
