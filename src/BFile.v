@@ -965,6 +965,26 @@ Module BFILE.
     rewrite wordToNat_natToWord_idempotent'; auto.
   Qed.
 
+  Lemma smrep_upd_keep_blocks :
+    forall frees dblocks ilist inum i' def,
+    INODE.IBlocks (selN ilist inum def) = INODE.IBlocks i' ->
+    smrep frees dblocks ilist =p=> smrep frees dblocks (updN ilist inum i').
+  Proof.
+    unfold smrep.
+    intros.
+    cancel.
+    destruct (lt_dec inum (length ilist)).
+    2: rewrite updN_oob by omega; cancel.
+
+    rewrite arrayN_except_upd by auto.
+    rewrite arrayN_except with (i := inum) by auto.
+    cancel.
+
+    unfold smrep_single_helper, smrep_single.
+    rewrite <- H.
+    reflexivity.
+  Qed.
+
   Lemma smrep_single_helper_split_dirty: forall dblocks inum ino ino' off,
     INODE.IBlocks ino' = removeN (INODE.IBlocks ino) off ->
     off < length (INODE.IBlocks ino) ->
@@ -1959,13 +1979,16 @@ Module BFILE.
     sepauto.
     safestep.
     repeat extract. seprewrite.
+    5: reflexivity.
     4: sepauto.
-    4: eauto.
+    2: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
     seprewrite.
-    eapply dirty_blocks_rep_keep_blocks; cbn; simplen.
-    eauto.
+    rewrite <- smrep_upd_keep_blocks.
+    cancel.
+    reflexivity.
+
     denote (list2nmem m') as Hm'.
     rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
     denote (list2nmem ilist') as Hilist'.
