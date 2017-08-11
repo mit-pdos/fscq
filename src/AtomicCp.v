@@ -547,6 +547,7 @@ Module ATOMICCP.
     step.
     2: eassign tmppath; cancel.
     msalloc_eq; eauto.
+    pred_apply; cancel.
     step.
     denote! (forall _, treeseq_pred _ _ -> treeseq_pred _ _) as Ht.
     specialize (Ht tmppath).
