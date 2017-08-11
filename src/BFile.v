@@ -2130,7 +2130,8 @@ Module BFILE.
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSCache ms = MSCache ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
-           [[ MSAllocC ms = MSAllocC ms' ]]
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSDBlocks ms = MSDBlocks ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} write lxp ixp inum off v ms.
   Proof.
