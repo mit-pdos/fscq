@@ -438,11 +438,10 @@ Module DIRTREE.
 
   Show.
 
-    all: try congruence.
     all: try exact unit.
     all: try exact None.
-    all: try exact tt.
     all: intros; try exact tt.
+    all: try congruence.
 
   Show.
 
