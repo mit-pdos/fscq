@@ -3007,6 +3007,7 @@ Module BFILE.
     denote cond as Hx; rewrite firstn_oob in Hx; auto.
     rewrite map_length; auto.
     cancel.
+
   Unshelve.
     all: try easy.
     try exact ($0, nil).
@@ -3667,7 +3668,7 @@ Module BFILE.
     (Fd (list2nmem (BFData f))) ->
     crash_xform (rep bxp sm ixp fs ilist frees allocc mscache icache dblocks) =p=>
       exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
-      rep bxp sm ixp fs' ilist frees allocc (BFcache.empty _) icache dblocks *
+      rep bxp sm_synced ixp fs' ilist frees allocc (BFcache.empty _) icache (Map.empty _) *
       [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' i * i |-> f')%pred (list2nmem fs') ]] *
       [[ (crash_xform Fd)%pred (list2nmem (BFData f')) ]].
   Proof.
@@ -3684,7 +3685,7 @@ Module BFILE.
     (Fd * off |-> vs)%pred (list2nmem (BFData f)) ->
     crash_xform (rep bxp sm ixp fs ilist frees allocc mscache icache dblocks) =p=>
       exists fs' f' v, [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
-      rep bxp sm ixp fs' ilist frees allocc (BFcache.empty _) icache dblocks * [[ In v (vsmerge vs) ]] *
+      rep bxp sm_synced ixp fs' ilist frees allocc (BFcache.empty _) icache (Map.empty _) * [[ In v (vsmerge vs) ]] *
       [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' ino * ino |-> f')%pred (list2nmem fs') ]] *
       [[ (crash_xform Fd * off |=> v)%pred (list2nmem (BFData f')) ]].
   Proof.
