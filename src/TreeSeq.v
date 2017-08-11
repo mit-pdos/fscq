@@ -1252,15 +1252,15 @@ Module TREESEQ.
     eapply treeseq_one_safe_refl.
   Qed.
 
-  Theorem treeseq_in_ds_upd : forall F Ftop fsxp sm mscs ts ds mscs' pathname bn off v inum f,
+  Theorem treeseq_in_ds_upd : forall F Ftop fsxp sm mscs ts ds sm' mscs' pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
     treeseq_in_ds F Ftop fsxp sm mscs ts ds ->
     treeseq_pred (treeseq_safe pathname  (BFILE.MSAlloc mscs) (ts !!)) ts ->
     MSAlloc mscs = MSAlloc mscs' ->
-    (F * rep fsxp Ftop (TStree (tsupd ts pathname off v) !!) (TSilist ts !!) (TSfree ts !!) mscs' sm)%pred
+    (F * rep fsxp Ftop (TStree (tsupd ts pathname off v) !!) (TSilist ts !!) (TSfree ts !!) mscs' sm')%pred
       (list2nmem (dsupd ds bn v) !!) ->
-    treeseq_in_ds F Ftop fsxp sm mscs' (tsupd ts pathname off v) (dsupd ds bn v).
+    treeseq_in_ds F Ftop fsxp sm' mscs' (tsupd ts pathname off v) (dsupd ds bn v).
   Proof.
     intros.
     unfold treeseq_in_ds in *; intuition.
@@ -1630,9 +1630,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       [[ (Ftree * pathname |-> File inum f)%pred  (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
-      exists ts' f' ds' bn,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds']] *
+      exists ts' f' ds' sm' bn,
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds']] *
         [[ forall pathname',
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
@@ -1647,12 +1647,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        [[ DFAttr f' = DFAttr f ]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       exists ds' ts' mscs' bn,
+       exists ds' ts' mscs' sm' bn,
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
          [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
          [[ MSAlloc mscs' = MSAlloc mscs ]] *
          [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
-         [[ treeseq_in_ds Fm Ftop fsxp sm mscs' ts' ds' ]] *
+         [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
          [[ BFILE.block_belong_to_file (TSilist ts !!) bn inum off ]]
    >} AFS.update_fblock_d fsxp inum off v mscs.
   Proof.
@@ -1674,9 +1674,6 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eapply list2nmem_inbound; eauto.
 
     safestep.
-
-  Search sm.
-
 
     eapply treeseq_in_ds_upd; eauto.
 
