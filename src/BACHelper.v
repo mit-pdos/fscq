@@ -54,14 +54,6 @@ Notation tree_rep := ATOMICCP.tree_rep.
 Hint Resolve valubytes_ne_O.
 Hint Resolve valubytes_ge_O.
 
-  Parameter the_dnum : addr.
-  Parameter cachesize : nat.
-  Axiom cachesize_ok : cachesize <> 0.
-  Hint Resolve cachesize_ok.
-
-
-  Definition temp_fn := ".temp"%string.
-  Definition Off0 := 0.
   
 Fixpoint dsupd_iter ds bnl vsl:=
 match vsl with
@@ -209,7 +201,15 @@ Lemma treeseq_upd_off_tree_rep: forall ts Ftree srcpath tmppath srcinum file tin
     eapply treeseq_one_upd_tree_rep_tmp; eauto.
     right.
     rewrite H2.
+    left.
     eapply treeseq_one_upd_tree_rep_src; eauto.
+    right; right.
+    unfold tree_with_dst in *.
+    destruct H3.
+    exists x1.
+    rewrite H2.
+    eapply dirents2mem2_treeseq_one_upd_src; eauto.
+    pred_apply; cancel.
   Qed.
   
   Lemma treeseq_pushd_tree_rep: forall ts t Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile,
@@ -348,6 +348,21 @@ Proof.
   right; auto.
   unfold tree_with_tmp, tree_with_src in *; simpl in *.
   destruct H1.
+  destruct H1.
+  left.
+  exists x.
+  apply sep_star_comm.
+  apply sep_star_assoc.
+  apply sep_star_comm in H1.
+  apply sep_star_assoc in H1.
+  apply dir2flatmem2_find_subtree_ptsto_none in H1 as Hx.
+  eapply update_subtree_path_notfound in Hx.
+  rewrite Hx.
+  pred_apply; cancel.
+  all: auto.
+  unfold tree_with_dst in *.
+  right.
+  destruct H1.
   exists x.
   apply sep_star_comm.
   apply sep_star_assoc.
@@ -481,7 +496,7 @@ Proof.
 Qed.
   
 
-Lemma tree_rep_tree_graft: forall ts f ilist frees Ftree srcpath tmpbase srcinum file tinum dstbase dstname dstfile dfnum tree_elem tfname,
+(* Lemma tree_rep_tree_graft: forall ts f ilist frees Ftree srcpath tmpbase srcinum file tinum dstbase dstname dstfile dfnum tree_elem tfname,
    treeseq_pred (tree_rep Ftree srcpath (tmpbase ++ [tfname]) 
                   srcinum file tinum dstbase dstname dstfile) ts ->
    (forall t, In t tree_elem -> tree_names_distinct (snd t)) ->
@@ -527,13 +542,21 @@ Proof.
   unfold tree_with_src, tree_with_tmp in *.
   exists f.
   destruct H5.
+  destruct H5.
+  exists x.
+  apply sep_star_comm;
+  apply sep_star_assoc;
+  eapply dirents2mem2_graft_file_none; auto.
+  pred_apply; cancel.
+  unfold tree_with_dst in *.
+  destruct H5.
   exists x.
   apply sep_star_comm;
   apply sep_star_assoc;
   eapply dirents2mem2_graft_file_none; auto.
   pred_apply; cancel.
   apply latest_in_ds.
-Qed.
+Qed. *)
 
 (*  Lemma f_fy_ptsto_subset_b_lt: forall f fy block_off byte_off Fd old_data,
   (Fd ✶ arrayN ptsto_subset_b (block_off * valubytes + byte_off) old_data)%pred
@@ -2059,6 +2082,21 @@ Qed.
     apply le_plus_l.
   Qed.
 
+  Lemma treeseq_pred_tree_rep_latest: forall Ftree srcpath tmppath srcinum file tinum dstbase dstname
+           dstfile ts,  
+  treeseq_pred
+        (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname
+           dstfile) ts ->
+  tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile
+  ts !!.
+  Proof.
+    intros.
+    destruct ts; destruct l; unfold latest; simpl in *.
+    destruct H; simpl in *.
+    auto.
+    destruct H; simpl in *.
+    inversion H0; simpl in *; auto.
+  Qed.
 
 (* --------------------------------------------------------- *)
 

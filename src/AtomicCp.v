@@ -157,7 +157,6 @@ Module ATOMICCP.
 
   Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) tinum tfile dstbase dstname dstfile:  @pred _ (list_eq_dec string_dec) _ :=
    (exists dstinum,
-    [[ Datatypes.length (DFData tfile) <= 1 ]] *
     Ftree * nil |-> Dir the_dnum * 
             srcpath |-> File srcinum file *
             tmppath |-> File tinum tfile *
@@ -219,7 +218,6 @@ Module ATOMICCP.
     eapply pimpl_apply.
     2: eapply dirents2mem2_treeseq_one_upd_tmp; eauto.
     cancel.
-    rewrite length_updN; eauto.
     pred_apply; cancel.
   Qed.
 
@@ -372,10 +370,7 @@ Module ATOMICCP.
     eapply pimpl_apply.
     2: eapply dirents2mem2_treeseq_one_file_sync_tmp; eauto.
     cancel.
-    2: pred_apply; cancel.
-    unfold synced_list, datatype.
-    rewrite combine_length_eq; rewrite map_length; eauto.
-    rewrite repeat_length; eauto.
+    pred_apply; cancel.
   Qed.
 
   Lemma tssync_d_in_exists: forall ts t tmppath,
@@ -641,7 +636,8 @@ Module ATOMICCP.
       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile) ts ]] *
       [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum 
                 tfile dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
-      [[[ DFData file ::: (Off0 |-> v0) ]]]
+      [[[ DFData file ::: (Off0 |-> v0) ]]] *
+      [[ 1 >= Datatypes.length (DFData tfile) ]]
     POST:hm' RET:^(mscs', r)
       exists ds' sm' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
@@ -681,11 +677,9 @@ Module ATOMICCP.
 
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
-    rewrite setlen_length; omega.
 
     rewrite latest_pushd; simpl.
     unfold tree_with_tmp; pred_apply; cancel.
-    rewrite setlen_length; omega.
 
     eassumption.
 
@@ -712,7 +706,6 @@ Module ATOMICCP.
     distinct_names.
     left; unfold tree_with_tmp; simpl.
     pred_apply. cancel.
-    rewrite setlen_length; omega.
 
   Grab Existential Variables.
     all: eauto.
@@ -770,7 +763,8 @@ Module ATOMICCP.
       [[ tree_with_tmp Ftree srcpath [temp_fn] srcinum file tinum 
                 tfile dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ DFData file ::: (Off0 |-> v0) ]]] *
-      [[ dirtree_inum (TStree ts!!) = the_dnum ]]
+      [[ dirtree_inum (TStree ts!!) = the_dnum ]] *
+      [[ 1 >= Datatypes.length (DFData tfile) ]]
     POST:hm' RET:^(mscs', r)
       exists ds' sm' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
@@ -793,13 +787,13 @@ Module ATOMICCP.
     step.
 
     prestep. norml. 
-    eapply tree_with_tmp_the_dnum in H14 as Hdnum; eauto. deex.
+    eapply tree_with_tmp_the_dnum in H15 as Hdnum; eauto. deex.
     cancel.
 
-    eapply tree_with_tmp_the_dnum in H14 as Hdnum; eauto. deex.
-    eapply tree_with_tmp_tmp_dst in H14 as Hdst; eauto. repeat deex.
+    eapply tree_with_tmp_the_dnum in H15 as Hdnum; eauto. deex.
+    eapply tree_with_tmp_tmp_dst in H15 as Hdst; eauto. repeat deex.
     safecancel.
-    eassign (@nil string). simpl. rewrite H13; eauto.
+    eassign (@nil string). simpl. rewrite H14; eauto.
     pred_apply; cancel.
 
     step.

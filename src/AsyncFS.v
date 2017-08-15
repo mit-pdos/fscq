@@ -1211,7 +1211,10 @@ Module AFS.
       exists d inum tree' ilist' frees' mscs',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
       [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum dirfile0) tree ]] *
-      [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm) ]]]
+      [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm) ]]] *
+      [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                       ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+      [[ MSAlloc mscs' = MSAlloc mscs ]]
     >} create fsxp dnum name mscs.
   Proof.
     unfold create; intros.
@@ -1229,6 +1232,8 @@ Module AFS.
     2: reflexivity. cancel.
     rewrite LOG.recover_any_idempred; cancel.
     pred_apply; cancel.
+    auto.
+    auto.
     step.
     step.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
