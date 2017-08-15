@@ -191,8 +191,11 @@ Lemma treeseq_upd_off_tree_rep: forall ts Ftree srcpath tmppath srcinum file tin
     eapply NEforall_d_in in H as Hx.
     2: instantiate (1 := x0); eauto.
     intuition.
-    destruct H4.
-    unfold tree_with_tmp in H3.
+    eapply NEforall_d_in in H as Hx.
+    2: instantiate (1 := x0); eauto.
+    intuition.
+    destruct H3.
+(*     unfold tree_with_tmp in H3. *)
     rewrite H2.
     left.
     eexists {|
@@ -205,7 +208,7 @@ Lemma treeseq_upd_off_tree_rep: forall ts Ftree srcpath tmppath srcinum file tin
     eapply treeseq_one_upd_tree_rep_src; eauto.
     right; right.
     unfold tree_with_dst in *.
-    destruct H3.
+    destruct H5.
     exists x1.
     rewrite H2.
     eapply dirents2mem2_treeseq_one_upd_src; eauto.
@@ -335,40 +338,41 @@ Proof.
   apply TND_file.
   destruct H1.
   unfold tree_with_tmp in *; simpl.
+  split; eauto.
+  destruct H2.
   left.
-  destruct H1.
   exists tf.
-  destruct H1.
+  do 2 destruct H2.
   exists x0.
-  apply sep_star_comm in H1.
-  apply sep_star_assoc in H1.
-  eapply dir2flatmem2_update_subtree with (f':= tf) in H1.
+  apply sep_star_comm in H2.
+  apply sep_star_assoc in H2.
+  eapply dir2flatmem2_update_subtree with (f':= tf) in H2.
   pred_apply; cancel.
   auto.
   right; auto.
-  unfold tree_with_tmp, tree_with_src in *; simpl in *.
-  destruct H1.
-  destruct H1.
+  unfold tree_with_src in *; simpl in *.
+  destruct H2.
+  destruct H2.
   left.
   exists x.
   apply sep_star_comm.
   apply sep_star_assoc.
-  apply sep_star_comm in H1.
-  apply sep_star_assoc in H1.
-  apply dir2flatmem2_find_subtree_ptsto_none in H1 as Hx.
+  apply sep_star_comm in H2.
+  apply sep_star_assoc in H2.
+  apply dir2flatmem2_find_subtree_ptsto_none in H2 as Hx.
   eapply update_subtree_path_notfound in Hx.
   rewrite Hx.
   pred_apply; cancel.
   all: auto.
   unfold tree_with_dst in *.
   right.
-  destruct H1.
+  destruct H2.
   exists x.
   apply sep_star_comm.
   apply sep_star_assoc.
-  apply sep_star_comm in H1.
-  apply sep_star_assoc in H1.
-  apply dir2flatmem2_find_subtree_ptsto_none in H1 as Hx.
+  apply sep_star_comm in H2.
+  apply sep_star_assoc in H2.
+  apply dir2flatmem2_find_subtree_ptsto_none in H2 as Hx.
   eapply update_subtree_path_notfound in Hx.
   rewrite Hx.
   pred_apply; cancel.
@@ -932,7 +936,99 @@ Ltac resolve_a:=
    (F' ✶ arrayN (ptsto (V:=byteset)) (a * valubytes) l)%pred (list2nmem (ByFData fy')) ->
    length l >= valubytes ->
    selN (DFData f) a valuset0 = selN (DFData f') a valuset0.
-   Proof. Admitted.
+   Proof.
+    intros.
+    apply list2nmem_arrayN_bound in H1 as Hb.
+    destruct Hb.
+    apply length_zero_iff_nil in H4; pose proof valubytes_ge_O; unfold datatype in *; omega.
+    apply list2nmem_arrayN_bound in H2 as Hb'.
+    destruct Hb'.
+    apply length_zero_iff_nil in H5; pose proof valubytes_ge_O; unfold datatype in *; omega.
+    replace (a * valubytes) with (a * valubytes + 0) in H1 by omega.
+    eapply inlen_bfile in H1 as Hl; eauto.
+    replace (a * valubytes) with (a * valubytes + 0) in H2 by omega.
+    eapply inlen_bfile in H2 as Hl'; eauto.
+    rewrite <- plus_n_O in *.
+    unfold rep in H; split_hypothesis.
+    rewrite H7, H6, H in H1.
+    apply arrayN_list2nmem in H1 as Hx.
+    assert (A: bytesets2valuset (firstn valubytes l) = selN (DFData f) a valuset0).
+    rewrite Hx.
+    rewrite firstn_firstn.
+    rewrite min_l; auto.
+    rewrite <- skipn_firstn_comm.
+    rewrite firstn_firstn; rewrite min_l.
+    rewrite skipn_firstn_comm.
+    rewrite concat_hom_skipn with (k:= valubytes).
+    rewrite skipn_map_comm.
+    replace valubytes with (1 * valubytes) by omega.
+    rewrite concat_hom_firstn.
+    rewrite firstn_map_comm.
+    erewrite firstn_1_selN.
+    rewrite skipn_selN.
+    rewrite <- plus_n_O.
+    simpl.
+    rewrite app_nil_r.
+    rewrite valuset2bytesets2valuset; eauto.
+    {
+    unfold not; intros Hn.
+    rewrite skipn_eq_nil in Hn.
+    destruct Hn.
+    unfold datatype in *; omega.
+    unfold datatype in *.
+    apply length_zero_iff_nil in H11; omega.
+    }
+    rewrite <- skipn_map_comm.
+    rewrite <- H.
+    eapply proto_skip_len; eauto.
+    rewrite <- H.
+    eapply proto_len; eauto.
+    omega.
+    
+    
+    unfold rep in H0; split_hypothesis.
+    rewrite H12, H11, H0 in H2.
+    apply arrayN_list2nmem in H2 as Hx'.
+    assert (A': bytesets2valuset (firstn valubytes l) = selN (DFData f') a valuset0).
+    rewrite Hx'.
+    rewrite firstn_firstn.
+    rewrite min_l; auto.
+    rewrite <- skipn_firstn_comm.
+    rewrite firstn_firstn; rewrite min_l.
+    rewrite skipn_firstn_comm.
+    rewrite concat_hom_skipn with (k:= valubytes).
+    rewrite skipn_map_comm.
+    replace valubytes with (1 * valubytes) by omega.
+    rewrite concat_hom_firstn.
+    rewrite firstn_map_comm.
+    erewrite firstn_1_selN.
+    rewrite skipn_selN.
+    rewrite <- plus_n_O.
+    simpl.
+    rewrite app_nil_r.
+    rewrite valuset2bytesets2valuset; eauto.
+    {
+    unfold not; intros Hn.
+    rewrite skipn_eq_nil in Hn.
+    destruct Hn.
+    unfold datatype in *; omega.
+    unfold datatype in *.
+    apply length_zero_iff_nil in H16; omega.
+    }
+    rewrite <- skipn_map_comm.
+    rewrite <- H0.
+    eapply proto_skip_len; eauto.
+    rewrite <- H0.
+    eapply proto_len; eauto.
+    omega.
+    rewrite <- A; auto.
+    apply byteset0.
+    apply byteset0.
+    apply valubytes_ge_O.
+    pose proof valubytes_ge_O; unfold datatype in *; omega.
+    apply valubytes_ge_O.
+    pose proof valubytes_ge_O; unfold datatype in *; omega.
+Qed.
     
       Lemma le_lt_false: forall a b, a <= b -> a > b -> False.
    Proof. intros; omega. Qed.
