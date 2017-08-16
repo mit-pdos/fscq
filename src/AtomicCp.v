@@ -115,6 +115,7 @@ Module ATOMICCP.
     match r with
       | Err _ => Ret ^(mscs, false)
       | OK tinum =>
+        let^ (mscs) <- AFS.tree_sync fsxp mscs;   (* sync blocks *)
         let^ (mscs, ok) <- copy_and_rename fsxp src_inum tinum dstbase dstname mscs;
         Ret ^(mscs, ok)
     end.
@@ -1175,6 +1176,155 @@ Module ATOMICCP.
 
     eauto.
   Qed.
+  
+  
+Lemma in_add_to_list_or: forall  tree name name' f,
+  In name' (map fst (add_to_list name f tree)) ->
+  name = name' \/ In name' (map fst tree).
+Proof.
+  induction tree; simpl in *; intros; auto.
+  destruct a; simpl in *.
+  destruct (string_dec s name); simpl in *.
+  destruct H.
+  left; auto.
+  right; right; auto.
+  destruct H.
+  right; left; auto.
+  apply IHtree in H.
+  destruct H.
+  left; auto.
+  right; right; auto.
+Qed.
+
+Lemma in_add_to_list_tree_or: forall  tree name t t',
+  In t (add_to_list name t' tree) ->
+  t = (name, t') \/ In t tree.
+Proof.
+  induction tree; simpl in *; intros; auto.
+  destruct H.
+  left; auto.
+  right; auto.
+  destruct a; simpl in *.
+  destruct (string_dec s name); simpl in *.
+  destruct H.
+  left; auto.
+  right; right; auto.
+  destruct H.
+  right; left; auto.
+  apply IHtree in H.
+  destruct H.
+  left; auto.
+  right; right; auto.
+Qed.
+
+Lemma treeseq_pred_tree_rep_latest: forall Ftree srcpath tmppath srcinum file tinum dstbase dstname
+           dstfile ts,  
+  treeseq_pred
+        (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname
+           dstfile) ts ->
+  tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile
+  ts !!.
+  Proof.
+    intros.
+    destruct ts; destruct l; unfold latest; simpl in *.
+    destruct H; simpl in *.
+    auto.
+    destruct H; simpl in *.
+    inversion H0; simpl in *; auto.
+  Qed.
+  
+Lemma NoDup_add_to_list: forall tree f fname,
+  NoDup (map fst tree) ->
+  ~ In fname (map fst tree) ->
+  NoDup (map fst (add_to_list fname f tree)).
+Proof.
+  induction tree; intros.
+  unfold add_to_list.
+  apply NoDup_cons.
+  apply in_nil.
+  apply NoDup_nil.
+  destruct a; simpl in *.
+  destruct (string_dec s fname); simpl in *.
+  destruct H0; left; auto.
+  apply NoDup_cons.
+  unfold not; intros.
+  apply in_add_to_list_or in H1; auto.
+  destruct H1.
+  apply H0; left; auto.
+  apply NoDup_cons_iff in H.
+  apply H; auto.
+  apply IHtree.
+  apply NoDup_cons_iff in H.
+  apply H; auto.
+  unfold not; intros; apply H0.
+  right; auto.
+Qed.
+
+
+
+Lemma treeseq_tree_rep_sync_after_create: forall x0 (F: pred) dummy1 dummy5 srcinum dummy6 dummy4 dstbase
+           dstname dummy9 temp_fn x a6 dummy3 a4 a5_1 a5_2,
+  treeseq_pred
+        (tree_rep dummy1 dummy5 [temp_fn] srcinum dummy6 dummy4 dstbase
+           dstname dummy9) dummy3 ->
+  TStree dummy3 !! = TreeDir the_dnum x ->
+  (F ✶ [temp_fn]%list |-> Nothing)%pred (dir2flatmem2 (TStree dummy3 !!)) ->
+  (((((dstbase ++ [dstname])%list |-> File x0 dummy9
+          ✶ dummy5 |-> File srcinum dummy6) ✶ [] |-> Dir the_dnum) ✶ dummy1)
+       ✶ [temp_fn]%list |-> File a6 dirfile0)%pred
+        (dir2flatmem2
+           (tree_graft the_dnum x [] temp_fn (TreeFile a6 dirfile0)
+              (TStree dummy3 !!))) ->
+  treeseq_pred
+  (tree_rep dummy1 dummy5 [temp_fn] srcinum dummy6 a6 dstbase dstname
+     dummy9)
+  ({|
+   TStree := tree_graft the_dnum x [] temp_fn (TreeFile a6 dirfile0)
+               (TStree dummy3 !!);
+   TSilist := a4;
+   TSfree := (a5_1, a5_2) |}, []).
+Proof.
+  intros.
+  split; eauto.
+  split; simpl.
+  unfold tree_graft.
+  apply tree_names_distinct_update_subtree.
+  eapply tree_names_distinct_d_in; eauto; apply latest_in_ds.
+  simpl.
+  apply TND_dir.
+  rewrite Forall_forall; intros dt Hx.
+  apply in_map_iff in Hx.
+  deex.
+  apply in_add_to_list_tree_or in H5.
+  destruct H5.
+  rewrite H3; simpl; apply TND_file.
+  
+  eapply treeseq_pred_tree_rep_latest in H as Hz. destruct Hz.
+  rewrite H0 in H4.
+  inversion H4.
+  rewrite Forall_forall in H8.
+  apply H8.
+  apply in_map; auto.
+  
+  apply NoDup_add_to_list.
+  eapply treeseq_pred_tree_rep_latest in H as Hz; destruct Hz.
+  rewrite H0 in H3.
+  inversion H3.
+  auto.
+
+  eapply find_subtree_none_In.
+  rewrite <- H0.
+  eapply dir2flatmem2_find_subtree_ptsto_none.
+  eapply tree_names_distinct_d_in; eauto; apply latest_in_ds.
+  pred_apply; cancel.
+
+  split.
+  eapply treerep_synced_dirfile; eauto.
+  left; eexists; unfold tree_with_tmp; pred_apply; cancel.
+  simpl; apply Forall_nil.
+Qed.
+  
+  
 
   Ltac synced_file_eq :=
     try match goal with
@@ -1192,6 +1342,198 @@ Module ATOMICCP.
       try rewrite <- Hx in *;
       clear Hx; clear Hy
     end.
+    
+    
+      Theorem atomic_cp_ok : forall fsxp srcinum (dstbase: list string) (dstname:string) mscs,
+    {< Fm Ftop Ftree ds sm ts srcpath file v0 dstfile tinum,
+    PRE:hm
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ]] *
+      [[ treeseq_pred (treeseq_safe [temp_fn] (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts ]] *
+      [[ tree_with_src Ftree srcpath [temp_fn] srcinum file dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] *
+      [[[ DFData file ::: (Off0 |-> v0) ]]] *
+      [[ dirtree_inum (TStree ts!!) = the_dnum ]]
+    POST:hm' RET:^(mscs', r)
+      exists ds' sm' ts',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
+       (([[r = false ]] *
+        ([[ treeseq_in_ds Fm Ftop fsxp sm' mscs ts' ds' ]] *
+          [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file 
+                    tinum dstbase dstname dstfile) ts' ]] *
+          [[ tree_with_src Ftree srcpath [temp_fn] srcinum file 
+                    dstbase dstname dstfile (dir2flatmem2 (TStree ts!!)) ]] 
+                \/
+         (exists f' tinum',
+         [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
+         [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file
+                     tinum' dstbase dstname dstfile) ts' ]] *
+         [[ tree_with_tmp Ftree srcpath [temp_fn] srcinum file tinum' 
+                    f' dstbase dstname dstfile (dir2flatmem2 (TStree ts'!!)) ]]))) 
+        \/
+       (exists tinum',
+          [[r = true ]] *
+          [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
+          [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file 
+                          tinum' dstbase dstname dstfile) ts' ]] *
+          [[ tree_with_dst Ftree srcpath [temp_fn] srcinum file 
+                    dstbase dstname (dir2flatmem2 (TStree ts'!!)) ]]))
+    XCRASH:hm'
+      exists mscs' ds' ts' sm' tinum dstfile,
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+       (([[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
+       [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts']])
+       \/ (exists t ts'' dfile tinum', [[ ts' = pushd t ts'' ]] * 
+       [[ treeseq_in_ds Fm Ftop fsxp sm' mscs' ts' ds' ]] *
+       [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dfile t ]] *
+       [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dstfile) ts'' ]]))
+    >} atomic_cp fsxp srcinum dstbase dstname mscs.
+Proof.
+  unfold atomic_cp.
+  prestep.
+  unfold pimpl; intros.
+  destruct_lift H.
+  unfold tree_with_src in *.
+  destruct_lift H8.
+  apply sep_star_assoc in H0.
+  apply sep_star_comm in H0.
+  apply sep_star_assoc in H0.
+  apply sep_star_comm in H0.
+  apply sep_star_assoc in H0.
+  apply sep_star_assoc in H0.
+  eapply dir2flatmem2_find_subtree_ptsto_dir in H0 as Hx.
+  deex.
+  pred_apply; norm.
+  unfold stars; cancel.
+  intuition; eauto.
+  eapply treeseq_in_ds_tree_pred_latest; eauto.
+  instantiate (2:= []); eauto.
+  
+  simpl; step.
+  eapply treeseq_in_ds_pushd.
+  eauto.
+  unfold tree_rep_latest.
+  instantiate (1:= {| TStree:= (tree_graft the_dnum d [] temp_fn 
+                            (TreeFile a0 dirfile0) (TStree dummy4 !!));
+                  TSilist:= ilist';
+                  TSfree:= (frees'_1, frees'_2) |}).
+  simpl; eauto.
+  unfold treeseq_one_safe; simpl; rewrite <- H5; eauto.
+  eauto.
+  
+  safestep.
+  eauto.
+  simpl; eauto.
+  rewrite pushd_latest.
+  unfold latest; simpl.
+  split; eauto.
+  apply treeseq_safe_refl.
+  simpl; apply Forall_nil.
+  
+  eapply treeseq_tree_rep_sync_after_create; eauto.
+  pred_apply; cancel.
+
+  replace ([temp_fn]) with (([]: list string)++[temp_fn])%list by auto.
+  eapply dirents2mem2_graft_file_none; simpl; eauto.
+  eapply tree_names_distinct_d_in; eauto.
+  apply latest_in_ds.
+  rewrite H14; auto.
+  pred_apply; cancel.
+  
+  unfold tree_with_tmp; simpl.
+  replace ([temp_fn]) with (([]: list string)++[temp_fn])%list by auto.
+  eexists.
+  apply sep_star_assoc.
+  apply sep_star_comm.
+  apply sep_star_assoc.
+  apply sep_star_comm.
+  eapply dirents2mem2_graft_file_none; simpl; eauto.
+  eapply tree_names_distinct_d_in; eauto.
+  apply latest_in_ds.
+  rewrite H14; auto.
+  pred_apply; cancel.
+  simpl; auto.
+  pred_apply; cancel.
+  rewrite pushd_latest; simpl; auto.
+  unfold dirfile0; simpl; omega.
+  
+  safestep.
+  or_l; cancel.
+  eauto.
+  
+  or_r; cancel.
+  eauto.
+  eauto.
+  eauto.
+
+  or_r; cancel; eauto.
+  
+  xcrash.
+  unfold pimpl; intros.
+  eapply H2.
+  instantiate (1:= realcrash).
+  intros m1 Hx; apply H25 in Hx; pred_apply; xcrash; eauto.
+  or_l; cancel; eauto.
+  pred_apply; cancel.
+  
+  unfold pimpl; intros.
+  eapply H2.
+  instantiate (1:= realcrash).
+  intros m1 Hx; apply H12 in Hx; pred_apply; xcrash; eauto.
+  or_r; xcrash.
+  eapply treeseq_in_ds_pushd.
+  eauto.
+  unfold tree_rep_latest.
+  instantiate (2:= {| TStree:= (tree_graft the_dnum d [] temp_fn 
+                            (TreeFile a0 dirfile0) (TStree dummy4 !!));
+                  TSilist:= ilist';
+                  TSfree:= (frees'_1, frees'_2) |}).
+  simpl; eauto.
+  unfold treeseq_one_safe; simpl; rewrite <- H5; eauto.
+  eauto.
+  eapply treeseq_tree_rep_sync_after_create; eauto.
+  pred_apply; cancel.
+  replace ([temp_fn]) with (([]: list string)++[temp_fn])%list by auto.
+  eapply dirents2mem2_graft_file_none; simpl; eauto.
+  eapply tree_names_distinct_d_in; eauto.
+  apply latest_in_ds.
+  rewrite H15; auto.
+  pred_apply; cancel.
+  eauto.
+  pred_apply; cancel.
+  
+  eapply H2.
+  instantiate (1:= realcrash).
+  intros m1 Hx; apply H5 in Hx; pred_apply; xcrash; eauto.
+  or_l; cancel; eauto.
+  or_r; xcrash.
+  eapply treeseq_in_ds_pushd.
+  eauto.
+  unfold tree_rep_latest.
+  instantiate (2:= {| TStree:= (tree_graft the_dnum d [] temp_fn 
+                            (TreeFile x0 dirfile0) (TStree dummy4 !!));
+                  TSilist:= x2;
+                  TSfree:= (x3_1, x3_2) |}).
+  simpl; eauto.
+  unfold treeseq_one_safe; simpl; rewrite <- H15; eauto.
+  eauto.
+  eapply treeseq_tree_rep_sync_after_create; eauto.
+  pred_apply; cancel.
+  replace ([temp_fn]) with (([]: list string)++[temp_fn])%list by auto.
+  eapply dirents2mem2_graft_file_none; simpl; eauto.
+  eapply tree_names_distinct_d_in; eauto.
+  apply latest_in_ds.
+  rewrite H14; auto.
+  pred_apply; cancel.
+  eauto.
+  pred_apply; cancel.
+  
+  eapply tree_names_distinct_d_in; eauto.
+  apply latest_in_ds.
+  Unshelve.
+  all: repeat constructor.
+  all: apply any.
+Qed.
 
   Theorem atomic_cp_recover_ok :
     {< Fm Ftop Ftree fsxp cs mscs ds sm ts srcpath file srcinum tinum dstfile (dstbase: list string) (dstname:string),

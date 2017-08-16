@@ -58,12 +58,12 @@ Notation rep := AByteFile.rep.
 Hint Resolve valubytes_ne_O.
 Hint Resolve valubytes_ge_O.
 
-      Ltac proto_bytefile_rewrite:=
-    match goal with
-    | [H: proto_bytefile_valid _ ?pfy |- context[PByFData ?pfy] ] => rewrite H
-    end.
+  Ltac proto_bytefile_rewrite:=
+  match goal with
+  | [H: proto_bytefile_valid _ ?pfy |- context[PByFData ?pfy] ] => rewrite H
+  end.
     
-    Ltac solve_rep:= unfold AByteFile.rep; repeat eexists; eauto.
+  Ltac solve_rep:= unfold AByteFile.rep; repeat eexists; eauto.
 
 	Ltac nlt_eq_0:=
   match goal with
