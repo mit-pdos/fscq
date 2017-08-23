@@ -130,6 +130,8 @@ Module AFS_RECOVER.
     cancel.
     safestep; subst.
     simpl_idempred_r.
+    eauto.
+    eauto.
     simpl_idempred_r.
     cancel.
     SepAuto.xcrash_rewrite.
@@ -241,7 +243,7 @@ Module AFS_RECOVER.
       cancel.
 
       prestep. norm. cancel.
-      or_r. norm. cancel. intuition idtac. 2: eauto. eauto.
+      or_r. norm. cancel. intuition idtac. 2: eauto. eauto. eauto.
 (*
       pred_apply; cancel.
 
