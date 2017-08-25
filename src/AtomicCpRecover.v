@@ -40,6 +40,7 @@ Require Import DirSep.
 Require Import DirSepCrash.
 Require Import SyncedMem.
 Require Import AtomicCp.
+Require Import BFileCrash.
 
 Import TREESEQ.
 Import DTCrash.
@@ -56,8 +57,315 @@ Proof.
   unfold file_crash; intros.
   repeat deex.
   do 2 eexists.
+  eapply file_crash_trans; eauto.
+Qed.
+
+Lemma possible_fmem_crash_trans: forall m1 m2 m3,
+  possible_fmem_crash m1 m2 ->
+  possible_fmem_crash m2 m3 ->
+  possible_fmem_crash m1 m3.
+Proof.
+  unfold possible_fmem_crash; intros.
+  specialize (H a).
+  specialize (H0 a).
+  intuition;
+  try solve [repeat deex; congruence].
+  repeat deex.
+  rewrite H0 in H1; inversion H1; subst; clear H1.
+  right; do 2 eexists; repeat split; eauto.
   eapply BFileCrash.file_crash_trans; eauto.
 Qed.
+      
+
+Lemma flist_crash_xform_idem: forall F,
+  flist_crash_xform (flist_crash_xform F) =p=> flist_crash_xform F.
+Proof.
+  unfold flist_crash_xform; unfold pimpl; simpl; intros.
+  repeat deex; intuition.
+  exists mf'0; split; auto.
+  eapply possible_fmem_crash_trans; eauto.
+Qed.
+    
+Lemma treeseq_in_ds_crash_idem: forall ds ts Fm Ftop fsxp sm mscs ,
+  treeseq_in_ds (crash_xform (crash_xform Fm))
+      (flist_crash_xform (flist_crash_xform Ftop)) fsxp sm mscs ts ds
+  -> treeseq_in_ds (crash_xform Fm) (flist_crash_xform Ftop) fsxp sm mscs ts ds.
+Proof.  
+  intros ds ts.
+  destruct ds, ts.
+  generalize dependent l0.
+  induction l; simpl.
+  intro l1; destruct l1.
+  
+  {
+    unfold treeseq_in_ds, latest, NEforall2, TREESEQ.tree_rep, tree_rep_latest, rep; simpl; intros.
+    intuition.
+    destruct_lift H0.
+    rewrite crash_xform_idem in H.
+    destruct_lift H.
+    rewrite flist_crash_xform_idem in H4.
+    do 2 eexists; eauto.
+    pred_apply; cancel.
+
+    rewrite crash_xform_idem in H1.
+    destruct_lift H1.
+    rewrite flist_crash_xform_idem in H4.
+    pred_apply; cancel.
+  }
+  
+  {
+    unfold treeseq_in_ds, latest, NEforall2; simpl; intros; intuition; inversion H2.
+  }
+  
+  {
+    intro l0; destruct l0.
+    {
+       unfold treeseq_in_ds, latest, NEforall2; simpl; intros; intuition; inversion H2.
+    }
+    
+    unfold treeseq_in_ds, latest; simpl; intros.
+    split.
+    split; simpl.
+    - destruct H.
+      destruct H; simpl in *.
+      intuition.
+      
+      unfold TREESEQ.tree_rep, tree_rep_latest, rep in *; simpl in *.
+      destruct_lift H2.
+      rewrite crash_xform_idem in H.
+      rewrite flist_crash_xform_idem in H4.
+      pred_apply; cancel.
+    - destruct H.
+      destruct H; simpl in *.
+      induction H1.
+      auto.
+      apply Forall2_cons; auto.
+      intuition.
+      unfold TREESEQ.tree_rep, tree_rep_latest, rep in *; simpl in *.
+      destruct_lift H.
+      rewrite crash_xform_idem in H.
+      rewrite flist_crash_xform_idem in H6.
+      pred_apply; cancel.
+    
+    - destruct H.
+      unfold tree_rep_latest, rep in *; simpl in *.
+      rewrite crash_xform_idem in H0.
+      destruct_lift H0.
+      rewrite flist_crash_xform_idem in H2.
+      pred_apply; cancel.
+  }
+Qed.
+
+
+Lemma flatmem_entry_crash_trans: forall f1 f2 f3,
+  flatmem_entry_crash f1 f2 ->  
+  flatmem_entry_crash f2 f3 ->
+  flatmem_entry_crash f1 f3.
+Proof.
+  induction 1; auto; intros.
+  destruct f3; try constructor; try solve [
+  inversion H0; subst;
+  inversion H].
+  inversion H0; subst.
+  constructor.
+  eapply file_crash_trans; eauto.
+Qed.
+
+Lemma possible_flatmem_crash_trans: forall m1 m2 m3,
+  possible_flatmem_crash m1 m2 ->
+  possible_flatmem_crash m2 m3 ->
+  possible_flatmem_crash m1 m3.
+Proof.
+  unfold possible_flatmem_crash; intros.
+  specialize (H a).
+  specialize (H0 a).
+  intuition;
+  try solve [repeat deex; congruence].
+  repeat deex.
+  rewrite H0 in H1; inversion H1; subst; clear H1.
+  right; do 2 eexists; repeat split; eauto.
+  eapply flatmem_entry_crash_trans; eauto.
+Qed.
+
+
+Lemma flatmem_crash_xform_idem: forall F,
+  flatmem_crash_xform (flatmem_crash_xform F) =p=> flatmem_crash_xform F.
+Proof.
+  unfold flatmem_crash_xform; unfold pimpl; intuition.
+  repeat deex.
+  eexists; split; eauto.
+  eapply possible_flatmem_crash_trans; eauto.
+Qed.
+
+Lemma treeseq_pred_tree_rep_recover_idem: forall ts Ftree srcpath temp_fn srcinum file
+  dstbase dstname dstfile,
+  treeseq_pred (tree_rep_recover ( flatmem_crash_xform (flatmem_crash_xform Ftree)) srcpath [temp_fn] srcinum file dstbase dstname dstfile) ts ->
+  treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dstfile) ts.
+Proof.
+  intros; destruct ts, l; simpl in *.
+  
+  -
+  unfold treeseq_pred, NEforall, tree_rep_recover in *; simpl in *.
+  intuition.
+  unfold tree_with_src in *.
+  destruct_lift H2.
+  rewrite flatmem_crash_xform_idem in H2.
+  left; pred_apply; cancel.
+  apply Forall_nil.
+  unfold tree_with_dst in *.
+  destruct_lift H2.
+  rewrite flatmem_crash_xform_idem in H2.
+  right; pred_apply; cancel.
+  apply Forall_nil.
+  
+  -
+   unfold treeseq_pred, tree_rep_recover in *; simpl in *.
+   inversion H; subst; simpl in *; clear H.
+   intuition.
+   split; simpl.
+   repeat (split; auto).
+   unfold tree_with_src in *.
+   destruct_lift H2.
+   rewrite flatmem_crash_xform_idem in H2.
+   left; pred_apply; cancel.
+   induction H1.
+   apply Forall_nil.
+   apply Forall_cons; auto.
+   intuition.
+   unfold tree_with_src in *.
+   destruct_lift H5.
+   rewrite flatmem_crash_xform_idem in H5.
+   left; pred_apply; cancel.
+   unfold tree_with_dst in *.
+   destruct_lift H5.
+   rewrite flatmem_crash_xform_idem in H5.
+   right; pred_apply; cancel.
+   
+   split; simpl.
+   repeat (split; auto).
+   unfold tree_with_dst in *.
+   destruct_lift H2.
+   rewrite flatmem_crash_xform_idem in H2.
+   right; pred_apply; cancel.
+   induction H1.
+   apply Forall_nil.
+   apply Forall_cons; auto.
+   intuition.
+   unfold tree_with_src in *.
+   destruct_lift H5.
+   rewrite flatmem_crash_xform_idem in H5.
+   left; pred_apply; cancel.
+   unfold tree_with_dst in *.
+   destruct_lift H5.
+   rewrite flatmem_crash_xform_idem in H5.
+   right; pred_apply; cancel.
+Qed.
+
+Lemma treeseq_pred_tree_rep_idem: forall ts Ftree srcpath temp_fn srcinum file
+  dstbase dstname dstfile dinum,
+  treeseq_pred (tree_rep (flatmem_crash_xform (flatmem_crash_xform Ftree)) srcpath [temp_fn] srcinum file dinum dstbase dstname dstfile) ts ->
+  treeseq_pred (tree_rep (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dinum dstbase dstname dstfile) ts.
+Proof.
+  intros; destruct ts, l; simpl in *.
+  
+  -
+  unfold treeseq_pred, NEforall, tree_rep in *; simpl in *.
+  intuition.
+  unfold tree_with_tmp in *.
+  deex.
+  destruct_lift H2.
+  rewrite flatmem_crash_xform_idem in H2.
+  left; pred_apply; cancel.
+  apply Forall_nil.
+  unfold tree_with_src in *.
+  destruct_lift H3.
+  rewrite flatmem_crash_xform_idem in H2.
+  right; left; pred_apply; cancel.
+  apply Forall_nil.
+  unfold tree_with_dst in *.
+  destruct_lift H3.
+  rewrite flatmem_crash_xform_idem in H2.
+  right; right; pred_apply; cancel.
+  apply Forall_nil.
+  
+  -
+   unfold treeseq_pred, tree_rep in *; simpl in *.
+   inversion H; subst; simpl in *; clear H.
+   intuition.
+   split; simpl.
+   repeat (split; auto).
+   unfold tree_with_tmp in *.
+   deex; destruct_lift H2.
+   rewrite flatmem_crash_xform_idem in H2.
+   left; pred_apply; cancel.
+   induction H1.
+   apply Forall_nil.
+   apply Forall_cons; auto.
+   intuition.
+   unfold tree_with_tmp in *.
+  deex.
+  destruct_lift H5.
+  rewrite flatmem_crash_xform_idem in H5.
+  left; pred_apply; cancel.
+  unfold tree_with_src in *.
+  destruct_lift H6.
+  rewrite flatmem_crash_xform_idem in H5.
+  right; left; pred_apply; cancel.
+  unfold tree_with_dst in *.
+  destruct_lift H6.
+  rewrite flatmem_crash_xform_idem in H5.
+  right; right; pred_apply; cancel.
+   
+   split; simpl.
+   repeat (split; auto).
+   unfold tree_with_src in *.
+   destruct_lift H3.
+   rewrite flatmem_crash_xform_idem in H2.
+   right; left; pred_apply; cancel.
+   induction H1.
+   apply Forall_nil.
+   apply Forall_cons; auto.
+   intuition.
+   unfold tree_with_tmp in *.
+  deex.
+  destruct_lift H5.
+  rewrite flatmem_crash_xform_idem in H5.
+  left; pred_apply; cancel.
+  unfold tree_with_src in *.
+  destruct_lift H6.
+  rewrite flatmem_crash_xform_idem in H5.
+  right; left; pred_apply; cancel.
+  unfold tree_with_dst in *.
+  destruct_lift H6.
+  rewrite flatmem_crash_xform_idem in H5.
+  right; right; pred_apply; cancel.
+   
+   split; simpl.
+   repeat (split; auto).
+   unfold tree_with_dst in *.
+   destruct_lift H3.
+   rewrite flatmem_crash_xform_idem in H2.
+   right; right; pred_apply; cancel.
+   induction H1.
+   apply Forall_nil.
+   apply Forall_cons; auto.
+   intuition.
+   unfold tree_with_tmp in *.
+  deex.
+  destruct_lift H5.
+  rewrite flatmem_crash_xform_idem in H5.
+  left; pred_apply; cancel.
+  unfold tree_with_src in *.
+  destruct_lift H6.
+  rewrite flatmem_crash_xform_idem in H5.
+  right; left; pred_apply; cancel.
+  unfold tree_with_dst in *.
+  destruct_lift H6.
+  rewrite flatmem_crash_xform_idem in H5.
+  right; right; pred_apply; cancel.
+Qed.
+
+
 
 Theorem copydata_with_recover_ok : forall fsxp srcinum tinum mscs,
     {X<< ds sm ts Fm Ftop Ftree srcpath file tfile v0 t0 dstbase dstname dstfile,
@@ -186,9 +494,9 @@ Theorem copydata_with_recover_ok : forall fsxp srcinum tinum mscs,
     or_l; cancel; eauto.
     or_r; cancel. eauto.
     
+    apply treeseq_in_ds_crash_idem; eauto.
+    apply treeseq_pred_tree_rep_recover_idem; eauto.
     
-    
-    Focus 3.
     eexists.
     apply sep_star_lift_apply'.
     destruct_lift H14; eauto.
@@ -200,10 +508,10 @@ Theorem copydata_with_recover_ok : forall fsxp srcinum tinum mscs,
     rewrite crash_xform_or_dist; cancel.
     rewrite crash_xform_or_dist; or_r; xcrash; eauto.
     rewrite crash_xform_or_dist; or_r; xcrash.
-    3: eapply file_crash_trans; eauto.
-    
-    Unfocus.
-Admitted.
+    apply treeseq_in_ds_crash_idem; eauto.
+    apply treeseq_pred_tree_rep_idem; eauto.
+    eapply file_crash_trans; eauto.
+Qed.
 
   Theorem copy_and_rename_with_recover_ok : forall fsxp srcinum tinum (dstbase: list string) (dstname:string) mscs,
     {X<< Fm Ftop Ftree ds sm ts srcpath file dstfile tfile v0,
