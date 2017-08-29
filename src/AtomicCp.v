@@ -2192,11 +2192,22 @@ Qed.
     destruct_lift Htc.
 
     2: distinct_names.
-
+    
+    repeat rewrite flatmem_crash_xform_dir in H4.
+    repeat rewrite flatmem_crash_xform_lift_empty in H4.
+    apply sep_star_assoc in H4.
+    apply sep_star_comm in H4.
+    apply sep_star_assoc in H4.
+    apply sep_star_comm in H4.
+    apply sep_star_assoc in H4.
+    apply tree_rep_find_subtree_root in H4 as Hpath.
+    destruct Hpath.
+    simpl in H8. 
+    
     safecancel.
 
     instantiate (pathname := []).
-    simpl. admit.
+    simpl; eauto.
 
     simpl.
     pred_apply.
@@ -2320,11 +2331,12 @@ Qed.
     distinct_names.
     right. left.
     unfold tree_with_src.
-    pred_apply' H9.
+    pred_apply' H8.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
     synced_file_eq. cancel.
     eauto.
+    eapply rep_tree_names_distinct; eauto.
 
     step.   (* lookup failed? *)
     right.
@@ -2835,8 +2847,7 @@ Qed.
     
   Grab Existential Variables.
     all: eauto.
-Admitted.
-(*     exact Mem.empty_mem.
-  Qed. *)
+    exact Mem.empty_mem.
+Qed.
 
 End ATOMICCP.
