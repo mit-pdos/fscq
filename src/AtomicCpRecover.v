@@ -367,6 +367,106 @@ Qed.
 
 
 
+(* ----------------------------------------------------- *)
+
+Theorem pimpl_or2:
+  forall T pre pre' pre'' (pr: prog T),
+  {{pre}} pr ->
+  {{pre'}} pr ->
+  (forall vm hm done crash, (pre'' vm hm done crash =p=> pre vm hm done crash \/ pre' vm hm done crash)) ->
+  {{ pre''}} pr.
+Proof.
+  unfold corr2; intros.
+  specialize (H1 vm hm done crash).
+  apply H1 in H2.
+  apply pimpl_or_apply in H2.
+  intuition.
+  eapply H; eauto.
+  eapply H0; eauto.
+Qed.
+  
+  Theorem atomic_cp_recover_ok :
+    {< Fm Ftop Ftree fsxp cs mscs ds sm t ts' srcpath file srcinum tinum dstfile (dstbase: list string) (dstname:string) dfile tinum',
+    PRE:hm
+      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
+      ([[ treeseq_in_ds Fm Ftop fsxp sm mscs ts' ds ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts']]
+       \/
+       ([[ treeseq_in_ds Fm Ftop fsxp sm mscs (pushd t ts') ds ]] *
+       [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dfile t ]] *
+       [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]]))
+    POST:hm' RET:r
+      [[ isError r ]] * any \/
+      exists d sm' t mscs',
+      [[ r = OK (mscs', fsxp) ]] *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') sm' hm' *
+      [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm' mscs' (t, nil) (d, nil) ]] *
+      ([[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dstfile) (t, nil) ]] \/
+       [[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dfile) (t, nil) ]])
+    XCRASH:hm'
+      (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts' ds ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]])
+       \/
+     (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs (pushd t ts') ds ]] *
+      [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dfile t ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]])
+       \/
+      exists ts' ds' sm' mscs' dstfile' tinum',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm' mscs' ts' ds' ]] *
+      [[ treeseq_pred (tree_rep (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file tinum' dstbase dstname dstfile') ts' ]] *
+      ([[ file_crash dstfile dstfile' ]] \/ [[ file_crash dfile dstfile' ]])
+    >} atomic_cp_recover.
+Proof.
+  intros.
+  eapply pimpl_or2.
+  apply atomic_cp_recover_ok_1.
+  apply atomic_cp_recover_ok_2.
+  unfold pimpl; intros.
+  destruct_lift H.
+  apply sep_star_or_distr in H.
+  apply pimpl_or_apply in H.
+  destruct H.
+  pred_apply; or_l; cancel.
+  all: eauto.
+  eapply pimpl_ok2.
+  apply H3.
+  intros; cancel.
+  or_l; cancel.
+  or_r; cancel.
+  rewrite sep_star_or_distr; or_l; cancel; eauto.
+  all: eauto.
+  
+  unfold pimpl; intros.
+  eapply H2.
+  intros m2 Hp; apply H0 in Hp.
+  pred_apply; xcrash.
+  or_r. or_r. xcrash.
+  or_l; cancel; eauto.
+  all: eauto.
+  destruct_lift H5; pred_apply; cancel.
+  
+  pred_apply; or_r; cancel.
+  all: eauto.
+  unfold pimpl; intros.
+  eapply H2.
+  intros m2 Hp; apply H0 in Hp.
+  pred_apply; xcrash.
+  or_r. or_r. xcrash.
+  or_l; cancel; eauto.
+  all: eauto.
+  or_r. or_r. xcrash.
+  or_r; cancel; eauto.
+  all: eauto.
+  destruct_lift H1; pred_apply; cancel.
+Qed.
+
+
+
+
+
 Theorem copydata_with_recover_ok : forall fsxp srcinum tinum mscs,
     {X<< ds sm ts Fm Ftop Ftree srcpath file tfile v0 t0 dstbase dstname dstfile,
     PRE:hm
@@ -412,21 +512,27 @@ Theorem copydata_with_recover_ok : forall fsxp srcinum tinum mscs,
     simpl; cancel; eauto.
     or_l; cancel; eauto.
     or_r; cancel; eauto.
+    
     instantiate (1:= fun hm' => (exists c, F_ * c * 
       [[ crash_xform (F_ * c) =p=> 
         F_ * crash_xform (
-        (exists ds' sm' ts' mscs',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-        [[ treeseq_in_ds v2 v3 fsxp sm' mscs' ts' ds' ]] *
-        [[ treeseq_pred (tree_rep v4 v5 [temp_fn] srcinum v6 tinum v10 v11 v12) ts']])
-        \/
-        (exists ds' sm' ts' mscs' dstfile',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-        [[ treeseq_in_ds (crash_xform v2) (BFileCrash.flist_crash_xform v3)
-            fsxp sm' mscs' ts' ds' ]] *
-        [[ treeseq_pred (tree_rep (flatmem_crash_xform v4) v5 
-            [temp_fn] srcinum v6 tinum v10 v11 dstfile') ts' ]] *
-        [[ file_crash v12 dstfile' ]]))]])%pred); simpl.
+      (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts' ds ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]])
+       \/
+     (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs (pushd t ts') ds ]] *
+      [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dfile t ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum 
+        file tinum dstbase dstname dstfile) ts' ]])
+       \/
+      (exists ts' ds' sm' mscs' dstfile' tinum',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) 
+        fsxp sm' mscs' ts' ds' ]] *
+      [[ treeseq_pred (tree_rep (flatmem_crash_xform Ftree) srcpath 
+        [temp_fn] srcinum file tinum' dstbase dstname dstfile') ts' ]] *
+      ([[ file_crash dstfile dstfile' ]] \/ [[ file_crash dfile dstfile' ]])))]])%pred); simpl.
 
     cancel; eauto.
     rewrite crash_xform_sep_star_dist; rewrite H3.
@@ -465,6 +571,7 @@ Theorem copydata_with_recover_ok : forall fsxp srcinum tinum mscs,
     simpl; cancel; eauto.
     or_l; cancel; eauto.
     or_r; cancel; eauto.
+    or_r; cancel; eauto.
     
     eexists.
     apply sep_star_lift_apply'.
@@ -476,7 +583,8 @@ Theorem copydata_with_recover_ok : forall fsxp srcinum tinum mscs,
     unfold pimpl; intros m2 Hp; apply H5 in Hp; pred_apply; cancel.
     rewrite crash_xform_or_dist; cancel.
     rewrite crash_xform_or_dist; or_l; xcrash; eauto.
-    rewrite crash_xform_or_dist; or_r; xcrash; eauto.
+    xcrash. cancel.
+    or_l; xcrash; eauto.
     
     -
     repeat (rewrite crash_xform_exists_comm in H0; destruct_lift H0).

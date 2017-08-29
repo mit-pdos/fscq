@@ -2001,35 +2001,139 @@ Qed.
 
   
 
+Lemma treeseq_in_ds_crash_single: forall Fm Ftop fsxp d x t sm ms,
+  BFILE.MSinitial ms ->
+  (crash_xform Fm
+    ✶ rep fsxp Ftop x (TSilist t)
+        (TSfree t) (BFILE.ms_empty (MSLL ms)) sm)%pred (list2nmem d) ->
+  treeseq_in_ds (crash_xform Fm) Ftop fsxp sm ms
+      ({| TStree := x; TSilist := TSilist t; TSfree := TSfree t |}, []) 
+      (d, []).
+Proof.
+  intros.
+  unfold treeseq_in_ds.
+  constructor; simpl.
+  split.
+  unfold TREESEQ.tree_rep.
+  intuition; simpl.
+  pred_apply; safecancel.
+  unfold treeseq_one_safe; simpl.
+  eapply dirtree_safe_refl.
+  constructor.
+  unfold tree_rep_latest; simpl.
+  pred_apply; cancel.
+
+  replace ms with (BFILE.ms_empty (MSLL ms)).
+  cancel.
+  destruct ms.
+  unfold ATOMICCP.MSLL.
+  unfold BFILE.MSinitial in *.
+  intuition. simpl in *. subst.
+  unfold BFILE.ms_empty; simpl.
+  reflexivity.
+Qed.
+    
+Lemma treeseq_pred_tree_rep_dir2flatmem2_single : forall t Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile,
+  tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstfile t ->
+    ((exists tfile', 
+      tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile' dstbase dstname dstfile) \/
+     (tree_with_src Ftree srcpath tmppath srcinum file dstbase dstname dstfile) \/
+     (tree_with_dst Ftree srcpath tmppath srcinum file dstbase dstname))%pred
+    (dir2flatmem2 (TStree t)).
+Proof.
+  unfold treeseq_pred, tree_rep; intros.
+  intuition.
+  - deex.
+    pred_apply. cancel.
+  - pred_apply; cancel.
+  - pred_apply; cancel.
+Qed.
+
+Lemma add_to_list_not_in: forall d s t,
+  ~In s (map fst d) -> add_to_list s t d = (d ++ [(s,t)])%list.
+Proof.
+  induction d; intros; simpl; auto.
+  destruct a; simpl in *.
+  destruct (string_dec s0 s).
+  exfalso; auto.
+  rewrite IHd; auto.
+Qed.
+  
+Lemma tree_names_distinct_add_to_dir: forall ents tfn a df inum,
+  ~In tfn (map fst ents) -> 
+  tree_names_distinct (TreeDir inum ents) ->
+  tree_names_distinct (add_to_dir tfn (TreeFile a df) (TreeDir inum ents)).
+Proof.
+  induction ents; intros; simpl; auto.
+  apply TND_dir.
+  simpl.
+  apply Forall_forall; intros x Hf; destruct Hf; subst.
+  apply TND_file.
+  inversion H1.
+  simpl.
+  econstructor; auto.
+  apply NoDup_nil.
+  
+  destruct a.
+  destruct (string_dec s tfn); simpl in *; auto.
+  exfalso; auto.
+  inversion H0; subst; simpl in *.
+  inversion H3; subst.
+  inversion H4; subst.
+  assert (A: tree_names_distinct (TreeDir inum ents)).
+  apply TND_dir; eauto.
+  assert (A0: ~In tfn (map fst ents)).
+  auto.
+  
+  apply TND_dir; simpl.
+  constructor; auto.
+  specialize (IHents tfn a0 df inum).
+  specialize (IHents A0 A).
+  inversion IHents; subst; auto. 
+  
+  specialize (IHents tfn a0 df inum).
+  specialize (IHents A0 A).
+  inversion IHents; subst; auto. 
+  constructor; auto.
+  rewrite add_to_list_not_in.
+  rewrite map_app; simpl.
+  unfold not; intros .
+  apply in_app_iff in H1.
+  destruct H1; auto.
+  inversion H1; subst; auto.
+  auto.
+Qed.
+
   Theorem atomic_cp_recover_ok_2 :
-    {< Fm Ftop Ftree fsxp cs mscs ds sm ts srcpath file srcinum tinum tinum' dfile dstfile (dstbase: list string) (dstname:string),
+    {< Fm Ftop Ftree fsxp cs mscs ds sm srcpath file srcinum tinum tinum' dfile dstfile (dstbase: list string) (dstname:string) t ts',
     PRE:hm
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
-      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ]] *
-       (exists t ts', [[ ts = pushd t ts' ]] * 
-       [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dfile t ]] *
-       [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]])
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs (pushd t ts') ds ]] *
+      [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dfile t ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]]
     POST:hm' RET:r
       [[ isError r ]] * any \/
       exists d sm' t mscs',
       [[ r = OK (mscs', fsxp) ]] *
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') sm' hm' *
       [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm' mscs' (t, nil) (d, nil) ]] *
-      [[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dstfile) (t, nil) ]]
+      ([[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dstfile) (t, nil) ]] \/
+       [[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dfile) (t, nil) ]])
     XCRASH:hm'
       (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' *
-      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ]] *
-      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts ]])
+      [[ treeseq_in_ds Fm Ftop fsxp sm mscs (pushd t ts') ds ]] *
+      [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dfile t ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]])
        \/
-      exists ts' ds' sm' mscs' dstfile',
+      exists ts' ds' sm' mscs' dstfile' tinum',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
       [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm' mscs' ts' ds' ]] *
-      [[ treeseq_pred (tree_rep (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile') ts' ]] *
-      [[ file_crash dstfile dstfile' ]]
+      [[ treeseq_pred (tree_rep (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file tinum' dstbase dstname dstfile') ts' ]] *
+      ([[ file_crash dstfile dstfile' ]] \/ [[ file_crash dfile dstfile' ]])
     >} atomic_cp_recover.
-  Proof. Admitted.
+  Proof.
 
-(*    unfold atomic_cp_recover; intros.
+    unfold atomic_cp_recover; intros.
     prestep. norml.
     safecancel.
 
@@ -2037,57 +2141,373 @@ Qed.
      * creating evars in postcondition to create a
      * treeseq_in_ds on crashed disk. *)
     prestep. norm'l.
-
+    
     denote! (crash_xform _ _) as Hcrash.
     eapply treeseq_tree_crash_exists with (msll' := (MSLL ms)) in Hcrash; eauto.
     destruct Hcrash.
     match goal with H: context [lift_empty] |- _ => destruct_lift H end.
+    
+    (* Split between last tree and rest *)
+    unfold pushd in H6.
+    apply treeseq_in_ds_snd_length in H7 as Hx.
+    unfold LogReplay.diskstate in *; rewrite <- Hx in H12; simpl in H12.
+    inversion H12.
+    
+    (* Last Tree *)
+    rewrite nthd_pushd_latest' in *; auto.
+
     safecancel.
     eassign ((d, @nil (list valuset))).
     cancel.
-    eassign ((mk_tree x (TSilist (nthd n (pushd t ts'))) (TSfree (nthd n (pushd t ts'))), @nil treeseq_one)); simpl in *.
+    eassign ((mk_tree x (TSilist t) (TSfree t), @nil treeseq_one)).
+    eapply treeseq_in_ds_crash_single; eauto.
+    eapply tree_pred_crash_find_name_root_single in H6 as Hroot; eauto.
+    eapply find_name_dirtree_inum; simpl; eauto.
+    eapply tree_pred_crash_find_name_root_single in H6 as Hroot; eauto.
+    eapply find_name_dirtree_isdir; simpl; eauto.
+    
+    
+    destruct a0.
+    prestep. norm'l.
+    
+    eapply tree_pred_crash_find_name_root_single in H6 as Hroot; eauto.
+    destruct Hroot.
+
+    intuition; inv_option_eq; deex.
+    denote! (tree_crash _ _) as Htc.
+    eapply tree_crash_flatmem_crash_xform in Htc.
+
+    2: eapply treeseq_pred_tree_rep_dir2flatmem2_single; eassumption.
+    eapply tree_with_tmp_find_name in Htc; eauto.
+    apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+    denote flatmem_crash_xform as Htc.
+    unfold tree_with_tmp in Htc.
+    apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+    denote flatmem_crash_xform as Htc.
+    eapply pimpl_apply in Htc.
+    2: repeat rewrite flatmem_crash_xform_sep_star.
+    2: repeat rewrite flatmem_crash_xform_file.
+    2: reflexivity.
+    destruct_lift Htc.
+    destruct_lift Htc.
+
+    2: distinct_names.
+
+    safecancel.
+
+    instantiate (pathname := []).
+    simpl. admit.
+
+    simpl.
+    pred_apply.
+    cancel.
+
+    prestep; norm'l.
+    safecancel.
+
+    eassumption.
+    
+    step.  (* return *)
+    or_l. cancel. eapply pimpl_any.
+
+    xcrash. or_r. cancel.
+    xcrash.
+    or_r; cancel; eauto.
+    eassumption.
+
+    unfold treeseq_pred. constructor; simpl; eauto.
+    2: apply Forall_nil.
+    unfold tree_rep; simpl.
+    intuition; eauto.
+
+    distinct_names.
+
+    left.
+    eexists.
+    unfold tree_with_tmp.
+    pred_apply.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+
+    synced_file_eq. cancel.
+    eauto.
+    eauto.
+    
+
+    step.
+    or_r. repeat progress (xform_norm; safecancel).
+    rewrite sep_star_or_distr; or_r; repeat progress (xform_norm; safecancel).
+    all: eauto.
+
+    rewrite pushd_latest; unfold treeseq_pred. constructor; [ | constructor ].
+    unfold tree_rep_recover; simpl. intuition; eauto.
+    distinct_names.
+    left. unfold tree_with_src.
+    pred_apply' H24.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+    synced_file_eq. cancel.
+
+    xcrash. or_r. cancel.
+    xcrash.
+    or_r; cancel; eauto.
+    eassumption.
+
+    unfold treeseq_pred. constructor.
+    2: constructor.
+    3: constructor.
+
+    unfold tree_rep; simpl.
+    intuition; eauto.
+    distinct_names.
+    left.
+    unfold tree_with_tmp.
+    pred_apply.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+    synced_file_eq. cancel.
+
+    unfold tree_rep; simpl.
+    intuition; eauto.
+    distinct_names.
+    right. left.
+    unfold tree_with_src.
+    pred_apply' H24.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+    synced_file_eq. cancel.
+    eauto.
+
+    xcrash. or_r. cancel.
+    xcrash.
+    or_r; cancel; eauto.
+    eassumption.
+
+    unfold treeseq_pred. constructor.
+    2: constructor.
+    unfold tree_rep; simpl.
+    intuition; eauto.
+    distinct_names.
+    left.
+    eexists.
+    unfold tree_with_tmp.
+    pred_apply.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+    synced_file_eq. cancel.
+    eauto.
+
+    or_r. cancel. xcrash.
+    or_r; cancel; eauto.
+    eassumption.
+
+    unfold treeseq_pred. constructor.
+    2: constructor.
+    3: constructor.
+
+    unfold tree_rep; simpl.
+    intuition; eauto.
+    distinct_names.
+    left.
+    unfold tree_with_tmp.
+    pred_apply.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+    synced_file_eq. cancel.
+
+    unfold tree_rep; simpl.
+    intuition; eauto.
+    distinct_names.
+    right. left.
+    unfold tree_with_src.
+    pred_apply' H9.
+    repeat rewrite flatmem_crash_xform_dir.
+    repeat rewrite flatmem_crash_xform_lift_empty.
+    synced_file_eq. cancel.
+    eauto.
+
+    step.   (* lookup failed? *)
+    right.
+
+    denote! (tree_crash _ _) as Htc.
+    eapply tree_crash_flatmem_crash_xform in Htc.
+
+    2: eapply treeseq_pred_tree_rep_dir2flatmem2_single; eassumption.
+    eapply tree_with_tmp_find_name_none in Htc; eauto.
+    apply flatmem_crash_xform_or_dist in Htc; destruct Htc.
+
+    {
+      denote flatmem_crash_xform as Htc.
+      unfold tree_with_src in Htc.
+      apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+      denote flatmem_crash_xform as Htc.
+      eapply pimpl_apply in Htc.
+      2: repeat rewrite flatmem_crash_xform_sep_star.
+      2: repeat rewrite flatmem_crash_xform_nothing.
+      2: repeat rewrite flatmem_crash_xform_file.
+      2: repeat rewrite flatmem_crash_xform_dir.
+      2: repeat rewrite flatmem_crash_xform_lift_empty.
+      2: reflexivity.
+      destruct_lift Htc.
+      destruct_lift Htc.
+
+      pred_apply. synced_file_eq. cancel.
+      rewrite sep_star_or_distr; or_r; cancel.
+      2:eassumption.
+
+      unfold treeseq_pred. constructor. 2: constructor.
+      unfold tree_rep_recover. intuition; eauto.
+      distinct_names.
+      simpl.
+      left. pred_apply.
+      unfold tree_with_src. cancel.
+    }
+
+    {
+      denote flatmem_crash_xform as Htc.
+      unfold tree_with_dst in Htc.
+      apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+      denote flatmem_crash_xform as Htc.
+      eapply pimpl_apply in Htc.
+      2: repeat rewrite flatmem_crash_xform_sep_star.
+      2: repeat rewrite flatmem_crash_xform_nothing.
+      2: repeat rewrite flatmem_crash_xform_file.
+      2: repeat rewrite flatmem_crash_xform_dir.
+      2: repeat rewrite flatmem_crash_xform_lift_empty.
+      2: reflexivity.
+      destruct_lift Htc.
+      destruct_lift Htc.
+
+      pred_apply. synced_file_eq. cancel.
+      rewrite sep_star_or_distr; or_r; cancel.
+      2:eassumption.
+
+      unfold treeseq_pred. constructor. 2: constructor.
+      unfold tree_rep_recover. intuition; eauto.
+      distinct_names.
+      simpl.
+      right.
+      unfold tree_with_dst. pred_apply.
+
+      synced_file_eq. cancel.
+    }
+
+    distinct_names.
+
+    denote! (tree_crash _ _) as Htc.
+    eapply tree_crash_flatmem_crash_xform in Htc.
+    2: eapply treeseq_pred_tree_rep_dir2flatmem2_single; eassumption.
+
+    {
+      apply flatmem_crash_xform_or_dist in Htc; destruct Htc.
+      {
+        denote flatmem_crash_xform as Htc.
+        apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+        denote flatmem_crash_xform as Htc.
+        unfold tree_with_tmp in Htc.
+        apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+        denote flatmem_crash_xform as Htc.
+        eapply pimpl_apply in Htc.
+        2: repeat rewrite flatmem_crash_xform_sep_star.
+        2: repeat rewrite flatmem_crash_xform_nothing.
+        2: repeat rewrite flatmem_crash_xform_file.
+        2: repeat rewrite flatmem_crash_xform_dir.
+        2: repeat rewrite flatmem_crash_xform_lift_empty.
+        2: reflexivity.
+        destruct_lift Htc.
+        destruct_lift Htc.
+
+        xcrash. or_r. cancel. xcrash.
+        or_r; cancel; eauto.
+        eassign ((mk_tree x (TSilist t) (TSfree t), @nil treeseq_one)); simpl in *.
+        eapply treeseq_in_ds_crash_single; eauto.
+
+        unfold treeseq_pred, tree_rep; intuition.
+        constructor. 2: constructor.
+        intuition; eauto. distinct_names.
+
+        left. pred_apply. unfold tree_with_tmp. synced_file_eq. cancel.
+      }
+
+      denote flatmem_crash_xform as Htc.
+      apply flatmem_crash_xform_or_dist in Htc; destruct Htc.
+      {
+        denote flatmem_crash_xform as Htc.
+        unfold tree_with_src in Htc.
+        apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+        denote flatmem_crash_xform as Htc.
+        eapply pimpl_apply in Htc.
+        2: repeat rewrite flatmem_crash_xform_sep_star.
+        2: repeat rewrite flatmem_crash_xform_nothing.
+        2: repeat rewrite flatmem_crash_xform_file.
+        2: repeat rewrite flatmem_crash_xform_dir.
+        2: repeat rewrite flatmem_crash_xform_lift_empty.
+        2: reflexivity.
+        destruct_lift Htc.
+        destruct_lift Htc.
+
+        xcrash. or_r. cancel. xcrash.
+        or_r; cancel; eauto.
+        eassign ((mk_tree x (TSilist t) (TSfree t), @nil treeseq_one)); simpl in *.
+        eapply treeseq_in_ds_crash_single; eauto.
+
+
+        unfold treeseq_pred, tree_rep; intuition.
+        constructor. 2: constructor.
+        intuition; eauto. distinct_names.
+
+        right. left. pred_apply. unfold tree_with_src. synced_file_eq. cancel.
+      }
+
+      {
+        denote flatmem_crash_xform as Htc.
+        unfold tree_with_dst in Htc.
+        apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
+        denote flatmem_crash_xform as Htc.
+        eapply pimpl_apply in Htc.
+        2: repeat rewrite flatmem_crash_xform_sep_star.
+        2: repeat rewrite flatmem_crash_xform_nothing.
+        2: repeat rewrite flatmem_crash_xform_file.
+        2: repeat rewrite flatmem_crash_xform_dir.
+        2: repeat rewrite flatmem_crash_xform_lift_empty.
+        2: reflexivity.
+        destruct_lift Htc.
+        destruct_lift Htc.
+
+        edestruct (dirfile_crash_exists dfile).
+
+        xcrash. or_r. cancel. xcrash.
+        or_r; cancel; eauto.
+        eassign ((mk_tree x (TSilist t) (TSfree t), @nil treeseq_one)); simpl in *.
+        eapply treeseq_in_ds_crash_single; eauto.
+
+        unfold treeseq_pred, tree_rep; intuition.
+        constructor. 2: constructor.
+        intuition; eauto. distinct_names.
+
+        right. right. pred_apply. unfold tree_with_dst.
+        synced_file_eq. synced_file_eq. cancel.
+      }
+    }
+
+    (* Other Trees *)      
+    
+    rewrite nthd_pushd' in *; auto.
+
+    safecancel.
+    eassign ((d, @nil (list valuset))).
+    cancel.
+    eassign ((mk_tree x (TSilist (nthd n ts')) (TSfree (nthd n ts')), @nil treeseq_one)); simpl in *.
     eapply treeseq_in_ds_crash; eauto.
-
-    (* other preconditions of lookup *)      
-    
-    unfold pushd in H6.
-    apply treeseq_in_ds_snd_length in H6 as Hx.
-    unfold LogReplay.diskstate in *; rewrite <- Hx in H12; simpl in H12.
-    inversion H12.
-    
-    rewrite nthd_pushd_latest' in H4; auto.
-    eapply tree_pred_crash_find_name_root_single in H8 as Hroot; eauto.
+    eapply tree_pred_crash_find_name_root in H5 as Hroot; eauto.
     eapply find_name_dirtree_inum; simpl; eauto.
-    
-    rewrite nthd_pushd' in H4; auto.
-    eapply tree_pred_crash_find_name_root in H7 as Hroot; eauto.
-    eapply find_name_dirtree_inum; simpl; eauto.
-
-    unfold pushd in H6.
-    apply treeseq_in_ds_snd_length in H6 as Hx.
-    unfold LogReplay.diskstate in *; rewrite <- Hx in H12; simpl in H12.
-    inversion H12.
-    
-    rewrite nthd_pushd_latest' in H4; auto.
-    eapply tree_pred_crash_find_name_root_single in H8 as Hroot; eauto.
+    eapply tree_pred_crash_find_name_root in H5 as Hroot; eauto.
     eapply find_name_dirtree_isdir; simpl; eauto.
-    
-    rewrite nthd_pushd' in H4; auto.
-    eapply tree_pred_crash_find_name_root in H7 as Hroot; eauto.
-    eapply find_name_dirtree_isdir; simpl; eauto.
-
 
     destruct a0.
     prestep. norm'l.
     
-    unfold pushd in H6.
-    apply treeseq_in_ds_snd_length in H6 as Hx.
-    unfold LogReplay.diskstate in *; rewrite <- Hx in H12; simpl in H12.
-    inversion H12.
-    
-    Focus 2.
-    rewrite nthd_pushd' in *; auto.
-    eapply tree_pred_crash_find_subtree_root in H7 as Hroot; eauto.
+    eapply tree_pred_crash_find_subtree_root in H5 as Hroot; eauto.
     destruct Hroot.
 
     intuition; inv_option_eq; deex.
@@ -2129,6 +2549,7 @@ Qed.
 
     xcrash. or_r. cancel.
     xcrash.
+    or_l; cancel; eauto.
     eassumption.
 
     unfold treeseq_pred. constructor.
@@ -2146,13 +2567,13 @@ Qed.
     repeat rewrite flatmem_crash_xform_lift_empty.
 
     synced_file_eq. cancel.
-(*     erewrite <- file_crash_data_length; eauto. *)
     eauto.
     eauto.
 
     step.
     or_r. repeat progress (xform_norm; safecancel).
-    eassumption.
+    rewrite sep_star_or_distr; or_l; cancel.
+    all: eauto.
 
     rewrite latest_pushd. unfold treeseq_pred. constructor; [ | constructor ].
     unfold tree_rep_recover; simpl. intuition; eauto.
@@ -2166,6 +2587,7 @@ Qed.
 
     xcrash. or_r. cancel.
     xcrash.
+    or_l; cancel; eauto.
     eassumption.
 
     unfold treeseq_pred. constructor.
@@ -2181,7 +2603,6 @@ Qed.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
     synced_file_eq. cancel.
-    (* erewrite <- file_crash_data_length; eauto. *)
 
     unfold tree_rep; simpl.
     intuition; eauto.
@@ -2196,6 +2617,7 @@ Qed.
 
     xcrash. or_r. cancel.
     xcrash.
+    or_l; cancel; eauto.
     eassumption.
 
     unfold treeseq_pred. constructor.
@@ -2210,10 +2632,10 @@ Qed.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
     synced_file_eq. cancel.
-    (* erewrite <- file_crash_data_length; eauto. *)
     eauto.
 
     or_r. cancel. xcrash.
+    or_l; cancel; eauto.
     eassumption.
 
     unfold treeseq_pred. constructor.
@@ -2229,7 +2651,6 @@ Qed.
     repeat rewrite flatmem_crash_xform_dir.
     repeat rewrite flatmem_crash_xform_lift_empty.
     synced_file_eq. cancel.
-    (* erewrite <- file_crash_data_length; eauto. *)
 
     unfold tree_rep; simpl.
     intuition; eauto.
@@ -2241,170 +2662,6 @@ Qed.
     repeat rewrite flatmem_crash_xform_lift_empty.
     synced_file_eq. cancel.
     eauto.
-
-(* --------------------------------------- *)
-
-    rewrite nthd_pushd_latest' in *; auto.
-    eapply tree_pred_crash_find_subtree_root_single in H8 as Hroot; eauto.
-    destruct Hroot.
-
-    intuition; inv_option_eq; deex.
-    denote! (tree_crash _ _) as Htc.
-    eapply tree_crash_flatmem_crash_xform in Htc.
-    Focus 2.
-    instantiate (1:= ((exists tfile', 
-        tree_with_tmp Ftree srcpath [temp_fn] srcinum file tinum' tfile' dstbase dstname dfile) \/
-       (tree_with_src Ftree srcpath [temp_fn] srcinum file dstbase dstname dfile) \/
-       (tree_with_dst Ftree srcpath [temp_fn] srcinum file dstbase dstname))%pred).
-    unfold tree_rep in H8; intuition; try deex; pred_apply; cancel.
-    eapply tree_with_tmp_find_name in Htc; eauto.
-    apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
-    denote flatmem_crash_xform as Htc.
-    unfold tree_with_tmp in Htc.
-    apply flatmem_crash_xform_exists in Htc; destruct_lift Htc.
-    denote flatmem_crash_xform as Htc.
-    eapply pimpl_apply in Htc.
-    2: repeat rewrite flatmem_crash_xform_sep_star.
-    2: repeat rewrite flatmem_crash_xform_file.
-    2: reflexivity.
-    destruct_lift Htc.
-    destruct_lift Htc.
-
-    2: distinct_names.
-
-    safecancel.
-
-    instantiate (pathname := []).
-    simpl. reflexivity.
-
-    simpl.
-    pred_apply.
-    cancel.
-
-    prestep; norm'l.
-    safecancel.
-
-    eassumption.
-    
-    step.  (* return *)
-    or_l. cancel. eapply pimpl_any.
-
-    xcrash. or_r. cancel.
-    xcrash.
-    eassumption.
-
-    unfold treeseq_pred. constructor.
-    2: constructor.
-    unfold tree_rep; simpl.
-    intuition; eauto.
-
-    distinct_names.
-
-    left.
-    eexists.
-    unfold tree_with_tmp.
-    pred_apply.
-    repeat rewrite flatmem_crash_xform_dir.
-    repeat rewrite flatmem_crash_xform_lift_empty.
-
-    synced_file_eq. cancel.
-(*     erewrite <- file_crash_data_length; eauto. *)
-    eauto.
-    eauto.
-
-    step.
-    or_r. repeat progress (xform_norm; safecancel).
-    eassumption.
-
-    rewrite latest_pushd. unfold treeseq_pred. constructor; [ | constructor ].
-    unfold tree_rep_recover; simpl. intuition; eauto.
-    distinct_names.
-    left. unfold tree_with_src.
-    pred_apply.
-    repeat rewrite flatmem_crash_xform_dir.
-    repeat rewrite flatmem_crash_xform_lift_empty.
-
-    synced_file_eq. cancel.
-
-    xcrash. or_r. cancel.
-    xcrash.
-    eassumption.
-
-    unfold treeseq_pred. constructor.
-    2: constructor.
-    3: constructor.
-
-    unfold tree_rep; simpl.
-    intuition; eauto.
-    distinct_names.
-    left.
-    unfold tree_with_tmp.
-    pred_apply.
-    repeat rewrite flatmem_crash_xform_dir.
-    repeat rewrite flatmem_crash_xform_lift_empty.
-    synced_file_eq. cancel.
-    (* erewrite <- file_crash_data_length; eauto. *)
-
-    unfold tree_rep; simpl.
-    intuition; eauto.
-    distinct_names.
-    right. left.
-    unfold tree_with_src.
-    pred_apply.
-    repeat rewrite flatmem_crash_xform_dir.
-    repeat rewrite flatmem_crash_xform_lift_empty.
-    synced_file_eq. cancel.
-    eauto.
-
-    xcrash. or_r. cancel.
-    xcrash.
-    eassumption.
-
-    unfold treeseq_pred. constructor.
-    2: constructor.
-    unfold tree_rep; simpl.
-    intuition; eauto.
-    distinct_names.
-    left.
-    eexists.
-    unfold tree_with_tmp.
-    pred_apply.
-    repeat rewrite flatmem_crash_xform_dir.
-    repeat rewrite flatmem_crash_xform_lift_empty.
-    synced_file_eq. cancel.
-    (* erewrite <- file_crash_data_length; eauto. *)
-    eauto.
-
-    or_r. cancel. xcrash.
-    eassumption.
-
-    unfold treeseq_pred. constructor.
-    2: constructor.
-    3: constructor.
-
-    unfold tree_rep; simpl.
-    intuition; eauto.
-    distinct_names.
-    left.
-    unfold tree_with_tmp.
-    pred_apply.
-    repeat rewrite flatmem_crash_xform_dir.
-    repeat rewrite flatmem_crash_xform_lift_empty.
-    synced_file_eq. cancel.
-    (* erewrite <- file_crash_data_length; eauto. *)
-
-    unfold tree_rep; simpl.
-    intuition; eauto.
-    distinct_names.
-    right. left.
-    unfold tree_with_src.
-    pred_apply.
-    repeat rewrite flatmem_crash_xform_dir.
-    repeat rewrite flatmem_crash_xform_lift_empty.
-    synced_file_eq. cancel.
-    eauto.
-
-(* ------------------------------- *)
 
     step.   (* lookup failed? *)
     right.
@@ -2432,7 +2689,8 @@ Qed.
       destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
-      eassumption.
+      rewrite sep_star_or_distr; or_l; cancel.
+      2: eassumption.
 
       unfold treeseq_pred. constructor. 2: constructor.
       unfold tree_rep_recover. intuition; eauto.
@@ -2458,7 +2716,8 @@ Qed.
       destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
-      eassumption.
+      rewrite sep_star_or_distr; or_l; cancel.
+      2: eassumption.
 
       unfold treeseq_pred. constructor. 2: constructor.
       unfold tree_rep_recover. intuition; eauto.
@@ -2498,16 +2757,15 @@ Qed.
         destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
-        eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
+        or_l; cancel; eauto.
+        eassign ((mk_tree x (TSilist (nthd n ts')) (TSfree (nthd n ts')), @nil treeseq_one)); simpl in *.
         eapply treeseq_in_ds_crash; eauto.
-        2: eauto.
 
         unfold treeseq_pred, tree_rep; intuition.
         constructor. 2: constructor.
         intuition; eauto. distinct_names.
 
         left. pred_apply. unfold tree_with_tmp. synced_file_eq. cancel.
-        (* erewrite <- file_crash_data_length; eauto. *)
       }
 
       denote flatmem_crash_xform as Htc.
@@ -2528,9 +2786,9 @@ Qed.
         destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
-        eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
+        or_l; cancel; eauto.
+        eassign ((mk_tree x (TSilist (nthd n ts')) (TSfree (nthd n ts')), @nil treeseq_one)); simpl in *.
         eapply treeseq_in_ds_crash; eauto.
-        2: eauto.
 
         unfold treeseq_pred, tree_rep; intuition.
         constructor. 2: constructor.
@@ -2557,7 +2815,8 @@ Qed.
         edestruct (dirfile_crash_exists dstfile).
 
         xcrash. or_r. cancel. xcrash.
-        eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
+        or_l; cancel; eauto.
+        eassign ((mk_tree x (TSilist (nthd n ts')) (TSfree (nthd n ts')), @nil treeseq_one)); simpl in *.
         eapply treeseq_in_ds_crash; eauto.
 
         unfold treeseq_pred, tree_rep; intuition.
@@ -2566,7 +2825,6 @@ Qed.
 
         right. right. pred_apply. unfold tree_with_dst.
         synced_file_eq. synced_file_eq. cancel.
-        eauto.
       }
     }
 
@@ -2577,76 +2835,8 @@ Qed.
     
   Grab Existential Variables.
     all: eauto.
-    exact Mem.empty_mem.
+Admitted.
+(*     exact Mem.empty_mem.
   Qed. *)
-  
-  Theorem pimpl_or2:
-  forall T pre pre' pre'' (pr: prog T),
-  {{pre}} pr ->
-  {{pre'}} pr ->
-  (forall vm hm done crash, (pre'' vm hm done crash =p=> pre vm hm done crash \/ pre' vm hm done crash)) ->
-  {{ pre''}} pr.
-Proof.
-  unfold corr2; intros.
-  specialize (H1 vm hm done crash).
-  apply H1 in H2.
-  apply pimpl_or_apply in H2.
-  intuition.
-  eapply H; eauto.
-  eapply H0; eauto.
-Qed.
-  
-  Theorem atomic_cp_recover_ok :
-    {< Fm Ftop Ftree fsxp cs mscs ds sm ts srcpath file srcinum tinum dstfile (dstbase: list string) (dstname:string),
-    PRE:hm
-      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
-      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ]] *
-      ([[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts]]
-       \/
-       (exists t ts' dfile tinum', [[ ts = pushd t ts' ]] * 
-       [[ tree_rep Ftree srcpath [temp_fn] srcinum file tinum' dstbase dstname dfile t ]] *
-       [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts' ]]))
-    POST:hm' RET:r
-      [[ isError r ]] * any \/
-      exists d sm' t mscs',
-      [[ r = OK (mscs', fsxp) ]] *
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') sm' hm' *
-      [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm' mscs' (t, nil) (d, nil) ]] *
-      [[ treeseq_pred (tree_rep_recover (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file dstbase dstname dstfile) (t, nil) ]]
-    XCRASH:hm'
-      (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' *
-      [[ treeseq_in_ds Fm Ftop fsxp sm mscs ts ds ]] *
-      [[ treeseq_pred (tree_rep Ftree srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile) ts ]])
-       \/
-      exists ts' ds' sm' mscs' dstfile',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ treeseq_in_ds (crash_xform Fm) (BFileCrash.flist_crash_xform Ftop) fsxp sm' mscs' ts' ds' ]] *
-      [[ treeseq_pred (tree_rep (flatmem_crash_xform Ftree) srcpath [temp_fn] srcinum file tinum dstbase dstname dstfile') ts' ]] *
-      [[ file_crash dstfile dstfile' ]]
-    >} atomic_cp_recover.
-  Proof.
-    intros.
-    eapply pimpl_or2.
-    apply atomic_cp_recover_ok_1.
-    apply atomic_cp_recover_ok_2.
-    unfold pimpl; intros.
-    destruct_lift H.
-    apply sep_star_or_distr in H.
-    apply pimpl_or_apply in H.
-    destruct H.
-    pred_apply; or_l; cancel.
-    all: eauto.
-    unfold pimpl; intros.
-    eapply H2.
-    eauto.
-    destruct_lift H1; pred_apply; cancel.
-    
-    pred_apply; or_r; cancel.
-    all: eauto.
-    unfold pimpl; intros.
-    eapply H2.
-    eauto.
-    destruct_lift H1; pred_apply; cancel.
-  Qed.
 
 End ATOMICCP.
