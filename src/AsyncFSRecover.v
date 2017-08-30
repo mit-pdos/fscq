@@ -305,7 +305,7 @@ Module AFS_RECOVER.
     apply pimpl_refl.
 *)
     (* follows one of the earlier recover proofs but isn't used by atomiccp. *)
-  Admitted.
+  Abort.
  *)
  
   Hint Extern 0 (okToUnify (DirTreePred.tree_pred _ _) (DirTreePred.tree_pred _ _)) => constructor : okToUnify.
