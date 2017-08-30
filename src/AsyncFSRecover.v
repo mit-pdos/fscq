@@ -155,7 +155,7 @@ Module AFS_RECOVER.
     reflexivity.
   Qed.
 
-
+(* 
   Theorem file_truncate_recover_ok : forall fsxp inum sz mscs,
     {<< ds sm Fm Ftop tree pathname f ilist frees,
     PRE:hm
@@ -268,9 +268,9 @@ Module AFS_RECOVER.
 *)
   Grab Existential Variables.
     all: try exact emp.
-  Qed.
+  Qed. *)
 
-  Theorem update_fblock_d_recover_ok : forall fsxp inum off v mscs,
+(*   Theorem update_fblock_d_recover_ok : forall fsxp inum off v mscs,
     {<< ds sm Fm Ftop tree pathname f Fd vs frees ilist,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
@@ -306,10 +306,11 @@ Module AFS_RECOVER.
 *)
     (* follows one of the earlier recover proofs but isn't used by atomiccp. *)
   Admitted.
-
+ *)
+ 
   Hint Extern 0 (okToUnify (DirTreePred.tree_pred _ _) (DirTreePred.tree_pred _ _)) => constructor : okToUnify.
 
-  Theorem file_sync_recover_ok : forall fsxp inum mscs,
+(*   Theorem file_sync_recover_ok : forall fsxp inum mscs,
     {<< ds sm Fm Ftop tree pathname f frees ilist,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
@@ -336,14 +337,30 @@ Module AFS_RECOVER.
     intros.
     recover_ro_ok.
     cancel. eauto.
+    remember
+    ( (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform
+         (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm
+      \/ (exists d tree',
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) hm *
+           [[[ d ::: v1 ✶ DirTreeRep.rep fsxp v2 tree' v7 (v6_1, v6_2) a v0 ]]] *
+           [[ tree' = update_subtree v4 (TreeFile inum (synced_dirfile v5)) v3 ]])) ]]))%pred) as x.
     step.
-
+    
+    remember
+    ( (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform
+         (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm
+      \/ (exists d tree',
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) hm *
+           [[[ d ::: v1 ✶ DirTreeRep.rep fsxp v2 tree' v7 (v6_1, v6_2) a v0 ]]] *
+           [[ tree' = update_subtree v4 (TreeFile inum (synced_dirfile v5)) v3 ]])) ]]))%pred) as x.
+    
+    
     (* build a new idemcrash predicate that carries the XCRASH facts *)
     instantiate (1 :=  (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform
-         (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v v0 hm
+         (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm
       \/ (exists d tree',
-           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) v0 hm *
-           [[[ d ::: v1 ✶ DirTreeRep.rep fsxp v2 tree' v7 v6 mscs v0 ]]] *
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) hm *
+           [[[ d ::: v1 ✶ DirTreeRep.rep fsxp v2 tree' v7 (v6_1, v6_2) a v0 ]]] *
            [[ tree' = update_subtree v4 (TreeFile inum (synced_dirfile v5)) v3 ]])) ]]))%pred).
     apply pimpl_refl.
     cancel. xform_dist. cancel.
@@ -416,7 +433,7 @@ Module AFS_RECOVER.
       all: eauto.
       all: solve [do 5 econstructor].
   Qed.
-
+ *)
 (*
   Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,
     {<< ds Fm Ftop tree ilist frees,
