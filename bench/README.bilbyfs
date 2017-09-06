@@ -1,0 +1,14 @@
+How to build BilbyFS
+
+  git clone https://github.com/NICTA/cogent.git
+  cd cogent/cogent
+  export PATH=$(pwd)/.cabal-sandbox/bin:$PATH
+  make
+  cabal install happy
+  cabal install alex
+  make
+
+  cd ../impl/fs/bilby/cogent
+  make
+
+But seems to require Linux kernel v3.18.22
