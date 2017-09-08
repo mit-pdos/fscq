@@ -7,6 +7,9 @@ How to build Linux kernel v3.18.22
   [[ no changes needed?? ]]
   make prepare CC=gcc-4.9
   make modules_prepare CC=gcc-4.9
+  make deb-pkg CC=gcc-4.9
+
+  [[ put ../linux-image-3.18.22_3.18.22-2_amd64.deb in the VM ]]
 
 How to build BilbyFS
 
@@ -21,3 +24,26 @@ How to build BilbyFS
   cd ../impl/fs/bilby/cogent
   export KERNELDIR=.../linux-3.18.22
   make CC=gcc-4.9
+
+  [[ put cgbilbyfs.ko in the VM ]]
+
+Setting up a VM
+
+  wget http://releases.ubuntu.com/16.04.3/ubuntu-16.04.3-server-amd64.iso
+  dd if=/dev/zero of=disk.img bs=1024k count=16384
+  kvm -hda disk.img -cdrom ubuntu-16.04.3-server-amd64.iso -m 1024
+  [[ install ubuntu server ]]
+  kvm -hda disk.img -m 1024 -net nic -net user
+
+  ## inside the VM
+  apt-get install mtd-tools
+  dpkg -i linux-image-3.18.22_3.18.22-2_amd64.deb
+  [[ reboot into this kernel: hold shift at boot, advanced options, choose kernel ver ]]
+  modprobe ubi
+  insmod cgbilbyfs.ko
+  ## set up a 256MB /dev/mtd0 ramdisk
+  modprobe nandsim first_id_byte=0x20 second_id_byte=0x71
+  ubiattach -p /dev/mtd0
+  ubimkvol /dev/ubi0 -m -N main
+  mount /dev/ubi0_0 -t bilbyfs /mnt/x
+
