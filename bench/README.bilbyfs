@@ -41,10 +41,18 @@ Setting up a VM
   [[ reboot into this kernel: hold shift at boot, advanced options, choose kernel ver ]]
   modprobe ubi
   insmod cgbilbyfs.ko
+
   ## set up a 1GB /dev/mtd0 ramdisk with 2048-byte pages
   ## http://www.linux-mtd.infradead.org/faq/nand.html
   modprobe nandsim first_id_byte=0xec second_id_byte=0xd3 third_id_byte=0x51 fourth_id_byte=0x95
   ubiattach -p /dev/mtd0
   ubimkvol /dev/ubi0 -m -N main
   mount /dev/ubi0_0 -t bilbyfs /mnt/x
+
+  ## set up a /dev/mtd0 using block2mtd, with 4KB erase units
+  cat /dev/mtd0 > flash.img
+  ## needs to contain all 0xff, apparently, so copy from the nandsim device
+  losetup /dev/loop0 flash.img
+  modprobe block2mtd block2mtd=/dev/loop0,4ki
+  ubiattach -p /dev/mtd0
 
