@@ -1,3 +1,13 @@
+How to build Linux kernel v3.18.22
+
+  wget https://www.kernel.org/pub/linux/kernel/v3.x/linux-3.18.22.tar.gz
+  tar zxvf linux-3.18.22.tar.gz 
+  cd linux-3.18.22
+  make menuconfig
+  [[ no changes needed?? ]]
+  make prepare CC=gcc-4.9
+  make modules_prepare CC=gcc-4.9
+
 How to build BilbyFS
 
   git clone https://github.com/NICTA/cogent.git
@@ -9,6 +19,5 @@ How to build BilbyFS
   make
 
   cd ../impl/fs/bilby/cogent
-  make
-
-But seems to require Linux kernel v3.18.22
+  export KERNELDIR=.../linux-3.18.22
+  make CC=gcc-4.9
