@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # run this as:
-#   python mini-sql.py | sqlite /mnt/fscq/sqlite.db
+#   python mini-sql.py | sqlite3 /mnt/fscq/sqlite.db
 
 scale = 400
 

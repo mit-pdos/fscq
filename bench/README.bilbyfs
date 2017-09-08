@@ -41,8 +41,9 @@ Setting up a VM
   [[ reboot into this kernel: hold shift at boot, advanced options, choose kernel ver ]]
   modprobe ubi
   insmod cgbilbyfs.ko
-  ## set up a 256MB /dev/mtd0 ramdisk
-  modprobe nandsim first_id_byte=0x20 second_id_byte=0x71
+  ## set up a 1GB /dev/mtd0 ramdisk with 2048-byte pages
+  ## http://www.linux-mtd.infradead.org/faq/nand.html
+  modprobe nandsim first_id_byte=0xec second_id_byte=0xd3 third_id_byte=0x51 fourth_id_byte=0x95
   ubiattach -p /dev/mtd0
   ubimkvol /dev/ubi0 -m -N main
   mount /dev/ubi0_0 -t bilbyfs /mnt/x
