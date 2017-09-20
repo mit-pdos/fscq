@@ -30,7 +30,6 @@ BLKTRACE=0
 ## ramdisk
 
 if [ "$DEV" = "/dev/loop" ]; then
-  echo "setup loop device"
   DEV=$(sudo losetup -f)
   dd if=/dev/zero of=/dev/shm/disk.img bs=1G count=1
   sudo losetup $DEV /dev/shm/disk.img
@@ -40,7 +39,7 @@ fi
 ## Do a priming run on whatever the native /tmp file system is..
 rm -rf $MOUNT
 mkdir -p $MOUNT
-$CMD
+eval $CMD
 rm -rf $MOUNT
 mkdir -p $MOUNT
 sudo chmod 777 $MOUNT
@@ -50,8 +49,6 @@ run_benchmark() {
   MKFS_CMD=$2
   MOUNT_CMD=$3
   END_CMD=$4
-
-  echo $CMD
 
   eval $MKFS_CMD
   eval $MOUNT_CMD

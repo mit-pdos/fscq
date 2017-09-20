@@ -12,10 +12,10 @@ devices = [
 benches = [
     # ("smallfile", "./smallfile %s" % dir),
     # ("smallsync", "./smallsync %s" % dir),
-    ("largefile", "./largefile %s" % dir),
+    # ("largefile", "./largefile %s" % dir),
     # ("mailbench", "./mailbench.sh /home/kaashoek/sv6 %s" % dir),
     # ("app-bench", "./app-bench.sh /home/kaashoek/xv6 %s" % dir),
-    # ("tpcc",    "./tpcc.sh %s ~/py-tpcc/" % dir),
+    ("tpcc",    "./tpcc.sh %s ~/py-tpcc/" % dir),
 ]
 
 import os
