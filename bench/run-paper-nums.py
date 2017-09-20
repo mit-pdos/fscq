@@ -9,12 +9,12 @@ devices = [
         ]
 
 benches = [
-    ("smallfile", "./smallfile /tmp/ft"),
-    ("smallsync", "./smallsync /tmp/ft"),
-    ("largefile", "./largefile /tmp/ft"),
-    ("mailbench", "./mailbench.sh /home/alex/sv6 /tmp/ft"),
-    ("app-bench", "./app-bench.sh /home/alex/xv6 /tmp/ft"),
-    ("tpcc",    "./tpcc.sh /tmp/ft ~/py-tpcc/"),
+    # ("smallfile", "./smallfile /tmp/ft"),
+    # ("smallsync", "./smallsync /tmp/ft"),
+    # ("largefile", "./largefile /tmp/ft"),
+    ("mailbench", "./mailbench.sh /home/kaashoek/sv6 /tmp/ft"),
+    # ("app-bench", "./app-bench.sh /home/kaashoek/xv6 /tmp/ft"),
+    # ("tpcc",    "./tpcc.sh /tmp/ft ~/py-tpcc/"),
 ]
 
 import os
@@ -22,12 +22,10 @@ import sys
 
 for d, dev in devices:
     for b, bench in benches:
-        for i in range(1, 6):
+        for i in range(1, 2):
             name = "{}-{}-{}".format(b, d, i)
             cmd = "perflock ./run-bench.sh {0} '{1}' '{2}' > {1}.log".format(dev, name, bench)
             print(cmd)
             status = os.system(cmd)
             if status != 0:
                 print("failed:", cmd, file=sys.stderr)
-
-

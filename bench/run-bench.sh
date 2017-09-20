@@ -1,6 +1,6 @@
 #!/bin/sh
 
-OLDFSCQBLOCKS=34310
+OLDFSCQBLOCKS=66628
 NEWFSCQBLOCKS=66628
 ORIGFSCQ=~/fscq-master
 YV6=~/yggdrasil
@@ -16,20 +16,26 @@ if [ $# -ne 3 ]; then
   exit 1
 fi
 
+
+## Ensure sudo works first
+( sudo true ) || exit 1
+
 ## Just in case..
 fusermount -u $MOUNT 2>/dev/null
 sudo umount $MOUNT 2>/dev/null
 mkdir -p $MOUNT
 
-## Ensure sudo works first
-( sudo true ) || exit 1
-
 BLKTRACE=0
+
 ## ramdisk
-# DEV=$(sudo losetup -f)
-# dd if=/dev/zero of=/dev/shm/fscq.img bs=1G count=1
-# sudo losetup $DEV /dev/shm/fscq.img
-# sudo chmod 777 $DEV
+
+if [ "$DEV" = "/dev/loop0" ]; then
+  echo "setup loop device"
+  DEV=$(sudo losetup -f)
+  dd if=/dev/zero of=/dev/shm/disk.img bs=4G count=1
+  sudo losetup $DEV /dev/shm/disk.img
+  sudo chmod 777 $DEV
+fi
 
 ## Do a priming run on whatever the native /tmp file system is..
 rm -rf $MOUNT
@@ -37,12 +43,15 @@ mkdir -p $MOUNT
 $CMD
 rm -rf $MOUNT
 mkdir -p $MOUNT
+sudo chmod 777 $MOUNT
 
 run_benchmark() {
   FS=$1
   MKFS_CMD=$2
   MOUNT_CMD=$3
   END_CMD=$4
+
+  echo $CMD
 
   eval $MKFS_CMD
   eval $MOUNT_CMD
@@ -79,18 +88,21 @@ if test -e "$ORIGFSCQ/src/fuse"; then
     "fusermount -u $MOUNT"
 fi
 
+ls -ld /mnt/ft
+ls -l /mnt/ft
+
 if test -e "$YV6/yav_xv6_main.py"; then
   run_benchmark \
-    "yxv6" \
-    "dd if=/dev/zero of=$DEV bs=4K count=60K; python2 $YV6/lfs.py $DEV" \
-    "python2 $YV6/yav_xv6_main.py -o max_read=4096 -o max_write=4096 -s $MOUNT -- --sync $DEV > /dev/null 2>&1 &" \
-    "fusermount -u $MOUNT"
+     "yxv6" \
+     "dd if=/dev/zero of=$DEV bs=4K count=60K; python2 $YV6/lfs.py $DEV" \
+     "python2 $YV6/yav_xv6_main.py -o max_read=4096 -o max_write=4096 -s $MOUNT -- --sync $DEV > /dev/null 2>&1 &" \
+     "fusermount -u $MOUNT"
 
-  run_benchmark \
-    "yxv6+gc" \
-    "dd if=/dev/zero of=$DEV bs=4K count=60K; python2 $YV6/lfs.py $DEV" \
-    "python2 $YV6/yav_xv6_main.py -o max_read=4096 -o max_write=4096 -s $MOUNT -- $DEV > /dev/null 2>&1 &" \
-    "fusermount -u $MOUNT"
+   run_benchmark \
+     "yxv6+gc" \
+     "dd if=/dev/zero of=$DEV bs=4K count=60K; python2 $YV6/lfs.py $DEV" \
+     "python2 $YV6/yav_xv6_main.py -o max_read=4096 -o max_write=4096 -s $MOUNT -- $DEV > /dev/null 2>&1 &" \
+     "fusermount -u $MOUNT"
 fi
 
 run_benchmark \
