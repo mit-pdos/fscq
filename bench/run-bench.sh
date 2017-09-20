@@ -4,15 +4,15 @@ OLDFSCQBLOCKS=66628
 NEWFSCQBLOCKS=66628
 ORIGFSCQ=~/fscq-master
 YV6=~/yggdrasil
-MOUNT="/tmp/ft"
+MOUNT="$4"
 TRACE="/tmp/blktrace.out"
 
 DEV="$1"
 SCRIPTPREFIX="$2"
 CMD="$3"
 
-if [ $# -ne 3 ]; then
-  echo "$0 dev bench-name bench-cmd"
+if [ $# -ne 4 ]; then
+  echo "$0 dev bench-name bench-cmd mount-dir"
   exit 1
 fi
 
@@ -32,7 +32,7 @@ BLKTRACE=0
 if [ "$DEV" = "/dev/loop" ]; then
   echo "setup loop device"
   DEV=$(sudo losetup -f)
-  dd if=/dev/zero of=/dev/shm/disk.img bs=8G count=1
+  dd if=/dev/zero of=/dev/shm/disk.img bs=1G count=1
   sudo losetup $DEV /dev/shm/disk.img
   sudo chmod 777 $DEV
 fi
@@ -88,9 +88,6 @@ if test -e "$ORIGFSCQ/src/fuse"; then
     "fusermount -u $MOUNT"
 fi
 
-ls -ld /mnt/ft
-ls -l /mnt/ft
-
 if test -e "$YV6/yav_xv6_main.py"; then
   run_benchmark \
      "yxv6" \
@@ -125,5 +122,5 @@ run_benchmark \
 
 
 if [ "$DEV" = "/dev/loop*" ]; then
-  losetup -d $DEV
+  sudo losetup -d $DEV
 fi
