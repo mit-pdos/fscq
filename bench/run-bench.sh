@@ -29,10 +29,10 @@ BLKTRACE=0
 
 ## ramdisk
 
-if [ "$DEV" = "/dev/loop0" ]; then
+if [ "$DEV" = "/dev/loop" ]; then
   echo "setup loop device"
   DEV=$(sudo losetup -f)
-  dd if=/dev/zero of=/dev/shm/disk.img bs=4G count=1
+  dd if=/dev/zero of=/dev/shm/disk.img bs=8G count=1
   sudo losetup $DEV /dev/shm/disk.img
   sudo chmod 777 $DEV
 fi
@@ -122,3 +122,8 @@ run_benchmark \
 #  "yes | mke2fs -t ext4 -J size=4 $DEV" \
 #  "sudo mount $DEV $MOUNT -o data=journal,sync; sudo chmod 777 $MOUNT" \
 #  "sudo umount $MOUNT"
+
+
+if [ "$DEV" = "/dev/loop*" ]; then
+  losetup -d $DEV
+fi
