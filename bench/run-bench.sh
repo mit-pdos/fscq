@@ -117,8 +117,8 @@ run_benchmark \
   "sudo mount $DEV $MOUNT -o data=ordered; sudo chmod 777 $MOUNT" \
   "sudo umount $MOUNT"
 
-run_benchmark \
-  "ext4sync" \
-  "yes | mke2fs -t ext4 -J size=4 $DEV" \
-  "sudo mount $DEV $MOUNT -o data=journal,sync; sudo chmod 777 $MOUNT" \
-  "sudo umount $MOUNT"
+# run_benchmark \
+#  "ext4sync" \
+#  "yes | mke2fs -t ext4 -J size=4 $DEV" \
+#  "sudo mount $DEV $MOUNT -o data=journal,sync; sudo chmod 777 $MOUNT" \
+#  "sudo umount $MOUNT"
