@@ -5,14 +5,14 @@ devices = [
         ("hdd", "/dev/sdc1"),
         ("ssd-sam", "/dev/sdb1"),
         ("ssd-intel", "/dev/sdd2"),
-        ("ram", "/dev/loop0"),
+        ("ram", "/dev/loop"),
         ]
 
 benches = [
     # ("smallfile", "./smallfile /tmp/ft"),
     # ("smallsync", "./smallsync /tmp/ft"),
-    # ("largefile", "./largefile /tmp/ft"),
-    ("mailbench", "./mailbench.sh /home/kaashoek/sv6 /tmp/ft"),
+    ("largefile", "./largefile /tmp/ft"),
+    # ("mailbench", "./mailbench.sh /home/kaashoek/sv6 /tmp/ft"),
     # ("app-bench", "./app-bench.sh /home/kaashoek/xv6 /tmp/ft"),
     # ("tpcc",    "./tpcc.sh /tmp/ft ~/py-tpcc/"),
 ]
