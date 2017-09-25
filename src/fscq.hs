@@ -266,6 +266,10 @@ fileStat ctx attr = FileStat
 
 fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
 fscqGetFileStat fr m_fsxp (_:path)
+  | (path == "sync") = withMVar m_fsxp $ \fsxp -> do
+    ctx <- getFuseContext
+    _ <- fr $ AsyncFS._AFS__umount fsxp
+    return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | path == "stats" = do
     ctx <- getFuseContext
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
@@ -317,7 +321,7 @@ fscqReadDirectory fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
 
 fscqOpen :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr m_fsxp (_:path) _ flags
-  | path == "stats" = return $ Right 0
+  | (path == "stats") || (path == "sync") = return $ Right 0
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPEN" path
   nameparts <- return $ splitDirectories path
@@ -344,7 +348,7 @@ splitDirsFile path = (init parts, last parts)
 
 fscqCreateFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileMode -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqCreateFile fr m_fsxp (_:path) _ _ _
-  | path == "stats" = return $ Left eEXIST
+  | (path == "stats") || (path == "sync") = return $ Left eEXIST
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "CREATEFILE" path
   (dirparts, filename) <- return $ splitDirsFile path
