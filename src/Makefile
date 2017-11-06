@@ -20,12 +20,11 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      DirTreeNames DirTreeInodes DirTree \
 	      TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
-	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
+	      ADestructPair DestructVarname\
 	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs \
-		  SecurityHelper SecurityDef SecurityBasic \
-		  SecurityDef2 SecurityBasic2 \
-		  SecuritySet SecurityCacheSet
+	      PermProg PermProgAuto PermSec PermSecInstr \
+	      CacheSec
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
