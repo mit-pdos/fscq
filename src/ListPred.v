@@ -18,6 +18,7 @@ Section LISTPRED.
   Variable V : Type.
   Variable prd : T -> @pred AT AEQ V.
 
+  (* Constructs a sep logic predicate with from each value in the parameter list via a parametric pred *)
   Fixpoint listpred (ts : list T) :=
     match ts with
     | nil => emp

@@ -30,6 +30,7 @@ Section MemPred.
   Definition high_pred := @pred HighAT HighAEQ HighV.
 
 
+  (* Takes a list of high address value pairs and adds them to the given high mem *)
   Fixpoint avs2mem_iter (avs : list (HighAT * HighV)) (m : @mem HighAT HighAEQ HighV) :=
     match avs with
     | nil => m
@@ -37,9 +38,11 @@ Section MemPred.
       upd (avs2mem_iter rest m) a v
     end.
 
+  (* Constructs a mem that only contains items in the list *)
   Definition avs2mem avs :=
     avs2mem_iter avs empty_mem.
 
+  (* removes an addresses that matches from the list *)
   Fixpoint avs_except avs victim : @list (HighAT * HighV) :=
     match avs with
     | nil => nil
@@ -174,9 +177,15 @@ Section MemPred.
 
   Variable Pred : HighAT -> HighV -> low_pred.
 
+  (* creates a pred for low mem from a high address value pair *)
   Definition mem_pred_one (av : HighAT * HighV) : low_pred :=
     Pred (fst av) (snd av).
 
+  (* Relates a high mem to a mem in the following way:
+   * There exists a list of high address value pairs such that
+   * A) there are no duplicate addresses in the list
+   * B) high memory is equal to the memory constructed from the list
+   * C) constructs a pred by applying given Pred to all list elements *) 
   Definition mem_pred (hm : high_mem) : low_pred :=
     (exists hm_avs,
      [[ NoDup (map fst hm_avs) ]] *

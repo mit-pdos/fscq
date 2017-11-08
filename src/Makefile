@@ -23,7 +23,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ADestructPair DestructVarname\
 	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs \
-	      PermProg PermProgAuto PermSec PermSecInstr \
+	      PermProg PermProgAuto PermSec PermHoare PermSecInstr \
 	      CacheSec
 
 VS         := $(MODULES:%=%.v)

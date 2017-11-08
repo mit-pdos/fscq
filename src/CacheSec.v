@@ -53,14 +53,14 @@ Definition h_cachemap := t (handle * bool).
 
 Record h_cachestate :=
   mk_cs {
-      HCSMap : handle_cachemap;
+      HCSMap : h_cachemap;
       HCSMaxCount : nat;
       HCSCount : nat;
       HCSEvict : eviction_state
     }.
 
-Definition tagged_disk:= @mem addr _ tagged_block.
-Definition block_mem:= @mem handle _ tagged_block.
+Definition tagged_disk:= @Mem.mem addr addr_eq_dec tagged_block.
+Definition block_mem:= @Mem.mem handle addr_eq_dec tagged_block.
 
 
  (** rep invariant *)
@@ -73,8 +73,8 @@ Definition block_mem:= @mem handle _ tagged_block.
   Definition addr_valid (d: tagged_disk) (cm : h_cachemap) :=
     forall a, In a cm -> d a <> None.
 
-Definition handle_valid (b: block_mem) cs :=
-  forall a cb, find a (HCSMap cs) = Some cb -> blocks s (fst cb) <> None.   
+Definition handle_valid (b: block_mem) (cm: h_cachemap) :=
+  forall a cb, find a cm = Some cb -> b (fst cb) <> None.   
   
   Definition cachepred (s: state) (cache : h_cachemap) (a : addr) (tb: tagged_block ) : @pred _ addr_eq_dec tagged_block :=
     (match find a cache with
@@ -83,11 +83,11 @@ Definition handle_valid (b: block_mem) cs :=
     | Some (h, true)  => exists tb0, a |-> tb0 * [[ blocks s h = Some tb ]]
     end)%pred.
 
-  Notation mem_pred := (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _).
-
-  Definition rep (cs : cachestate) (m : tagged_disk) (s: state): rawpred :=
-    ([[ size_valid cs /\ addr_valid m (HCSMap cs) /\ handle_valid s (HCSMap cs) ]] *
-     mem_pred (cachepred s (HCSMap cs)) m)%pred.
+  Definition rep (cs : h_cachestate) (m : tagged_disk) (s: state): Prop :=
+    ([[ size_valid cs /\
+        addr_valid m (HCSMap cs) /\
+        handle_valid (blocks s) (HCSMap cs) ]] *
+     mem_pred (cachepred s (HCSMap cs)) m)%pred (disk s).
 
 
 
