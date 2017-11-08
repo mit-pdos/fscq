@@ -437,10 +437,12 @@ Section Primitives.
            end.
         assert (Sigma.mem st (var1 txn) = Some (val a0)).
         eapply ptsto_valid'; pred_apply; cancel.
-        congruence.
+        assert (val v0 = val a0) as Heq by congruence.
+        inversion Heq; subst; inj_pair2; auto.
         assert (Sigma.mem st (var2 txn) = Some (val b0)).
         eapply ptsto_valid'; pred_apply; cancel.
-        congruence.
+        assert (val v0 = val b0) as Heq by congruence.
+        inversion Heq; subst; inj_pair2; auto.
   Qed.
 
   Transparent wtxn_in_domain_dec.
