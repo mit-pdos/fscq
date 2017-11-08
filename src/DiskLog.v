@@ -178,10 +178,10 @@ Module PaddedLog.
 
     Theorem write_ok : forall xp n cs,
     {< F d old,
-    PRE            BUFCACHE.rep cs d *
+    PRE:           BUFCACHE.rep cs d *
                    [[ goodSize addrlen (fst n) /\ goodSize addrlen (snd n) ]] *
                    [[ (F * rep xp (Synced old))%pred d ]]
-    POST RET: cs
+    POST: RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Unsync n old))%pred d' ]]
     XCRASH  exists cs' d', BUFCACHE.rep cs' d' * [[ (F * rep xp (Unsync n old))%pred d' ]]

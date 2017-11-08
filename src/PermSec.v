@@ -67,10 +67,9 @@ Fixpoint trace_secure pr tr :=
   end.
 
 (* adding state allows simpler bind *)
-Definition permission_secure {T} pr s (p: prog T) (pre: state -> Prop) 
+Definition permission_secure {T} pr s (p: prog T)
   (post : state -> state -> T -> Prop):=
   forall s' tr tr' r,
-    pre s ->
     exec pr s tr p s' (Finished r) (tr'++tr) ->
     trace_secure pr tr' /\ post s s' r.
 
