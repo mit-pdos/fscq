@@ -19,7 +19,7 @@ Definition perm_dec : forall (p p': perm), {p = p'}+{p <> p'}.
 Defined.
 
 Inductive tag :=
-| Nothing : tag
+(* | Nothing : tag *)
 | Public : tag
 | Private : owner -> tag.
 
@@ -46,21 +46,11 @@ Definition op_dec : forall (o o': op), {o = o'}+{o <> o'}.
 Defined.
 
 Definition trace := list op.
-
-Record state := mkstate {
-                    disk : @mem addr Nat.eq_dec tagged_block;
-                    blocks: @mem handle Nat.eq_dec tagged_block}.
-
-Definition disk_upd s a b : state :=
-  mkstate (upd (disk s) a b) (blocks s).
-
-Definition blocks_upd s a b : state :=
-  mkstate (disk s) (upd (blocks s) a b).
-
-
+Definition tagged_disk:= @Mem.mem addr Nat.eq_dec tagged_block.
+Definition block_mem:= @Mem.mem handle Nat.eq_dec tagged_block.
 
 Inductive result : Type :=
-| Finished : forall T, T -> result.
+| Finished : forall T, tagged_disk -> block_mem -> T -> result.
 
 
 Inductive prog : Type -> Type :=
@@ -79,31 +69,26 @@ Inductive prog : Type -> Type :=
 
 Notation "x <- p1 ;; p2" := (Bind p1 (fun x => p2))
                               (at level 60, right associativity).
-Notation "p1 ;; p2" := (Bind p1 (fun _:unit => p2))
-                            (at level 60, right associativity).
 
-Inductive  exec: forall T, perm -> state -> trace -> prog T -> state -> result -> trace -> Prop :=
-| ExecRead    : forall p s a i t b tr,
-                  blocks s i = None ->
-                  disk s a = Some (t, b) ->
-                  t <> Nothing ->
-                  exec p s tr (Read a)  (blocks_upd s i (t, b)) (Finished i) tr
-                 
-| ExecWrite   : forall o s a i t b t' b' tr,
-                  blocks s i = Some (t, b) ->
-                  disk s a  = Some (t', b') ->
-                  t <> Nothing ->
-                  exec o s tr (Write a i) (disk_upd s a (t, b)) (Finished tt) tr
+Inductive  exec:
+  forall T, perm -> trace -> tagged_disk ->
+       block_mem -> prog T ->  result -> trace -> Prop :=
+| ExecRead    : forall pr d bm a i tb tr,
+                  bm i = None ->
+                  d a = Some tb ->
+                  exec pr tr d bm (Read a) (Finished d (upd bm i tb) i) tr                 
+| ExecWrite   : forall pr d bm a i tb tr,
+                  bm i = Some tb ->
+                  d a <> None ->
+                  exec pr tr d bm (Write a i) (Finished (upd d a tb) bm tt) tr
                        
-| ExecSeal : forall s i o t' b tr,
-               blocks s i = None ->
-               t' <> Nothing ->
-               exec o s tr (Seal t' b) (blocks_upd s i (t', b)) (Finished i) (Sea t'::tr)
+| ExecSeal : forall pr d bm i t b tr,
+               bm i = None ->
+               exec pr tr d bm (Seal t b) (Finished d (upd bm i (t, b)) i) (Sea t::tr)
                     
-| ExecUnseal : forall s i o t' b tr,
-                 blocks s i = Some (t', b) ->
-                 t' <> Nothing ->
-                 exec o s tr (Unseal i) s (Finished b) (Uns t'::tr)
+| ExecUnseal : forall pr d bm i tb tr,
+                 bm i = Some tb ->
+                 exec pr tr d bm (Unseal i) (Finished d bm (snd tb)) (Uns (fst tb)::tr)
 (* 
 | ExecGetTag : forall o s i t b tr,
                  blocks s i = Some (t, b) ->
@@ -116,15 +101,15 @@ Inductive  exec: forall T, perm -> state -> trace -> prog T -> state -> result -
 | ExecPurge :  forall o a s tr,
                  exec o s tr (Purge a)  (disk_upd s a (Nothing, 0)) (Finished tt) tr
 *)                      
-| ExecRet : forall T s (r: T) o tr,
-              exec o s tr (Ret r) s (Finished r) tr
+| ExecRet : forall T pr d bm (r: T) tr,
+              exec pr tr d bm (Ret r) (Finished d bm r) tr
                    
-| ExecRun : forall T s s' r (p: prog T) o o' tr tr',
-              exec o' s tr p s' r tr' ->
-              exec o s tr (Run o' p) s' r (Rn o o'::tr')
+| ExecRun : forall T pr pr' d bm r (p: prog T) tr tr',
+              exec pr' tr d bm p r tr' ->
+              exec pr tr d bm (Run pr' p) r (Rn pr pr'::tr')
                    
-| ExecBind : forall T T' (p1 : prog T) (p2: T -> prog T') s s' s'' v r o tr tr' tr'',
-               exec o s tr p1 s' (Finished v) tr' ->
-               exec o s' tr' (p2 v) s'' r tr'' ->
-               exec o s tr (Bind p1 p2) s'' r tr''.
+| ExecBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm d' bm' v r tr tr' tr'',
+               exec pr tr d bm p1 (Finished d' bm' v) tr' ->
+               exec pr tr' d' bm' (p2 v) r tr'' ->
+               exec pr tr d bm (Bind p1 p2) r tr''.
 

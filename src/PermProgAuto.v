@@ -32,17 +32,17 @@ Ltac inv_exec'' H :=
 
 Ltac inv_exec' :=
   match goal with
-  | [ H: exec _ _ _ (Ret _) _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Ret _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ (Read _) _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Read _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ (Write _ _) _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Write _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ (Seal _ _) _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Seal _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ (Unseal _) _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Unseal _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ (Run _ _) _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Run _ _) _ _ |- _ ] =>
     inv_exec'' H
 (*
   | [ H: exec _ _ _ (GetTag _) _ _ _ |- _ ] =>
@@ -55,14 +55,14 @@ Ltac inv_exec' :=
   end.
 
 Lemma exec_bind_sep:
-  forall T T' (p1: prog T) (p2: T -> prog T') s s' r tr tr' t,
-    exec t s tr (Bind p1 p2) s' r tr' ->
-    exists tr1 r1 s1, exec t s tr p1 s1 (Finished r1) tr1 /\
-                 exec t s1 tr1 (p2 r1) s' r tr'.
+  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm r tr tr',
+    exec pr tr d bm (Bind p1 p2) r tr' ->
+    exists tr1 r1 d1 bm1, exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
+                 exec pr tr1 d1 bm1 (p2 r1) r tr'.
 Proof.
   intros.
   inv_exec'' H.
-  eauto.
+  do 4 eexists; eauto.
 Qed.
 
 Ltac logic_clean:=
@@ -124,6 +124,6 @@ Ltac split_ors:=
 
 Ltac inv_exec_perm :=
   match goal with
-  |[H : exec _ _ _ (Bind _ _) _ _ _ |- _ ] => apply exec_bind_sep in H; cleanup
+  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => apply exec_bind_sep in H; cleanup
   |[H : exec _ _ _ _ _ _ _ |- _ ] => inv_exec'
   end.
