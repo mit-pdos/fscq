@@ -18,10 +18,10 @@ Definition corr2 (T: Type) pr (pre: donecond T -> block_mem -> @pred _ _ tagged_
     pre donec bm d
   -> exec pr tr d bm p out tr'
   -> (exists d' bm' v, out = Finished d' bm' v /\
-                 donec d' bm' v /\
-                 permission_secure d bm pr p).
+                 donec d' bm' v) /\
+    permission_secure d bm pr p.
 
-Notation "x= pr : pre =x p" := (corr2 pr pre p)
+Notation "{{ pr : pre }} p" := (corr2 pr pre p)
   (at level 0, p at level 60).
 
 Notation "'RET' : r post" :=
@@ -44,17 +44,17 @@ Notation "'RET' : ^( ra , .. , rb ) post" :=
   * The pre-hashmap must be a subset of both the post- and crash-hashmaps.
   *)
 Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : pre 'POST' : post >} p1" :=
-  (forall T (rx: _ -> prog T), corr2
-   (fun done_ bm =>
+  (forall T (rx: _ -> prog T), corr2 pr
+   ((fun pr' done_ bm =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
-     F_ * pre *
+     F_ * (pre bm) *
      [[ forall r_ ,
-        corr2 pr (fun done'_ bm'  =>
-           post F_ r_ * [[ bm' = bm ]] *
+        corr2 pr' (fun done'_ bm'  =>
+           post bm' F_ r_ *
            [[ done'_ = done_ ]])%pred (rx r_) ]]
      )) .. ))
-   )%pred
+   )%pred pr) (* Weird scoping problem *)
    (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     e1 closed binder, e2 closed binder).

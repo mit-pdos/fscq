@@ -46,7 +46,7 @@ Definition op_dec : forall (o o': op), {o = o'}+{o <> o'}.
 Defined.
 
 Definition trace := list op.
-Definition tagged_disk:= @Mem.mem addr Nat.eq_dec tagged_block.
+Definition tagged_disk:= @Mem.mem addr addr_eq_dec tagged_block.
 Definition block_mem:= @Mem.mem handle Nat.eq_dec tagged_block.
 
 Inductive result : Type :=

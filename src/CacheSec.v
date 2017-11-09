@@ -1,25 +1,22 @@
-Require Import Prog ProgMonad.
 Require Import Cache.
 Require Import List.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
 Require Import Array.
-Require Import Pred PredCrash.
-Require Import Hoare.
-Require Import SepAuto.
-Require Import BasicProg.
+Require Import Pred.
 Require Import WordAuto.
 Require Import Omega.
-Require Import ListUtils.
 Require Import AsyncDisk.
+Require Import ListUtils.
 Require Import OrderedTypeEx.
 Require Import Arith.
 Require Import MapUtils.
 Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
-Require Import PermSecInstr.
+Require Import PermSec PermHoare PermSepAuto.
+Require Import ADestructPair DestructVarname.
 
 Import AddrMap.
 Import Map.
@@ -59,43 +56,42 @@ Record h_cachestate :=
       HCSEvict : eviction_state
     }.
 
-Definition tagged_disk:= @Mem.mem addr addr_eq_dec tagged_block.
-Definition block_mem:= @Mem.mem handle addr_eq_dec tagged_block.
+
 
 
  (** rep invariant *)
 
-  Definition size_valid cs :=
-    cardinal (HCSMap cs) = HCSCount cs /\
-    cardinal (HCSMap cs) <= HCSMaxCount cs /\
-    HCSMaxCount cs <> 0.
+Definition size_valid cs :=
+  cardinal (HCSMap cs) = HCSCount cs /\
+  cardinal (HCSMap cs) <= HCSMaxCount cs /\
+  HCSMaxCount cs <> 0.
 
-  Definition addr_valid (d: tagged_disk) (cm : h_cachemap) :=
-    forall a, In a cm -> d a <> None.
+Definition addr_valid (d: tagged_disk) (cm : h_cachemap) :=
+  forall a, In a cm -> d a <> None.
 
 Definition handle_valid (b: block_mem) (cm: h_cachemap) :=
   forall a cb, find a cm = Some cb -> b (fst cb) <> None.   
-  
-  Definition cachepred (s: state) (cache : h_cachemap) (a : addr) (tb: tagged_block ) : @pred _ addr_eq_dec tagged_block :=
-    (match find a cache with
-    | None => a |-> tb
-    | Some (h, false) => a |-> tb * [[ blocks s h = Some tb ]]
-    | Some (h, true)  => exists tb0, a |-> tb0 * [[ blocks s h = Some tb ]]
-    end)%pred.
 
-  Definition rep (cs : h_cachestate) (m : tagged_disk) (s: state): Prop :=
-    ([[ size_valid cs /\
-        addr_valid m (HCSMap cs) /\
-        handle_valid (blocks s) (HCSMap cs) ]] *
-     mem_pred (cachepred s (HCSMap cs)) m)%pred (disk s).
+Definition addr_clean (cm : h_cachemap) a :=
+    find a cm = None \/ exists v, find a cm = Some (v, false).
 
+Definition addrs_clean cm al :=
+  Forall (addr_clean cm) al.
 
+Definition cachepred (cache : h_cachemap) (bm: block_mem) (a : addr) (tb: tagged_block ): @pred _ addr_eq_dec tagged_block :=
+  (match find a cache with
+   | None => a |-> tb
+   | Some (h, false) => a |-> tb * [[ bm h = Some tb ]]
+   | Some (h, true)  => exists tb0, a |-> tb0 * [[ bm h = Some tb ]]
+   end)%pred.
 
+Definition rep (cs : h_cachestate) (m : tagged_disk) (bm: block_mem): @pred _ addr_eq_dec tagged_block :=
+  ([[ size_valid cs /\
+      addr_valid m (HCSMap cs) /\
+      handle_valid bm (HCSMap cs) ]] *
+   mem_pred (cachepred (HCSMap cs) bm) m)%pred.
 
-
-
-
-Definition handle_writeback a (cs : handle_cachestate) :=
+Definition handle_writeback a (cs : h_cachestate) :=
   match find a (HCSMap cs) with
   | Some (h, true) =>
       Bind (Write a h)
@@ -120,7 +116,7 @@ Definition handle_evict a cs:=
   Bind (handle_writeback a cs)
        (fun cs => handle_evict' a cs).
 
-Definition handle_maybe_evict (cs : handle_cachestate) : prog handle_cachestate :=
+Definition handle_maybe_evict (cs : h_cachestate) : prog h_cachestate :=
   if (lt_dec (HCSCount cs) (HCSMaxCount cs)) then
     Ret cs
   else 
@@ -135,6 +131,37 @@ Definition handle_maybe_evict (cs : handle_cachestate) : prog handle_cachestate 
       | (a, v) :: tl => handle_evict a cs
       end
     end.
+
+
+  Theorem writeback_ok : forall a cs,
+    {< d tb F,
+     PERM: None
+     PRE:
+        fun bm => rep cs d bm *
+        [[(sep_star (AEQ:= addr_eq_dec) F (a |-> tb))%pred d]]
+     POST:
+        fun bm => RET:cs'
+         rep cs' d bm *
+         [[ addr_clean (HCSMap cs') a /\ 
+      In a (HCSMap cs) -> In a (HCSMap cs')]]
+    >} handle_writeback a cs.
+  Proof.
+    unfold handle_writeback, corr2, rep; intros; cleanup.
+    split.
+    destruct_lift H.
+    destruct (find a (HCSMap cs)).
+    destruct p.
+    destruct b.
+    repeat inv_exec_perm.
+    edestruct H3; eauto; simpl in *.
+    pred_apply; cancel.
+
+  Hint Extern 1 ({{_}} Bind (writeback _ _) _) => apply writeback_ok : prog.
+
+
+
+
+
 
 
 

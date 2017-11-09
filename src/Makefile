@@ -23,8 +23,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ADestructPair DestructVarname\
 	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs \
-	      PermProg PermProgAuto PermSec PermHoare PermSecInstr \
-	      CacheSec
+	      PermProg PermProgAuto PermSec PermHoare PermSepAuto \
+		  CacheSec
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
