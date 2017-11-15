@@ -772,6 +772,19 @@ Section ConcurrentFS.
 
   Hint Resolve find_subtree_app'.
 
+  Theorem cprog_spec_compiled_prog : forall tid A T (spec: Spec A T) (p: cprog T)
+                                       (cp: Compiled G p),
+      cprog_spec G tid spec p ->
+      cprog_spec G tid spec (compiled_prog cp).
+  Proof.
+    intros.
+    eapply spec_respects_exec_equiv; eauto.
+    symmetry.
+    apply ConcurCompile.compiled_exec_equiv.
+  Qed.
+
+  Hint Resolve cprog_spec_compiled_prog.
+
   Theorem file_get_attr_ok : forall tid inum,
       cprog_spec G tid
                  (fun '(tree, homedirs, homedir, pathname, f) sigma =>
@@ -794,18 +807,12 @@ Section ConcurrentFS.
                  (file_get_attr inum).
   Proof.
     unfold file_get_attr; intros.
+    unfold ConcurCompile.file_get_attr.
     unfold cprog_spec; intros;
       eapply cprog_ok_weaken;
       [ monad_simpl; eapply retry_readonly_syscall_ok;
         eauto using opt_file_get_attr_ok | ];
       simplify; finish.
-    (* TODO: fix proof by using exec equivalence *)
-    Locate exec_equiv.
-    Search cprog_spec CCLMonadLaws.exec_equiv.
-    eapply spec_respects_exec_equiv.
-    unfold ConcurCompile.file_get_attr.
-    eapply ConcurCompile.compiled_exec_equiv.
-
 
     unfold precondition_stable; simplify; simpl.
     eapply homedir_rely_preserves_subtrees; eauto.
@@ -1073,6 +1080,7 @@ Section ConcurrentFS.
                  (lookup pathname).
   Proof.
     unfold lookup; intros.
+    unfold ConcurCompile.lookup.
     unfold cprog_spec; intros;
       eapply cprog_ok_weaken;
       [ monad_simpl; eapply retry_readonly_syscall_ok;
@@ -1120,6 +1128,7 @@ Section ConcurrentFS.
                  (read_fblock inum off).
   Proof.
     unfold read_fblock; intros.
+    unfold ConcurCompile.read_fblock.
     unfold cprog_spec; intros;
       eapply cprog_ok_weaken;
       [ monad_simpl; eapply retry_readonly_syscall_ok;
@@ -1324,7 +1333,7 @@ Section ConcurrentFS.
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (rename dnum srcpath srcname dstpath dstname).
-  Proof.
+  Proof using Type.
     unfold rename; intros.
     unfold cprog_spec; intros;
       eapply cprog_ok_weaken;
