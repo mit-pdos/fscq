@@ -44,20 +44,34 @@ Notation "'RET' : ^( ra , .. , rb ) post" :=
   * The pre-hashmap must be a subset of both the post- and crash-hashmaps.
   *)
 Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : pre 'POST' : post >} p1" :=
-  (forall T (rx: _ -> prog T), corr2 pr
-   ((fun pr' done_ bm =>
+  (forall T (rx: _ -> prog T), corr2 pr%pred
+   ((fun done_ bm =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * (pre bm) *
      [[ forall r_ ,
-        corr2 pr' (fun done'_ bm'  =>
+        corr2 pr (fun done'_ bm'  =>
            post bm' F_ r_ *
            [[ done'_ = done_ ]])%pred (rx r_) ]]
      )) .. ))
-   )%pred pr) (* Weird scoping problem *)
+   )%pred) (* Weird scoping problem *)
    (Bind p1 rx)%pred)
-  (at level 0, p1 at level 60,
-    e1 closed binder, e2 closed binder).
+  (at level 0, p1 at level 60, right associativity, 
+   e1 closed binder, e2 closed binder).
+
+Notation "{< 'X' , 'PERM' : pr 'PRE' : pre 'POST' : post >} p1" :=
+  (forall T (rx: _ -> prog T), corr2 pr%pred
+   ((fun done_ bm =>
+     exists F_,
+     F_ * (pre bm) *
+     [[ forall r_ ,
+        corr2 pr (fun done'_ bm'  =>
+           post bm' F_ r_ *
+           [[ done'_ = done_ ]])%pred (rx r_) ]]
+   )%pred) (* Weird scoping problem *)
+   (Bind p1 rx)%pred)
+  (at level 0, p1 at level 60, right associativity).
+
 
 Theorem pimpl_ok2:
   forall T pr  (pre pre': donecond T -> block_mem -> @pred _ _ tagged_block) (p: prog T),

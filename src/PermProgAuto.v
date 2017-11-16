@@ -91,7 +91,6 @@ Ltac rewriteall :=
   match goal with
   | [H: ?x = _, H0: ?x = _ |- _ ] => rewrite H in H0; repeat rewriteall
   | [H: ?x = _, H0: _ = ?x |- _ ] => rewrite H in H0; repeat rewriteall
-  | [H: ?x = _, H0: context [?x] |- _ ] => rewrite H in H0; repeat rewriteall
   | [H: ?x = _ |- context [?x] ] => rewrite H; repeat rewriteall
   end.
 

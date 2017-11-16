@@ -3,7 +3,7 @@ Require Import Omega.
 Require Import List.
 Require Import PermProg PermProgAuto.
 Require Import Pred.
-Require Import PermHoare.
+Require Import PermProgMonad PermHoare.
 Require Import Word.
 Require Import AsyncDisk.
 Require Import Errno.
@@ -456,6 +456,12 @@ Proof.
 Qed.
 
 
+Ltac pick := solve [ repeat 
+          ((apply PickFirst;
+            solve [ trivial with okToUnify ]
+           ) || apply PickLater) ].
+
+
 Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,
   (pick q qs qs' /\ (p =p=> q))
   -> (stars ps * F =p=> stars qs')
@@ -485,7 +491,7 @@ Proof.
   eapply imply_one; eauto.
 Qed.
 
-Ltac cancel_one := eapply cancel_one.
+Ltac cancel_one := eapply cancel_one; [ pick | ].
 
 Theorem delay_one : forall AT AEQ V (p : @pred AT AEQ V) ps q qs,
   (stars ps * stars (p :: qs) =p=> q)
@@ -821,7 +827,7 @@ Proof.
   pred_apply.
   cancel.
 Qed.
- *)
+*)
 
 Ltac autorewrite_fast_goal :=
   set_evars; (rewrite_strat (topdown (hints core))); subst_evars;
@@ -837,10 +843,10 @@ Ltac autorewrite_fast :=
 
 Ltac destruct_branch :=
   match goal with
-  | [ |- corr2 _ _ Bind (match ?v with | Some _ => _ | None => _ end) _ ] => destruct v eqn:?
-  | [ |- corr2 _ _ Bind (match ?v with | None => _ | Some _ => _ end) _ ] => destruct v eqn:?
-  | [ |- corr2 _ _ Bind (if ?v then _ else _) _ ] => destruct v eqn:?
-  | [ |- corr2 _ _ Bind (let '_ := ?v in _) _ ] => destruct v eqn:?
+  | [ |- corr2 _ _ (Bind (match ?v with | Some _ => _ | None => _ end) _) ] => destruct v eqn:?
+  | [ |- corr2 _ _ (Bind (match ?v with | None => _ | Some _ => _ end) _) ] => destruct v eqn:?
+  | [ |- corr2 _ _ (Bind (if ?v then _ else _) _) ] => destruct v eqn:?
+  | [ |- corr2 _ _ (Bind (let '_ := ?v in _) _) ] => destruct v eqn:?
   end.
 
 Ltac prestep :=
@@ -848,15 +854,14 @@ Ltac prestep :=
   try autounfold with hoare_unfold in *;
   repeat destruct_pair_once;
   try cancel;
-  repeat (destruct_branch);
+  repeat (destruct_branch || monad_simpl_one);
   (*   remember_xform; *)
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok2; [
         match goal with
-        | [ |- corr2 _ _ ?rx _ ] => is_var rx
-        end | ])
-   || idtac);
+        | [ |- corr2 _ _ (?rx _) ] => is_var rx
+        end | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try autounfold with hoare_unfold in *; eauto.
@@ -925,3 +930,50 @@ Tactic Notation "hoare" "using" tactic(t) :=
   repeat (step using t).
 
 Ltac hoare := hoare using eauto.
+
+
+
+(*
+Ltac xform_deex_r :=
+    match goal with
+    | [ |- pimpl _ (crash_xform (exis _)) ] =>
+            rewrite crash_xform_exists_comm;
+            apply pimpl_exists_r; eexists
+    end.
+
+
+Ltac xform_deex_l :=
+    norml; unfold stars; simpl;
+    try rewrite -> crash_xform_exists_comm;
+    try (rewrite sep_star_comm, star_emp_pimpl);
+    try match goal with
+    | [ |- pimpl (exis _) _ ] => apply pimpl_exists_l; intro
+    end.
+
+Ltac xform_dist :=
+  rewrite crash_xform_sep_star_dist ||
+  rewrite crash_xform_or_dist ||
+  rewrite crash_xform_lift_empty ||
+  rewrite crash_invariant_emp ||
+  rewrite <- crash_invariant_emp_r.
+
+Ltac xform_norml :=
+  repeat (xform_deex_l || xform_dist).
+
+Ltac xform_normr :=
+  repeat (xform_deex_r || xform_dist).
+
+Ltac xform_norm :=
+  xform_norml; xform_normr.
+
+Ltac xcrash_rewrite :=
+  match goal with
+  | [ H : forall rc hm, (crash_xform rc =p=> crash_xform ?x) -> _ =p=> ?c hm |- _ =p=> ?c ?hm] =>
+      eapply pimpl_trans; [ | eapply H ]; cancel; subst
+  | [ H : crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => rewrite H
+  end.
+
+Ltac xcrash := subst; repeat xcrash_rewrite;
+               xform_norm; cancel; xform_normr; cancel.
+
+*)

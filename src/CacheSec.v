@@ -1,4 +1,3 @@
-Require Import Cache.
 Require Import List.
 Require Import FMapAVL.
 Require Import FMapFacts.
@@ -15,690 +14,258 @@ Require Import MapUtils.
 Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
-Require Import PermSec PermHoare PermSepAuto.
+Require Import PermCacheLemmas.
 Require Import ADestructPair DestructVarname.
 
 Import AddrMap.
-Import Map.
+Import Map MapFacts.
 Import ListNotations.
 
 Set Implicit Arguments.
 
-
-Import BUFCACHE.
-
-Lemma find_elements_hd:
-  forall T a (v:T) l m,
-    elements m = (a, v)::l ->
-    find a m = Some v.
-Proof.
-  intros.
-  apply find_1.
-  assert (A: InA (fun a b =>  fst a = fst b /\ snd a = snd b)
-                 (a,v) (elements m)).
-  rewrite H; apply InA_cons_hd; auto.
-  apply elements_2 in A; auto.
-Qed.
-
-Lemma remove_add_eq:
-  forall T a (v:T) m,
-    remove a (add a v m) = remove a m.
-Proof. (*Can't prove it*) Admitted.
-
-
-Definition h_cachemap := t (handle * bool).
-
-Record h_cachestate :=
-  mk_cs {
-      HCSMap : h_cachemap;
-      HCSMaxCount : nat;
-      HCSCount : nat;
-      HCSEvict : eviction_state
-    }.
-
-
-
-
- (** rep invariant *)
-
-Definition size_valid cs :=
-  cardinal (HCSMap cs) = HCSCount cs /\
-  cardinal (HCSMap cs) <= HCSMaxCount cs /\
-  HCSMaxCount cs <> 0.
-
-Definition addr_valid (d: tagged_disk) (cm : h_cachemap) :=
-  forall a, In a cm -> d a <> None.
-
-Definition handle_valid (b: block_mem) (cm: h_cachemap) :=
-  forall a cb, find a cm = Some cb -> b (fst cb) <> None.   
-
-Definition addr_clean (cm : h_cachemap) a :=
-    find a cm = None \/ exists v, find a cm = Some (v, false).
-
-Definition addrs_clean cm al :=
-  Forall (addr_clean cm) al.
-
-Definition cachepred (cache : h_cachemap) (bm: block_mem) (a : addr) (tb: tagged_block ): @pred _ addr_eq_dec tagged_block :=
-  (match find a cache with
-   | None => a |-> tb
-   | Some (h, false) => a |-> tb * [[ bm h = Some tb ]]
-   | Some (h, true)  => exists tb0, a |-> tb0 * [[ bm h = Some tb ]]
-   end)%pred.
-
-Definition rep (cs : h_cachestate) (m : tagged_disk) (bm: block_mem): @pred _ addr_eq_dec tagged_block :=
-  ([[ size_valid cs /\
-      addr_valid m (HCSMap cs) /\
-      handle_valid bm (HCSMap cs) ]] *
-   mem_pred (cachepred (HCSMap cs) bm) m)%pred.
-
-Definition handle_writeback a (cs : h_cachestate) :=
-  match find a (HCSMap cs) with
-  | Some (h, true) =>
-      Bind (Write a h)
-           (fun _ => Ret (mk_cs (Map.add a (h, false) (HCSMap cs))
-                             (HCSMaxCount cs) (HCSCount cs)
-                             (HCSEvict cs)))
-  | _ =>
-    Ret cs
-  end.
-
-Definition handle_evict' a cs:=
-  match find a (HCSMap cs) with
-  | Some _ =>
-    Ret (mk_cs (Map.remove a (HCSMap cs))
-               (HCSMaxCount cs) (HCSCount cs - 1) (HCSEvict cs))
-  | None =>
-    Ret (mk_cs (Map.remove a (HCSMap cs))
-               (HCSMaxCount cs) (HCSCount cs) (HCSEvict cs))
-  end.
-
-Definition handle_evict a cs:=
-  Bind (handle_writeback a cs)
-       (fun cs => handle_evict' a cs).
-
-Definition handle_maybe_evict (cs : h_cachestate) : prog h_cachestate :=
-  if (lt_dec (HCSCount cs) (HCSMaxCount cs)) then
-    Ret cs
-  else 
-    let (victim, evictor) := eviction_choose (HCSEvict cs) in
-    match find victim (HCSMap cs) with
-    | Some _ =>
-      handle_evict victim (mk_cs (HCSMap cs)
-          (HCSMaxCount cs) (HCSCount cs) evictor)
-    | None => (* evictor failed, evict first block *)
-      match (Map.elements (HCSMap cs)) with
-      | nil => Ret cs
-      | (a, v) :: tl => handle_evict a cs
-      end
-    end.
-
-
-  Theorem writeback_ok : forall a cs,
-    {< d tb F,
+Theorem h_writeback_ok :
+  forall a cs,
+    {< d bm',
      PERM: None
      PRE:
-        fun bm => rep cs d bm *
-        [[(sep_star (AEQ:= addr_eq_dec) F (a |-> tb))%pred d]]
+       fun bm => rep cs d bm * [[ bm = bm' ]]
      POST:
-        fun bm => RET:cs'
-         rep cs' d bm *
-         [[ addr_clean (HCSMap cs') a /\ 
-      In a (HCSMap cs) -> In a (HCSMap cs')]]
-    >} handle_writeback a cs.
-  Proof.
-    unfold handle_writeback, corr2, rep; intros; cleanup.
-    split.
-    destruct_lift H.
-    destruct (find a (HCSMap cs)).
+       fun bm => RET:cs'
+         rep cs' d bm * [[ bm = bm' ]] *
+          [[ addr_clean (HCSMap cs') a ]] * 
+          [[ In a (HCSMap cs) -> In a (HCSMap cs')]]
+      >} h_writeback a cs.
+Proof.
+  
+  unfold h_writeback, rep, addr_valid; intros; cleanup.
+  destruct (find a (HCSMap cs)) eqn:D.
+  {
     destruct p.
     destruct b.
-    repeat inv_exec_perm.
-    edestruct H3; eauto; simpl in *.
-    pred_apply; cancel.
-
-  Hint Extern 1 ({{_}} Bind (writeback _ _) _) => apply writeback_ok : prog.
-
-
-
-
-
-
-
-
-Theorem handle_writeback_secure_dirty :
-  forall a s cs h t b,
-    find a (HCSMap cs) = Some (h, true) ->
-    blocks s h = Some (t, b) ->
-    permission_secure None s (handle_writeback a cs)
-          (fun s s' r =>
-             s' = disk_upd s a (t, b) /\
-             r = (mk_cs (add a (h, false) (HCSMap cs))
-                        (HCSMaxCount cs) (HCSCount cs)
-                        (HCSEvict cs))).
-Proof.
-  unfold handle_writeback; intros; cleanup.
-  unfold permission_secure; intros; cleanup.
-  repeat inv_exec_perm; simpl; cleanup.
-  simpl; intuition; apply upd_eq; auto.
-Qed.  
-
-Theorem handle_writeback_secure_clean :
-  forall a s h cs,
-    find a (HCSMap cs) = Some (h, false) ->
-    permission_secure None s (handle_writeback a cs)
-                      (fun s s' r => s' = s /\ r = cs).
-Proof.
-  unfold handle_writeback; intros; cleanup.
-  unfold permission_secure; intros; cleanup.
-  repeat inv_exec_perm; simpl; cleanup.
-  simpl; intuition; apply upd_eq; auto.
-Qed.
-
-Theorem handle_writeback_secure_none :
-  forall a s cs,
-    find a (HCSMap cs) = None ->
-    permission_secure None s (handle_writeback a cs)
-                      (fun s s' r => s' = s /\ r = cs).
-Proof.
-  unfold handle_writeback; intros; cleanup.
-  unfold permission_secure; intros; cleanup.
-  repeat inv_exec_perm; simpl; cleanup.
-  simpl; intuition; apply upd_eq; auto.
-Qed.  
-
-Theorem handle_writeback_secure :
-  forall a s cs t b,
-    (forall h, find a (HCSMap cs) = Some (h, true) ->
-          blocks s h = Some (t, b)) ->
-    permission_secure None s (handle_writeback a cs)
-         (fun s s' r =>
-            match find a (HCSMap cs) with
-            |Some (h, true) =>
-             s' = disk_upd s a (t, b) /\
-             r = (mk_cs (add a (h, false) (HCSMap cs))
-                        (HCSMaxCount cs) (HCSCount cs) (HCSEvict cs))
-            | _ =>  s' = s /\ r = cs
-            end).
-Proof.
-  intros.
-  destruct (find a (HCSMap cs)) eqn:D.
-  destruct p.
-  destruct b0.
-  apply handle_writeback_secure_dirty; auto.
-  eapply handle_writeback_secure_clean; eauto.
-  apply handle_writeback_secure_none; auto.
-Qed.  
-
-
-
-
-Theorem handle_evict'_secure_some:
-  forall a s cs cb,
-    find a (HCSMap cs) = Some cb ->
-    permission_secure None s (handle_evict' a cs)
-         (fun s s' r =>
-            s' = s /\
-            r = (mk_cs (remove a (HCSMap cs)) (HCSMaxCount cs)
-                       (HCSCount cs - 1) (HCSEvict cs))).
-Proof.
-  unfold handle_evict'; intros; cleanup.
-  unfold permission_secure; intros; cleanup.
-  repeat inv_exec_perm; simpl; cleanup.
-  simpl; intuition; apply upd_eq; auto.
-Qed.
-
-Theorem handle_evict'_secure_none:
-  forall s a cs,
-    find a (HCSMap cs) = None ->
-    permission_secure None s (handle_evict' a cs)
-         (fun s s' r =>
-            s' = s /\
-            r = (mk_cs (Map.remove a (HCSMap cs)) (HCSMaxCount cs)
-                       (HCSCount cs) (HCSEvict cs))).
-Proof.
-  unfold handle_evict'; intros; cleanup.
-  unfold permission_secure; intros; cleanup.
-  repeat inv_exec_perm; simpl; cleanup.
-  simpl; intuition; apply upd_eq; auto.
-Qed.
-
-Theorem handle_evict'_secure:
-  forall s a cs,
-    permission_secure None s (handle_evict' a cs)
-         (fun s s' r =>
-            s' = s /\
-            match find a (HCSMap cs) with
-            | None =>
-              r = (mk_cs (remove a (HCSMap cs)) (HCSMaxCount cs)
-                         (HCSCount cs) (HCSEvict cs))
-            | Some _ =>
-              r = (mk_cs (remove a (HCSMap cs)) (HCSMaxCount cs)
-                         (HCSCount cs - 1) (HCSEvict cs))
-            end).
-Proof.
-  intros; destruct (find a (HCSMap cs)) eqn:d.
-  eapply handle_evict'_secure_some; eauto.
-  eapply handle_evict'_secure_none; eauto.
-Qed.
-
-
-
-
-Theorem handle_evict_secure_dirty:
-  forall s a cs h t b,
-    find a (HCSMap cs) = Some (h, true) ->
-    blocks s h = Some (t, b) ->
-    permission_secure None s (handle_evict a cs)     
-         (fun s s' r =>
-            s' = disk_upd s a (t, b) /\
-            r = (mk_cs (remove a
-                         (add a (h, false) (HCSMap cs)))
-                       (HCSMaxCount cs) (HCSCount cs - 1)
-                       (HCSEvict cs))).
-Proof.
-  unfold handle_evict; intros; cleanup.
-  eapply bind_secure.
-  apply handle_writeback_secure_dirty; eauto.
-  {
-    simpl; intros; cleanup; intuition.
-    unfold disk_upd; simpl.
-    rewrite upd_repeat; auto.
-  }
-
-  {
-    simpl; intros; cleanup.
-    eapply impl_secure.
-    eapply handle_evict'_secure_some.
-    simpl; apply MapFacts.add_eq_o; auto.
-    simpl; intros; cleanup.
-    unfold disk_upd; simpl.
-    rewrite upd_repeat; eauto.
-  }    
-Qed.
-
-Theorem handle_evict_secure_clean:
-  forall s a cs h,
-    find a (HCSMap cs) = Some (h, false) ->
-    permission_secure None s (handle_evict a cs)
-        (fun s s' r =>
-           s' = s /\
-           r =  (mk_cs (remove a (HCSMap cs)) (HCSMaxCount cs)
-                       (HCSCount cs - 1) (HCSEvict cs))).
-Proof.
-  unfold handle_evict; intros; cleanup.
-  eapply bind_secure.
-  eapply handle_writeback_secure_clean; eauto.
-
-  {
-    simpl; intros; cleanup; intuition.
-  }
-
-  {
-    simpl; intros; cleanup.
-    eapply handle_evict'_secure_some; eauto.
-  }    
-Qed.
-
-Theorem handle_evict_secure_none:
-  forall s a cs,
-    find a (HCSMap cs) = None ->
-    permission_secure None s (handle_evict a cs)
-        (fun s s' r =>
-           s' = s /\
-           r =  (mk_cs (Map.remove a (HCSMap cs)) (HCSMaxCount cs)
-                       (HCSCount cs) (HCSEvict cs))).
-Proof.
-  unfold handle_evict; intros; cleanup.
-  eapply bind_secure.
-  eapply handle_writeback_secure_none; eauto.
-  {
-    simpl; intros; cleanup; intuition.
-  }
-
-  {
-    simpl; intros; cleanup.
-    eapply handle_evict'_secure_none; eauto.
-  }    
-Qed.
-
-Theorem handle_evict_secure:
-  forall s a cs t b,
-    (forall h, find a (HCSMap cs) = Some (h, true) ->
-          blocks s h = Some (t, b)) ->
-    permission_secure None s (handle_evict a cs)
-        (fun s s' r =>
-           match find a (HCSMap cs) with
-           | Some (h, true) =>
-             s' = disk_upd s a (t, b) /\
-             r = (mk_cs (Map.remove a (HCSMap cs))
-                        (HCSMaxCount cs) (HCSCount cs - 1)
-                        (HCSEvict cs))
-           | Some (h, false) =>
-             s' = s /\
-             r = (mk_cs (Map.remove a (HCSMap cs))
-                        (HCSMaxCount cs) (HCSCount cs - 1)
-                        (HCSEvict cs))
-           | None =>
-             s' = s /\
-             r = (mk_cs (Map.remove a (HCSMap cs))
-                        (HCSMaxCount cs) (HCSCount cs)
-                        (HCSEvict cs))
-           end).
-Proof.
-  unfold handle_evict; intros; cleanup.
-  eapply bind_secure.
-  eapply handle_writeback_secure; eauto.
-  {
-    simpl; intros; cleanup; intuition.
-    destruct (find a (HCSMap cs)) eqn:D; cleanup; intuition.
-    destruct p; destruct b0; cleanup; intuition.
-    unfold disk_upd; simpl.
-    rewrite upd_repeat; auto.
-  }
-
-  {
-    simpl; intros; cleanup.
-    eapply impl_secure.
-    eapply handle_evict'_secure; eauto.
-    simpl; intros; cleanup.
-    destruct (find a (HCSMap cs)) eqn:D; cleanup.
-    destruct p; destruct b0; cleanup.
-    simpl in *.
-    rewrite MapFacts.add_eq_o in *; auto.
-    rewrite remove_add_eq in *.
-    intuition.
-    unfold disk_upd; simpl.
-    rewrite upd_repeat; auto.
-    all: intuition.
-  }    
-Qed.
-
-
-
-
-Theorem handle_maybe_evict_secure_lt:
-  forall s cs,
-    (HCSCount cs) < (HCSMaxCount cs) ->
-    permission_secure None s (handle_maybe_evict cs)
-         (fun s s' r => s' = s /\ r = cs).
-Proof.
-  unfold handle_maybe_evict; intros.
-  destruct (lt_dec (HCSCount cs) (HCSMaxCount cs)); try omega.
-  apply ret_secure.
-Qed.
-
-Theorem handle_maybe_evict_secure_ge_victim:
-  forall s cs h bl t b,
-    let victim := fst(eviction_choose (HCSEvict cs)) in
-    let evictor := snd(eviction_choose (HCSEvict cs)) in
-    ~(HCSCount cs < HCSMaxCount cs) ->
-    find victim (HCSMap cs) = Some (h, bl) ->
-    blocks s h = Some (t, b) ->
-    permission_secure None s (handle_maybe_evict cs)
-        (fun s s' r =>
-           match bl with
-           | true => s' = disk_upd s victim (t, b)
-           | false =>  s' = s
-           end /\
-           r = (mk_cs (Map.remove victim (HCSMap cs))
-                      (HCSMaxCount cs) (HCSCount cs - 1)
-                      evictor)).
-Proof.
-  unfold handle_maybe_evict; intros.
-  destruct (lt_dec (HCSCount cs) (HCSMaxCount cs)); try omega.
-  destruct (eviction_choose (HCSEvict cs)); simpl in *; cleanup.
-  eapply impl_secure.
-  eapply handle_evict_secure.
-  simpl; intros; cleanup; eauto.
-  simpl; intros; cleanup; eauto.
-  destruct bl; cleanup; intuition.
-Qed.
-
-
-
-Theorem handle_maybe_evict_secure_ge_empty:
-  forall s cs,
-    let victim := fst(eviction_choose (HCSEvict cs)) in
-    let evictor := snd(eviction_choose (HCSEvict cs)) in
-    (HCSCount cs) >= (HCSMaxCount cs) ->
-    find victim (HCSMap cs) = None ->
-    elements (HCSMap cs) = nil -> 
-    permission_secure None s (handle_maybe_evict cs)
-                      (fun s s' r => s' = s /\ r = cs).
-Proof.
-  unfold handle_maybe_evict; intros.
-  destruct (lt_dec (HCSCount cs) (HCSMaxCount cs)); try omega.
-  destruct (eviction_choose (HCSEvict cs)); simpl in *; cleanup.
-  apply ret_secure.
-Qed.
-
-Theorem handle_maybe_evict_secure_ge_nonempty:
-  forall s cs h a l t b bl,
-    let victim := fst(eviction_choose (HCSEvict cs)) in
-    let evictor := snd(eviction_choose (HCSEvict cs)) in
-    (HCSCount cs) >= (HCSMaxCount cs) ->
-    find victim (HCSMap cs) = None ->
-    elements (HCSMap cs) = (a, (h, bl))::l ->
-    blocks s h = Some (t, b) ->
-    permission_secure None s (handle_maybe_evict cs)
-       (fun s s' r =>
-          match bl with
-          | true => s' = disk_upd s a (t, b)
-          | false => s' = s
-          end /\
-          r = (mk_cs (Map.remove a (HCSMap cs))
-                     (HCSMaxCount cs) (HCSCount cs - 1)
-                     (HCSEvict cs))).
-Proof.
-  unfold handle_maybe_evict; intros.
-  destruct (lt_dec (HCSCount cs) (HCSMaxCount cs)); try omega.
-  destruct (eviction_choose (HCSEvict cs)); simpl in *; cleanup.
-  eapply impl_secure.
-  apply handle_evict_secure.
-  {
-    simpl; intros.
-    apply find_elements_hd in H1; cleanup.
-    eauto.
-  }
-  {
-    simpl; intros.
-    apply find_elements_hd in H1; cleanup; auto.
-    destruct bl; cleanup; auto.
-  }
-Qed.
-
-Theorem handle_maybe_evict_secure:
-  forall s t b t' b' cs,
-    let victim := fst(eviction_choose (HCSEvict cs)) in
-    let evictor := snd(eviction_choose (HCSEvict cs)) in
-    ((HCSCount cs) >= (HCSMaxCount cs) ->
-     (forall h bl, find victim (HCSMap cs) = Some (h, bl) -> blocks s h = Some (t, b)) /\
-     (forall a h bl l, elements (HCSMap cs) = (a, (h, bl))::l -> blocks s h = Some (t', b'))) ->
-    permission_secure None s (handle_maybe_evict cs)
-      (fun s s' r =>
-         if (lt_dec (HCSCount cs) (HCSMaxCount cs)) then
-           s' = s /\ r = cs
-         else 
-           match (find victim (HCSMap cs)) with
-           | Some (h, bl)=>
-               match bl with
-               | true => s' = disk_upd s victim (t, b)
-               | false =>  s' = s
-               end /\
-               r = (mk_cs (Map.remove victim (HCSMap cs))
-                          (HCSMaxCount cs) (HCSCount cs - 1)
-                          evictor)
-           | None =>
-             match (Map.elements (HCSMap cs)) with
-             | nil => s' = s /\ r = cs
-             | (a, (h, bl)) :: tl =>
-               match bl with
-               | true =>
-                 s' = disk_upd s a (t', b')
-               | false =>
-                 s' = s
-               end /\
-               r = (mk_cs (Map.remove a (HCSMap cs))
-                          (HCSMaxCount cs) (HCSCount cs - 1)
-                          (HCSEvict cs))
-             end
-           end).
-Proof.
-  unfold cache_ok; intros.
-  destruct (lt_dec (HCSCount cs) (HCSMaxCount cs)).
-  apply handle_maybe_evict_secure_lt; auto.
-  destruct (find (fst (eviction_choose (HCSEvict cs))) (HCSMap cs)) eqn:D.
-  destruct p.
-  eapply impl_secure.
-  eapply handle_maybe_evict_secure_ge_victim; eauto; try omega.
-  edestruct H; try omega.
-  eapply H0; eauto; try omega.
-  simpl; intros; cleanup; intuition.
-  destruct (elements (HCSMap cs)) eqn:D0.
-  apply handle_maybe_evict_secure_ge_empty; eauto; try omega.
-  destruct p. destruct p.
-  eapply handle_maybe_evict_secure_ge_nonempty; eauto; try omega.
-  edestruct H; eauto; try omega.
-Qed.
-
-
-
-
-
-
-Definition handle_read a (cs : handle_cachestate) :=
-  Bind (handle_maybe_evict cs)
-       (fun cs =>
-          match Map.find a (HCSMap cs) with
-          | Some (v, _) => Ret (cs, v)
-          | None =>
-            Bind (Read a)
-                 (fun v => Ret (mk_cs (Map.add a (v, false) (HCSMap cs))
-                                    (HCSMaxCount cs) (HCSCount cs + 1)
-                                    (eviction_update (HCSEvict cs) a), v))
-          end).
-
-Theorem handle_read_secure:
-  forall s a cs t b t' b' t'' b'',
-    let victim := fst(eviction_choose (HCSEvict cs)) in
-    let evictor := snd(eviction_choose (HCSEvict cs)) in
-    ((HCSCount cs) >= (HCSMaxCount cs) ->
-     (forall h bl, find victim (HCSMap cs) = Some (h, bl) -> blocks s h = Some (t, b)) /\
-     (forall a h bl l, elements (HCSMap cs) = (a, (h, bl))::l -> blocks s h = Some (t', b'))) ->
-    disk s a = Some (t'', b'') ->
-    permission_secure None s (handle_read a cs) (fun s s' r => True).
-Proof. Admitted.
-(*
-  unfold handle_read; intros; cleanup.
-  eapply bind_secure.
-  apply handle_maybe_evict_secure; eauto.
-  eauto.
-  
-  simpl; intros.
-  destruct (lt_dec (HCSCount cs) (HCSMaxCount cs)); cleanup.
-  {
-    destruct (find a (HCSMap cs)) eqn:D.
-    destruct p.
-    eapply impl_secure.
-    apply ret_secure.
-    simpl; eauto.
-
-    eapply bind_secure.
-    apply read_secure; eauto.
-    simpl; intros; cleanup; eauto.
-    simpl; intros; cleanup.
-    eapply impl_secure.
-    eapply ret_secure.
-    simpl; eauto.
-  }
-
-  {
-    destruct (find 0 (HCSMap cs)) eqn: D0.
     {
-      destruct (Nat.eq_dec 0 a); subst.
-      {
-        destruct p, b0; cleanup; simpl in *;
-        rewrite MapFacts.remove_eq_o; auto.
-        {
-          eapply bind_secure.
-          apply read_secure; eauto.
-          simpl; intros; cleanup; eauto.    
-          apply upd_eq; auto.
-          simpl; intros; cleanup; auto.
-          simpl; intros; cleanup; auto.
-          eapply impl_secure.
-          eapply ret_secure.
-          simpl; intros; cleanup; auto.
-        }
-        {
-          eapply bind_secure.
-          apply read_secure; eauto.
-          simpl; intros; cleanup; eauto.    
-          simpl; intros; cleanup; auto.
-          eapply impl_secure.
-          eapply ret_secure.
-          simpl; intros; cleanup; auto.
-        }
-        
+      prestep. (* step not smart enough *)
+      unfold pimpl; intros m Hp; destruct_lift Hp.
+      assert (A: In a (HCSMap cs)). {        
+        apply MapFacts.in_find_iff.
+        intuition; congruence.
       }
+      specialize (H6 _ A) as Hx.
+      destruct (dummy a) eqn: D0; try congruence; clear Hx.
+      rewrite mem_pred_extract' in H; eauto.
+      unfold mem_pred_one, cachepred in H; simpl in H.
+      rewrite D in H.
+      destruct_lift H.
+
       
+      pred_apply; norm.
+      unfold stars; simpl; cancel.
+      Existential 6 := dummy1.
+      cancel.
+      intuition; eauto.
 
-      {
-        destruct p, b0; cleanup; simpl in *;
-        rewrite MapFacts.remove_neq_o; auto;
-        destruct (find a (HCSMap cs)).
-        {
-          destruct p.
-          eapply impl_secure.
-          eapply ret_secure.
-          simpl; intros; cleanup; auto.
-        }
-        {          
-          eapply bind_secure.
-          apply read_secure; eauto.
-          simpl; intros; cleanup; eauto.    
-          rewrite upd_ne; eauto.
-          simpl; intros; cleanup; auto.
-          simpl; intros; cleanup; auto.
-          eapply impl_secure.
-          eapply ret_secure.
-          simpl; intros; cleanup; auto.
-        }
-         {
-          destruct p.
-          eapply impl_secure.
-          eapply ret_secure.
-          simpl; intros; cleanup; auto.
-        }
-        {          
-          eapply bind_secure.
-          apply read_secure; eauto.
-          simpl; intros; cleanup; eauto.    
-          simpl; intros; cleanup; auto.
-          eapply impl_secure.
-          eapply ret_secure.
-          simpl; intros; cleanup; auto.
-        }
-      }
+      step.
+      step.
+      erewrite <- mem_pred_absorb_nop with (hm:= dummy)(a:= a).
+      unfold cachepred; simpl; eauto.
+      rewrite MapFacts.add_eq_o; eauto; simpl.
+      cancel; eauto.
+      unfold pimpl; intros; eauto.
+      admit. (* Cumbersome *)
+
+      auto.
+      unfold size_valid in *; simpl; auto.
+      repeat rewrite map_add_dup_cardinal; auto.      
+      destruct (Nat.eq_dec a a0); subst; try congruence.
+      apply add_neq_in_iff in H0; auto.
+      eauto.
+      unfold addr_clean.
+      right; eexists; apply add_eq_o; eauto.
+      apply add_in_iff; intuition.
     }
+    hoare.
+    unfold addr_clean; right; eexists; eauto.
+  }
+  hoare.
+  unfold addr_clean; left; auto.
 Admitted.
-*)
 
-Definition handle_write a i (cs : handle_cachestate) :=
-  Bind (handle_maybe_evict cs)
-       (fun cs =>
-          match Map.find a (HCSMap cs) with
-          | Some _ =>
-            Ret (mk_cs (Map.add a (i, true) (HCSMap cs))
-                       (HCSMaxCount cs) (HCSCount cs) (eviction_update (HCSEvict cs) a))
-          | None =>
-            Ret (mk_cs (Map.add a (i, true) (HCSMap cs))
-                       (HCSMaxCount cs) (HCSCount cs + 1) (eviction_update (HCSEvict cs) a))
-          end).
 
-  
-  Theorem handle_write_secure:
-    forall a s i cs,
-      permission_secure None s (handle_write a i cs) (fun _ _ _ => True).
-  Proof. Admitted.
+Hint Extern 1 (corr2 _ _ (Bind (h_writeback _ _) _)) => apply h_writeback_ok : prog.
 
+
+Theorem h_evict'_ok :
+  forall a cs,
+    {< d bm',
+     PERM: None
+     PRE:
+      fun bm => rep cs d bm * [[ bm = bm' ]] *
+          [[ addr_clean (HCSMap cs) a]]
+    POST:
+      fun bm => RET:cs'
+      rep cs' d bm * [[ bm = bm' ]] *
+      [[ ~ In a (HCSMap cs') ]] *
+      [[ In a (HCSMap cs) -> cardinal (HCSMap cs') < HCSMaxCount cs' ]]
+    >} h_evict' a cs.
+Proof.
+  unfold h_evict', rep; intros; cleanup.
+  destruct (find a (HCSMap cs)) eqn:D.
+  {
+    hoare.
+    eapply addr_valid_ptsto_exists in H6 as Hx;
+    eauto; cleanup.
+    eapply addr_clean_cachepred_remove; eauto.
+
+    apply size_valid_remove; auto.
+    eapply in_find_iff; intuition; congruence.
+    apply addr_valid_remove; auto.
+    eapply remove_1; eauto.
+    eapply size_valid_remove_cardinal_ok; eauto.
+  }
+
+  {
+    hoare.
+    
+    eapply addr_clean_cachepred_remove_none; eauto.
+    apply size_valid_remove_notin; auto.
+    unfold not; intros.
+    eapply in_find_iff in H; congruence.
+    apply addr_valid_remove; auto.
+    eapply remove_1; eauto.
+    eapply size_valid_remove_cardinal_ok; eauto.
+  }
+Qed.
+
+Hint Extern 1 (corr2 _ _ (Bind (h_evict' _ _) _)) => apply h_evict'_ok : prog.
+
+
+Theorem h_evict_ok :
+  forall a cs,
+    {< d bm',
+     PERM: None
+     PRE:
+      fun bm => rep cs d bm' * [[ bm = bm' ]]
+    POST:
+      fun bm => RET:cs'
+      rep cs' d bm * [[ bm = bm' ]] *
+      [[ ~ In a (HCSMap cs') ]] *
+      [[ In a (HCSMap cs) -> cardinal (HCSMap cs') < HCSMaxCount cs' ]]
+    >} h_evict a cs.
+  Proof.
+    unfold h_evict; intros; hoare.
+  Qed.
+
+  Hint Extern 1 (corr2 _ _ (Bind (h_evict _ _) _)) => apply h_evict_ok : prog.
+
+
+
+  Theorem h_maybe_evict_ok :
+    forall cs,
+  {< d bm',
+    PERM: None                          
+    PRE: 
+      fun bm => rep cs d bm * [[ bm = bm' ]]
+    POST: fun bm =>
+      RET:cs'
+          rep cs' d bm * [[ bm = bm' ]] *
+          [[ cardinal (HCSMap cs') < HCSMaxCount cs' ]]
+    >} h_maybe_evict cs.
+  Proof.
+    unfold h_maybe_evict; intros.
+    step.
+    unfold rep, size_valid in *; step.
+    step.
+    apply H4; apply in_find_iff; intuition; congruence.
+    unfold rep, size_valid in *; step.
+    rewrite Map.cardinal_1, Heql; simpl; omega.
+
+    step.
+    apply find_elements_hd in Heql.
+    apply H4; apply in_find_iff; intuition; congruence.
+  Qed.
+
+  Hint Extern 1 (corr2 _ _ (Bind (h_maybe_evict _) _)) => apply h_maybe_evict_ok : prog.
+
+
+Theorem h_read_ok :
+  forall cs a,
+  {< d F tb bm',
+    PERM: None                 
+    PRE: fun bm =>
+      rep cs d bm * [[ bm = bm' ]] *
+      [[ (sep_star (AEQ:= addr_eq_dec) F (a |-> tb))%pred d ]]
+    POST: fun bm =>
+      RET:csr
+      let cs' := fst csr in
+      let r := snd csr in
+      rep cs' d bm * [[ bm = upd bm' r tb ]]
+    >} h_read a cs.
+Proof.
+  unfold h_read, rep; intros.
+  safestep; eauto.
+  unfold rep; cancel.
+  Existential 1:= d.
+  cancel; auto.
+  apply H6.
+  apply ptsto_valid' in H0.
+
+  prestep; unfold rep; norml; unfold stars; simpl;
+  eauto; intuition simpl in *;
+  erewrite mem_pred_extract with (a := a) at 1 by eauto;  
+  unfold cachepred at 2; rewrite Heqo; eauto.
+
+    (* found in cache *)
+  - destruct b; simpl; cancel;
+    (step; [ | cleanup; symmetry; eapply upd_nop; eauto]);
+    rewrite sep_star_comm;
+    (eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto]);
+    unfold cachepred at 3; rewrite Heqo;
+    cancel; eauto.
+    
+    (* not found *)
+  - cancel.
+    Existential 1 := F_.
+    cancel.
+    hoare.
+    rewrite sep_star_comm;
+    eapply mem_pred_cachepred_add_absorb_clean; eauto.
+    apply size_valid_add; auto.
+    eapply addr_valid_add; eauto.
+  Qed.
+
+
+
+Theorem h_write_ok:
+  forall cs a h,
+    {< d F bm' tb0 tb,
+     PERM: None
+     PRE: fun bm =>
+            rep cs d bm * [[ bm = bm' ]] *
+            [[ bm h = Some tb ]] *
+            [[ (F * a |-> tb0)%pred d ]]
+    POST: fun bm => RET:cs'
+      exists d',
+        rep cs' d' bm * [[ bm = bm' ]] *
+        [[ (sep_star (AEQ:= addr_eq_dec) F  (a |-> tb))%pred d' ]]
+    >} h_write a h cs.
+  Proof.
+    unfold h_write, rep; intros.
+    safestep; eauto.
+    unfold rep; cancel.
+    Existential 1:= d.
+    cancel; auto.
+    apply H7.
+    apply ptsto_valid' in H2 as Hx.
+
+    step;
+    (step; [ | admit | admit | eapply ptsto_upd'; eauto]);
+    unfold rep;
+    erewrite mem_pred_extract with (a := a) at 1 by eauto;
+    unfold cachepred at 2; rewrite Heqo; eauto; cancel;
+    [ destruct p_2 | ];
+    (rewrite mem_pred_pimpl_except;
+    [ | intros; apply cachepred_add_invariant; eassumption]);
+    rewrite <- mem_pred_absorb with (hm := d) (a := a);
+    unfold cachepred at 3;
+    rewrite MapFacts.add_eq_o by reflexivity; safecancel;
+    eauto.
+Admitted.    
