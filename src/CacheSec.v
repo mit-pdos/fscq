@@ -14,8 +14,9 @@ Require Import MapUtils.
 Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
-Require Import PermCacheLemmas.
 Require Import ADestructPair DestructVarname.
+Require Export PermCacheLemmas.
+
 
 Import AddrMap.
 Import Map MapFacts.
@@ -232,7 +233,7 @@ Proof.
     eapply addr_valid_add; eauto.
   Qed.
 
-
+Hint Extern 1 (corr2 _ _ (Bind (h_read _ _) _)) => apply h_read_ok : prog.
 
 Theorem h_write_ok:
   forall cs a h,
@@ -269,3 +270,5 @@ Theorem h_write_ok:
     rewrite MapFacts.add_eq_o by reflexivity; safecancel;
     eauto.
 Admitted.    
+
+Hint Extern 1 (corr2 _ _ (Bind (h_write _ _ _) _)) => apply h_write_ok : prog.

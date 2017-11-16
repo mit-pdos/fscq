@@ -251,3 +251,18 @@ Lemma addr_clean_cachepred_remove :
     rewrite upd_ne; auto.
     apply upd_eq; auto.
   Qed.
+
+
+Lemma rep_none_upd_pimpl:
+  forall cs d bm h tb,
+    bm h  = None ->
+    rep cs d bm =p=> rep cs d (upd bm h tb).
+Proof.
+  unfold rep, cachepred; intros; cancel.
+  eapply mem_pred_pimpl; intros.
+  destruct (find a (HCSMap cs)); [| cancel];
+  destruct p; destruct b;
+  cancel;
+  destruct (Nat.eq_dec h0 h); subst;
+  try congruence; rewrite upd_ne; auto.
+Qed.
