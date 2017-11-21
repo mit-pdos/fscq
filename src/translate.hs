@@ -1,5 +1,6 @@
 module Main where
 
+import qualified Interpreter as SeqI
 import qualified ConcurInterp as I
 import TranslateTest
 import ConcurCompile
@@ -21,13 +22,17 @@ iterations = 10000000
 timePerIter :: Int -> Float
 timePerIter n = (fromIntegral n) / (fromIntegral iterations)
 
+measureAction :: String -> IO a -> IO ()
+measureAction label act = do
+  t <- timeAction $ replicateM_ iterations $ act
+  putStrLn $ label ++ show (timePerIter t) ++ " cycles/op"
+  return ()
+
 main :: IO ()
 main = do
   ds <- init_disk "/dev/null"
   cs <- I.newState ds
-  t1 <- timeAction $ replicateM_ iterations  $ I.run cs (add_tuple_concur ((5,6),7) True)
-  t2 <- timeAction $ replicateM_ iterations $ I.run cs (compiled_add_tuple ((5,6),7) True)
-  t3 <- timeAction $ replicateM_ iterations  $ I.run cs (add_tuple_concur_raw ((5,6),7) True)
-  putStrLn $ "translate " ++ show (timePerIter t1) ++ " cycles/op"
-  putStrLn $ "compiled  " ++ show (timePerIter t2) ++ " cycles/op"
-  putStrLn $ "raw       " ++ show (timePerIter t3) ++ " cycles/op"
+  measureAction "fscq prog " (SeqI.run ds $ add_tuple ((5,6),7) True)
+  measureAction "translate " (I.run cs $ add_tuple_concur ((5,6),7) True)
+  measureAction "compiled  " (I.run cs $ compiled_add_tuple ((5,6),7) True)
+  measureAction "raw       " (I.run cs $ add_tuple_concur_raw ((5,6),7) True)
