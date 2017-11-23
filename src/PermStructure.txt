@@ -1,30 +1,29 @@
 Ver 1.2
 
-
-PermAsyncDisk (Done)
-   |                 
-   V                
-PermProg (Done)
-   |
+PermAsyncDisk (Done) --------------
+   |                              |
+   V                              |
+PermProg (Done)                   |
+   |                              |
+   V                              |
+PermProgAuto (Done)               |
+   |                              |
+   V                              |
+PermSec (Done)                    |
+   |                              |
+   V                              V
+PermProgMonad (Done)        PermPredCrash (Done)
+   |                              |
+   |-------------------------------
    V
-PermProgAuto (Done)
-   |
-   V
-PermSec (Done)
-   |
-   V
-PermProgMonad (Done)
-   |
-   V
-PermHoare 
+PermHoare (Done?)
    |                
    V                
-PermSepAuto    PermAsyncDisk
-   |                 |
-   V                 V
-PermInstr      PermPredCrash
-   |                |
-   |-----------------
+PermSepAuto (Done)
+   |                
+   V              
+PermInstr     
+   |
    V
 PermCacheDef
    |

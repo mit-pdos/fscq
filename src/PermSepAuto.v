@@ -3,7 +3,6 @@ Require Import Omega.
 Require Import List.
 Require Import Pred.
 Require Import Word.
-Require Import AsyncDisk.
 Require Import Errno.
 Require Import ADestructPair DestructVarname.
 Require Export PermHoare.
@@ -808,15 +807,13 @@ Ltac cancel_by H :=
   eapply pimpl_ext; [ eapply H | cancel | cancel ].
 
 
-(*
+
 Theorem nop_ok :
-  forall T A v (rx : A -> prog T),
-  {{ fun vm hm done_ crash_ => exists F, F * [[ forall r_,
-    {{ fun vm' hm' done' crash' => (fun r => F * [[ r = v ]]) r_ *
-                           [[ hm = hm' ]] *
-                           [[ vm = vm' ]] *
-                           [[ done' = done_ ]] * [[ crash' = crash_ ]]}}
-     rx r_ ]] * [[ F =p=> crash_ hm]] }} rx v.
+  forall T A pr v (rx : A -> prog T),
+  corr2 pr (fun done_ crash_ bm' => exists F, F * [[ forall r_,
+    corr2 pr (fun done' crash' bm' => (fun r => F * [[ r = v ]]) r_ *
+                           [[ done' = done_ ]] * [[ crash' = crash_ ]])
+     (rx r_) ]] * [[ F =p=> crash_ ]])%pred (rx v).
 Proof.
   unfold corr2, pimpl.
   intros.
@@ -826,7 +823,6 @@ Proof.
   pred_apply.
   cancel.
 Qed.
-*)
 
 Ltac autorewrite_fast_goal :=
   set_evars; (rewrite_strat (topdown (hints core))); subst_evars;
@@ -860,7 +856,7 @@ Ltac prestep :=
    || (eapply pimpl_ok2; [
         match goal with
         | [ |- corr2 _ _ (?rx _) ] => is_var rx
-        end | ]));
+        end; solve [ eapply nop_ok ] | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try autounfold with hoare_unfold in *; eauto.
@@ -931,8 +927,6 @@ Tactic Notation "hoare" "using" tactic(t) :=
 Ltac hoare := hoare using eauto.
 
 
-
-(*
 Ltac xform_deex_r :=
     match goal with
     | [ |- pimpl _ (crash_xform (exis _)) ] =>
@@ -975,4 +969,3 @@ Ltac xcrash_rewrite :=
 Ltac xcrash := subst; repeat xcrash_rewrite;
                xform_norm; cancel; xform_normr; cancel.
 
-*)

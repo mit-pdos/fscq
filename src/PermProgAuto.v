@@ -48,15 +48,15 @@ Lemma bind_sep:
   forall T T' pr (p1: prog T) (p2: T -> prog T') d bm ret tr tr',
     exec pr tr d bm (Bind p1 p2) ret tr' ->
     match ret with
-    | Finished d' bm' r =>
+    | Finished _ _ _ =>
     (exists tr1 r1 d1 bm1,
        exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
-       exec pr tr1 d1 bm1 (p2 r1) (Finished d' bm' r) tr')
-  | Crashed d' =>
-    (exec pr tr d bm p1 (Crashed d') tr' \/
+       exec pr tr1 d1 bm1 (p2 r1) ret tr')
+  | Crashed _ =>
+    (exec pr tr d bm p1 ret tr' \/
      (exists tr1 r1 d1 bm1,
         exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
-        exec pr tr1 d1 bm1 (p2 r1) (Crashed d') tr'))
+        exec pr tr1 d1 bm1 (p2 r1) ret tr'))
     end.
 Proof.
   intros.
