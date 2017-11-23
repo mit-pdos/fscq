@@ -1,13 +1,12 @@
 Require Import Arith.
 Require Import Omega.
 Require Import List.
-Require Import PermProg PermProgAuto.
 Require Import Pred.
-Require Import PermProgMonad PermHoare.
 Require Import Word.
 Require Import AsyncDisk.
 Require Import Errno.
 Require Import ADestructPair DestructVarname.
+Require Export PermHoare.
 
 Set Implicit Arguments.
 

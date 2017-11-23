@@ -1,4 +1,4 @@
-Require Import PermProg.
+Require Export PermProg.
 Require Import Mem.
 Require Import List.
 
@@ -42,27 +42,28 @@ Ltac inv_exec' :=
     inv_exec'' H
   | [ H: exec _ _ _ _ (Unseal _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Run _ _) _ _ |- _ ] =>
-    inv_exec'' H
-(*
-  | [ H: exec _ _ _ (GetTag _) _ _ _ |- _ ] =>
-    inv_exec'' H
-  | [ H: exec _ _ _ (Clear _) _ _ _ |- _ ] =>
-    inv_exec'' H
-  | [ H: exec _ _ _ (Purge _ ) _ _ _ |- _ ] =>
-    inv_exec'' H
-*)
   end.
 
-Lemma exec_bind_sep:
-  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm r tr tr',
-    exec pr tr d bm (Bind p1 p2) r tr' ->
-    exists tr1 r1 d1 bm1, exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
-                 exec pr tr1 d1 bm1 (p2 r1) r tr'.
+Lemma bind_sep:
+  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm ret tr tr',
+    exec pr tr d bm (Bind p1 p2) ret tr' ->
+    match ret with
+    | Finished d' bm' r =>
+    (exists tr1 r1 d1 bm1,
+       exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
+       exec pr tr1 d1 bm1 (p2 r1) (Finished d' bm' r) tr')
+  | Crashed d' =>
+    (exec pr tr d bm p1 (Crashed d') tr' \/
+     (exists tr1 r1 d1 bm1,
+        exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
+        exec pr tr1 d1 bm1 (p2 r1) (Crashed d') tr'))
+    end.
 Proof.
   intros.
-  inv_exec'' H.
+  inv_exec'' H; eauto.
+  destruct ret.
   do 4 eexists; eauto.
+  right; do 4 eexists; eauto.
 Qed.
 
 Ltac logic_clean:=
@@ -70,7 +71,6 @@ Ltac logic_clean:=
   | [H: exists _, _ |- _] => destruct H; repeat logic_clean
   | [H: _ /\ _ |- _] => destruct H; repeat logic_clean
   end.
-
 
 Ltac some_subst :=
   match goal with
@@ -123,6 +123,6 @@ Ltac split_ors:=
 
 Ltac inv_exec_perm :=
   match goal with
-  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => apply exec_bind_sep in H; cleanup
+  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; cleanup
   |[H : exec _ _ _ _ _ _ _ |- _ ] => inv_exec'
   end.

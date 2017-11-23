@@ -1,4 +1,4 @@
-Require Export PermProg PermProgAuto.
+Require Export PermProgAuto.
 Require Export List.
 Require Export Mem Pred.
 Require Import Omega.
@@ -34,29 +34,11 @@ Definition can_access (pr: perm) t :=
     end
   end.
 
-(*
-Definition compatible t t' :=
-  match t with
-  | Nothing => t' = Nothing
-  | Public =>
-    match t' with
-    | Private _ => False
-    | _ => True
-    end
-  | Private o =>
-    match t' with
-    | Private o' => o = o'
-    | _ => True
-    end
-  end.
- *)
 
 Definition op_secure pr o :=
   match o with
   | Sea t' =>  can_access pr t'
   | Uns t' => can_access pr t'
-(*  | Wrt t' t'' => compatible t' t'' *)
-  | Rn pr' pr'' => permitted pr' pr''
   end.
 
 Fixpoint trace_secure pr tr :=
@@ -108,14 +90,10 @@ Lemma trace_app:
     exec pr tr d bm p r tr' ->
     exists tr'', tr' = tr''++tr.
 Proof.
-  induction p; intuition; repeat inv_exec_perm; try solve [exists nil; eauto].
+  induction 1; intuition; repeat inv_exec_perm; try solve [exists nil; eauto].
   exists (Sea t::nil); eauto.
   exists (Uns (fst tb)::nil); eauto.
-  specialize (IHp _ _ _ _ _ _ H9); cleanup.
-  exists (Rn pr p :: x); eauto.
-  specialize (IHp _ _ _ _ _ _ H0).
-  specialize (H _ _ _ _ _ _ _ H1); cleanup.
-  exists (x4 ++ x3); rewrite app_assoc; eauto.
+  cleanup; eexists; rewrite <- app_assoc; eauto.
 Qed.
 
 Lemma trace_secure_app:
@@ -137,17 +115,16 @@ Proof.
   eapply op_secure_not_escalating; eauto.
 Qed.
 
-Fixpoint trace_match pr1 pr2 tr1 tr2:=
+Fixpoint trace_match (tr1 tr2: trace):=
   match tr1, tr2 with
     | nil, nil => True
-    | h1::t1, h2::t2 => (h1 = h2 \/ exists pr, h1 = Rn pr1 pr /\ h2 = Rn pr2 pr) /\
-                       trace_match pr1 pr2 t1 t2
+    | h1::t1, h2::t2 => h1 = h2 /\ trace_match t1 t2
     | _, _ => False
   end.
 
 
 Lemma trace_match_refl:
-  forall pr pr' tr, trace_match pr pr' tr tr.
+  forall tr, trace_match tr tr.
 Proof.
   induction tr; intuition; simpl; auto.
 Qed.
@@ -165,13 +142,10 @@ Qed.
 Lemma trace_secure_match:
   forall (pr1 pr2 : perm) (x : list op),
     permitted pr2 pr1 ->
-    forall tr' : list op, trace_match pr1 pr2 x tr' -> trace_secure pr1 x -> trace_secure pr2 tr'.
+    forall tr' : list op, trace_match x tr' -> trace_secure pr1 x -> trace_secure pr2 tr'.
 Proof.
   induction x; intuition; simpl in *;
   destruct tr'; intuition.
   subst; simpl; intuition.
   eapply op_secure_not_escalating; eauto.
-  deex; subst; simpl; intuition.
-  simpl in H1.
-  eapply permitted_trans; eauto.
 Qed.

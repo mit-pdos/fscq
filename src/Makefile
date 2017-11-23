@@ -4,9 +4,9 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 	      -I codegen -I mllib -X ocamlfuse \
 	      -package extunix -package zarith -package ocamlfuse
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
-				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
-				OperationalSemantics \
-				Hashmap HashmapProg \
+	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
+	      OperationalSemantics \
+	      Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      MemPred Cache \
@@ -23,10 +23,11 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ADestructPair DestructVarname\
 	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs \
+	      PermAsyncDisk PermPredCrash\
 	      PermProg PermProgAuto PermSec \
-	      PermHoare PermProgMonad PermSepAuto \
-	      PermSecInstr PermCacheDef PermCacheLemmas \
-	      CacheSec
+	      PermProgMonad PermHoare PermSepAuto \
+	      PermInstr PermCacheDef PermCacheLemmas \
+	      PermCacheSec
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
