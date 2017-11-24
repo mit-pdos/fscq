@@ -1,4 +1,4 @@
-Ver 1.2
+Ver 1.2 - Crash Conditions
 
 PermAsyncDisk (Done) --------------
    |                              |
@@ -16,13 +16,13 @@ PermProgMonad (Done)        PermPredCrash (Done)
    |                              |
    |-------------------------------
    V
-PermHoare (Done?)
+PermHoare (Done)
    |                
    V                
 PermSepAuto (Done)
    |                
    V              
-PermInstr     
+PermInstr (Done)    
    |
    V
 PermCacheDef
