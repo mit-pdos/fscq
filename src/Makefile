@@ -52,7 +52,7 @@ GHCARGS    := -j$(J) -O2 -threaded -rtsopts
 		# -eventlog
 HSLIB_FUSE := hscgen/Fuse.hs hslib/libopfuse.a
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
-HSLIB_POST := hslib/ShowErrno.hs hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
+HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
 		   ocamlfuse/Unix_util.ml \

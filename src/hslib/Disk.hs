@@ -5,7 +5,7 @@ module Disk where
 import System.IO
 import System.Posix.Types
 import System.Posix.IO
-import System.Posix.IO.Extra
+import UnixIO
 import System.Posix.Unistd
 import System.Posix.Files
 import Word
