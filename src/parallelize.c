@@ -25,9 +25,11 @@ void parallel(int par, int iters, action act) {
 
   for (int i = 0; i < par; i++) {
     pthread_create(&threads[i], NULL, do_operation, (void*) &op);
+#ifdef __linux__
     char name[20];
     snprintf(name, sizeof(name), "parallel() %d", i);
     pthread_setname_np(threads[i], name);
+#endif
   }
 
   for (int i = 0; i < par; i++) {
