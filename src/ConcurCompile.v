@@ -439,6 +439,14 @@ Section ConcurCompile.
   Ltac compile :=
     match goal with
 
+    (* simplifications *)
+    | _ => progress (autounfold with compile)
+    | _ => progress
+            (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache
+                           MemLog.MLog.MSCache
+                           CSMap CSMaxCount CSCount CSEvict
+                           modified_or])
+
     (* monad laws *)
     | [ |- Compiled (Bind (Ret _) _) ] =>
       eapply compile_equiv; [ solve [ apply monad_left_id ] | ]
@@ -491,15 +499,9 @@ Section ConcurCompile.
     | [ |- Compiled (let _ := (_, _) in _) ] =>
       apply compile_destruct_prod; intros
 
-    (* simplifications *)
-    | _ => progress (autounfold with compile)
+    (* expensive simplifications *)
     (* autorewrite has been slow in the past, keep an eye on it *)
     | _ => progress (autorewrite with compile)
-    | _ => progress
-            (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache
-                           MemLog.MLog.MSCache
-                           CSMap CSMaxCount CSCount CSEvict
-                           modified_or])
 
     (* terminating programs that cannot be improved *)
     | [ |- Compiled (Ret _)] =>
