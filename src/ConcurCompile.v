@@ -575,6 +575,13 @@ Section ConcurCompile.
     repeat compile.
   Defined.
 
+  Definition CompiledConsecutiveRdtsc :
+    Compiled consecutive_rdtsc_concur.
+  Proof.
+    unfold consecutive_rdtsc_concur, consecutive_rdtsc.
+    repeat compile.
+  Defined.
+
   Hint Unfold AsyncFS.AFS.read_fblock : compile.
   Hint Unfold LOG.begin : compile.
   Hint Unfold read BFILE.read : compile.
@@ -761,8 +768,11 @@ Section ConcurCompile.
 
 End ConcurCompile.
 
-Definition compiled_add_tuple nums b :=
+Definition add_tuple_compiled nums b :=
   compiled_prog (CompiledAddTuple (fun _ _ _ => True) nums b).
+
+Definition consecutive_rdtsc_compiled :=
+  compiled_prog (CompiledConsecutiveRdtsc (fun _ _ _ => True)).
 
 Definition read_fblock G fsxp inum off ams ls c :=
   compiled_prog (CompiledReadBlock G fsxp inum off ams ls c).

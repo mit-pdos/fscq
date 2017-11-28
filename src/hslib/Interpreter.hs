@@ -33,7 +33,7 @@ output :: Bool
 output = False
 
 timing :: Bool
-timing = False
+timing = True
 
 debugmsg :: String -> IO ()
 debugmsg s =
@@ -97,9 +97,9 @@ run_dcode _ (Debug s n) = do
 run_dcode _ (Rdtsc) = do
   if timing then do
     r <- rdtsc
-    return $ unsafeCoerce r
+    return $ unsafeCoerce (fromIntegral r :: Integer)
   else
-    return $ unsafeCoerce ()
+    return $ unsafeCoerce (0 :: Integer)
 run_dcode _ (Hash sz w) = do
   debugmsg $ "Hash " ++ (show sz)
   c <- crc32_word_update 0 sz w
