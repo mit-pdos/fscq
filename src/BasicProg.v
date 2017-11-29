@@ -128,6 +128,9 @@ Proof.
     apply possible_sync_from_sync in H15; subst.
     eapply pimpl_apply; [ | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
     cancel.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
+    pred_apply; cancel.
 Qed.
 
 Hint Extern 1 ({{_}} Bind Sync _) => apply sync_ok : prog.
