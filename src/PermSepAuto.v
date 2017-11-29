@@ -784,10 +784,11 @@ Ltac RelationClasses.solve_relation ::= match goal with
     end
   end.
 
-
+Tactic Notation "remember" tactic(t) :=
+   unfold pimpl; intros; pred_apply; t.
 Ltac cancel_with t := cancel_with' t ltac:(auto with *).
 Ltac cancel := cancel_with idtac.
-
+                                           
 (* fastest version of cancel, should always try this first *)
 Ltac cancel_exact := repeat match goal with 
   | [ |- (?a =p=> ?a)%pred ] =>
@@ -875,6 +876,10 @@ Ltac safestep :=
     prestep; safecancel;
     set_evars; poststep auto; subst_evars.
 
+Ltac safestep_r :=
+    prestep; remember safecancel;
+    set_evars; poststep auto; subst_evars.
+
 Ltac or_r := apply pimpl_or_r; right.
 Ltac or_l := apply pimpl_or_r; left.
 
@@ -900,6 +905,11 @@ Tactic Notation "step" "using" tactic(t) :=
   poststep t.
 
 
+Tactic Notation "step_r" "using" tactic(t) :=
+  prestep;
+  try (remember (cancel_with t); try remember (cancel_with t));
+  poststep t.
+
 (*
 Ltac step_with t :=
   prestep;
@@ -914,6 +924,7 @@ Ltac step_with t :=
 
 Ltac step := step using eauto.
 Ltac step_idtac := step using idtac with intuition idtac.
+Ltac step_r := step_r using eauto.
 
 Tactic Notation "hoare" "using" tactic(t) "with" ident(db) "in" "*" :=
   repeat (step using t with db in *).

@@ -41,11 +41,15 @@ Inductive prog : Type -> Type :=
 | Write : addr -> handle -> prog unit
 | Seal : tag -> block -> prog handle
 | Unseal : handle -> prog block
+| Sync : prog unit
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
 
-Notation "x <- p1 ;; p2" := (Bind p1 (fun x => p2))
+Notation "p1 :; p2" := (Bind p1 (fun _: unit => p2))
                               (at level 60, right associativity).
+Notation "x <- p1 ;; p2" := (Bind p1 (fun x => p2))
+                             (at level 60, right associativity).
+
 
 Inductive exec:
   forall T, perm -> trace -> tagged_disk ->
@@ -66,7 +70,10 @@ Inductive exec:
 | ExecUnseal : forall pr d bm i tb tr,
                  bm i = Some tb ->
                  exec pr tr d bm (Unseal i) (Finished d bm (snd tb)) (Uns (fst tb)::tr)
-
+                      
+| ExecSync : forall pr d bm tr,
+               exec pr tr d bm (Sync) (Finished (sync_mem d) bm tt) tr
+                    
 | ExecRet : forall T pr d bm (r: T) tr,
               exec pr tr d bm (Ret r) (Finished d bm r) tr
                    
@@ -85,7 +92,9 @@ Inductive exec:
                 exec pr tr d bm (Seal t b) (Crashed d) tr
                         
 | CrashUnseal : forall pr d bm i tr,
-                exec pr tr d bm (Unseal i) (Crashed d) tr
+                  exec pr tr d bm (Unseal i) (Crashed d) tr
+| CrashSync : forall pr d bm tr,
+               exec pr tr d bm (Sync) (Crashed d) tr
                     
 | CrashRet : forall T pr d bm (r: T) tr,
               exec pr tr d bm (Ret r) (Crashed d) tr

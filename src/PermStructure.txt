@@ -1,4 +1,5 @@
 Ver 1.2 - Crash Conditions
+Ver 1.2.1 - Sync Instruction
 
 PermAsyncDisk (Done) --------------
    |                              |

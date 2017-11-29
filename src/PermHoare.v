@@ -34,7 +34,7 @@ Notation "'RET' : r post" :=
 Notation "'RET' : ^( ra , .. , rb ) post" :=
   (fun F =>
     (pair_args_helper (fun ra => ..
-      (pair_args_helper (fun rb (_:unit) => (F * post)%pred))
+      (fun rb => (F * post)%pred)
     ..))
   )%pred
   (at level 0, post at level 90, ra closed binder, rb closed binder, only parsing).
@@ -46,9 +46,9 @@ Notation "'RET' : ^( ra , .. , rb ) post" :=
   *)
 Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : pre 'POST' : post >} p1" :=
   (forall T (rx: _ -> prog T), corr2 pr%pred
-   ((fun done_ bm =>
+  ((fun done_ bm =>
+    exists F_,
     (exis (fun e1 => .. (exis (fun e2 =>
-     exists F_,
      F_ * (pre bm) *
      [[ forall r_ ,
         corr2 pr (fun done'_ bm'  =>
@@ -64,8 +64,8 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : pre 'POST' : post >} p1" :=
 Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm pre 'POST' : bm' post 'CRASH' : crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2 pr%pred
    (fun done_ crash_ bm =>
+    exists F_,
     (exis (fun e1 => .. (exis (fun e2 =>
-     exists F_,
      F_ * pre *
      [[ sync_invariant F_ ]] *
      [[ forall r_ , corr2 pr

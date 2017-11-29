@@ -6,7 +6,6 @@ Require Import Array.
 Require Import Mem Pred.
 Require Import WordAuto.
 Require Import Omega.
-Require Import AsyncDisk.
 Require Import ListUtils.
 Require Import OrderedTypeEx.
 Require Import PeanoNat Nat Arith.
@@ -14,10 +13,8 @@ Require Import MapUtils.
 Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
-Require Export PermProgMonad PermSec.
-Require Export PermHoare PermSepAuto.
-Require Export PermSecInstr.
 Require Import ADestructPair DestructVarname.
+Require Export PermInstr.
 
 Import AddrMap.
 Import Map MapFacts.
@@ -30,14 +27,14 @@ Definition eviction_init : eviction_state := tt.
 Definition eviction_update (s : eviction_state) (a : addr) := s.
 Definition eviction_choose (s : eviction_state) : (addr * eviction_state) := (0, s).
 
-Definition h_cachemap := t (handle * bool).
+Definition cachemap := t (handle * bool).
 
-Record h_cachestate :=
+Record cachestate :=
   mk_cs {
-      HCSMap : h_cachemap;
-      HCSMaxCount : nat;
-      HCSCount : nat;
-      HCSEvict : eviction_state
+      CSMap : cachemap;
+      CSMaxCount : nat;
+      CSCount : nat;
+      CSEvict : eviction_state
     }.
 
 Definition cache0 sz := mk_cs (Map.empty _) sz 0 eviction_init.
@@ -46,89 +43,135 @@ Definition cache0 sz := mk_cs (Map.empty _) sz 0 eviction_init.
  (** rep invariant *)
 
 Definition size_valid cs :=
-  cardinal (HCSMap cs) = HCSCount cs /\
-  cardinal (HCSMap cs) <= HCSMaxCount cs /\
-  HCSMaxCount cs <> 0.
+  cardinal (CSMap cs) = CSCount cs /\
+  cardinal (CSMap cs) <= CSMaxCount cs /\
+  CSMaxCount cs <> 0.
 
-Definition addr_valid (d: tagged_disk) (cm : h_cachemap) :=
+Definition addr_valid (d: tagged_disk) (cm : cachemap) :=
   forall a, In a cm -> d a <> None.
 
-Definition addr_clean (cm : h_cachemap) a :=
+Definition addr_clean (cm : cachemap) a :=
     find a cm = None \/ exists v, find a cm = Some (v, false).
 
 Definition addrs_clean cm al :=
   Forall (addr_clean cm) al.
 
-Definition cachepred (cache : h_cachemap) (bm: block_mem) (a : addr) (tb: tagged_block ): @Pred.pred _ addr_eq_dec tagged_block :=
+Definition cachepred (cache : cachemap) (bm: block_mem) (a : addr) (vs: valuset): @Pred.pred _ addr_eq_dec valuset :=
   (match find a cache with
-   | None => a |-> tb
-   | Some (h, false) => a |-> tb * [[ bm h = Some tb ]]
-   | Some (h, true)  => exists tb0, a |-> tb0 * [[ bm h = Some tb ]]
+   | None =>
+     a |+> vs
+   | Some (h, false) =>
+     a |+> vs *  [[ bm h = Some (fst vs) ]]
+   | Some (h, true)  =>
+     exists tb0, a |+> (tb0, snd vs) * [[ bm h = Some (fst vs) ]] * [[ List.In tb0 (snd vs) ]]
    end)%pred.
 
-Definition rep (cs : h_cachestate) (m : tagged_disk) (bm: block_mem): @Pred.pred _ addr_eq_dec tagged_block :=
-  ([[ size_valid cs /\
-      addr_valid m (HCSMap cs) ]] *
-   mem_pred (HighAEQ:= addr_eq_dec) (cachepred (HCSMap cs) bm) m)%pred.
+Definition rep (cs : cachestate) (m : tagged_disk) (bm: block_mem): @Pred.pred _ addr_eq_dec valuset :=
+  ([[ size_valid cs ]] *
+   [[ addr_valid m (CSMap cs) ]] *
+   mem_pred (HighAEQ:= addr_eq_dec) (cachepred (CSMap cs) bm) m)%pred.
 
-Definition h_writeback a (cs : h_cachestate) :=
-  match find a (HCSMap cs) with
+Definition synpred (cache : cachemap) (bm: block_mem) (a : addr) (vs : valuset) : @Pred.pred _ addr_eq_dec valuset :=
+    (exists vsd, a |+> vsd *
+    match Map.find a cache with
+    | None =>
+      [[ vs = (fst vsd, nil) ]]
+    | Some (h, false) =>
+      [[ vs = (fst vsd, nil) ]] * [[ bm h = Some (fst vsd) ]]
+    | Some (h, true)  => exists tb, [[ vs = (tb, (fst vsd) :: nil) ]] * [[ bm h = Some tb ]]
+    end)%pred.
+
+Definition synrep' (cs : cachestate) (m : tagged_disk) (bm: block_mem): @Pred.pred _ addr_eq_dec valuset :=
+  ([[ size_valid cs ]] *
+   [[ addr_valid m (CSMap cs) ]] *
+   mem_pred (HighAEQ:= addr_eq_dec) (synpred (CSMap cs) bm) m)%pred.
+
+Definition synrep (cs : cachestate) (mbase m : tagged_disk) (bm: block_mem): rawpred :=
+  (rep cs mbase bm /\ synrep' cs m bm)%pred.
+
+
+Definition writeback a (cs : cachestate) :=
+  match find a (CSMap cs) with
   | Some (h, true) =>
-      Bind (Write a h)
-           (fun _ => Ret (mk_cs (Map.add a (h, false) (HCSMap cs))
-                             (HCSMaxCount cs) (HCSCount cs)
-                             (HCSEvict cs)))
+      Write a h:;
+      Ret (mk_cs (Map.add a (h, false) (CSMap cs))
+                             (CSMaxCount cs) (CSCount cs)
+                             (CSEvict cs))
   | _ =>
     Ret cs
   end.
 
-Definition h_evict' a cs:=
-  match find a (HCSMap cs) with
+Definition evict a cs:=
+  cs <- writeback a cs;;
+  match find a (CSMap cs) with
   | Some _ =>
-    Ret (mk_cs (Map.remove a (HCSMap cs))
-               (HCSMaxCount cs) (HCSCount cs - 1) (HCSEvict cs))
+    Ret (mk_cs (Map.remove a (CSMap cs))
+               (CSMaxCount cs) (CSCount cs - 1) (CSEvict cs))
   | None =>
-    Ret (mk_cs (Map.remove a (HCSMap cs))
-               (HCSMaxCount cs) (HCSCount cs) (HCSEvict cs))
+    Ret (mk_cs (Map.remove a (CSMap cs))
+               (CSMaxCount cs) (CSCount cs) (CSEvict cs))
   end.
 
-Definition h_evict a cs:=
-  Bind (h_writeback a cs)
-       (fun cs => h_evict' a cs).
-
-Definition h_maybe_evict (cs : h_cachestate) : prog h_cachestate :=
-  if (lt_dec (HCSCount cs) (HCSMaxCount cs)) then
+Definition maybe_evict (cs : cachestate) : prog cachestate :=
+  if (lt_dec (CSCount cs) (CSMaxCount cs)) then
     Ret cs
   else 
-    let (victim, evictor) := eviction_choose (HCSEvict cs) in
-    match find victim (HCSMap cs) with
+    let (victim, evictor) := eviction_choose (CSEvict cs) in
+    match find victim (CSMap cs) with
     | Some _ =>
-      h_evict victim (mk_cs (HCSMap cs)
-          (HCSMaxCount cs) (HCSCount cs) evictor)
+      evict victim (mk_cs (CSMap cs)
+          (CSMaxCount cs) (CSCount cs) evictor)
     | None => (* evictor failed, evict first block *)
-      match (Map.elements (HCSMap cs)) with
+      match (Map.elements (CSMap cs)) with
       | nil => Ret cs
-      | (a, v) :: tl => h_evict a cs
+      | (a, v) :: tl => evict a cs
       end
     end.
 
-Definition h_read a cs :=
-    cs <- h_maybe_evict cs;;
-    match Map.find a (HCSMap cs) with
+Definition read a cs :=
+    cs <- maybe_evict cs;;
+    match Map.find a (CSMap cs) with
     | Some (h, dirty) => Ret (cs, h)
     | None =>
       h <- Read a;;
-      Ret (mk_cs (Map.add a (h, false) (HCSMap cs))
-                 (HCSMaxCount cs) (HCSCount cs + 1) (eviction_update (HCSEvict cs) a), h)
+      Ret (mk_cs (Map.add a (h, false) (CSMap cs))
+                 (CSMaxCount cs) (CSCount cs + 1) (eviction_update (CSEvict cs) a), h)
     end.
 
-Definition h_write a h cs:=
-    cs <- h_maybe_evict cs;;
-    match Map.find a (HCSMap cs) with
+Definition write a h cs:=
+    cs <- maybe_evict cs;;
+    match Map.find a (CSMap cs) with
     | Some _ =>
-      Ret (mk_cs (Map.add a (h, true) (HCSMap cs))
-                 (HCSMaxCount cs) (HCSCount cs) (eviction_update (HCSEvict cs) a))
+      Ret (mk_cs (Map.add a (h, true) (CSMap cs))
+                 (CSMaxCount cs) (CSCount cs) (eviction_update (CSEvict cs) a))
     | None =>
-      Ret (mk_cs (Map.add a (h, true) (HCSMap cs))
-                 (HCSMaxCount cs) (HCSCount cs + 1) (eviction_update (HCSEvict cs) a))
+      Ret (mk_cs (Map.add a (h, true) (CSMap cs))
+                 (CSMaxCount cs) (CSCount cs + 1) (eviction_update (CSEvict cs) a))
     end.
+
+Definition begin_sync (cs : cachestate) :=
+  Ret cs.
+
+Definition sync a (cs : cachestate) :=
+  cs <- writeback a cs;;
+  Ret cs.
+
+Definition end_sync (cs : cachestate) :=
+  Sync:;
+  Ret cs.
+
+Definition init (cachesize : nat) :=
+  Sync:;
+  Ret (cache0 cachesize).
+
+Definition read_array a i cs :=
+  r <- read (a + i) cs;;
+  Ret r.
+
+Definition write_array a i v cs :=
+  cs <- write (a + i) v cs;;
+  Ret cs.
+
+Definition sync_array a i cs :=
+  cs <- sync (a + i) cs;;
+  Ret cs.
