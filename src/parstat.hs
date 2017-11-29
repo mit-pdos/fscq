@@ -41,8 +41,15 @@ doFScall s p = do
     CFS.TryAgain -> error $ "system call loop failed?"
     CFS.SyscallFailed -> error $ "system call failed"
 
-init_fs :: String -> IO (I.ConcurState, FsParams)
-init_fs disk_fn = do
+class Filesystem a where
+  getFileStat :: a -> FilePath -> IO (Maybe Rec.Rec__Coq_data)
+  openFile :: a -> FilePath -> IO (Maybe Integer)
+  readMem :: a -> IO ()
+
+data CfscqFs = CfscqFs I.ConcurState FsParams
+
+init_cfscq :: String -> IO CfscqFs
+init_cfscq disk_fn = do
   ds <- init_disk disk_fn
   (mscs0, fsxp_val) <- do
       res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
@@ -52,35 +59,32 @@ init_fs disk_fn = do
           return (mscs0, fsxp_val)
   s <- I.newState ds
   fsP <- I.run s (CFS.init fsxp_val mscs0)
-  return (s, fsP)
+  return $ CfscqFs s fsP
 
-fscqGetFileStat :: I.ConcurState -> FsParams -> FilePath -> IO (Maybe Rec.Rec__Coq_data)
-fscqGetFileStat s fsP (_:path) = do
-  nameparts <- return $ splitDirectories path
-  (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
-  case r of
-    Errno.Err _ -> return $ Nothing
-    Errno.OK (inum, isdir)
-      | isdir -> return $ Nothing
-      | otherwise -> do
-        (attr, ()) <- doFScall s $ CFS.file_get_attr fsP inum
-        return $ Just attr
-fscqGetFileStat _ _ _ = return $ Nothing
+instance Filesystem CfscqFs where
+  getFileStat (CfscqFs s fsP) (_:path) = do
+    nameparts <- return $ splitDirectories path
+    (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
+    case r of
+      Errno.Err _ -> return $ Nothing
+      Errno.OK (inum, isdir)
+        | isdir -> return $ Nothing
+        | otherwise -> do
+          (attr, ()) <- doFScall s $ CFS.file_get_attr fsP inum
+          return $ Just attr
+  getFileStat _ _ = return $ Nothing
 
-fscqOpen :: I.ConcurState -> FsParams -> FilePath -> IO (Maybe Integer)
-fscqOpen s fsP (_:path) = do
-  nameparts <- return $ splitDirectories path
-  (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
-  case r of
-    Errno.Err _ -> return $ Nothing
-    Errno.OK (inum, isdir)
-      | isdir -> return $ Nothing
-      | otherwise -> return $ Just inum
-fscqOpen _ _ _  = return $ Nothing
+  openFile (CfscqFs s fsP) (_:path) = do
+    nameparts <- return $ splitDirectories path
+    (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
+    case r of
+      Errno.Err _ -> return $ Nothing
+      Errno.OK (inum, isdir)
+        | isdir -> return $ Nothing
+        | otherwise -> return $ Just inum
+  openFile _ _  = return $ Nothing
 
-readMem :: I.ConcurState -> IO Heap
-readMem s = do
-  readIORef (I.memory s)
+  readMem (CfscqFs s _) = readIORef (I.memory s) >> return ()
 
 foreign import ccall safe "wrapper"
   mkAction :: IO () -> IO (FunPtr (IO ()))
@@ -141,22 +145,22 @@ replicateInParallelIterateFFI n iters act = do
   parallel (fromIntegral n) (fromIntegral iters) cAct
   freeHaskellFunPtr cAct
 
-statOp :: StatOptions -> (ConcurState, FsParams) -> IO ()
-statOp opts (s, fsP) =
-  if optReadMem opts then readMem s >> return ()
+statOp :: StatOptions -> CfscqFs -> IO ()
+statOp opts fs =
+  if optReadMem opts then readMem fs
     else do
-      _ <- fscqOpen s fsP "/"
-      _ <- fscqGetFileStat s fsP "/"
-      _ <- fscqOpen s fsP "/dir1"
-      _ <- fscqGetFileStat s fsP "/dir1"
-      _ <- fscqGetFileStat s fsP "/dir1/file1"
+      _ <- openFile fs "/"
+      _ <- getFileStat fs "/"
+      _ <- openFile fs "/dir1"
+      _ <- getFileStat fs "/dir1"
+      _ <- getFileStat fs "/dir1/file1"
       return ()
 
 timeParallel :: StatOptions -> Int -> Int -> IO () -> IO Float
 timeParallel opts par iters op = do
-  start <- getTime Monotonic
   replicatePar <- return $ if optPthreads opts then replicateInParallelIterateFFI
                            else replicateInParallelIterate
+  start <- getTime Monotonic
   replicatePar par iters op
   totalTime <- elapsedMicros start
   return totalTime
@@ -173,7 +177,7 @@ main = runCommand $ \opts args -> do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
   else do
-    fs <- init_fs $ optDiskImg opts
+    fs <- init_cfscq $ optDiskImg opts
     op <- return $ statOp opts fs
     _ <- timeParallel opts 1 10 op
     parTime <- timeParallel opts (optN opts) (optIters opts) op
