@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes, ForeignFunctionInterface #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
 module Main where
 
@@ -21,14 +22,27 @@ import ConcurInterp as I
 
 -- FSCQ extracted code
 import qualified Errno
+import qualified Prog
+import qualified BFile
 import qualified AsyncFS
+import qualified FSLayout
 import qualified ConcurrentFS as CFS
 import qualified Rec
-import FSProtocol
+import FSProtocol hiding (fsxp)
 import CCLProg
 
 type FSprog a = Coq_cprog a
 type FSrunner = forall a. FSprog (CFS.SyscallResult a) -> IO a
+
+type MSCS = BFile.BFILE__Coq_memstate
+type FSCQprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
+type FSCQrunner = forall a. FSCQprog a -> IO a
+doSeqCall :: DiskState -> MVar MSCS -> FSCQrunner
+doSeqCall ds ref f = do
+  s <- takeMVar ref
+  (s', r) <- SeqI.run ds $ f s
+  putMVar ref s'
+  return r
 
 cachesize :: Integer
 cachesize = 100000
@@ -45,6 +59,13 @@ class Filesystem a where
   getFileStat :: a -> FilePath -> IO (Maybe Rec.Rec__Coq_data)
   openFile :: a -> FilePath -> IO (Maybe Integer)
   readMem :: a -> IO ()
+
+data Anyfs = forall a. Filesystem a => Anyfs a
+
+instance Filesystem Anyfs where
+  getFileStat (Anyfs fs) = getFileStat fs
+  openFile (Anyfs fs) = openFile fs
+  readMem (Anyfs fs) = readMem fs
 
 data CfscqFs = CfscqFs I.ConcurState FsParams
 
@@ -86,6 +107,47 @@ instance Filesystem CfscqFs where
 
   readMem (CfscqFs s _) = readIORef (I.memory s) >> return ()
 
+data FscqFs = FscqFs FSCQrunner (MVar FSLayout.Coq_fs_xparams)
+
+init_fscq :: String -> IO FscqFs
+init_fscq disk_fn = do
+  ds <- init_disk disk_fn
+  (mscs0, fsxp_val) <- do
+      res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
+      case res of
+        Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
+        Errno.OK (mscs0, fsxp_val) -> do
+          return (mscs0, fsxp_val)
+  m_mscs <- newMVar mscs0
+  m_fsxp <- newMVar fsxp_val
+  return $ FscqFs (doSeqCall ds m_mscs) m_fsxp
+
+instance Filesystem FscqFs where
+
+  getFileStat (FscqFs fr m_fsxp) (_:path) = withMVar m_fsxp $ \fsxp -> do
+    nameparts <- return $ splitDirectories path
+    (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (FSLayout.coq_FSXPRootInum fsxp) nameparts
+    case r of
+      Errno.Err _ -> return $ Nothing
+      Errno.OK (inum, isdir)
+        | isdir -> return $ Nothing
+        | otherwise -> do
+          (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
+          return $ Just attr
+  getFileStat _ _ = return $ Nothing
+
+  openFile (FscqFs fr m_fsxp) (_:path) = withMVar m_fsxp $ \fsxp -> do
+    nameparts <- return $ splitDirectories path
+    (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (FSLayout.coq_FSXPRootInum fsxp) nameparts
+    case r of
+      Errno.Err _ -> return $ Nothing
+      Errno.OK (inum, isdir)
+        | isdir -> return $ Nothing
+        | otherwise -> return $ Just inum
+  openFile _ _ = return $ Nothing
+
+  readMem (FscqFs _ m_fsxp) = withMVar m_fsxp $ \_ -> return ()
+
 foreign import ccall safe "wrapper"
   mkAction :: IO () -> IO (FunPtr (IO ()))
 
@@ -101,7 +163,8 @@ elapsedMicros start = do
     return elapsed
 
 data StatOptions = StatOptions
-  { optDiskImg :: String
+  { optFscq :: Bool
+  , optDiskImg :: String
   , optIters :: Int
   , optN :: Int
   , optMeasureSpeedup :: Bool
@@ -111,6 +174,8 @@ data StatOptions = StatOptions
 
 instance Options StatOptions where
   defineOptions = pure StatOptions
+    <*> simpleOption "fscq" False
+        "run sequential FSCQ"
     <*> simpleOption "img" "disk.img"
          "path to FSCQ disk image"
     <*> simpleOption "iters" 100
@@ -145,7 +210,7 @@ replicateInParallelIterateFFI n iters act = do
   parallel (fromIntegral n) (fromIntegral iters) cAct
   freeHaskellFunPtr cAct
 
-statOp :: StatOptions -> CfscqFs -> IO ()
+statOp :: Filesystem a => StatOptions -> a -> IO ()
 statOp opts fs =
   if optReadMem opts then readMem fs
     else do
@@ -171,13 +236,19 @@ parallelIters opts = optIters opts * optN opts
 seqIters :: StatOptions -> Int
 seqIters opts = optIters opts
 
+init_fs :: StatOptions -> IO Anyfs
+init_fs opts = let disk_fn = optDiskImg opts in
+                 if optFscq opts
+                 then Anyfs <$> init_fscq disk_fn
+                 else Anyfs <$> init_cfscq disk_fn
+
 main :: IO ()
 main = runCommand $ \opts args -> do
   if length args > 0 then do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
   else do
-    fs <- init_cfscq $ optDiskImg opts
+    fs <- init_fs opts
     op <- return $ statOp opts fs
     _ <- timeParallel opts 1 10 op
     parTime <- timeParallel opts (optN opts) (optIters opts) op
