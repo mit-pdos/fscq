@@ -60,16 +60,9 @@ class Filesystem a where
   openFile :: a -> FilePath -> IO (Maybe Integer)
   readMem :: a -> IO ()
 
-data Anyfs = forall a. Filesystem a => Anyfs a
-
-instance Filesystem Anyfs where
-  getFileStat (Anyfs fs) = getFileStat fs
-  openFile (Anyfs fs) = openFile fs
-  readMem (Anyfs fs) = readMem fs
-
 data CfscqFs = CfscqFs I.ConcurState FsParams
 
-init_cfscq :: String -> IO CfscqFs
+init_cfscq :: FilePath -> IO CfscqFs
 init_cfscq disk_fn = do
   ds <- init_disk disk_fn
   (mscs0, fsxp_val) <- do
@@ -109,7 +102,7 @@ instance Filesystem CfscqFs where
 
 data FscqFs = FscqFs FSCQrunner (MVar FSLayout.Coq_fs_xparams)
 
-init_fscq :: String -> IO FscqFs
+init_fscq :: FilePath -> IO FscqFs
 init_fscq disk_fn = do
   ds <- init_disk disk_fn
   (mscs0, fsxp_val) <- do
@@ -164,7 +157,7 @@ elapsedMicros start = do
 
 data StatOptions = StatOptions
   { optFscq :: Bool
-  , optDiskImg :: String
+  , optDiskImg :: FilePath
   , optIters :: Int
   , optN :: Int
   , optMeasureSpeedup :: Bool
@@ -236,27 +229,25 @@ parallelIters opts = optIters opts * optN opts
 seqIters :: StatOptions -> Int
 seqIters opts = optIters opts
 
-init_fs :: StatOptions -> IO Anyfs
-init_fs opts = let disk_fn = optDiskImg opts in
-                 if optFscq opts
-                 then Anyfs <$> init_fscq disk_fn
-                 else Anyfs <$> init_cfscq disk_fn
+parstat_main :: Filesystem a => StatOptions -> a -> IO ()
+parstat_main opts fs = do
+  op <- return $ statOp opts fs
+  _ <- timeParallel opts 1 10 op
+  parTime <- timeParallel opts (optN opts) (optIters opts) op
+  timePerOp <- return $ parTime/(fromIntegral $ parallelIters opts)
+  putStrLn $ show timePerOp ++ " us/op"
+  when (optMeasureSpeedup opts) $ do
+    seqTime <- timeParallel opts 1 (optIters opts) op
+    seqTimePerOp <- return $ seqTime/(fromIntegral $ seqIters opts)
+    putStrLn $ "seq time " ++ show seqTimePerOp ++ " us/op"
+    putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
+  return ()
 
 main :: IO ()
 main = runCommand $ \opts args -> do
   if length args > 0 then do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
-  else do
-    fs <- init_fs opts
-    op <- return $ statOp opts fs
-    _ <- timeParallel opts 1 10 op
-    parTime <- timeParallel opts (optN opts) (optIters opts) op
-    timePerOp <- return $ parTime/(fromIntegral $ parallelIters opts)
-    putStrLn $ show timePerOp ++ " us/op"
-    when (optMeasureSpeedup opts) $ do
-      seqTime <- timeParallel opts 1 (optIters opts) op
-      seqTimePerOp <- return $ seqTime/(fromIntegral $ seqIters opts)
-      putStrLn $ "seq time " ++ show seqTimePerOp ++ " us/op"
-      putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
-    return ()
+  else if optFscq opts
+    then init_fscq (optDiskImg opts) >>= parstat_main opts
+    else init_cfscq (optDiskImg opts) >>= parstat_main opts
