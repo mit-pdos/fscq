@@ -67,7 +67,9 @@ main = hspec $ do
       (command, "RMDIR \"/here/there\" SUCCESS") `shouldParseTo` Rmdir "/here/there" ExpectSuccess
     it "should parse control commands" $ do
       (command, "RANDOMSTRING 1 \"file[01].dat\"") `shouldParseTo` RandomString 1 (Pattern "file[01].dat")
-      (command, "REPEAT 10") `shouldParseTo` RepeatNext 10
+      (command, "REPEAT 10\nREAD \"/foo\" * 1024 *") `shouldParseTo` Repeat 10 (Read "/foo" Random 1024 DontCare)
+    it "should not parse repeat in isolation" $ do
+      command `shouldNotParse` "REPEAT 10"
     it "should handle whitespace" $ do
       (command, "READ \"/foo\"  \t*   1024 *\t") `shouldParseTo` Read "/foo" Random 1024 DontCare
     it "internal newlines should not be allowed" $ do
@@ -75,12 +77,12 @@ main = hspec $ do
   describe "loadfile parser" $ do
     it "should parse two commands" $ do
       (script, T.unlines
-        ["REPEAT 10"
+        ["RANDOMSTRING 1 \"\""
         , "READ \"/f\" * 1 *"]) `shouldParseTo`
-        [RepeatNext 10, Read "/f" Random 1 DontCare]
+        [RandomString 1 (Pattern ""), Read "/f" Random 1 DontCare]
     it "should skip comments" $ do
       (script, T.unlines
-        ["REPEAT 10"
+        ["RANDOMSTRING 1 \"\""
         , "# this is just a comment"
         , "READ \"/f\" * 1 *"]) `shouldParseTo`
-        [RepeatNext 10, Read "/f" Random 1 DontCare]
+        [RandomString 1 (Pattern ""), Read "/f" Random 1 DontCare]
