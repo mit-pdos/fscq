@@ -41,6 +41,24 @@ main = hspec $ do
       (expectedStatus, "SUCCESS") `shouldParseTo` ExpectSuccess
       (expectedStatus, "ERROR") `shouldParseTo` ExpectError
       (expectedStatus, "*") `shouldParseTo` DontCare
+  describe "path parser" $ do
+    it "should parse normal paths as one component" $ do
+      (path, "\"/foo\"") `shouldParseTo` Path [CPath "/foo"]
+    it "should parse references at end" $ do
+      (path, "\"/foo/$1\"") `shouldParseTo` Path [CPath "/foo/", Reference 1]
+    it "should parse references in middle" $ do
+      (path, "\"/foo/$1/bar\"") `shouldParseTo` Path [CPath "/foo/", Reference 1, CPath "/bar"]
+    it "should skip other dollar signs" $ do
+      (path, "\"/foo/$name\"") `shouldParseTo` Path [CPath "/foo/$name"]
+  describe "pattern parser" $ do
+    it "should parse constant patterns" $ do
+      (patternP, "\"foo.dat\"") `shouldParseTo` "foo.dat"
+    it "should parse complex patterns" $ do
+      (patternP, "\"file[01].dat\"") `shouldParseTo`
+        Pattern [CPattern "file", AnyChar "01", CPattern ".dat"]
+    it "should parse patterns at end" $ do
+      (patternP, "\"file[01]\"") `shouldParseTo`
+        Pattern [CPattern "file", AnyChar "01"]
   describe "offset parser" $ do
     it "base offset should parse numbers" $ do
       (baseOffset, "0x1000") `shouldParseTo` ConstantOffset 0x1000
@@ -66,7 +84,8 @@ main = hspec $ do
       (command, "MKDIR \"/here/there\" SUCCESS") `shouldParseTo` Mkdir "/here/there" ExpectSuccess
       (command, "RMDIR \"/here/there\" SUCCESS") `shouldParseTo` Rmdir "/here/there" ExpectSuccess
     it "should parse control commands" $ do
-      (command, "RANDOMSTRING 1 \"file[01].dat\"") `shouldParseTo` RandomString 1 (Pattern "file[01].dat")
+      (command, "RANDOMSTRING 1 \"file[01].dat\"") `shouldParseTo`
+        RandomString 1 (Pattern [CPattern "file", AnyChar "01", CPattern ".dat"])
       (command, "REPEAT 10\nREAD \"/foo\" * 1024 *") `shouldParseTo` Repeat 10 (Read "/foo" Random 1024 DontCare)
     it "should not parse repeat in isolation" $ do
       command `shouldNotParse` "REPEAT 10"
@@ -79,10 +98,10 @@ main = hspec $ do
       (script, T.unlines
         ["RANDOMSTRING 1 \"\""
         , "READ \"/f\" * 1 *"]) `shouldParseTo`
-        [RandomString 1 (Pattern ""), Read "/f" Random 1 DontCare]
+        [RandomString 1 "", Read "/f" Random 1 DontCare]
     it "should skip comments" $ do
       (script, T.unlines
         ["RANDOMSTRING 1 \"\""
         , "# this is just a comment"
         , "READ \"/f\" * 1 *"]) `shouldParseTo`
-        [RandomString 1 (Pattern ""), Read "/f" Random 1 DontCare]
+        [RandomString 1 "", Read "/f" Random 1 DontCare]

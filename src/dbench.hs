@@ -1,12 +1,14 @@
 {-# LANGUAGE Rank2Types, FlexibleContexts #-}
 {-# LANGUAGE DataKinds, KindSignatures, GADTs #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE FlexibleInstances, StandaloneDeriving #-}
 module Dbench where
 
-import           Control.Monad (void)
+import           Control.Monad (void, replicateM)
 import qualified Control.Monad.State.Strict as S
+import           Data.Char (digitToInt)
 import           Data.Int (Int64)
 import           Data.Maybe (catMaybes)
+import           Data.String
 import qualified Data.Text as T
 import           Data.Text.Read (hexadecimal)
 import           Data.Word (Word8)
@@ -14,8 +16,6 @@ import qualified System.Random as Random
 import           Text.Parsec
 
 -- model DBENCH SMB loadfiles
-
-type Path = String
 
 data Phase = Meta | Processed
 
@@ -34,18 +34,39 @@ data ExpectedStatus = ExpectSuccess | ExpectError | DontCare
 
 type Flags = Word8
 
-newtype Pattern = Pattern String
+data PathComponent :: Phase -> * where
+  CPath :: String -> PathComponent p
+  Reference :: Int -> PathComponent 'Meta
+
+deriving instance Eq (PathComponent p)
+deriving instance Show (PathComponent p)
+
+newtype Path p = Path [PathComponent p]
   deriving (Eq, Show)
+
+instance IsString (Path 'Meta) where
+  fromString s = Path [CPath s]
+
+data PatternComponent =
+  CPattern String
+  | AnyChar String
+  deriving (Eq, Show)
+
+newtype Pattern = Pattern [PatternComponent]
+  deriving (Eq, Show)
+
+instance IsString Pattern where
+  fromString s = Pattern [CPattern s]
 
 oRDWRCREATE :: Word8
 oRDWRCREATE = 0xc
 
 data Command :: Phase -> * where
-  Read :: Path -> OffsetExpr p -> Int -> ExpectedStatus -> Command p
-  Write :: Path -> OffsetExpr p -> Int -> ExpectedStatus -> Command p
-  Open :: Path -> Flags -> ExpectedStatus -> Command p
-  Mkdir :: Path -> ExpectedStatus -> Command p
-  Rmdir :: Path -> ExpectedStatus -> Command p
+  Read :: Path p -> OffsetExpr p -> Int -> ExpectedStatus -> Command p
+  Write :: Path p -> OffsetExpr p -> Int -> ExpectedStatus -> Command p
+  Open :: Path p -> Flags -> ExpectedStatus -> Command p
+  Mkdir :: Path p -> ExpectedStatus -> Command p
+  Rmdir :: Path p -> ExpectedStatus -> Command p
   RandomString :: Int -> Pattern -> Command 'Meta
   Repeat :: Int -> Command 'Meta -> Command 'Meta
 
@@ -65,11 +86,26 @@ constant s x = string s >> return x
 inQuotes :: ParserT String
 inQuotes = between (char '"') (char '"') (many (noneOf "\""))
 
-path :: ParserT Path
-path = inQuotes
+patternsEndBy :: ParserT a -> (String -> a) -> ParserT end -> ParserT [a]
+patternsEndBy pat normal end = manyTill component end
+  where checkPattern = try . lookAhead $ void pat <|> void end
+        component = pat
+          <|> (normal <$> manyTill anyChar checkPattern)
+
+reference :: ParserT (PathComponent 'Meta)
+reference = char '$' >> (Reference . digitToInt <$> digit)
+
+path :: ParserT (Path 'Meta)
+path = Path <$> (char '"' >> patternsEndBy reference CPath (char '"'))
+
+charSet :: ParserT PatternComponent
+charSet = AnyChar <$> between (char '[') (char ']') (many (noneOf "]"))
 
 patternP :: ParserT Pattern
-patternP = Pattern <$> inQuotes
+patternP = do
+  comps <- char '"' >> patternsEndBy charSet CPattern (char '"')
+  let p = if null comps then [CPattern ""] else comps in
+    return $ Pattern p
 
 hexNumber :: ParserT Int
 hexNumber = do
@@ -158,10 +194,15 @@ script = catMaybes <$>
 
 -- lowering commands to be processed
 
+-- a convenient randomness monad, wrapping StdGen
+-- (not generalized over generators due to lack of impredicative polymorphism)
 type RandomM a = S.State Random.StdGen a
 
 random :: Random.Random a => RandomM a
 random = S.state Random.random
+
+runRandom :: RandomM a -> IO a
+runRandom x = S.evalState x <$> Random.getStdGen
 
 getOffset :: OffsetExpr 'Processed -> Int
 getOffset (ConstantOffset off) = off
@@ -181,21 +222,48 @@ evalOffset = eval
           off <- getOffset <$> eval e
           return $ ConstantOffset (off + n)
 
-evalCommand :: Command 'Meta -> [RandomM (Command 'Processed)]
+evalPath :: Path 'Meta -> Path 'Processed
+evalPath (Path p) = Path (eval p)
+  where eval :: [PathComponent 'Meta] -> [PathComponent 'Processed]
+        eval (CPath s:p') = CPath s:eval p'
+        eval (Reference _:_) = error "references in paths are unimplemented"
+        eval [] = []
+
+randomChar :: String -> RandomM Char
+randomChar s = do
+  off <- S.state $ Random.randomR (0, length s-1)
+  return $ s !! off
+
+evalPatternComponent :: PatternComponent -> RandomM String
+evalPatternComponent = eval
+  where eval :: PatternComponent -> RandomM String
+        eval (CPattern s) = return s
+        eval (AnyChar cs) = do
+          c <- randomChar cs
+          return [c]
+
+evalPattern :: Pattern -> RandomM String
+evalPattern (Pattern ps) = concat <$> mapM evalPatternComponent ps
+
+evalCommand :: Command 'Meta -> RandomM [Command 'Processed]
 evalCommand = eval
   where singleton x = [x]
-        eval :: Command 'Meta -> [RandomM (Command 'Processed)]
-        eval (Read p off len s) = singleton $ do
+        eval :: Command 'Meta -> RandomM [Command 'Processed]
+        eval (Read p off len s) = do
           off' <- evalOffset off
-          return $ Read p off' len s
-        eval (Write p off len s) = singleton $ do
+          return . singleton $ Read (evalPath p) off' len s
+        eval (Write p off len s) = do
           off' <- evalOffset off
-          return $ Write p off' len s
-        eval (Open p f s) = singleton $ return $ Open p f s
-        eval (Mkdir p s) = singleton $ return $ Mkdir p s
-        eval (Rmdir p s) = singleton $ return $ Rmdir p s
-        eval (RandomString _ (Pattern _)) = [] -- TODO: generate and store a random string somewhere
-        eval (Repeat n c) = concat $ replicate n (eval c)
+          return . singleton $ Write (evalPath p) off' len s
+        eval (Open p f s) =
+          return . singleton $ Open (evalPath p) f s
+        eval (Mkdir p s) =
+          return . singleton $ Mkdir (evalPath p) s
+        eval (Rmdir p s) =
+          return . singleton $ Rmdir (evalPath p) s
+        eval (RandomString _ (Pattern _)) = return [] -- TODO: generate and store a random string somewhere
+        eval (Repeat n c) =
+          concat <$> replicateM n (eval c)
 
 evalScript :: Script 'Meta -> RandomM (Script 'Processed)
-evalScript s = sequence $ concatMap evalCommand s
+evalScript s = concat <$> mapM evalCommand s
