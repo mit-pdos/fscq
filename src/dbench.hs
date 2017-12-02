@@ -5,6 +5,7 @@ module Dbench where
 
 import           Control.Monad (void, replicateM)
 import qualified Control.Monad.State.Strict as S
+import           Control.Monad.Trans
 import           Data.Char (digitToInt)
 import           Data.Int (Int64)
 import           Data.Maybe (catMaybes)
@@ -196,20 +197,21 @@ script = catMaybes <$>
 
 -- a convenient randomness monad, wrapping StdGen
 -- (not generalized over generators due to lack of impredicative polymorphism)
-type RandomM a = S.State Random.StdGen a
+type RandomT m a = Monad m => S.StateT Random.StdGen m a
+type RandomM a = forall m. Monad m => RandomT m a
 
 random :: Random.Random a => RandomM a
 random = S.state Random.random
 
-runRandom :: RandomM a -> IO a
-runRandom x = S.evalState x <$> Random.getStdGen
+runRandom :: MonadIO m => RandomM a -> m a
+runRandom x = S.evalState x <$> liftIO Random.getStdGen
 
 getOffset :: OffsetExpr 'Processed -> Int
 getOffset (ConstantOffset off) = off
 
-evalOffset :: OffsetExpr 'Meta -> RandomM (OffsetExpr 'Processed)
+evalOffset :: OffsetExpr 'Meta -> RandomT m (OffsetExpr 'Processed)
 evalOffset = eval
-  where eval :: OffsetExpr 'Meta -> RandomM (OffsetExpr 'Processed)
+  where eval :: OffsetExpr 'Meta -> RandomT m (OffsetExpr 'Processed)
         eval (ConstantOffset off) = return $ ConstantOffset off
         eval Random = ConstantOffset . fromIntegral <$> (random :: RandomM Int64)
         eval (Align n e) = do
@@ -221,13 +223,6 @@ evalOffset = eval
         eval (Add n e) = do
           off <- getOffset <$> eval e
           return $ ConstantOffset (off + n)
-
-evalPath :: Path 'Meta -> Path 'Processed
-evalPath (Path p) = Path (eval p)
-  where eval :: [PathComponent 'Meta] -> [PathComponent 'Processed]
-        eval (CPath s:p') = CPath s:eval p'
-        eval (Reference _:_) = error "references in paths are unimplemented"
-        eval [] = []
 
 randomChar :: String -> RandomM Char
 randomChar s = do
@@ -245,25 +240,56 @@ evalPatternComponent = eval
 evalPattern :: Pattern -> RandomM String
 evalPattern (Pattern ps) = concat <$> mapM evalPatternComponent ps
 
-evalCommand :: Command 'Meta -> RandomM [Command 'Processed]
+type RandomStrings = Int -> String
+
+addMapping :: Monad m => Int -> String -> S.StateT RandomStrings m ()
+addMapping n0 s = S.modify (\f n -> if n == n0 then s else f n)
+
+lookupMapping :: Monad m => Int -> S.StateT RandomStrings m String
+lookupMapping n = S.gets ($ n)
+
+defaultStrings :: RandomStrings
+defaultStrings n = "$" ++ show n
+
+evalPath :: Monad m => Path 'Meta -> S.StateT RandomStrings m (Path 'Processed)
+evalPath (Path p) = do
+  s <- concat <$> mapM eval p
+  return $ Path [CPath s]
+  where eval :: Monad m => PathComponent 'Meta -> S.StateT RandomStrings m String
+        eval (CPath s) = return s
+        eval (Reference n) = lookupMapping n
+
+evalCommand :: Monad m => Command 'Meta -> RandomT (S.StateT RandomStrings m) [Command 'Processed]
 evalCommand = eval
   where singleton x = [x]
-        eval :: Command 'Meta -> RandomM [Command 'Processed]
+        eval :: Monad m => Command 'Meta -> RandomT (S.StateT RandomStrings m) [Command 'Processed]
         eval (Read p off len s) = do
           off' <- evalOffset off
-          return . singleton $ Read (evalPath p) off' len s
+          p' <- lift $ evalPath p
+          return . singleton $ Read p' off' len s
         eval (Write p off len s) = do
           off' <- evalOffset off
-          return . singleton $ Write (evalPath p) off' len s
-        eval (Open p f s) =
-          return . singleton $ Open (evalPath p) f s
-        eval (Mkdir p s) =
-          return . singleton $ Mkdir (evalPath p) s
-        eval (Rmdir p s) =
-          return . singleton $ Rmdir (evalPath p) s
-        eval (RandomString _ (Pattern _)) = return [] -- TODO: generate and store a random string somewhere
+          p' <- lift $ evalPath p
+          return . singleton $ Write p' off' len s
+        eval (Open p f s) = do
+          p' <- lift $ evalPath p
+          return . singleton $ Open p' f s
+        eval (Mkdir p s) = do
+          p' <- lift $ evalPath p
+          return . singleton $ Mkdir p' s
+        eval (Rmdir p s) = do
+          p' <- lift $ evalPath p
+          return . singleton $ Rmdir p' s
+        eval (RandomString n p) = do
+          s <- evalPattern p
+          lift $ addMapping n s
+          return []
         eval (Repeat n c) =
           concat <$> replicateM n (eval c)
 
-evalScript :: Script 'Meta -> RandomM (Script 'Processed)
-evalScript s = concat <$> mapM evalCommand s
+evalScript :: Script 'Meta -> IO (Script 'Processed)
+evalScript s = do
+  gen <- Random.getStdGen
+  S.evalStateT (S.evalStateT s' gen) defaultStrings
+  where s' :: RandomT (S.StateT RandomStrings IO) (Script 'Processed)
+        s' = concat <$> mapM evalCommand s
