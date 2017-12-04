@@ -49,9 +49,9 @@ Fixpoint trace_secure pr tr :=
   end.
 
 (* adding state allows simpler bind *)
-Definition permission_secure {T} d bm pr (p: prog T) :=
+Definition permission_secure {T} d bm hm pr (p: prog T) :=
   forall tr tr' r,
-    exec pr tr d bm p r (tr'++tr) ->
+    exec pr tr d bm hm p r (tr'++tr) ->
     trace_secure pr tr'.
 
 Lemma can_access_trans:
@@ -86,8 +86,8 @@ Proof.
 Qed.
 
 Lemma trace_app:
-  forall  T (p: prog T) pr d bm tr r tr',
-    exec pr tr d bm p r tr' ->
+  forall  T (p: prog T) pr d bm hm tr r tr',
+    exec pr tr d bm hm p r tr' ->
     exists tr'', tr' = tr''++tr.
 Proof.
   induction 1; intuition; repeat inv_exec_perm; try solve [exists nil; eauto].

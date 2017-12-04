@@ -4,8 +4,8 @@ Require Import ProofIrrelevance.
 Set Implicit Arguments.
 
   Definition prog_equiv T : prog T -> prog T -> Prop :=
-    fun p1 p2 => forall pr tr d bm tr' out,
-        exec pr tr d bm p1 out tr' <-> exec pr tr d bm p2 out tr'.
+    fun p1 p2 => forall pr tr d bm hm tr' out,
+        exec pr tr d bm hm p1 out tr' <-> exec pr tr d bm hm p2 out tr'.
 
   Arguments prog_equiv {T} _ _.
 
@@ -17,32 +17,30 @@ Set Implicit Arguments.
     split; intros.
     inv_exec_perm.
     {
-      destruct out; cleanup.
-      {
-        inv_exec_perm.
-        repeat econstructor; eauto.
-      }
-      split_ors.
-      {
-        inv_exec_perm; cleanup.
-        split_ors; cleanup.
-        eapply CrashBind; auto.
-
-        econstructor; eauto.
-        eapply CrashBind; eauto.
-      }
-
-      {
-        inv_exec_perm.
-        repeat econstructor; eauto.
-      }
-    }
-
-    inv_exec_perm.
-    {
-      destruct out; cleanup.
       inv_exec_perm.
       repeat econstructor; eauto.
+    }
+    split_ors.
+    {
+      inv_exec_perm; cleanup.
+      split_ors; cleanup.
+      eapply CrashBind; auto.
+      
+      econstructor; eauto.
+      eapply CrashBind; eauto.
+    }
+    
+    {
+      inv_exec_perm.
+      repeat econstructor; eauto.
+    }
+  
+    inv_exec_perm.
+    {
+      inv_exec_perm.
+      repeat econstructor; eauto.
+    }
+    {
       split_ors.
       repeat eapply CrashBind; eauto.
       inv_exec_perm.
@@ -54,10 +52,10 @@ Set Implicit Arguments.
   Qed.
 
   Theorem security_equivalence:
-    forall T pr d bm (p1 p2: prog T),
-      permission_secure pr d bm p1 ->
+    forall T pr d bm hm (p1 p2: prog T),
+      permission_secure pr d bm hm p1 ->
       prog_equiv p2 p1 ->
-      permission_secure pr d bm p2.
+      permission_secure pr d bm hm p2.
   Proof.
     unfold permission_secure; intros.
     match goal with

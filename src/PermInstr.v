@@ -2,20 +2,20 @@ Require Import Pred Mem.
 Require Export PermSepAuto.
 
 Lemma bind_secure:
-  forall T T' (p1: prog T) (p2: T -> prog T') pr d bm,
-    permission_secure d bm pr p1 ->
-    (forall d' bm' tr tr' r,
-       exec pr tr d bm p1 (Finished d' bm' r) tr' ->
-       permission_secure d' bm' pr (p2 r)) ->
-    permission_secure d bm pr (Bind p1 p2).
+  forall T T' (p1: prog T) (p2: T -> prog T') pr d bm hm,
+    permission_secure d bm hm pr p1 ->
+    (forall d' bm' hm' tr tr' r,
+       exec pr tr d bm hm p1 (Finished d' bm' hm' r) tr' ->
+       permission_secure d' bm' hm' pr (p2 r)) ->
+    permission_secure d bm hm pr (Bind p1 p2).
 Proof.
   unfold permission_secure; intros.
-  inv_exec_perm; destruct r; cleanup.
+  inv_exec_perm; cleanup.
   {
     specialize (trace_app H1); intros; cleanup.
     specialize (H _ _ _ H1); cleanup.
     specialize (trace_app H2); intros; cleanup.
-    specialize (H0 _ _ _ _ _ H1); cleanup.
+    specialize (H0 _ _ _ _ _ _ H1); cleanup.
     rewrite <- app_assoc in H2;
     specialize (H0 _ _ _ H2); cleanup.
     apply trace_secure_app; auto.
@@ -27,7 +27,7 @@ Proof.
     specialize (trace_app H1); intros; cleanup.
     specialize (H _ _ _ H1); cleanup.
     specialize (trace_app H2); intros; cleanup.
-    specialize (H0 _ _ _ _ _ H1); cleanup.
+    specialize (H0 _ _ _ _ _ _ H1); cleanup.
     rewrite <- app_assoc in H2;
     specialize (H0 _ _ _ H2); cleanup.
     apply trace_secure_app; auto.
@@ -35,12 +35,12 @@ Proof.
 Qed.
 
 Lemma permission_drop_secure:
-  forall d bm pr1 pr2 T (p: prog T),
-    permission_secure d bm pr1 p ->
+  forall d bm pr1 pr2 T (p: prog T) hm,
+    permission_secure d bm hm pr1 p ->
     permitted pr2 pr1 ->
-    (forall tr tr2 r, exec pr2 tr d bm  p r (tr2++tr) ->
-                      exists tr1, exec pr1 tr d bm  p r (tr1++tr) /\ trace_match tr1 tr2) ->
-    permission_secure d bm pr2 p.
+    (forall tr tr2 r, exec pr2 tr d bm hm p r (tr2++tr) ->
+                      exists tr1, exec pr1 tr d bm hm p r (tr1++tr) /\ trace_match tr1 tr2) ->
+    permission_secure d bm hm pr2 p.
 Proof.
   unfold permission_secure; intros.
   specialize (H1 _ _ _ H2); cleanup.
@@ -48,30 +48,29 @@ Proof.
   eapply trace_secure_match; eauto.
 Qed.
 
+Hint Resolve HS_nil.
 
 Lemma read_secure:
   forall pr a,
-    {< tbs F,
+    {< tbs,
        PERM: pr
-       PRE: bm
-          (F * a|+> tbs)%pred
-       POST: bm'
+       PRE: bm, hm,
+          a|+> tbs
+       POST: bm', hm',
           RET: i
-          (F * a|+> tbs * [[ bm i = None ]] *
+          (a|+> tbs * [[ bm i = None ]] *
            [[ bm' = upd (AEQ:= PeanoNat.Nat.eq_dec) bm i (fst tbs) ]])%pred
-       CRASH:
-         (F * a|+>tbs)%pred
+       CRASH: bm',  hm',
+          a|+>tbs
      >} Read a.
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
-  destruct out; cleanup.
   {
-    inv_exec_perm.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    apply ptsto_subset_valid' in H; cleanup; eauto.  
+    apply ptsto_subset_valid' in H; cleanup; eauto.
     split; auto.
     clear H0; eapply bind_secure; intuition.  
     unfold permission_secure; intros.
@@ -89,9 +88,10 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
-    pred_apply; cancel.
+    apply H3.
+    pred_apply; cancel; eauto.
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -111,6 +111,7 @@ Proof.
     pred_apply; cancel; eauto.
     apply ptsto_subset_valid' in H; cleanup; eauto.
     split_ors; cleanup; try congruence.
+    do 2 eexists; intuition eauto.
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -126,27 +127,25 @@ Qed.
 
 Lemma write_secure:
   forall pr a i,
-    {< F tb tbs,
+    {< tb tbs,
        PERM: pr
-       PRE: bm
-          (F * a|+>tbs * [[ bm i = Some tb ]])%pred
-       POST: bm'
+       PRE: bm, hm,
+          (a|+>tbs * [[ bm i = Some tb ]])%pred
+       POST: bm', hm',
           RET: tt
-          (F * a|+>(tb, vsmerge tbs) * [[ bm' = bm ]])%pred
-       CRASH:
-          (F * a|+>tbs)%pred
+          (a|+>(tb, vsmerge tbs) * [[ bm' = bm ]])%pred
+       CRASH: bm', hm',
+          (a|+>tbs)%pred
      >} Write a i.
 Proof.
   unfold corr2; intros.
    destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
-  destruct out; cleanup.
   {
-    inv_exec_perm.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy2, x0)) in H.
-    pred_apply; cancel.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x0)) in H.
+    pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
     
@@ -164,7 +163,9 @@ Proof.
     split.
     right; eexists; intuition.
     inv_exec_perm.
-    pred_apply; cancel.
+    do 2 eexists; intuition eauto.
+    apply H3.
+    pred_apply; cancel; eauto.
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -175,8 +176,8 @@ Proof.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy2, x)) in H.
-    pred_apply; cancel.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x)) in H.
+    pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
   }
@@ -186,12 +187,13 @@ Proof.
     inv_exec_perm.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy2, x0)) in H as Hy.
-    pred_apply; cancel.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x0)) in H as Hy.
+    pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
     split_ors; cleanup; try congruence.
-
+    do 2 eexists; intuition eauto.
+    
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -201,8 +203,8 @@ Proof.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy2, x3)) in H.
-    pred_apply; cancel.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x4)) in H.
+    pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
   }
@@ -211,24 +213,22 @@ Qed.
 
 Lemma seal_secure:
   forall pr t b,
-    {< X,
+    {!< F,
        PERM: pr
-       PRE: bm
-          [[ can_access pr t ]]
-       POST: bm'
+       PRE: bm, hm,
+         (F * [[ can_access pr t ]])%pred
+       POST: bm', hm',
           RET : i
-          [[ bm i = None ]] *
+          F * [[ bm i = None ]] *
           [[ bm' = upd (AEQ:= PeanoNat.Nat.eq_dec) bm i (t, b)]]
-       CRASH:
-          emp
-     >} Seal t b.
+       CRASH: bm'', hm'',
+          F
+     >!} Seal t b.
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
- destruct out; cleanup.
   {
-    inv_exec_perm.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.  
     split; auto.
@@ -247,9 +247,9 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
-    pred_apply; cancel.
+    apply H3; pred_apply; cancel; eauto.
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -262,7 +262,7 @@ Proof.
   }
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -281,27 +281,24 @@ Qed.
 
 Lemma unseal_secure:
   forall pr i,
-     {< tb,
+     {!< F tb,
        PERM: pr
-       PRE: bm
-         [[ can_access pr (fst tb) ]] *
+       PRE: bm, hm, 
+         F * [[ can_access pr (fst tb) ]] *
          [[ bm i = Some tb ]]
-       POST: bm' RET : b
-         [[ b = snd tb ]] *
+       POST: bm', hm', RET : b
+         F * [[ b = snd tb ]] *
          [[ bm' = bm ]]
-       CRASH:
-        emp
-     >} Unseal i.
+       CRASH: bm'', hm'',
+         F
+     >!} Unseal i.
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
-  destruct out; cleanup.
   {
-    inv_exec_perm.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    destruct tb; cleanup; auto.
     split; auto.
     clear H0; eapply bind_secure; intuition.  
     unfold permission_secure; intros.
@@ -318,9 +315,9 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
-    pred_apply; cancel.
+    apply H3; pred_apply; cancel; eauto.
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -333,10 +330,9 @@ Proof.
   }
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
-    destruct tb; cleanup; auto.
-    edestruct H4; eauto.
+    edestruct H4; eauto; cleanup.
     pred_apply; cancel; eauto.
     split_ors; cleanup; try congruence.
     eapply bind_secure; intuition.
@@ -353,23 +349,21 @@ Qed.
 
 Lemma ret_secure:
   forall T pr (v: T),
-     {< X,
+     {!< F,
        PERM: pr
-       PRE: bm
-         emp
-       POST: bm' RET : r
-         [[ r = v ]] *
+       PRE: bm, hm,
+          F
+       POST: bm', hm', RET : r
+         F * [[ r = v ]] *
          [[ bm' = bm ]]
-       CRASH:
-         emp
-     >} Ret v.
+       CRASH:bm'', hm'',
+         F
+     >!} Ret v.
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
-   destruct out; cleanup.
   {
-    inv_exec_perm.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     split; auto.
@@ -388,9 +382,9 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
-    pred_apply; cancel.
+    apply H3; pred_apply; cancel; eauto.
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -403,76 +397,7 @@ Proof.
   }
   {
     split.
-    right; eexists; intuition.
-    inv_exec_perm.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-  }
-Qed.
-
-Lemma ret_secure':
-  forall A T P pr (v: T),
-     {< (e: A),
-       PERM: pr
-       PRE: bm
-         P e
-       POST: bm' RET : r
-         P e * [[ r = v ]] *
-         [[ bm' = bm ]]
-       CRASH:
-         P e
-     >} Ret v.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
-   destruct out; cleanup.
-  {
-    inv_exec_perm.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-  }
-  split_ors; cleanup.
-  {
-    split.
-    right; eexists; intuition.
-    inv_exec_perm.
-    pred_apply; cancel.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-  }
-  {
-    split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -547,7 +472,7 @@ Proof.
   rewrite <- app_assoc; eapply H; eauto.
 Qed.
 *)
-
+ 
 Lemma sync_invariant_sync_mem_apply:
   forall (P: rawpred) m,
     P m ->
@@ -560,29 +485,26 @@ Proof.
 Qed.
 
 Lemma sync_secure:
-  forall A pr P,
-     {< (e: A),
+  forall pr,
+     {!< F,
        PERM: pr
-       PRE: bm
-         P e * [[ sync_invariant (P e) ]]
-       POST: bm' RET : tt
-         sync_xform (P e) *
+       PRE: bm, hm,
+         F * [[ sync_invariant F ]]
+       POST: bm', hm',  RET : tt
+         sync_xform F *
          [[ bm' = bm ]]
-       CRASH:
-         P e
-     >} Sync.
+       CRASH: bm'', hm'',
+         F
+     >!} Sync.
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
-   destruct out; cleanup.
   {
-    inv_exec_perm.
     edestruct H4; eauto.
-    rewrite <- sync_xform_sync_invariant with (p:= dummy); eauto;
-    repeat rewrite <- sep_star_assoc;
-    rewrite <- sync_xform_sep_star_dist.
+    repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
     
     split; auto.
@@ -595,18 +517,17 @@ Proof.
     unfold permission_secure; intros.
     clear H1; inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
-    rewrite <- sync_xform_sync_invariant with (p:= dummy); eauto;
-    repeat rewrite <- sep_star_assoc;
-    rewrite <- sync_xform_sep_star_dist.
+   repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
   }
   split_ors; cleanup.
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
-    pred_apply; cancel.
+    apply H3; pred_apply; cancel; eauto.
     eapply bind_secure; intuition.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
@@ -615,21 +536,19 @@ Proof.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
-    rewrite <- sync_xform_sync_invariant with (p:= dummy); eauto;
-    repeat rewrite <- sep_star_assoc;
-    rewrite <- sync_xform_sep_star_dist.
+    repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
   }
   {
     split.
-    right; eexists; intuition.
+    right; do 3 eexists; intuition.
     inv_exec_perm.
     edestruct H4; eauto.
-    rewrite <- sync_xform_sync_invariant with (p:= dummy); eauto;
-    repeat rewrite <- sep_star_assoc;
-    rewrite <- sync_xform_sep_star_dist.
+    repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
     split_ors; cleanup; try congruence.
     eapply bind_secure; intuition.
@@ -640,10 +559,9 @@ Proof.
     unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
-    rewrite <- sync_xform_sync_invariant with (p:= dummy); eauto;
-    repeat rewrite <- sep_star_assoc;
-    rewrite <- sync_xform_sep_star_dist.
+    repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
   }
 Qed.
@@ -653,4 +571,4 @@ Hint Extern 1 (corr2 _ _ (Bind (Write _ _) _)) => apply write_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Seal _ _) _)) => apply seal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Unseal _) _)) => apply unseal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
-Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure' : prog.
+Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.

@@ -1,21 +1,22 @@
 Ver 1.2 - Crash Conditions
 Ver 1.2.1 - Sync Instruction
+Ver 1.2.2 - Add Hashmaps
 
 PermAsyncDisk (Done) --------------
    |                              |
    V                              |
-PermProg (Done)                   |
-   |                              |
-   V                              |
-PermProgAuto (Done)               |
-   |                              |
-   V                              |
-PermSec (Done)                    |
-   |                              |
-   V                              V
-PermProgMonad (Done)        PermPredCrash (Done)
-   |                              |
-   |-------------------------------
+PermProg (Done) ------------------+----------------------                  
+   |                              |                     |
+   V                              |                     V
+PermProgAuto (Done)               |                PermHashmap
+   |                              |                     |
+   V                              |                     | 
+PermSec (Done)                    |                     |
+   |                              |                     |
+   V                              V                     |
+PermProgMonad (Done)        PermPredCrash (Done)        |
+   |                              |                     |
+   |-----------------------------------------------------
    V
 PermHoare (Done)
    |                

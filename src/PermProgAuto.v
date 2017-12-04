@@ -32,33 +32,37 @@ Ltac inv_exec'' H :=
 
 Ltac inv_exec' :=
   match goal with
-  | [ H: exec _ _ _ _ (Ret _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Ret _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Read _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Read _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Write _ _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Write _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Seal _ _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Seal _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Unseal _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Unseal _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ Sync _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ Sync _ _ |- _ ] =>
+    inv_exec'' H
+  | [ H: exec _ _ _ _ _ (Hash _) _ _ |- _ ] =>
+    inv_exec'' H
+  | [ H: exec _ _ _ _ _ (Hash2 _ _) _ _ |- _ ] =>
     inv_exec'' H
   end.
 
 Lemma bind_sep:
-  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm ret tr tr',
-    exec pr tr d bm (Bind p1 p2) ret tr' ->
+  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm hm ret tr tr',
+    exec pr tr d bm hm (Bind p1 p2) ret tr' ->
     match ret with
-    | Finished _ _ _ =>
-    (exists tr1 r1 d1 bm1,
-       exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
-       exec pr tr1 d1 bm1 (p2 r1) ret tr')
-  | Crashed _ =>
-    (exec pr tr d bm p1 ret tr' \/
-     (exists tr1 r1 d1 bm1,
-        exec pr tr d bm p1 (Finished d1 bm1 r1) tr1 /\
-        exec pr tr1 d1 bm1 (p2 r1) ret tr'))
+    | Finished _ _ _ _ =>
+    (exists tr1 r1 d1 bm1 hm1,
+       exec pr tr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
+       exec pr tr1 d1 bm1 hm1 (p2 r1) ret tr')
+  | Crashed _ _ _ =>
+    (exec pr tr d bm hm p1 ret tr' \/
+     (exists tr1 r1 d1 bm1 hm1,
+        exec pr tr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
+        exec pr tr1 d1 bm1 hm1 (p2 r1) ret tr'))
     end.
 Proof.
   intros.
@@ -77,6 +81,8 @@ Ltac logic_clean:=
 Ltac some_subst :=
   match goal with
   | [H: Some _ = Some _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Finished _ _ _ _ = Finished _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Crashed _ _ _ = Crashed _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
   end.
 
 Ltac clear_dup:=
@@ -113,7 +119,15 @@ Ltac clear_trace:=
     rewrite app_assoc in H; repeat clear_trace
   end.
 
-Ltac cleanup:= try logic_clean; subst; try rewriteall;
+
+Ltac split_match:=
+  match goal with
+  |[H: context [match ?x with | _ => _ end] |- _] =>
+   let name := fresh "D" in
+     destruct x eqn:name; repeat split_match
+  end.
+
+Ltac cleanup:= try split_match; try logic_clean; subst; try rewriteall;
                try clear_dup; try rewrite_upd_eq;
                try clear_dup; try some_subst;
                try clear_trace; subst; try rewriteall.
@@ -123,8 +137,9 @@ Ltac split_ors:=
   | [H: _ \/ _ |- _ ] => destruct H; cleanup
   end.
 
+
 Ltac inv_exec_perm :=
   match goal with
-  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; cleanup
-  |[H : exec _ _ _ _ _ _ _ |- _ ] => inv_exec'
+  |[H : exec _ _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; repeat cleanup
+  |[H : exec _ _ _ _ _ _ _ _ |- _ ] => inv_exec'
   end.

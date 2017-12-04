@@ -23,8 +23,9 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ADestructPair DestructVarname\
 	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs \
-	      PermAsyncDisk PermPredCrash\
-	      PermProg PermProgAuto PermSec \
+	      PermAsyncDisk PermPredCrash \
+	      PermProg PermHashmap PermBlockmem \
+		PermProgAuto PermSec \
 	      PermProgMonad PermHoare PermSepAuto \
 	      PermInstr PermCacheDef PermCacheLemmas \
 	      PermCacheSec

@@ -811,10 +811,10 @@ Ltac cancel_by H :=
 
 Theorem nop_ok :
   forall T A pr v (rx : A -> prog T),
-  corr2 pr (fun done_ crash_ bm' => exists F, F * [[ forall r_,
-    corr2 pr (fun done' crash' bm' => (fun r => F * [[ r = v ]]) r_ *
+  corr2 pr (fun done_ crash_ bm' hm' => exists F, F * [[ forall r_,
+    corr2 pr (fun done' crash' bm' hm' => (fun r => F * [[ r = v ]]) r_ *
                            [[ done' = done_ ]] * [[ crash' = crash_ ]])
-     (rx r_) ]] * [[ F =p=> crash_ ]])%pred (rx v).
+     (rx r_) ]] * [[ F =p=> crash_ bm' hm']])%pred (rx v).
 Proof.
   unfold corr2, pimpl.
   intros.

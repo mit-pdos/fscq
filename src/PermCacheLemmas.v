@@ -660,4 +660,95 @@ Proof.
   intuition; apply possible_sync_after_sync; auto.
 Qed.
 
-Hint Resolve sync_invariant_sync_xform.
+
+Notation arrayS := (arrayN ptsto_subset).
+
+Lemma sync_invariant_arrayS :
+  forall l a, sync_invariant (arrayS a l).
+Proof.
+  induction l; intros; simpl; eauto.
+Qed.
+
+Hint Resolve sync_invariant_arrayS.
+
+
+ Lemma mem_pred_cachepred_refl_arrayN : forall l start bm m,
+    arrayN (@ptsto _ _ _) start l m ->
+    mem_pred (cachepred (Map.empty (handle * bool)) bm) m m.
+  Proof.
+    induction l; simpl; intros.
+    - apply emp_empty_mem_only in H; subst.
+      unfold mem_pred. exists nil; simpl.
+      eapply pimpl_apply; [ | apply emp_empty_mem ].
+      cancel.
+      constructor.
+    - unfold mem_pred in *.
+      apply ptsto_mem_except in H as H'.
+      specialize (IHl _ bm _ H').
+      destruct IHl.
+      destruct_lift H0.
+      destruct a.
+      exists ((start, (t0, l0)) :: x).
+      simpl.
+      unfold mem_pred_one at 1. unfold cachepred at 1.
+      rewrite MapFacts.empty_o; simpl.
+
+      eapply pimpl_apply.
+      2: eapply mem_except_ptsto.
+      3: eassumption.
+      2: apply ptsto_valid in H; eauto.
+      rewrite ptsto_pimpl_ptsto_subset.
+      cancel.
+
+      constructor; auto.
+      eapply avs2mem_none_notin; eauto.
+      denote avs2mem as Heq; rewrite <- Heq.
+      apply mem_except_eq.
+      cbn.
+      denote avs2mem as Heq; setoid_rewrite <- Heq.
+      rewrite upd_mem_except.
+      rewrite upd_nop; eauto.
+      eapply ptsto_valid; eauto.
+  Qed.
+
+  Lemma arrayS_arrayN : forall l start,
+    arrayS start l =p=> exists l', arrayN (@ptsto _ _ _) start l'.
+  Proof.
+    induction l; simpl; intros.
+    exists nil; simpl; eauto.
+    rewrite IHl.
+    unfold ptsto_subset.
+    norml; unfold stars; simpl.
+    exists ((t0, old) :: l'); simpl.
+    pred_apply; cancel.
+  Qed.
+
+    
+Lemma mem_pred_cachepred_refl_arrayS : forall l start bm m,
+    arrayS start l m ->
+    mem_pred (cachepred (Map.empty (handle * bool)) bm) m m.
+  Proof.
+    intros.
+    apply arrayS_arrayN in H.
+    destruct_lift H.
+    eapply mem_pred_cachepred_refl_arrayN; eauto.
+  Qed.
+
+  Lemma sync_xform_arrayS : forall l start,
+    sync_xform (arrayS start l) =p=> arrayS start l.
+  Proof.
+    induction l; simpl; intros.
+    rewrite sync_xform_emp; cancel.
+    rewrite sync_xform_sep_star_dist.
+    rewrite sync_xform_ptsto_subset_preserve.
+    rewrite IHl.
+    cancel.
+  Qed.
+
+
+
+
+
+
+
+
