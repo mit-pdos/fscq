@@ -35,6 +35,7 @@ Module CacheOneDir.
   Notation MSCache := BFILE.MSCache.
   Notation MSAllocC := BFILE.MSAllocC.
   Notation MSIAllocC := BFILE.MSIAllocC.
+  Notation MSDBlocks := BFILE.MSDBlocks.
 
   Definition empty_cache : Dcache_type := Dcache.empty _.
 
@@ -121,11 +122,11 @@ Module CacheOneDir.
     (forall cache hint, BFILE.BFCache f = Some (cache, hint) ->
     forall name, Dcache.find name cache = dsmap name).
 
-  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms : @pred _ addr_eq_dec valuset :=
+  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm : @pred _ addr_eq_dec valuset :=
     (exists flist,
-     [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) ]]] *
+     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
-     [[ rep f dsmap ]] )%pred.
+     [[ rep f dsmap ]])%pred.
 
   Local Hint Unfold rep rep_macro SDIR.rep_macro : hoare_unfold.
 
@@ -221,19 +222,20 @@ Module CacheOneDir.
     end.
 
   Theorem init_cache_ok : forall bxp lxp ixp dnum ms,
-    {< F Fm Fi m0 m dmap ilist frees f,
-    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    {< F Fi Fm m0 sm m dmap ilist frees f,
+    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
     POST:hm' RET:^(ms', cache)
            exists f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm *
            [[ BFILE.BFCache f' = Some cache ]] *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
-           [[ MSIAllocC ms' = MSIAllocC ms ]]
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+           [[ MSDBlocks ms' = MSDBlocks ms ]]
     CRASH:hm'
-           LOG.intact lxp F m0 hm'
+           LOG.intact lxp F m0 sm hm'
     >} init_cache lxp ixp dnum ms.
   Proof.
     unfold init_cache, rep_macro.
@@ -246,19 +248,20 @@ Module CacheOneDir.
   Hint Extern 1 ({{_}} Bind (init_cache _ _ _ _) _) => apply init_cache_ok : prog.
 
   Theorem get_dcache_ok : forall lxp ixp dnum ms,
-    {< F Fm Fi m0 m dmap ilist frees bxp f,
-    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    {< F Fi Fm m0 sm m dmap ilist frees bxp f,
+    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
     POST:hm' RET:^(ms', cache)
            exists f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
+           [[ MSDBlocks ms' = MSDBlocks ms ]] *
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
-           LOG.intact lxp F m0 hm'
+           LOG.intact lxp F m0 sm hm'
     >} get_dcache lxp ixp dnum ms.
   Proof.
     unfold get_dcache, rep_macro.
@@ -269,23 +272,24 @@ Module CacheOneDir.
   Hint Extern 1 ({{_}} Bind (get_dcache _ _ _ _) _) => apply get_dcache_ok : prog.
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
-    {< F Fm Fi m0 m dmap ilist frees f,
-    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    {< F Fi Fm m0 sm m dmap ilist frees f,
+    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
     POST:hm' RET:^(ms', r)
            exists f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
+           [[ MSDBlocks ms' = MSDBlocks ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\ inum <> 0 /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]]) *
            [[ True ]]
     CRASH:hm'
-           LOG.intact lxp F m0 hm'
+           LOG.intact lxp F m0 sm hm'
     >} lookup lxp ixp dnum name ms.
   Proof.
     unfold lookup.
@@ -310,12 +314,12 @@ Module CacheOneDir.
   Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
 
   Theorem readdir_ok : forall lxp bxp ixp dnum ms,
-    {< F Fm Fi m0 m dmap ilist frees f,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    {< F Fi Fm m0 sm m dmap ilist frees f,
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
     POST:hm' RET:^(ms', r)
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' *
-             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms' sm *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
              [[ listpred SDIR.readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
@@ -323,7 +327,7 @@ Module CacheOneDir.
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
              [[ True ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir, rep_macro, rep.
@@ -335,12 +339,12 @@ Module CacheOneDir.
   Qed.
 
   Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
-    {< F Fm Fi m0 m dmap ilist frees f,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    {< F Fi Fm m0 sm m dmap ilist frees f,
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
     POST:hm' RET:^(ms', r) exists m' dmap' f',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees f' ms' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist frees f' ms' sm *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
@@ -348,7 +352,7 @@ Module CacheOneDir.
              [[ MSAllocC ms' = MSAllocC ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
              [[ True ]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} unlink lxp ixp dnum name ms.
   Proof.
     unfold unlink.
@@ -380,9 +384,9 @@ Module CacheOneDir.
   Hint Resolve sdir_rep_cache.
 
   Theorem link'_ok : forall lxp bxp ixp dnum name inum isdir ms,
-    {< F Fm Fi m0 m dmap ilist frees f,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
+    {< F Fi Fm m0 sm m dmap ilist frees f,
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm *
              [[ notindomain name dmap ]] *
              [[ goodSize addrlen inum ]] *
              [[ inum <> 0 ]]
@@ -390,18 +394,18 @@ Module CacheOneDir.
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm')
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees' f',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' f' ms' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist' frees' f' ms' sm *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
              [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                                  ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} link' lxp bxp ixp dnum name inum isdir ms.
   Proof.
     unfold link'.
@@ -421,27 +425,27 @@ Module CacheOneDir.
   Hint Extern 0 ({{ _ }} Bind (link' _ _ _ _ _ _ _ _) _) => apply link'_ok : prog.
 
   Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
-    {< F Fm Fi m0 m dmap ilist frees f,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
+    {< F Fi Fm m0 sm m dmap ilist frees f,
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm *
              [[ goodSize addrlen inum ]] *
              [[ inum <> 0 ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm')
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees' f',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' f' ms' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist' frees' f' ms' sm *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
              [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                                  ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} link lxp bxp ixp dnum name inum isdir ms.
   Proof.
     unfold link.

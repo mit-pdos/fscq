@@ -116,7 +116,9 @@ Inductive crash_step : forall T, prog T -> Prop :=
 | CrashRead : forall a,
     crash_step (Read a)
 | CrashWrite : forall a v,
-    crash_step (Write a v).
+    crash_step (Write a v)
+| CrashSync :
+    crash_step Sync.
 
 Inductive exec : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -> Prop :=
 | XRet : forall T m vm hm (v: T),

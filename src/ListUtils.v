@@ -1,5 +1,6 @@
-Require Import List Omega.
+Require Import List Omega SetoidList Permutation.
 Import ListNotations.
+Import Permutation.
 
 
 Set Implicit Arguments.
@@ -430,6 +431,40 @@ Proof.
   exists (S x); simpl; split; auto; omega.
 Qed.
 
+Lemma selN_split_r: forall A B (l : list (A * B)) i d,
+  selN (snd (split l)) i (snd d) = snd (selN l i d).
+Proof.
+  induction l; cbn; intros.
+  auto.
+  destruct a, split.
+  destruct i; cbn; auto.
+Qed.
+
+Lemma selN_split_l: forall A B (l : list (A * B)) i d,
+  selN (fst (split l)) i (fst d) = fst (selN l i d).
+Proof.
+  induction l; cbn; intros.
+  auto.
+  destruct a, split.
+  destruct i; cbn; auto.
+Qed.
+
+Lemma map_fst_split: forall A B (l : list (A * B)), map fst l = fst (split l).
+Proof.
+  induction l; cbn; auto.
+  destruct a; cbn.
+  destruct split eqn:?; cbn in *.
+  congruence.
+Qed.
+
+Lemma map_snd_split: forall A B (l : list (A * B)), map snd l = snd (split l).
+Proof.
+  induction l; cbn; auto.
+  destruct a; cbn.
+  destruct split eqn:?; cbn in *.
+  congruence.
+Qed.
+
 Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
   In x l \/ x = xn.
 Proof.
@@ -452,6 +487,21 @@ Proof.
   subst; auto.
   exfalso; auto.
 Qed.
+
+Lemma Forall_combine_r: forall A B F G (a : list A) (b : list B),
+  length a = length b ->
+  (forall x, F x <-> G (snd x)) ->
+  Forall F (combine a b) <-> Forall G b.
+Proof.
+  induction a; destruct b; cbn in *; try congruence; intros.
+  split; constructor.
+  split; intros H'; inversion H'; constructor; subst.
+  eapply H0 in H3; auto.
+  eapply IHa; auto.
+  eapply H0; auto.
+  apply IHa; auto.
+Qed.
+
 
 Lemma Forall_append: forall A f (l1 l2:list A),
   Forall f l1 -> Forall f l2 -> Forall f (l1 ++ l2).
@@ -514,6 +564,16 @@ Proof.
   - constructor.
   - inversion H; subst.
     constructor; auto.
+Qed.
+
+Lemma concat_repeat: forall T n k (x : T),
+  concat (repeat (repeat x k) n) = repeat x (n * k).
+Proof.
+  intros.
+  erewrite concat_hom_repeat.
+  autorewrite with lists.
+  eauto.
+  apply Forall_repeat; auto.
 Qed.
 
 
@@ -1107,6 +1167,20 @@ Proof.
   inversion H.
 Qed.
 
+Lemma skipn_app_split: forall T (a b : list T) n,
+  skipn n (a ++ b) = skipn n a ++ skipn (n - length a) b.
+Proof.
+  intros.
+  destruct (lt_dec n (length a)).
+  rewrite skipn_app_l by omega.
+  rewrite not_le_minus_0 by omega.
+  auto.
+  replace n with (length a + (n - length a)) at 1 by omega.
+  rewrite skipn_app_r.
+  rewrite skipn_oob with (l := a) by omega.
+  auto.
+Qed.
+
 Lemma removeN_app_r : forall T (b a : list T) i,
   removeN (a ++ b) (length a + i) = a ++ (removeN b i).
 Proof.
@@ -1490,6 +1564,58 @@ Proof.
     apply Nat.div_str_pos; omega.
 Qed.
 
+Lemma skipn_hom_concat: forall T k (l : list (list T)) n,
+  Forall (fun x => length x = k) l ->
+  k <> 0 ->
+  skipn n (concat l) = skipn (n mod k) (selN l (n / k) nil) ++ concat (skipn (S (n / k)) l).
+Proof.
+  induction l; cbn; intros.
+  repeat rewrite skipn_nil; auto.
+  inversion H; subst.
+  destruct (lt_dec n (length a)).
+  rewrite skipn_app_l by omega.
+  rewrite Nat.mod_small by auto.
+  rewrite Nat.div_small by auto.
+  auto.
+  replace n with (length a + (n - (length a))) at 1 by omega.
+  rewrite skipn_app_r.
+  rewrite IHl by auto.
+  rewrite mod_subt by omega.
+  rewrite div_ge_subt by auto.
+  rewrite <- Nat.div_small_iff in * by auto.
+  destruct (n / length a) eqn:?.
+  congruence.
+  cbn.
+  rewrite Nat.sub_0_r.
+  reflexivity.
+Qed.
+
+Lemma firstn_hom_concat: forall T k (l : list (list T)) n,
+  Forall (fun x => length x = k) l ->
+  k <> 0 ->
+  firstn n (concat l) = concat (firstn (n / k) l) ++ firstn (n mod k) (selN l (n / k) nil).
+Proof.
+  induction l; cbn; intros.
+  repeat rewrite firstn_nil; auto.
+  inversion H; subst.
+  destruct (lt_dec n (length a)).
+  rewrite firstn_app_l by omega.
+  rewrite Nat.mod_small by auto.
+  rewrite Nat.div_small by auto.
+  auto.
+  rewrite firstn_app by omega.
+  rewrite firstn_oob by omega.
+  rewrite IHl by auto.
+  rewrite mod_subt by omega.
+  rewrite div_ge_subt by auto.
+  rewrite <- Nat.div_small_iff in * by auto.
+  destruct (n / length a) eqn:?.
+  congruence.
+  cbn.
+  rewrite Nat.sub_0_r.
+  auto using app_assoc.
+Qed.
+
 Lemma selN_selN_hom : forall T (l : list (list T)) k off def,
   Forall (fun sublist => length sublist = k) l ->
   off < k * length l ->
@@ -1506,6 +1632,22 @@ Definition combine_updN : forall A B i a b (va:A) (vb:B),
 Proof.
   induction i; intros; destruct a, b; simpl; auto.
   rewrite IHi; auto.
+Qed.
+
+Lemma combine_updN_l: forall A B (a : list A) (b : list B) i x d,
+  combine (updN a i x) b = updN (combine a b) i (x, selN b i d).
+Proof.
+  intros.
+  erewrite <- updN_selN_eq with (l := b) at 1.
+  eauto using combine_updN.
+Qed.
+
+Lemma combine_updN_r: forall A B (a : list A) (b : list B) i x d,
+  combine a (updN b i x) = updN (combine a b) i (selN a i d, x).
+Proof.
+  intros.
+  erewrite <- updN_selN_eq with (l := a) at 1.
+  eauto using combine_updN.
 Qed.
 
 Lemma selN_combine : forall Ta Tb i a b (a0:Ta) (b0:Tb),
@@ -1649,6 +1791,57 @@ Proof.
   congruence.
 Qed.
 
+Lemma in_removeN : forall T (l : list T) i x,
+  In x (removeN l i) -> In x l.
+Proof.
+  unfold removeN.
+  intros.
+  rewrite <- firstn_skipn with (n := i).
+  rewrite in_app_iff in *.
+  intuition.
+  right.
+  eapply in_skipn_in with (n := 1).
+  rewrite skipn_skipn.
+  auto.
+Qed.
+
+Lemma in_removeN_neq: forall T (l : list T) x d i,
+  In x l ->
+  selN l i d <> x ->
+  In x (removeN l i).
+Proof.
+  unfold removeN.
+  intros.
+  erewrite <- firstn_skipn with (n := i) in H.
+  rewrite in_app_iff in *.
+  intuition.
+  right.
+  eapply in_skipn_S; eauto.
+Qed.
+
+Lemma in_combine_ex_l: forall A B (a : list A) (b : list B),
+  length a >= length b ->
+  forall y, In y b -> exists x, In (x, y) (List.combine a b).
+Proof.
+  induction a; cbn; intros.
+  destruct b; cbn in *; intuition omega.
+  destruct b; cbn in *; intuition; subst.
+  eauto.
+  edestruct IHa; eauto.
+  omega.
+Qed.
+
+Lemma in_combine_ex_r: forall A B (a : list A) (b : list B),
+  length a <= length b ->
+  forall x, In x a -> exists y, In (x, y) (List.combine a b).
+Proof.
+  induction a; cbn; intros.
+  omega.
+  destruct b; cbn in *; intuition; subst; try omega.
+  eauto.
+  edestruct IHa; eauto.
+  omega.
+Qed.
 
 Theorem firstn_removelast_eq : forall V (l : list V),
   length l > 0
@@ -1766,6 +1959,15 @@ Proof.
   rewrite IHn; auto.
 Qed.
 
+Lemma removeN_map_comm: forall T T' (f : T -> T') i l,
+  removeN (map f l) i = map f (removeN l i).
+Proof.
+  unfold removeN.
+  intros.
+  rewrite firstn_map_comm, skipn_map_comm, map_app.
+  auto.
+Qed.
+
 Lemma skipn_firstn_comm : forall A n m (l : list A),
   skipn n (firstn (n + m) l) = firstn m (skipn n l).
 Proof.
@@ -1834,6 +2036,33 @@ Proof.
   induction l; cbn; intros.
   auto.
   f_equal; eauto.
+Qed.
+
+Lemma combine_map': forall T T' A' B' (a : list T) (b : list T') (f : _ -> A') (g : _ -> B'),
+  map (fun x => (f (fst x), g (snd x))) (combine a b) = combine (map f a) (map g b).
+Proof.
+  induction a; cbn; intros.
+  auto.
+  destruct b; cbn; auto.
+  f_equal; eauto.
+Qed.
+
+Lemma combine_map_l : forall A B C (a : list A) (b : list B) (f : _ -> C),
+  combine (map f a) b = map (fun ab => (f (fst ab), snd ab)) (combine a b).
+Proof.
+  intros.
+  setoid_rewrite combine_map' with (g := id).
+  rewrite map_id.
+  auto.
+Qed.
+
+Lemma combine_map_r : forall A B C (a : list A) (b : list B) (f : _ -> C),
+  combine a (map f b) = map (fun ab => (fst ab, f (snd ab))) (combine a b).
+Proof.
+  intros.
+  setoid_rewrite combine_map' with (f := id).
+  rewrite map_id.
+  auto.
 Qed.
 
 Lemma map_fst_combine: forall A B (a: list A) (b: list B),
@@ -1922,6 +2151,14 @@ Proof.
   inversion H0; subst; eauto.
 Qed.
 
+Lemma in_nodup_split : forall T (a : T) l1 l2,
+  In a (l1 ++ l2) -> NoDup (l1 ++ l2) -> ~ In a l2 -> In a l1.
+Proof.
+  induction l1; simpl; intros; eauto.
+  intuition; subst.
+  inversion H0; subst; eauto.
+Qed.
+
 Lemma NoDup_app_comm : forall T (l1 l2 : list T),
   NoDup (l1 ++ l2) ->
   NoDup (l2 ++ l1).
@@ -1948,6 +2185,23 @@ Proof.
     apply in_or_app. apply in_app_or in H0. intuition.
   - eapply IHl1.
     apply NoDup_app_comm in H3. rewrite <- app_assoc in H3. eauto.
+Qed.
+
+Lemma in_nodup_firstn_not_skipn: forall T (l : list T) n x,
+  NoDup l ->
+  In x (firstn n l) -> ~In x (skipn n l).
+Proof.
+  intros.
+  erewrite <- firstn_skipn in H.
+  eapply not_In_NoDup_app; eauto.
+Qed.
+
+Lemma in_nodup_not_skipn_firstn: forall T (l : list T) n x,
+  NoDup l -> In x l ->
+  ~In x (skipn n l) -> In x (firstn n l).
+Proof.
+  intros.
+  eapply in_nodup_split; rewrite ?firstn_skipn; eauto.
 Qed.
 
 Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
@@ -3209,6 +3463,72 @@ Proof.
   apply NoDup_rev_2.
 Qed.
 
+Lemma selN_rev: forall T n (l : list T) d,
+  n < length l ->
+  selN (rev l) n d = selN l (length l - S n) d.
+Proof.
+  induction l; cbn; auto.
+  intros.
+  destruct (lt_dec n (length l)).
+  rewrite selN_app1 by (rewrite rev_length; auto).
+  rewrite IHl by auto.
+  destruct (length l - n) eqn:?; try omega.
+  f_equal; omega.
+  rewrite selN_app2 by (rewrite rev_length; omega).
+  rewrite rev_length.
+  repeat match goal with |- context [?a - ?b] =>
+    destruct (a - b) eqn:?; try omega
+  end.
+  auto.
+Qed.
+
+Lemma firstn_rev: forall T (l : list T) n, firstn n (rev l) = rev (skipn (length l - n) l).
+Proof.
+  induction l using rev_ind; cbn; intros.
+  auto using firstn_nil.
+  rewrite rev_app_distr; cbn.
+  rewrite app_length; cbn.
+  rewrite plus_comm.
+  rewrite skipn_app_split.
+  rewrite rev_app_distr.
+  rewrite <- Nat.sub_add_distr.
+  rewrite plus_comm with (n := n).
+  rewrite Nat.sub_add_distr.
+  rewrite Nat.add_sub.
+  destruct n.
+  repeat rewrite skipn_oob by (cbn; omega).
+  auto.
+  cbn.
+  congruence.
+Qed.
+
+Lemma combine_rev: forall A B (a : list A) (b : list B),
+  length a = length b ->
+  rev (combine a b) = combine (rev a) (rev b).
+Proof.
+  induction a; destruct b; cbn; intros; auto.
+  congruence.
+  rewrite combine_app; cbn.
+  f_equal; auto.
+  repeat rewrite rev_length; auto.
+Qed.
+
+Lemma list_isolate: forall T (l : list T) m n d,
+  length l = m + 1 + n ->
+  l = firstn m l ++ [selN l m d] ++ rev (firstn n (rev l)).
+Proof.
+  intros.
+  erewrite <- firstn_skipn at 1.
+  f_equal.
+  cbn.
+  erewrite skipn_selN_skipn.
+  f_equal.
+  rewrite firstn_rev by auto.
+  rewrite rev_involutive.
+  f_equal; omega.
+  omega.
+Qed.
+
 Lemma filter_length : forall A f (l : list A),
   length (filter f l) <= length l.
 Proof.
@@ -3586,6 +3906,23 @@ Proof.
   destruct l; simpl in *; try omega.
   eapply IHoff; eauto.
   omega.
+Qed.
+
+Lemma updN_concat' : forall T (l : list (list T)) l' off k x ld,
+  k <> 0 ->
+  off < k * length l ->
+  Forall (fun y => length y = k) l ->
+  l' = updN (selN l (off / k) ld) (off mod k) x ->
+  updN (concat l) off x = concat (updN l (off / k) l').
+Proof.
+  intros.
+  subst.
+  erewrite Nat.div_mod with (x := off) at 1 by eauto.
+  rewrite plus_comm, mult_comm.
+  erewrite updN_concat; auto.
+  erewrite selN_inb; eauto.
+  apply Nat.div_lt_upper_bound; auto.
+  apply Nat.mod_bound_pos; omega.
 Qed.
 
 
@@ -4421,4 +4758,442 @@ Proof.
   rewrite skipn_selN.
   f_equal.
   eauto.
+Qed.
+
+Lemma NoDup_NoDupA_eq: forall T E,
+  (forall x y, E x y <-> x = y) ->
+  forall (l : list T),
+  NoDupA E l <-> NoDup l.
+Proof.
+  induction l; cbn; intros.
+  split; constructor.
+  split; intro H'; inversion H'; subst.
+  constructor; auto.
+  rewrite IHl in *.
+  rewrite InA_alt in *.
+  intro Ha.
+  match goal with H: context [not] |- _ => eapply H end.
+  eexists; split; eauto.
+  eapply H; auto.
+  eapply IHl; eauto.
+  constructor.
+  rewrite InA_alt in *.
+  intro Ha.
+  destruct Ha; intuition.
+  rewrite H in *.
+  subst; auto.
+  eapply IHl; auto.
+Qed.
+
+Lemma NoDup_filter: forall T f (l : list T),
+  NoDup l -> NoDup (filter f l).
+Proof.
+  induction l; cbn; intros.
+  constructor.
+  inversion H; subst.
+  destruct f; auto.
+  constructor; eauto.
+  rewrite filter_In.
+  intuition.
+Qed.
+
+Lemma combine_no_dup: forall A B (a : list A) (b : list B),
+  NoDup a \/ NoDup b -> NoDup (List.combine a b).
+Proof.
+  induction a; cbn; intros.
+  constructor.
+  destruct b.
+  constructor.
+  intuition try match goal with H : NoDup (_ :: _) |- _ => inversion H; subst end.
+  constructor; eauto using in_combine_l.
+  constructor; eauto using in_combine_r.
+Qed.
+
+Fact NoDup_In_inj: forall T V (f : T -> V) (l : list T),
+  NoDup (map f l) ->
+  forall a b,
+  In a l -> In b l ->
+  f a = f b ->
+  a = b.
+Proof.
+  induction l; cbn; intros.
+  intuition.
+  inversion H; subst.
+  match goal with H : f _ = f _ |- _ => rename H into Hf end.
+  intuition subst; auto.
+  rewrite Hf in *.
+  exfalso.
+  eauto using in_map.
+  rewrite <- Hf in *.
+  exfalso.
+  eauto using in_map.
+Qed.
+
+Lemma filter_ext: forall T (f f' : T -> bool) l,
+  (forall x, f x = f' x) ->
+  filter f l = filter f' l.
+Proof.
+  induction l; cbn; intros.
+  auto.
+  rewrite IHl by auto.
+  specialize (H a).
+  rewrite H.
+  destruct f'; auto.
+Qed.
+
+Definition index_of {T} (f : T -> bool) (l : list T) :=
+  match (ifind_list (fun x _ => f x) l 0) with
+  | Some (i, x) => i
+  | None => length l
+  end.
+
+Fixpoint sort_by_index {S T} (f : T -> T -> bool) (ls : list (S * T)) (lt : list T) s0 t0 :=
+  match lt with
+  | nil => nil
+  | t :: lt =>
+    let i := index_of (fun a => f t (snd a)) ls in
+    (selN ls i (s0, t0)) :: (sort_by_index f ls lt s0 t0)
+  end.
+
+Definition inb {T} {E} (l : list T) (x : T) :=
+  if in_dec E x l then true else false.
+
+Lemma index_of_spec: forall T (l : list T) f d,
+  let i := index_of f l in
+  i < length l -> f (selN l i d) = true.
+Proof.
+  unfold index_of.
+  intros.
+  destruct ifind_list eqn:H'.
+  eapply ifind_list_ok_facts in H'; eauto.
+  rewrite Nat.sub_0_r in *.
+  intuition.
+  match goal with H: _ |- _ => rewrite H end.
+  auto.
+  omega.
+Qed.
+
+Lemma index_of_inb: forall T (l : list T) f,
+  (exists x, In x l /\ f x = true) ->
+  index_of f l < length l.
+Proof.
+  unfold index_of.
+  intros.
+  destruct ifind_list eqn:H'.
+  eapply ifind_list_ok_facts in H'.
+  rewrite (surjective_pairing p).
+  omega.
+  destruct H as [x [Ha Hb] ].
+  eapply in_selN_exists in Ha.
+  destruct Ha as [? [? Ha] ].
+  eapply ifind_list_none in H'; eauto.
+  rewrite Ha in *.
+  congruence.
+Unshelve.
+  all: eauto.
+  destruct p; eauto.
+Qed.
+
+Lemma inb_spec: forall T E l x,
+  In x l <-> @inb T E l x = true.
+Proof.
+  unfold inb.
+  intros.
+  destruct in_dec; intuition congruence.
+Qed.
+
+Lemma sort_by_index_length: forall S T t f (l : list (S * T)) s0 t0,
+  length (sort_by_index f l t s0 t0) = length t.
+Proof.
+  induction t; cbn; auto.
+Qed.
+
+Lemma sort_by_index_spec: forall S T (ls : list (S * T)) f lt s0 t0,
+  (forall x, In x lt -> In x (snd (split ls))) ->
+  (forall a b, f a b = true <-> a = b) ->
+  snd (split (sort_by_index f ls lt s0 t0)) = lt.
+Proof.
+  induction lt; cbn.
+  auto.
+  intros.
+  destruct selN eqn: Hp.
+  remember (split (sort_by_index _ _ _ _ _)) as r.
+  rewrite (surjective_pairing r); cbn.
+  subst r.
+  rewrite IHlt; auto.
+  f_equal.
+  unfold index_of in *.
+  destruct ifind_list eqn:Ha.
+  eapply ifind_list_ok_facts in Ha.
+  rewrite Nat.sub_0_r in *.
+  intuition subst.
+  eapply f_equal with (f := snd) in Hp.
+  match goal with H: selN _ _ _ = _ |- _ => rewrite H in * end.
+  rewrite Hp in *.
+  rewrite H0 in *. subst.
+  auto.
+  specialize (H a) as ?.
+  intuition.
+  match goal with H: _ |- _ => eapply in_selN_exists in H;
+    destruct H as [i ?]; intuition end.
+  rewrite split_length_r in *.
+  eapply ifind_list_none with (ix := i) in Ha; eauto.
+  rewrite <- selN_split_r in *.
+  match goal with
+    Hf : context [iff],
+    Hb : _ = a |- _ => symmetry in Hb; eapply Hf in Hb end.
+  rewrite Ha in *.
+  congruence.
+Unshelve.
+  all: eauto.
+Qed.
+
+Lemma index_of_in_sort_by_index: forall T V (fn : T -> V) f (l : list T) d x,
+  In x l ->
+  NoDup (map fn l) ->
+  (forall x y, f x y = true <-> x = y) ->
+  selN l (index_of (fun a => f (fn x) (fn a)) l) d = x.
+Proof.
+  unfold index_of.
+  intros.
+  destruct ifind_list eqn:H'.
+  eapply ifind_list_ok_facts in H'.
+  rewrite Nat.sub_0_r in *.
+  intuition auto.
+  repeat match goal with H: _ |- _ => rewrite H in * end.
+  eapply NoDup_In_inj; eauto.
+  match goal with H: _ |- _ => rewrite <- H end.
+  eapply in_selN; eauto.
+  eapply in_selN_exists in H.
+  destruct H as [i [? Hs] ].
+  eapply ifind_list_none in H'; eauto.
+  eapply f_equal with (f := fn) in Hs.
+  match goal with H: forall x y, _, H' : f ?a ?b = false |- _ =>
+    specialize (H a b) end.
+  rewrite Hs in *.
+  intuition.
+  congruence.
+Unshelve.
+  all: eauto.
+Qed.
+
+Lemma NoDup_selN_index_of_multiple: forall T V f (fn : T -> V) (l : list T) a d,
+  NoDup l ->
+  In a l ->
+  (forall x y, f x y = true <-> x = y) ->
+  fn (selN l (index_of (fun x => f (fn a) (fn x)) l) d) <> fn a -> False.
+Proof.
+  unfold index_of.
+  intros.
+  destruct ifind_list eqn:H'.
+  eapply ifind_list_ok_facts in H'.
+  rewrite Nat.sub_0_r in *.
+  intuition auto.
+  repeat match goal with H: _ |- _ => rewrite H in * end.
+  congruence.
+  match goal with H: _ |- _ => eapply in_selN_exists in H; destruct H end.
+  intuition.
+  eapply ifind_list_none in H'; eauto.
+  match goal with H: forall x y, _, H' : f ?a ?b = false |- _ =>
+    specialize (H a b) end.
+  match goal with H: _ |- _ => rewrite H in * end.
+  intuition congruence.
+Unshelve.
+  all: eauto.
+Qed.
+
+Lemma in_sort_by_index': forall S T f t (l : list (S * T)) x s0 t0,
+  NoDup (map snd l) ->
+  In x l ->
+  In (snd x) t ->
+  (forall x y, f x y = true <-> x = y) ->
+  In x (sort_by_index f l t s0 t0).
+Proof.
+  induction t; cbn; intros.
+  auto.
+  intuition subst.
+  left.
+  eapply index_of_in_sort_by_index; auto.
+  right.
+  eapply IHt; auto.
+Qed.
+
+Lemma in_sort_by_index: forall S T f t (l : list (S * T)) (x : S * T) s0 t0,
+  NoDup t -> NoDup l ->
+  (forall x, In x t -> exists y, In (y, x) l) ->
+  (forall x y, f x y = true <-> x = y) ->
+  In x (sort_by_index f l t s0 t0) -> In x l /\ In (snd x) t.
+Proof.
+  induction t; cbn in *.
+  intuition auto.
+  intros.
+  match goal with H: context [iff] |- _ => rename H into Hf end.
+  inversion H; subst.
+  edestruct (H1 a).
+  left; eauto.
+  intuition subst.
+  eapply in_selN.
+  eapply index_of_inb.
+  eexists.
+  split; try eassumption.
+  rewrite Hf; auto.
+  match goal with |- ?a = ?b \/ _ => destruct (f a b) eqn:? end.
+  left.
+  rewrite <- Hf; eauto.
+  exfalso; eapply NoDup_selN_index_of_multiple with (fn := snd) (l := l); eauto.
+  intro Hs.
+  symmetry in Hs.
+  rewrite <- Hf in Hs.
+  rewrite Hs in *.
+  congruence.
+  eapply IHt; eauto.
+  right.
+  eapply IHt; eauto.
+Qed.
+
+Lemma filter_elements_permutation: forall T (l : list (T * _)) a t0,
+  NoDup (map snd l) ->
+  NoDup a ->
+  (forall x, In x a -> exists y, In (y, x) l) ->
+  let e := (sort_by_index Nat.eqb l a t0 0) in
+  let p := filter (fun x => inb (E:=Nat.eq_dec) a (snd x)) l in
+  Permutation e p.
+Proof.
+  cbn; intros.
+  eapply Permutation.NoDup_Permutation.
+  eapply NoDup_map_inv with (f := snd).
+  rewrite map_snd_split.
+  rewrite sort_by_index_spec; auto.
+  intros.
+  match goal with H: _, H': _ |- _ => apply H in H'; destruct H' as [? Ha] end.
+  eapply in_split_r in Ha.
+  auto.
+  eauto using Nat.eqb_eq.
+  eapply NoDup_filter.
+  eauto using NoDup_map_inv.
+  intros.
+  intuition.
+  match goal with H: _ |- _ => eapply in_sort_by_index in H end.
+  rewrite filter_In.
+  rewrite <- inb_spec. auto.
+  eauto.
+  eauto using NoDup_map_inv.
+  intuition.
+  eauto using Nat.eqb_eq.
+  rewrite filter_In in *. intuition cbn in *.
+  eapply in_sort_by_index'; cbn; auto.
+  rewrite inb_spec; eauto.
+  eauto using Nat.eqb_eq.
+Unshelve.
+  all: eauto.
+Qed.
+
+Lemma partition_permutation_app: forall T f (l : list T),
+  let p := partition f l in
+  Permutation l (fst p ++ snd p).
+Proof.
+  cbn; induction l; cbn.
+  constructor.
+  destruct partition eqn:?.
+  destruct f; cbn in *.
+  constructor.
+  auto.
+  eapply Permutation_cons_app.
+  eauto.
+Qed.
+
+Lemma sort_by_index_combine: forall A B f (la : list A) (lb : list B) t a0 b0,
+  length la = length lb ->
+  incl t lb ->
+  (forall x y, f x y = true <-> x = y) ->
+  let s := sort_by_index f (List.combine la lb) t a0 b0 in
+  s = List.combine (fst (split s)) t.
+Proof.
+  intros.
+  pose proof (split_combine s).
+  destruct (split s) eqn:Hs; cbn.
+  subst s.
+  match goal with H: _ |- _ => rewrite <- H end.
+  f_equal.
+  eapply f_equal with (f := snd) in Hs; cbn in Hs.
+  subst.
+  eapply sort_by_index_spec; auto.
+  intros.
+  rewrite List.combine_split; auto.
+Qed.
+
+Lemma partition_eq_filter: forall T (l : list T) f,
+  partition f l = (filter f l, filter (fun x => negb (f x)) l).
+Proof.
+  induction l; cbn; intros.
+  auto.
+  destruct partition eqn:He; cbn.
+  rewrite IHl in He.
+  destruct f; cbn; congruence.
+Qed.
+
+Lemma filter_map_ext: forall T T' f f' (g : T -> T') l,
+  (forall x, In x l -> f x = f' (g x)) ->
+  filter f' (map g l) = map g (filter f l).
+Proof.
+  induction l; cbn; intros.
+  auto.
+  rewrite H by auto.
+  destruct f'; cbn.
+  f_equal; auto.
+  auto.
+Qed.
+
+Lemma filter_r: forall A B (f : B -> bool) (a : list A) b da db,
+  length a = length b ->
+  filter (fun x => f (snd x)) (List.combine a b) = List.combine (map (fun i => selN a i da) (filter (fun i => f (selN b i db)) (seq 0 (length a)))) (filter f b).
+Proof.
+  induction a; cbn; intros.
+  auto.
+  destruct b; cbn in *; try congruence.
+  rewrite <- seq_shift.
+  erewrite filter_map_ext.
+  destruct f; cbn; rewrite map_map.
+  f_equal.
+  all: eauto.
+Qed.
+
+Lemma filter_l: forall A B (f : A -> bool) a b da (db : B),
+  length a = length b ->
+  filter (fun x => f (fst x)) (List.combine a b) = List.combine (filter f a) (map (fun i => selN b i db) (filter (fun i => f (selN a i da)) (seq 0 (length a)))).
+Proof.
+  induction a; cbn; intros.
+  auto.
+  destruct b; cbn in *; try congruence.
+  rewrite <- seq_shift.
+  erewrite filter_map_ext.
+  destruct f; cbn; rewrite map_map.
+  f_equal.
+  all: eauto.
+Qed.
+
+Lemma filter_selN_length: forall T f (l : list T) d,
+  length (filter f l) = length (filter (fun i => f (selN l i d)) (seq 0 (length l))).
+Proof.
+  induction l; cbn; intros.
+  auto.
+  rewrite <- seq_shift.
+  erewrite filter_map_ext.
+  destruct f; cbn.
+  f_equal.
+  all: autorewrite with lists; eauto.
+Qed.
+
+Lemma permutation_filter: forall T E (l l' : list T),
+  NoDup l -> NoDup l' ->
+  incl l' l ->
+  Permutation.Permutation (filter (@inb _ E l') l) l'.
+Proof.
+  intros.
+  apply Permutation.NoDup_Permutation; auto using NoDup_filter.
+  intros.
+  rewrite filter_In.
+  unfold inb.
+  destruct in_dec; intuition.
+  congruence.
 Qed.

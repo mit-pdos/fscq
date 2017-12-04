@@ -17,7 +17,7 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
 				Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
-	      MemPred Cache \
+	      MemPred Cache SyncedMem \
 	      FSLayout AsyncRecArray DiskLogHash \
 	      LogReplay MemLog ListPred GenSepN FMapMem \
 	      NEList DiskSet GroupLog Log LogRecArray \
@@ -30,7 +30,7 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
 	      DirSep DirSepCrash ProgMetatheory TreeSeq \
-	      AtomicCp BACHelper BytefileSpecs
+	      AtomicCp BACHelper BytefileSpecs AtomicCpRecover
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
@@ -108,7 +108,7 @@ hscgen/%.hs: hslib/%.hsc
 	@mkdir -p $(@D)
 	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64 -Ihslib
 
-%: %.hs $(VS_HS) $(HSLIB_PRE) $(HSLIB_POST) $(HSLIB_FUSE)
+%: %.hs $(VS_HS) $(HSLIB_PRE) $(HSLIB_POST) $(HSLIB_FUSE) fiximports.py
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)

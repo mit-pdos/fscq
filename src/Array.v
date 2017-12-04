@@ -379,8 +379,26 @@ Section PtstoArray.
 
 End PtstoArray.
 
+Lemma arrayN_piff_replace: forall T V (l : list T) n (p q : _ -> _ -> @pred _ _ V),
+  (forall i d x, i < length l -> selN l i d = x -> p (i + n) x <=p=> q (i + n) x) ->
+  arrayN p n l <=p=> arrayN q n l.
+Proof.
+  induction l; cbn; intros; auto.
+  rewrite H with (i := 0) by (auto; omega).
+  rewrite IHl.
+  split; cancel.
+  intros.
+  rewrite <- plus_Snm_nSm.
+  rewrite H; (eauto; omega).
+Qed.
 
-
+Lemma arrayN_map: forall V T T' (l : list T) n (p : addr -> T' -> @pred _ _ V) (f : T -> T'),
+  arrayN p n (map f l) <=p=> arrayN (fun i x => p i (f x)) n l.
+Proof.
+  induction l; cbn; intros; auto.
+  rewrite IHl.
+  auto.
+Qed.
 
 Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
   updN vs i (v, vsmerge (selN vs i ($0, nil))).
@@ -392,6 +410,8 @@ Definition vsupd_range (vsl : list valuset) (vl : list valu) :=
   let n := length vl in
   (List.combine vl (map vsmerge (firstn n vsl))) ++ skipn n vsl.
 
+Definition vs_synced a (vl : list valuset) :=
+  snd (selN vl a ($0, nil)) = nil.
 
 Lemma vsupd_length : forall vsl a v,
   length (vsupd vsl a v) = length vsl.
@@ -898,6 +918,12 @@ Proof.
   omega.
 Qed.
 
+Lemma vssync_vecs_cons: forall a d x,
+  vssync_vecs d (x :: a) = vssync_vecs (vssync d x) a.
+Proof.
+  auto.
+Qed.
+
 Lemma vssync_vecs_vssync_comm : forall l d a,
   vssync_vecs (vssync d a) l = vssync (vssync_vecs d l) a.
 Proof.
@@ -909,17 +935,98 @@ Proof.
   rewrite updN_comm; auto.
 Qed.
 
+Lemma vssync_vecs_comm: forall l l' vs,
+  vssync_vecs (vssync_vecs vs l) l' = vssync_vecs (vssync_vecs vs l') l.
+Proof.
+  induction l; intros.
+  auto.
+  rewrite vssync_vecs_cons.
+  rewrite IHl.
+  rewrite vssync_vecs_vssync_comm.
+  rewrite vssync_vecs_cons.
+  auto.
+Qed.
+
+Lemma vssync_vecs_app_comm: forall l l' vs,
+  vssync_vecs vs (l ++ l') = vssync_vecs vs (l' ++ l).
+Proof.
+  induction l; intros.
+  rewrite app_nil_r.
+  auto.
+  rewrite <- app_comm_cons.
+  rewrite vssync_vecs_cons.
+  change (a :: l) with ([a] ++ l).
+  rewrite app_assoc.
+  rewrite <- IHl.
+  rewrite app_assoc.
+  rewrite vssync_vecs_app.
+  rewrite vssync_vecs_vssync_comm.
+  auto.
+Qed.
+
+Lemma vssync_vecs_app': forall l l' vs,
+  vssync_vecs (vssync_vecs vs l) l' = vssync_vecs vs (l ++ l').
+Proof.
+  induction l; intros.
+  auto.
+  rewrite <- app_comm_cons.
+  repeat rewrite vssync_vecs_cons.
+  repeat rewrite vssync_vecs_vssync_comm.
+  rewrite IHl; auto.
+Qed.
 
 Lemma vssync_synced : forall l a,
-  snd (selN l a ($0, nil)) = nil ->
+  vs_synced a l ->
   vssync l a = l.
 Proof.
-  unfold vssync; induction l; intros; auto.
-  destruct a0; simpl in *.
-  destruct a; simpl in *.
-  rewrite <- H; auto.
-  f_equal.
+  unfold vs_synced, vssync.
+  intros.
+  rewrite <- H.
+  destruct (lt_dec a (length l)).
+  erewrite selN_inb, <- surjective_pairing by auto.
+  rewrite updN_selN_eq; auto.
+  rewrite updN_oob by omega.
+  auto.
+Qed.
+
+Lemma vs_synced_vssync_nop: forall vs a,
+  vs_synced a vs -> vssync vs a = vs.
+Proof.
+  unfold vs_synced, vssync.
+  intuition.
+  eapply selN_eq_updN_eq.
+  destruct selN eqn:H'; cbn in *.
+  rewrite H'; congruence.
+Qed.
+
+Lemma vssync_vecs_nop: forall vs l,
+  Forall (fun a => vs_synced a vs) l ->
+  vssync_vecs vs l = vs.
+Proof.
+  induction l; intros.
+  auto.
+  inversion H; subst.
+  rewrite vssync_vecs_cons.
+  rewrite vssync_vecs_vssync_comm.
   rewrite IHl; auto.
+  eapply vs_synced_vssync_nop; auto.
+Qed.
+
+Lemma vssync_vecs_nil: forall vs,
+  vssync_vecs vs nil = vs.
+Proof.
+  intros.
+  apply vssync_vecs_nop; constructor.
+Qed.
+
+Lemma vssync_comm: forall vs a b,
+  vssync (vssync vs a) b = vssync (vssync vs b) a.
+Proof.
+  intros.
+  unfold vssync.
+  destruct (addr_eq_dec a b); subst; auto.
+  repeat rewrite selN_updN_ne by auto.
+  rewrite updN_comm; auto.
 Qed.
 
 Lemma vssync_vsupd_eq : forall l a v,
@@ -930,8 +1037,7 @@ Proof.
   destruct (lt_dec a (length l)).
   rewrite selN_updN_eq; simpl; auto.
   rewrite selN_oob.
-  repeat rewrite updN_oob; auto.
-  omega. omega.
+  repeat rewrite updN_oob by omega; auto.
   autorewrite with lists; omega.
 Qed.
 
@@ -1032,6 +1138,13 @@ Proof.
   unfold synced_list; intros.
   rewrite map_fst_combine; auto.
   rewrite repeat_length; auto.
+Qed.
+
+Lemma synced_list_map_fst_map : forall (vsl : list valuset),
+  synced_list (map fst vsl) = map (fun x => (fst x, nil)) vsl.
+Proof.
+  unfold synced_list; induction vsl; simpl; auto.
+  f_equal; auto.
 Qed.
 
 Lemma vsupsyn_range_synced_list : forall a b,

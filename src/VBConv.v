@@ -209,7 +209,7 @@ Proof.
   unfold not; intros; inversion H.
 Qed.
 
-(* helper le-lt lemmas. *)
+(* XXX: START Arithmetic Lemmas. *)
 Lemma le_trans: forall n m k, n <= m -> m <= k -> n <= k.
 Proof. intros. omega. Qed.
 
@@ -279,6 +279,16 @@ Proof. intros.
 omega.
 Qed.
 
+Lemma div_eq: forall m n k, k < m -> (n * m + k)/m = n.
+Proof.
+  intros.
+  rewrite Nat.div_add_l.
+  apply Nat.div_small in H.
+  rewrite H; symmetry; apply plus_n_O.
+  unfold not; intros; rewrite H0 in H; inversion H.
+Qed.
+
+(* XXX: END Arithmetic Lemmas. *)
 
 Lemma some_eq: forall A (x y: A), Some x = Some y <-> x = y.
 Proof.
@@ -381,14 +391,7 @@ Qed.
 
 
 
-Lemma div_eq: forall m n k, k < m -> (n * m + k)/m = n.
-Proof.
-  intros.
-  rewrite Nat.div_add_l.
-  apply Nat.div_small in H.
-  rewrite H; symmetry; apply plus_n_O.
-  unfold not; intros; rewrite H0 in H; inversion H.
-Qed.
+
 
 Lemma mapfst_maplist2byteset: forall A (l: list (list A)) def,
   map fst (map (list2byteset def) l) = map (selN' 0 def) l.

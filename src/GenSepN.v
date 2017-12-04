@@ -266,6 +266,22 @@ Proof.
   apply eq_sym; apply H5; auto.
 Qed.
 
+Lemma list2nmem_except_last : forall T (l : list T) x,
+  mem_except (list2nmem (l ++ x::nil)) (length l) = list2nmem l.
+Proof.
+  unfold mem_except, list2nmem.
+  intros.
+  eapply functional_extensionality; cbn; intros a.
+  destruct Nat.eq_dec.
+  rewrite selN_oob; auto.
+  autorewrite with lists. omega.
+  rewrite map_app; cbn.
+  destruct (lt_dec a (length l)).
+  rewrite selN_app; eauto.
+  autorewrite with lists; eauto.
+  repeat rewrite selN_oob; auto.
+  all: autorewrite with lists; cbn; omega.
+Qed.
 
 Theorem list2nmem_array: forall  A (l : list A),
   arrayN (@ptsto _ eq_nat_dec A) 0 l (list2nmem l).
@@ -301,6 +317,53 @@ Proof.
     apply list2nmem_array.
 Qed.
 
+Lemma listpred_ptsto_list2nmem: forall T t (l : list T),
+  listpred (fun a => a |->?)%pred t (list2nmem l) ->
+  Permutation.Permutation t (seq 0 (length l)).
+Proof.
+  unfold list2nmem.
+  intros.
+  eapply Permutation.NoDup_Permutation.
+  eapply listpred_nodup; eauto.
+  decide equality.
+  intuition.
+  eapply ptsto_conflict; eauto.
+  apply seq_NoDup.
+  split; intros.
+  eapply listpred_remove in H; eauto.
+  destruct_lift H.
+  eapply ptsto_valid in H.
+  eapply in_seq.
+  destruct (lt_dec x (length l)); try omega.
+  rewrite selN_oob in H by (autorewrite with lists; omega).
+  congruence.
+  intros.
+  eauto using ptsto_conflict.
+  destruct (In_dec Nat.eq_dec x t).
+  eapply listpred_remove in H; eauto.
+  eauto using ptsto_conflict.
+  eapply listpred_ptsto_notindomain in H; eauto.
+  cbv [notindomain list2nmem] in *.
+  denote seq as Hs.
+  eapply in_seq in Hs.
+  erewrite selN_map in * by omega.
+  congruence.
+Unshelve.
+  all: try exact Nat.eq_dec.
+  destruct l; cbn in *; eauto; omega.
+Qed.
+
+
+Lemma arrayN_ptsto_linked: forall S V t l,
+  arrayN (ptsto (V:=S)) 0 l =p=> listpred (fun a => exists v, a |-> v) t ->
+  @listpred _ _ Nat.eq_dec V (fun a => a |->?) (seq 0 (length l)) =p=> listpred (fun a => a |->?) t.
+Proof.
+  intros.
+  pose proof list2nmem_array as Hp.
+  eapply H in Hp.
+  eapply listpred_permutation.
+  eapply listpred_ptsto_list2nmem; auto.
+Qed.
 
 (* Alternative variants of [list2nmem] that are more induction-friendly *)
 Definition list2nmem_off (A: Type) (start : nat) (l: list A) : (nat -> option A) :=
@@ -582,7 +645,7 @@ Proof.
   congruence.
 Qed.
 
-Theorem arrayN_except : forall V vs (def : V) i (pts: _ -> _ -> @pred _ _ V),
+Theorem arrayN_except : forall T V (vs : list T) (def : T) i (pts: _ -> _ -> @pred _ _ V),
   i < length vs
   -> arrayN pts 0 vs <=p=>
     (arrayN_ex pts vs i) * (pts i (selN vs i def)).
@@ -593,11 +656,10 @@ Proof.
   unfold piff; split; cancel.
 Qed.
 
-
-Theorem arrayN_except_upd : forall V vs (v : V) i,
+Theorem arrayN_except_upd : forall V T vs (v : T) i (pts : nat -> T -> @pred _ _ V),
   i < length vs
-  -> arrayN (@ptsto _ eq_nat_dec V) 0 (updN vs i v) <=p=>
-    (arrayN_ex (@ptsto _ eq_nat_dec V) vs i) * (i |-> v).
+  -> arrayN pts 0 (updN vs i v) <=p=>
+    (arrayN_ex pts vs i) * (pts i v).
 Proof.
   intros; unfold arrayN_ex.
   erewrite isolate_fwd_upd; eauto.
@@ -605,10 +667,9 @@ Proof.
   unfold piff; split; cancel.
 Qed.
 
-
-Theorem arrayN_ex_updN_eq : forall A l i (v : A),
-  arrayN_ex (@ptsto _ eq_nat_dec A) (updN l i v) i <=p=>
-  arrayN_ex (@ptsto _ eq_nat_dec A) l i.
+Theorem arrayN_ex_updN_eq : forall T A l i (v : A) (pts : _ -> _ -> @pred _ _ T),
+  arrayN_ex pts (updN l i v) i <=p=>
+  arrayN_ex pts l i.
 Proof.
   unfold arrayN_ex; intros; autorewrite with core lists;
   split; simpl; rewrite skipn_updN; eauto.

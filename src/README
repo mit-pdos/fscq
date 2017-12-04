@@ -10,17 +10,13 @@ To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
 processes and setting the right logical-to-physical path mappings.
 
-Use GHC 8.0.1 to build the Haskell-extracted code.  On Ubuntu, this
-means running this as root:
-
-  add-apt-repository ppa:hvr/ghc
-  apt-get update
-  apt-get install ghc-8.0.1-prof cabal-install-1.24
+Use GHC 8.0.1 to build the Haskell-extracted code.  On Ubuntu 17.04,
+the stock version of GHC is sufficiently recent, so just run:
 
   echo 'library-profiling: True' >> ~/.cabal/config
-  /opt/cabal/1.24/bin/cabal user-config update
-  /opt/cabal/1.24/bin/cabal update
-  PATH=/opt/ghc/8.0.1/bin:$PATH /opt/cabal/1.24/bin/cabal install cryptohash clock rdtsc digest options unix-io-extra
+  cabal user-config update
+  cabal update
+  cabal install cryptohash clock rdtsc digest options
 
 You also need to install headers for FUSE:
 

@@ -97,9 +97,21 @@ Ltac eexists_one :=
 
 Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
 
+(* Split first match case into two levels to avoid Coq bug 5156 *)
 Ltac pred_apply := match goal with
-  | [ H: _ ?m |- _ ?m ] => pred_apply' H
+  | [ |- _ ?m ] => (has_evar m; fail 1) ||
+    match goal with
+    | [ H: _ ?m' |- _ ] => unify m m'; pred_apply' H
+    end
   | [ |- exists _, _ ] => eexists; pred_apply
+  end.
+
+Ltac pred_apply_instantiate := match goal with
+  | [ |- _ ?m ] =>
+    match goal with
+    | [ H: _ ?m' |- _ ] => unify m m'; pred_apply' H
+    end
+  | [ |- exists _, _ ] => eexists; pred_apply_instantiate
   end.
 
 Ltac pimpl_crash :=
@@ -772,6 +784,27 @@ Ltac cancel_with' t intuition_t :=
     try match goal with
     | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
     end ).
+
+(* Redefine solve_crelation, which is extern hinted, to avoid Coq bug 5156.
+   The behavior should be exactly the same, though the second match case
+   has been split into two matches *)
+Ltac CRelationClasses.solve_crelation ::=
+  match goal with
+  | [ |- ?R ?x ?x ] => reflexivity
+  | [ |- ?R ?y ?x ] =>
+    match goal with
+    | [ H : R x y |- _ ] => symmetry ; exact H
+    end
+  end.
+
+(* Same for solve_relation *)
+Ltac RelationClasses.solve_relation ::= match goal with
+  | |- ?R ?x ?x => reflexivity
+  | |- ?R ?y ?x => match goal with
+    | [ H:R x y |- _ ] => symmetry; exact H
+    end
+  end.
+
 
 Ltac cancel_with t := cancel_with' t ltac:(auto with *).
 Ltac cancel := cancel_with idtac.

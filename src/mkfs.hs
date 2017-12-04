@@ -17,7 +17,7 @@ instance Options MkfsOptions where
   defineOptions = pure MkfsOptions
     <*> simpleOption "cachesize" 100000
           "maximum cached blocks"
-    <*> simpleOption "data-bitmaps" 1
+    <*> simpleOption "data-bitmaps" 4
           "number of bitmaps (each 32768 bits) for data blocks"
     <*> simpleOption "inode-bitmaps" 1
           "number of bitmaps (each 32768 bits) for inodes"

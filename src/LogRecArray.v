@@ -57,10 +57,10 @@ Module LogRecArray (RA : RASig).
   Definition ifind lxp xp (cond : item -> addr -> bool) ms :=
     let^ (ms, ret) <- ForN i < (RALen xp)
     Hashmap hm
-    Ghost [ F m xp items Fm crash m1 m2 ]
+    Ghost [ F m xp items Fm crash sm m1 m2 ]
     Loopvar [ ms ret ]
     Invariant
-    LOG.rep lxp F (LOG.ActiveTxn m1 m2) ms hm *
+    LOG.rep lxp F (LOG.ActiveTxn m1 m2) ms sm hm *
                               [[[ m ::: Fm * rep xp items ]]] *
                               [[ forall st,
                                    ret = Some st ->
@@ -124,16 +124,16 @@ Module LogRecArray (RA : RASig).
   Qed.
 
   Theorem get_ok : forall lxp xp ix ms,
-    {< F Fm m0 m items,
+    {< F Fm m0 sm m items,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ ix < length items ]] *
           [[[ m ::: Fm * rep xp items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' *
           [[ r = selN items ix item0 ]]
     CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} get lxp xp ix ms.
   Proof.
     unfold get, rep.
@@ -152,15 +152,15 @@ Module LogRecArray (RA : RASig).
 
 
   Theorem put_ok : forall lxp xp ix e ms,
-    {< F Fm m0 m items,
+    {< F Fm m0 sm m items,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ ix < length items /\ Rec.well_formed e ]] *
           [[[ m ::: Fm * rep xp items ]]]
     POST:hm' RET:ms' exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm hm' *
           [[[ m' ::: Fm * rep xp (updN items ix e) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} put lxp xp ix e ms.
   Proof.
     unfold put, rep.
@@ -184,16 +184,16 @@ Module LogRecArray (RA : RASig).
 
 
   Theorem read_ok : forall lxp xp nblocks ms,
-    {< F Fm m0 m items,
+    {< F Fm m0 sm m items,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ nblocks <= RALen xp ]] *
           [[[ m ::: Fm * rep xp items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' *
           [[ r = firstn (nblocks * items_per_val) items ]]
     CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} read lxp xp nblocks ms.
   Proof.
     unfold read, rep.
@@ -210,15 +210,15 @@ Module LogRecArray (RA : RASig).
 
 
   Theorem write_ok : forall lxp xp items ms,
-    {< F Fm m0 m old,
+    {< F Fm m0 sm m old,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ items_valid xp items ]] *
           [[[ m ::: Fm * rep xp old ]]]
     POST:hm' RET:ms' exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm hm' *
           [[[ m' ::: Fm * rep xp items ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} write lxp xp items ms.
   Proof.
     unfold write, rep.
@@ -232,15 +232,15 @@ Module LogRecArray (RA : RASig).
 
 
   Theorem init_ok : forall lxp xp ms,
-    {< F Fm m0 m vsl,
+    {< F Fm m0 sm m vsl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ xparams_ok xp /\ RAStart xp <> 0 /\ length vsl = RALen xp ]] *
           [[[ m ::: Fm * arrayN (@ptsto _ addr_eq_dec _) (RAStart xp) vsl ]]]
     POST:hm' RET:ms' exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm hm' *
           [[[ m' ::: Fm * rep xp (repeat item0 ((RALen xp) * items_per_val) ) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} init lxp xp ms.
   Proof.
     unfold init, rep.
@@ -266,24 +266,24 @@ Module LogRecArray (RA : RASig).
        ifind_result_item_ok.
 
   Theorem ifind_ok : forall lxp xp cond ms,
-    {< F Fm m0 m items,
+    {< F Fm m0 sm m items,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: Fm * rep xp items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' *
         ( [[ r = None ]] \/ exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true
                          /\ (fst st) < length items
                          /\ snd st = selN items (fst st) item0 ]])
     CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} ifind lxp xp cond ms.
   Proof.
     unfold ifind, rep.
     safestep. eauto.
-    eassign m.
-    pred_apply; cancel.
+    eassign items.
+    pred_apply_instantiate; cancel.
     eauto.
 
     safestep.
@@ -295,7 +295,7 @@ Module LogRecArray (RA : RASig).
     step.
     cancel.
 
-    step.
+    safestep.
     destruct a; cancel.
     match goal with
     | [ H: forall _, Some _ = Some _ -> _ |- _ ] =>
@@ -303,7 +303,7 @@ Module LogRecArray (RA : RASig).
     end.
     or_r; cancel.
     pimpl_crash.
-    eassign (exists ms', LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm)%pred.
+    eassign (exists ms', LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm)%pred.
     cancel.
     erewrite LOG.rep_hashmap_subset; eauto.
 
@@ -337,15 +337,15 @@ Module LogRecArray (RA : RASig).
     Ret r.
 
   Theorem get_array_ok : forall lxp xp ix ms,
-    {< F Fm Fi m0 m items e,
+    {< F Fm Fi m0 sm m items e,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: Fm * rep xp items ]]] *
           [[[ items ::: Fi * (ix |-> e) ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' * [[ r = e ]]
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' * [[ r = e ]]
     CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} get_array lxp xp ix ms.
   Proof.
     unfold get_array.
@@ -357,18 +357,18 @@ Module LogRecArray (RA : RASig).
 
 
   Theorem put_array_ok : forall lxp xp ix e ms,
-    {< F Fm Fi m0 m items e0,
+    {< F Fm Fi m0 sm m items e0,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ Rec.well_formed e ]] *
           [[[ m ::: Fm * rep xp items ]]] *
           [[[ items ::: Fi * (ix |-> e0) ]]]
     POST:hm' RET:ms' exists m' items',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm hm' *
           [[ items' = updN items ix e ]] *
           [[[ m' ::: Fm * rep xp items' ]]] *
           [[[ items' ::: Fi * (ix |-> e) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} put_array lxp xp ix e ms.
   Proof.
     unfold put_array.
@@ -407,17 +407,17 @@ Module LogRecArray (RA : RASig).
 
 
   Theorem read_array_ok : forall lxp xp nblocks ms,
-    {< F Fm Fi m0 m items l,
+    {< F Fm Fi m0 sm m items l,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ length l = (nblocks * items_per_val)%nat ]] *
           [[[ m ::: Fm * rep xp items ]]] *
           [[[ items ::: Fi * arrayN (@ptsto _ addr_eq_dec _) 0 l ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' *
           [[ r = l ]]
     CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} read_array lxp xp nblocks ms.
   Proof.
     unfold read_array.
@@ -428,17 +428,17 @@ Module LogRecArray (RA : RASig).
 
 
   Theorem ifind_array_ok : forall lxp xp cond ms,
-    {< F Fm m0 m items,
+    {< F Fm m0 sm m items,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[[ m ::: Fm * rep xp items ]]]
     POST:hm' RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' *
         ( [[ r = None ]] \/ exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
           [[[ items ::: arrayN_ex (@ptsto _ addr_eq_dec _) items (fst st) * (fst st) |-> (snd st) ]]] )
     CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} ifind_array lxp xp cond ms.
   Proof.
     unfold ifind_array; intros.
@@ -848,17 +848,17 @@ Module LogRecArrayCache (RA : RASig).
   Qed.
 
   Theorem get_array_ok : forall lxp xp ix cache ms,
-    {< F Fm m0 m items,
+    {< F Fm m0 sm m items,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ ix < length items ]] *
           [[[ m ::: Fm * rep xp items cache ]]]
     POST:hm' RET:^(cache', ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' *
           [[[ m ::: Fm * rep xp items cache' ]]] *
           [[ r = selN items ix item0 ]]
     CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} get_array lxp xp ix cache ms.
   Proof.
     unfold get_array, get, rep.
@@ -867,18 +867,18 @@ Module LogRecArrayCache (RA : RASig).
   Qed.
 
   Theorem put_array_ok : forall lxp xp ix e cache ms,
-    {< F Fm Fi m0 m items e0,
+    {< F Fm Fi m0 sm m items e0,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
           [[ Rec.well_formed e ]] *
           [[[ m ::: Fm * rep xp items cache ]]] *
           [[[ items ::: Fi * (ix |-> e0) ]]]
     POST:hm' RET:^(cache', ms') exists m' items',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm hm' *
           [[ items' = updN items ix e ]] *
           [[[ m' ::: Fm * rep xp items' cache' ]]] *
           [[[ items' ::: Fi * (ix |-> e) ]]]
-    CRASH:hm' LOG.intact lxp F m0 hm'
+    CRASH:hm' LOG.intact lxp F m0 sm hm'
     >} put_array lxp xp ix e cache ms.
   Proof.
     unfold put_array, put, rep.

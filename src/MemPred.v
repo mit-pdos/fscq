@@ -204,8 +204,9 @@ Section MemPred.
     mem_pred (mem_except hm a) * mem_pred_one (a, v) =p=> mem_pred (upd hm a v).
   Proof.
     unfold mem_pred; intros.
-    cancel.
-    eassign ((a, v) :: hm_avs).
+    norml.
+    exists ((a, v) :: hm_avs).
+    pred_apply.
     cancel.
     simpl; constructor; auto.
     apply avs2mem_none_notin.
@@ -227,8 +228,9 @@ Section MemPred.
     mem_pred (mem_except hm a) * mem_pred_one (a, v) =p=> mem_pred hm.
   Proof.
     unfold mem_pred; intros.
-    cancel.
-    eassign ( (a, v) :: hm_avs).
+    norml.
+    exists ( (a, v) :: hm_avs).
+    pred_apply.
     cancel.
     simpl; constructor; auto.
     apply avs2mem_none_notin.

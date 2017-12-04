@@ -42,6 +42,9 @@ Definition dsupd_vecs (ds : diskset) av :=
 Definition dssync_vecs (ds : diskset) al := 
   d_map (fun x => vssync_vecs x al) ds.
 
+Definition ds_synced a (ds : diskset) :=
+  Forall (vs_synced a) (fst ds :: snd ds).
+
 Lemma dsupd_latest : forall ds a v,
   latest (dsupd ds a v) = updN (latest ds) a v.
 Proof.
@@ -152,6 +155,93 @@ Proof.
   replace (length ds - S n) with n0 by omega; auto.
 Qed.
 
+Lemma dssync_vecs_nop: forall vs l,
+  Forall (fun a => ds_synced a vs) l ->
+  dssync_vecs vs l = vs.
+Proof.
+  unfold dssync_vecs, d_map.
+  intros.
+  destruct vs; cbn; f_equal.
+  eapply vssync_vecs_nop.
+  rewrite Forall_forall in *.
+  intuition.
+  unfold ds_synced in *.
+  specialize (H x); intuition.
+  inversion H1; auto.
+  rewrite <- map_id.
+  eapply map_ext_in.
+  rewrite Forall_forall in *.
+  unfold ds_synced in *.
+  intuition; cbn in *.
+  eapply vssync_vecs_nop.
+  rewrite Forall_forall.
+  intros x; specialize (H x); intuition.
+  rewrite Forall_forall in *.
+  cbn in *; intuition.
+Qed.
+
+Lemma dssync_comm: forall d a b,
+  dssync (dssync d a) b = dssync (dssync d b) a.
+Proof.
+  unfold dssync, d_map.
+  destruct d; cbn -[vssync]; intros.
+  f_equal.
+  rewrite vssync_comm.
+  auto.
+  repeat rewrite map_map.
+  eapply map_ext_in; intros.
+  rewrite vssync_comm; auto.
+Qed.
+
+Lemma dssync_vecs_cons: forall l vs x,
+  dssync_vecs vs (x :: l) = dssync_vecs (dssync vs x) l.
+Proof.
+  unfold dssync_vecs, dssync.
+  intros.
+  cbn.
+  destruct vs; unfold d_map; cbn.
+  f_equal.
+  rewrite map_map.
+  auto.
+Qed.
+
+Lemma dssync_vecs_dssync_comm: forall l x vs,
+  dssync_vecs (dssync vs x) l = dssync (dssync_vecs vs l) x.
+Proof.
+  induction l; cbn; intros.
+  repeat rewrite dssync_vecs_nop by constructor.
+  auto.
+  repeat rewrite dssync_vecs_cons.
+  rewrite dssync_comm.
+  rewrite IHl.
+  auto.
+Qed.
+
+Lemma dssync_vecs_app: forall vs l l',
+  dssync_vecs vs (l ++ l') = dssync_vecs (dssync_vecs vs l) l'.
+Proof.
+  induction l; cbn.
+  rewrite dssync_vecs_nop; auto.
+  constructor.
+  intros.
+  repeat rewrite dssync_vecs_cons.
+  repeat rewrite dssync_vecs_dssync_comm.
+  congruence.
+Qed.
+
+Lemma dssync_vecs_permutation: forall ds l l',
+  Permutation.Permutation l l' ->
+  dssync_vecs ds l = dssync_vecs ds l'.
+Proof.
+  intros.
+  induction H; cbn; auto.
+  repeat rewrite ?dssync_vecs_cons, ?dssync_vecs_dssync_comm.
+  f_equal; auto.
+  repeat rewrite ?dssync_vecs_cons.
+  rewrite dssync_comm.
+  reflexivity.
+  congruence.
+Qed.
 
 (* list of transactions *)
 Definition txnlist  := list DLog.contents.

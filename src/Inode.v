@@ -13,7 +13,6 @@ Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Setoid.
 Require Import Rec.
-Require Import FunctionalExtensionality.
 Require Import NArith.
 Require Import WordAuto.
 Require Import RecArrayUtils LogRecArray.
@@ -22,9 +21,11 @@ Require Import Balloc.
 Require Import ListPred.
 Require Import FSLayout.
 Require Import AsyncDisk.
+Require Import DiskSet.
 Require Import BlockPtr.
 Require Import GenSepAuto.
 Require Import Errno.
+Require Import SyncedMem.
 
 Import ListNotations.
 
@@ -280,7 +281,7 @@ Module INODE.
     Ret ^(cache, (BALLOCC.upd_memstate lms ms)).
 
   (* reset combines shrink and setattr so that removing incurs one IRec.put_array call, instead of 2 *)
-  Definition reset lxp bxp xp inum nr attr cache ms :=
+  Definition reset lxp bxp xp inum nr attr cache ms := Eval compute_rec in
     let^ (cache, lms, (ir : irec)) <- IRec.get_array lxp xp inum cache (BALLOCC.MSLog ms);
     let^ (ms, (ir': irec)) <- Ind.shrink lxp bxp ir nr (BALLOCC.upd_memstate lms ms);
     let^ (cache, lms) <- IRec.put_array lxp xp inum (ir' :=> "attrs" := attr) cache (BALLOCC.MSLog ms);
@@ -310,19 +311,22 @@ Module INODE.
 
 
   Definition inode_match bxp ino (ir : irec) := Eval compute_rec in
+    let '(ino, IFs) := ino in
     ( [[ IAttr ino = (ir :-> "attrs") ]] *
       [[ Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks ino) ]] *
-      Ind.rep bxp ir (IBlocks ino) )%pred.
+      Ind.rep bxp IFs ir (IBlocks ino) )%pred.
 
-  Definition rep bxp xp (ilist : list inode) cache := (
-     exists reclist, IRec.rep xp reclist cache *
-     listmatch (inode_match bxp) ilist reclist)%pred.
+  Definition rep bxp IFs xp (ilist : list inode) cache := (
+     exists reclist fsl, IRec.rep xp reclist cache *
+     [[ IFs <=p=> pred_fold_left fsl ]] * [[ length ilist = length fsl ]] *
+     listmatch (inode_match bxp) (combine ilist fsl) reclist)%pred.
 
 
   (************** Basic lemmas *)
 
-  Lemma rep_length_pimpl : forall bxp xp ilist cache,
-    rep bxp xp ilist cache =p=> rep bxp xp ilist cache * [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
+  Lemma rep_length_pimpl : forall bxp xp IFs ilist cache,
+    rep bxp IFs xp ilist cache =p=> rep bxp IFs xp ilist cache *
+    [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
   Proof.
     unfold rep; intros.
     norml; unfold stars; simpl.
@@ -330,6 +334,7 @@ Module INODE.
     rewrite listmatch_length_pimpl.
     cancel.
     cbn in *.
+    rewrite combine_length_eq in * by auto.
     congruence.
   Qed.
 
@@ -371,29 +376,34 @@ Module INODE.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.
 
-  Theorem rep_bxp_switch : forall bxp bxp' xp ilist cache,
+  Theorem rep_bxp_switch : forall bxp bxp' xp IFs ilist cache,
     BmapNBlocks bxp = BmapNBlocks bxp' ->
-    rep bxp xp ilist cache <=p=> rep bxp' xp ilist cache.
+    rep bxp IFs xp ilist cache <=p=> rep bxp' IFs xp ilist cache.
   Proof.
     intros. unfold rep.
-    split; cancel; apply listmatch_piff_replace.
+    split; norm; unfold stars; simpl.
+    all : intuition eauto.
+    all : rewrite listmatch_piff_replace.
+    all : try cancel.
     all : intros; unfold inode_match, BALLOCC.bn_valid.
-    all : rewrite H; split; cancel.
-    all : unfold Ind.rep; cancel; eauto.
-    all : apply Ind.indrep_bxp_switch; auto.
+    all : destruct x.
+    all : rewrite Ind.rep_bxp_switch by (eassumption||symmetry; eassumption).
+    all : rewrite H in *.
+    all : split; cancel.
   Qed.
 
-  Lemma rep_clear_cache: forall bxp xp ilist cache,
-    rep bxp xp ilist cache =p=> rep bxp xp ilist IRec.cache0.
+  Lemma rep_clear_cache: forall bxp IFs xp ilist cache,
+    rep bxp IFs xp ilist cache =p=> rep bxp IFs xp ilist IRec.cache0.
   Proof.
     unfold rep.
     cancel.
     rewrite IRec.rep_clear_cache.
     cancel.
+    all: auto.
   Qed.
 
-  Lemma rep_upd_attrs: forall bxp ir iblocks (attr : iattr),
-    Ind.rep bxp ir iblocks <=p=> Ind.rep bxp (ir :=> "attrs" := attr) iblocks.
+  Lemma rep_upd_attrs: forall bxp Fs ir iblocks (attr : iattr),
+    Ind.rep bxp Fs ir iblocks <=p=> Ind.rep bxp Fs (ir :=> "attrs" := attr) iblocks.
   Proof.
     intros.
     cbn in *.
@@ -464,39 +474,48 @@ Module INODE.
 
   Arguments Rec.well_formed : simpl never.
 
+  Lemma inode_match_init_emp: forall bxp,
+    inode_match bxp (inode0, emp) IRec.Defs.item0 <=p=> emp.
+  Proof.
+    unfold inode_match.
+    unfold IRec.Defs.item0 at 1.
+    rewrite Rec.of_word_zero_reczero; cbn.
+    intros.
+    rewrite Ind.rep_piff_direct by (cbn; omega).
+    unfold Ind.rep_direct.
+    split; cancel; rewrite ?Ind.indrep_0 by auto; try cancel.
+    constructor.
+    setoid_rewrite Rec.of_word_zero_reczero.
+    repeat constructor.
+    apply list_same_repeat.
+  Qed.
+
   Lemma inode_match_init_ok : forall bxp n,
-    emp =p=> listmatch (inode_match bxp) (repeat inode0 n) (repeat IRec.Defs.item0 n).
+    emp =p=> listmatch (inode_match bxp) (repeat (inode0, emp) n) (repeat IRec.Defs.item0 n).
   Proof.
     induction n; simpl; intros.
     unfold listmatch; cancel.
-    rewrite IHn.
-    unfold listmatch; cancel.
-    unfold inode_match.
-    rewrite Ind.rep_piff_direct by (cbn; omega).
-    rewrite sep_star_assoc.
-    apply sep_star_lift_r'.
-    apply pimpl_and_split.
-    unfold pimpl, lift; intros; auto.
-    unfold Ind.rep_direct; cancel.
-    rewrite Ind.indrep_0 by (compute; auto). cancel.
-    apply Forall_nil.
-    repeat constructor.
-    eapply list_same_repeat.
+    rewrite listmatch_cons.
+    rewrite <- IHn.
+    rewrite inode_match_init_emp.
+    cancel.
   Qed.
 
 
   (********************** SPECs *)
 
   Theorem init_ok : forall lxp bxp xp ms,
-    {< F Fm m0 m l,
+    {< F Fm Fs m0 sm m l,
     PRE:hm 
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
            [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (IXStart xp) l) ]]] *
+           [[ Fs sm ]] *
            [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
-    POST:hm' RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.cache0)) ]]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    POST:hm' RET:ms exists m' IFs,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.cache0)) ]]] *
+           [[ (Fs * IFs)%pred sm ]]
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} init lxp xp ms.
   Proof.
     unfold init, rep.
@@ -504,278 +523,325 @@ Module INODE.
     cbv; auto.
     step.
     unfold IRec.rep. cancel.
+    rewrite combine_repeat.
     apply inode_match_init_ok.
     apply IRec.cache_rep_empty.
+    autorewrite with lists; auto.
+    apply Ind.pred_fold_left_repeat_emp.
   Qed.
 
   Theorem getlen_ok : forall lxp bxp xp inum cache ms,
-    {< F Fm Fi m0 m ilist ino,
+    {< F Fm Fi m0 sm m IFs ilist ino,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
            [[[ ilist ::: Fi * inum |-> ino ]]]
     POST:hm' RET:^(cache', ms,r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
-           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
            [[ r = length (IBlocks ino) ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} getlen lxp xp inum cache ms.
   Proof.
     unfold getlen, rep; pose proof irec0.
     safestep.
-    sepauto.
+    simplen.
     step.
 
     extract.
     denote Ind.rep as Hx; unfold Ind.rep in Hx; destruct_lift Hx.
     seprewrite; subst; eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
   Theorem getattrs_ok : forall lxp bxp xp inum cache ms,
-    {< F Fm Fi m0 m ilist ino,
+    {< F Fm Fi m0 sm m IFs ilist ino,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(cache',ms,r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
-           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
            [[ r = IAttr ino ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} getattrs lxp xp inum cache ms.
   Proof.
     unfold getattrs, rep.
     safestep.
-    sepauto.
+    simplen.
 
     step.
     extract.
+    destruct_lifts.
     seprewrite; subst; eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
   Theorem setattrs_ok : forall lxp bxp xp inum attr cache ms,
-    {< F Fm Fi m0 m ilist ino,
+    {< F Fm Fi m0 sm m IFs ilist ino,
     PRE:hm 
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(cache',ms) exists m' ilist' ino',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' cache') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (IBlocks ino) attr ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} setattrs lxp xp inum attr cache ms.
   Proof.
     unfold setattrs, rep.
     safestep.
-    sepauto.
+    simplen.
 
     step.
     irec_wf.
     sepauto.
 
     safestep.
-    eapply listmatch_updN_selN; simplen.
-    instantiate (1 := mk_inode (IBlocks ino) attr).
+    erewrite combine_updN_l.
+    eapply listmatch_updN_selN;
+      rewrite ?combine_length_eq by auto; simplen.
+    eassign (mk_inode (IBlocks ino) attr).
+    erewrite selN_combine with (b0 := emp) by auto.
     unfold inode_match; cancel; sepauto.
+    auto.
+    simplen.
     sepauto.
 
     eauto.
     cancel.
     cancel; eauto.
     Unshelve. exact irec0.
+    all: eauto.
   Qed.
 
 
   Theorem updattr_ok : forall lxp bxp xp inum kv cache ms,
-    {< F Fm Fi m0 m ilist ino,
+    {< F Fm Fi Fs m0 sm m IFs ilist ino,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
-           [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:^(cache',ms) exists m' ilist' ino',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' cache') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs)%pred sm ]]
+    POST:hm' RET:^(cache',ms) exists m' ilist' ino' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs')%pred sm ]] *
            [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} updattr lxp xp inum kv cache ms.
   Proof.
     unfold updattr, rep.
     safestep.
+    simplen.
+
+    safestep.
+    filldef; abstract (destruct kv; cbn; subst; irec_wf).
     sepauto.
 
     safestep.
-    filldef; abstract (destruct kv; simpl; subst; irec_wf).
-    sepauto.
+    rewrite combine_updN.
+    eapply listmatch_updN_selN; erewrite ?selN_combine; simplen.
+    4, 5: sepauto.
+    seprewrite.
+    eassign (@emp addr addr_eq_dec bool).
+    unfold inode_match; cancel.
+    rewrite updN_selN_eq. auto.
 
-    safestep.
-    eapply listmatch_updN_selN; simplen.
-    instantiate (1 := mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
-    unfold inode_match; cancel; sepauto.
-
-    sepauto.
-    auto.
+    simplen.
     cancel.
     cancel; eauto.
-    Unshelve. exact irec0.
+  Unshelve.
+    all: solve [eauto | exact irec0].
   Qed.
 
 
   Theorem getbnum_ok : forall lxp bxp xp inum off cache ms,
-    {< F Fm Fi m0 m ilist ino,
+    {< F Fm Fi m0 sm m IFs ilist ino,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
            [[ off < length (IBlocks ino) ]] *
-           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(cache', ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
-           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
            [[ r = selN (IBlocks ino) off $0 ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} getbnum lxp xp inum off cache ms.
   Proof.
     unfold getbnum, rep.
     safestep.
-    sepauto.
+    simplen.
 
     prestep; norml.
     extract; seprewrite.
-    cancel.
+    cancel; eauto.
     step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
     cancel.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
   Theorem getallbnum_ok : forall lxp bxp xp inum cache ms,
-    {< F Fm Fi m0 m ilist ino,
+    {< F Fm Fi m0 sm m IFs ilist ino,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(cache', ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
-           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
            [[ r = (IBlocks ino) ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
     >} getallbnum lxp xp inum cache ms.
   Proof.
     unfold getallbnum, rep.
     safestep.
-    sepauto.
+    simplen.
 
     prestep; norml.
     extract; seprewrite.
     cancel.
     step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
     cancel.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
+  Local Hint Extern 0 (okToUnify (listmatch ?f _ ?b) (listmatch ?f _ ?b)) => constructor : okToUnify.
+
   Theorem shrink_ok : forall lxp bxp xp inum nr cache ms,
-    {< F Fm Fi m0 m ilist ino freelist,
+    {< F Fm Fi Fs m0 sm m IFs ilist ino freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
-           [[[ m ::: (Fm * rep bxp xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
-           [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:^(cache', ms) exists m' ilist' ino' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
+    POST:hm' RET:^(cache', ms) exists m' ilist' ino' freelist' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]] *
            [[ incl freelist freelist' ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} shrink lxp bxp xp inum nr cache ms.
   Proof.
     unfold shrink, rep.
     safestep.
-    sepauto.
+    simplen.
 
     extract; seprewrite.
-    step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    safestep.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match at 2. rewrite selN_combine by simplen. cancel.
+    Ind.psubst.
+    rewrite Ind.pred_fold_left_selN_removeN. cancel.
     step.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
-    smash_rec_well_formed.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lifts. auto.
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end.
+    smash_rec_well_formed.
     sepauto.
 
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end.
     safestep.
-    2: sepauto.
-    rewrite listmatch_updN_removeN by omega.
+    4, 5: sepauto.
+    rewrite combine_updN, listmatch_updN_removeN.
     cancel.
-    unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
-    2: eauto.
-    cancel. unfold cuttail.
-    match goal with [H : context [Ind.rep _ ?x ?l] |- context [length ?l] ] =>
-      unfold Ind.rep in H; destruct_lift H; substl (length l)
+    unfold BPtrSig.upd_len, BPtrSig.IRLen, cuttail; simpl.
+    cancel.
+    match goal with [H : context [Ind.rep _ _ ?x ?l] |- context [length ?l] ] =>
+      unfold Ind.rep in H; unfold BPtrSig.IRLen in H; destruct_lift H;
+      substl (length l); cancel
     end.
-    cancel.
     apply forall_firstn; auto.
+    simplen.
+    simplen.
+    rewrite Ind.pred_fold_left_updN_removeN by simplen.
+    split; cancel.
+    simplen.
     cancel; auto.
-    Unshelve. exact IRec.Defs.item0.
+    cancel; auto.
+  Unshelve.
+    all: solve [eauto | exact (inode0, emp) | exact IRec.Defs.item0].
   Qed.
 
   Theorem reset_ok : forall lxp bxp xp inum nr attr cache ms,
-    {< F Fm Fi m0 m ilist ino freelist,
+    {< F Fm Fi Fs m0 sm m IFs ilist ino freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
-           [[[ m ::: (Fm * rep bxp xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
-           [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:^(cache', ms) exists m' ilist' ino' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
+    POST:hm' RET:^(cache', ms) exists m' ilist' ino' freelist' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ ilist' = updN ilist inum ino' ]] *
            [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr ]] *
            [[ incl freelist freelist' ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} reset lxp bxp xp inum nr attr cache ms.
   Proof.
     unfold reset, rep.
     safestep.
-    sepauto.
+    simplen.
 
     extract; seprewrite.
-    step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    safestep.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
+    Ind.psubst.
+    rewrite Ind.pred_fold_left_selN_removeN. cancel.
     step.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
     smash_rec_well_formed.
     repeat match goal with |- let (_, _) := ?y in _ => destruct y; intuition idtac end.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lifts. auto.
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end. auto.
     sepauto.
 
     safestep.
-    2: sepauto.
-    2, 3: eauto.
-    rewrite listmatch_updN_removeN by omega.
+    4, 5, 6: sepauto.
+    rewrite combine_updN, listmatch_updN_removeN.
     unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
-    rewrite <- rep_upd_attrs.
+    rewrite rep_upd_attrs. cbn.
     unfold cuttail.
-    match goal with [H : context [Ind.rep _ ?x ?l] |- context [length ?l] ] =>
+    match goal with [H : context [Ind.rep _ _ ?x ?l] |- context [length ?l] ] =>
       unfold Ind.rep in H; destruct_lift H; substl (length l)
     end.
     cancel.
     auto using forall_firstn.
+    simplen.
+    simplen.
+    rewrite Ind.pred_fold_left_updN_removeN. split; cancel.
+    simplen.
+    simplen.
     cancel; auto.
-    Unshelve. exact IRec.Defs.item0.
+    cancel; auto.
+  Unshelve.
+    all: solve [eauto | exact IRec.Defs.item0 | exact (inode0, emp)].
   Qed.
 
   Lemma grow_wellformed : forall (a : BPtrSig.irec) inum reclist cache F1 F2 F3 F4 m xp,
@@ -795,50 +861,61 @@ Module INODE.
   Qed.
 
   Theorem grow_ok : forall lxp bxp xp inum bn cache ms,
-    {< F Fm Fi m0 m ilist ino freelist,
+    {< F Fm Fi Fs m0 sm m IFs ilist ino freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm hm *
            [[ length (IBlocks ino) < NBlocks ]] *
            [[ BALLOCC.bn_valid bxp bn ]] *
-           [[[ m ::: (Fm * rep bxp xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
-           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
     POST:hm' RET:^(cache', ms, r)
            exists m',
-           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' \/
-           [[ r = OK tt ]] * exists ilist' ino' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm hm' \/
+           [[ r = OK tt ]] * exists ilist' ino' freelist' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]] *
            [[ incl freelist' freelist ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F m0 sm hm'
     >} grow lxp bxp xp inum bn cache ms.
   Proof.
     unfold grow, rep.
     safestep.
-    sepauto.
+    simplen.
 
     extract; seprewrite.
-    step.
-    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
-    unfold inode_match. cancel.
+    match goal with H: context [lift_empty] |- _ => destruct_lift H end.
+    safestep.
+    eauto.
+    rewrite listmatch_isolate with (a := combine ilist _) (i := inum) by simplen.
+    unfold inode_match. rewrite selN_combine by simplen. cancel.
+    Ind.psubst.
+    rewrite Ind.pred_fold_left_selN_removeN. cancel.
     step.
     eapply grow_wellformed; eauto.
+    simplen.
     sepauto.
 
     step.
     or_r; cancel.
-    2: sepauto.
-    rewrite listmatch_updN_removeN by omega.
-    cancel.
-    unfold inode_match, BPtrSig.IRAttrs in *; simpl.
+    4: sepauto.
+    rewrite combine_updN, listmatch_updN_removeN.
     cancel.
     substl (IAttr (selN ilist inum inode0)); eauto.
-    apply Forall_app; auto.
-    eapply BALLOCC.bn_valid_roundtrip; eauto.
+    eauto using Forall_app, BALLOCC.bn_valid_roundtrip.
+    simplen.
+    simplen.
+    rewrite Ind.pred_fold_left_updN_removeN by simplen.
+    split; cancel.
+    simplen.
+    cancel; auto.
     cancel; auto.
 
-    Unshelve. all: eauto; exact emp.
+  Unshelve.
+    all: eauto; exact emp.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
@@ -852,22 +929,60 @@ Module INODE.
   Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
+  Lemma inode_match_sm_sync_invariant: forall bxp x y,
+    inode_match bxp x y <=p=> (inode_match bxp x y * [[ SyncedMem.sm_sync_invariant (snd x) ]])%pred.
+  Proof.
+    intros.
+    unfold inode_match.
+    destruct x.
+    split.
+    intros m H'. destruct_lifts.
+    pred_apply. cancel.
+    eapply Ind.rep_IFs_sync_invariant with (m := m).
+    pred_apply. cancel.
+    cancel.
+  Qed.
 
-  Lemma inode_rep_bn_valid_piff : forall bxp xp l c,
-    rep bxp xp l c <=p=> rep bxp xp l c *
+  Lemma rep_IFs_sync_invariant: forall bxp IFs ixp ilist icache m F,
+    (F * INODE.rep bxp IFs ixp ilist icache)%pred m ->
+    SyncedMem.sm_sync_invariant IFs.
+  Proof.
+    unfold INODE.rep.
+    intros.
+    destruct_lifts.
+    rewrite SyncedMem.sm_sync_invariant_piff by eauto.
+    eapply Ind.sm_sync_invariant_pred_fold_left.
+    rewrite listmatch_lift_l in H.
+    destruct_lifts.
+    erewrite <- Forall_combine_r; try eassumption.
+    split; intro H'; exact H'.
+    eassign (fun x y => inode_match bxp x y).
+    intros.
+    rewrite inode_match_sm_sync_invariant.
+    destruct x; cbn.
+    split; cancel.
+  Qed.
+
+  Lemma inode_rep_bn_valid_piff : forall bxp IFs xp l c,
+    rep bxp IFs xp l c <=p=> rep bxp IFs xp l c *
       [[ forall inum, inum < length l ->
          Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks (selN l inum inode0)) ]].
   Proof.
     intros; split;
     unfold pimpl; intros; pred_apply;
     unfold rep in H; destruct_lift H; cancel.
-    extract at inum; auto.
+    extract at inum.
+    unfold inode_match in H.
+    erewrite selN_combine in * by auto.
+    destruct_lifts; eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
-  Lemma inode_rep_bn_nonzero_pimpl : forall bxp xp l c,
-    rep bxp xp l c =p=> rep bxp xp l c *
+  Lemma inode_rep_bn_nonzero_pimpl : forall bxp IFs xp l c,
+    rep bxp IFs xp l c =p=> rep bxp IFs xp l c *
       [[ forall inum off, inum < length l ->
          off < length (IBlocks (selN l inum inode0)) ->
          # (selN (IBlocks (selN l inum inode0)) off $0) <> 0 ]].
@@ -891,15 +1006,35 @@ Module INODE.
     rewrite Ind.xform_rep; cancel.
   Qed.
 
+  Lemma listmatch_inode_match_sm_sync_invariant: forall bxp inodes lfs l,
+    length inodes = length lfs ->
+    listmatch (inode_match bxp) (combine inodes lfs) l =p=>
+    listmatch (inode_match bxp) (combine inodes lfs) l * [[ sm_sync_invariant (pred_fold_left lfs) ]].
+  Proof.
+    intros.
+    intros m H'. pred_apply; cancel.
+    eapply Ind.sm_sync_invariant_pred_fold_left.
+    eapply listmatch_lift_l with (P := fun x => sm_sync_invariant (snd x)) in H'.
+    destruct_lifts.
+    eapply Forall_combine_r; eauto.
+    intuition.
+    eassign (fun x y => inode_match bxp x y).
+    intro x. destruct x. intros.
+    rewrite inode_match_sm_sync_invariant.
+    split; cancel.
+  Qed.
 
-  Theorem xform_rep : forall bxp xp l c,
-    crash_xform (rep bxp xp l c) <=p=> rep bxp xp l c.
+  Theorem xform_rep : forall bxp Fs xp l c,
+    crash_xform (rep bxp Fs xp l c) <=p=> rep bxp Fs xp l c * [[ sm_sync_invariant Fs ]].
   Proof.
     unfold rep; intros; split.
     xform_norm.
     rewrite IRec.xform_rep.
     rewrite xform_listmatch_idem.
+    rewrite listmatch_inode_match_sm_sync_invariant by auto.
+
     cancel.
+    eapply sm_sync_invariant_piff; eauto.
     apply crash_xform_inode_match.
 
     cancel.

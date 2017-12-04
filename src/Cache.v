@@ -25,7 +25,26 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-
+(*
+ * =============================== Buffer cache ===============================
+ *
+ * The representation invariant `rep` is a predicate that applies directly to
+ * the raw disk. It exports two memories:
+ * - a rawdisk, usually denoted 'd' or 'm', that represents the contents of the
+ *   cache on top of the physical disk
+ * - a synced bitmap, where addresses that map to true are synced in the
+ *   exported disk and thus on the physical disk
+ *
+ * During a sync, the general plan is to clone the exported disk memory into a
+ * new memory while holding onto the both, evolve the cloned memory forward,
+ * and finally to replace the old memory with the new one after the sync is
+ * completed. begin_sync transitions from `rep` to `synrep`, which ensures that
+ * `rep` holds on the old disk and that synrep' holds on the cloned disk.
+ * sync updates the cloned disk for each address that is synced, and end_sync
+ * switches back to `rep` with the new disk after executing a Sync operation.
+ * The synced bitmap memory undergoes an analogous transformation, where it is
+ * duplicated, updated, and swapped with the exported disk.
+ *)
 
 Definition eviction_state : Type := unit.
 Definition eviction_init : eviction_state := tt.

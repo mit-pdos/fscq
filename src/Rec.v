@@ -1132,6 +1132,19 @@ Module Rec.
   abstract nia.
   Defined.
 
+  Fixpoint reczero (ft : type) : (data ft).
+  Proof.
+    destruct ft.
+    - exact ($ 0).
+    - apply repeat.
+      apply reczero.
+      exact n.
+    - induction l; cbn.
+      exact tt.
+      destruct a.
+      constructor; eauto.
+  Defined.
+
   Theorem of_word_zero_list : forall ft n,
     @Rec.of_word (ArrayF ft n) $0 = repeat (Rec.of_word $0) n.
   Proof.
@@ -1141,6 +1154,45 @@ Module Rec.
     rewrite split1_zero.
     rewrite split2_zero.
     reflexivity.
+  Qed.
+
+  Theorem of_word_zero_rec : forall ft,
+    @Rec.of_word (RecF ft) $0 = (fix reczero (l : list (string * type)) :
+      ((fix recdata (t : list (string * type)) : Type :=
+                match t with
+                | [] => unit
+                | (_, ft1) :: t' => (data ft1 * recdata t')%type
+                end) l)
+      :=
+      match l with
+      | nil => tt
+      | x :: l => let '(_, x) := x in (@Rec.of_word x $0, (reczero l))
+      end) ft.
+  Proof.
+    intros.
+    induction ft; cbn.
+    auto.
+    destruct a; cbn.
+    rewrite <- IHft; clear IHft.
+    unfold of_word at 1 3.
+    rewrite split1_zero.
+    rewrite split2_zero.
+    reflexivity.
+  Qed.
+
+  Theorem of_word_zero_reczero: forall ft,
+    Rec.of_word $0 = reczero ft.
+  Proof.
+    intros.
+    einduction ft using type_rect_nest.
+    auto.
+    rewrite of_word_zero_list.
+    rewrite IHt.
+    eauto.
+    rewrite of_word_zero_rec.
+    apply IHt.
+    cbn; auto.
+    cbn. f_equal; auto.
   Qed.
 
   Lemma len_add' : forall t n m,

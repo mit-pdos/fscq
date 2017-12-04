@@ -1,6 +1,7 @@
 Require Import Mem.
 Require Import List Omega Ring Word Pred PredCrash Prog Hoare SepAuto BasicProg Array ListUtils.
 Require Import FunctionalExtensionality.
+Require Import Permutation.
 
 Set Implicit Arguments.
 
@@ -211,6 +212,19 @@ Section LISTPRED.
     eauto.
   Qed.
 
+  Lemma listpred_permutation: forall a b,
+    Permutation a b ->
+    listpred a <=p=> listpred b.
+  Proof.
+    intros.
+    induction H; cbn; auto.
+    rewrite IHPermutation. auto.
+    split; cancel.
+    rewrite IHPermutation1.
+    rewrite IHPermutation2.
+    auto.
+  Qed.
+
   Theorem listpred_remove :
     forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
     (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
@@ -298,6 +312,27 @@ Section LISTPRED.
     rewrite H; intuition.
   Qed.
 
+  Lemma listpred_partition: forall f (l : list T),
+    let p := partition f l in
+    listpred l <=p=> listpred (fst p) * listpred (snd p).
+  Proof.
+    cbn; induction l; cbn.
+    split; cancel.
+    destruct partition eqn:?; cbn in *; intros.
+    rewrite IHl.
+    destruct f; split; cancel.
+  Qed.
+
+  Lemma listpred_rev: forall l,
+    listpred l <=p=> listpred (rev l).
+  Proof.
+    induction l; cbn; intros.
+    split; cancel.
+    rewrite listpred_app.
+    rewrite IHl.
+    split; cancel.
+  Qed.
+
 End LISTPRED.
 
 Theorem listpred_lift : forall T l AT AEQ V prd F G,
@@ -329,6 +364,16 @@ Proof.
   end.
 Qed.
 
+Lemma listpred_pimpl_replace: forall T AT V M (l : list T) (F G : T -> @pred AT M V),
+       (forall x, In x l -> F x =p=> G x) ->
+       listpred F l =p=> listpred G l.
+Proof.
+  induction l; cbn; intros; auto.
+  rewrite H; auto.
+  cancel.
+  eauto.
+Qed.
+
 Lemma listpred_piff_replace : forall A B AT M l F G,
   (forall x, In x l -> F x <=p=> G x) -> @listpred A B AT M F l <=p=> listpred G l.
 Proof.
@@ -336,6 +381,25 @@ Proof.
   rewrite IHl, H by auto; cancel.
   rewrite IHl, H by (intuition; symmetry; auto); cancel.
 Qed.
+
+Lemma listpred_ptsto_notindomain : forall AT AEQ V (t : list AT) x (m : @Mem.mem _ AEQ V),
+  listpred (fun a => (a |->?)%pred) t m ->
+  ~In x t ->
+  notindomain x m.
+Proof.
+  induction t; cbn; intros; unfold notindomain.
+  cbv [emp] in *; auto.
+  intuition.
+  revert H.
+  unfold_sep_star.
+  intuition repeat deex.
+  eapply mem_union_sel_none.
+  unfold exis in *. deex.
+  eapply ptsto_ne; eauto.
+  eapply IHt; eauto.
+Qed.
+
+
 
 (* predicate over a pair of lists *)
 
@@ -381,6 +445,13 @@ Section LISTMATCH.
     listmatch a b =p=> (listmatch a b) * [[ length a = length b ]].
   Proof.
     unfold listmatch; cancel.
+  Qed.
+
+  Lemma listmatch_cons: forall (a : list A) (b : list B) x y,
+    listmatch (x :: a) (y :: b) <=p=> prd x y * listmatch a b.
+  Proof.
+    unfold listmatch.
+    split; cancel.
   Qed.
 
   Theorem listmatch_isolate : forall a b i ad bd,
@@ -570,6 +641,28 @@ Section LISTMATCH.
     - simpl. rewrite IHl1. auto.
   Qed.
 
+  Lemma listpred_exis_listmatch: forall (a : list A),
+    listpred (fun a => exists b, prd a b) a =p=> exists b, listmatch a b.
+  Proof.
+    induction a; cbn; intros.
+    exists nil.
+    unfold listmatch. pred_apply; cancel.
+    rewrite IHa.
+    cancel.
+    rewrite listmatch_cons with (b := b0).
+    cancel.
+  Qed.
+
+  Lemma listmatch_rev: forall a b,
+    listmatch a b <=p=> listmatch (rev a) (rev b).
+  Proof.
+    unfold listmatch.
+    intros.
+    rewrite listpred_rev.
+    repeat rewrite rev_length.
+    split; cancel; rewrite ?combine_rev by auto; cancel.
+  Qed.
+
 End LISTMATCH.
 
 Theorem listmatch_lift : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
@@ -604,6 +697,16 @@ Proof.
     rewrite map_fst_combine; auto.
 Qed.
 
+Lemma listmatch_pimpl_replace: forall A B AT T M la lb (F G : A -> B -> @pred AT M T),
+       (forall x y, In x la -> In y lb -> F x y =p=> G x y) ->
+       listmatch F la lb =p=> listmatch G la lb.
+Proof.
+  unfold listmatch.
+  intros.
+  rewrite listpred_pimpl_replace; cancel.
+  eauto using in_combine_l, in_combine_r.
+Qed.
+
 Lemma listmatch_piff_replace : forall A B AT T M l1 l2 F G,
   (forall x y, In x l1 -> In y l2 -> F x y <=p=> G x y) -> @listmatch A B AT M T F l1 l2 <=p=> listmatch G l1 l2.
 Proof.
@@ -612,6 +715,34 @@ Proof.
   split; cancel.
   intros a; destruct a; intros HH; simpl; auto.
   apply H; solve [eapply in_combine_l; eauto | eapply in_combine_r; eauto].
+Qed.
+
+Lemma listmatch_nodup: forall AT AEQ V (a : list AT) (b : list V) (F : @pred AT AEQ V) m,
+  (F * listmatch (fun x y => x |-> y) a b)%pred m -> NoDup a.
+Proof.
+  induction a; cbn; intros.
+  constructor.
+  destruct b; cbn in *.
+  unfold listmatch in *. destruct_lifts. congruence.
+  rewrite listmatch_cons in H.
+  constructor.
+  unfold listmatch in H.
+  intro H'.
+  eapply in_selN_exists in H'.
+  destruct H' as [? [? Hs] ].
+  destruct_lifts.
+  rewrite listpred_pick in H.
+  unfold pprd, prod_curry in *.
+  2: eapply in_selN.
+  erewrite selN_combine in H by auto.
+  2: rewrite combine_length_eq; eauto.
+  rewrite Hs in H.
+  destruct_lifts.
+  eapply ptsto_conflict_F with (a := a) (m := m).
+  pred_apply. cancel.
+  eapply IHa with (b := b) (m := m). pred_apply. cancel.
+Unshelve.
+  all: eauto.
 Qed.
 
 Lemma arrayN_listpred_seq : forall V l st n,

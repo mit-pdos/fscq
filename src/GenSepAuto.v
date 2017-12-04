@@ -82,10 +82,20 @@ Ltac simplen_rewrite := repeat match goal with
 Ltac genseplen_rewrite := repeat match goal with
   | [H : ( _ * ?a |-> ?v)%pred (list2nmem ?l) |- _ ] =>
           first [rewrite_ignore H | apply list2nmem_inbound in H ]
-  | [H : context [ listmatch ?a ?b ] |- _ ] =>
+  | [H : context [ listmatch _ (combine ?a ?b) ?c ] |- _ ] =>
           match goal with
-          | [ H' : length ?a = length ?b |- _ ] => idtac
-          | [ H' : length ?b = length ?a |- _ ] => idtac
+          | [ H' : length a = length c |- _ ] => idtac
+          | [ H' : length c = length a |- _ ] => idtac
+          | [ H' : length b = length c |- _ ] => idtac
+          | [ H' : length c = length b |- _ ] => idtac
+          | _ => first [rewrite_ignore H |
+                        setoid_rewrite listmatch_length_pimpl in H;
+                        rewrite combine_length_eq in H by auto; destruct_lift H ]
+          end
+  | [H : context [ listmatch _ ?a ?b ] |- _ ] =>
+          match goal with
+          | [ H' : length a = length b |- _ ] => idtac
+          | [ H' : length b = length a |- _ ] => idtac
           | _ => first [rewrite_ignore H |
                         setoid_rewrite listmatch_length_pimpl in H; destruct_lift H ]
           end
@@ -116,6 +126,13 @@ Ltac extract_listmatch :=
       match p with
         | context [ ( ?ix |-> _)%pred ] =>
             extract_listmatch_at H ix
+      end
+    | [  H : context [ listmatch ?prd (combine ?a _) _ ],
+        H2 : ?p%pred (list2nmem ?a) |- _ ] =>
+      match p with
+        | context [ ( ?ix |-> _)%pred ] =>
+            extract_listmatch_at H ix;
+            try erewrite selN_combine in * by auto
       end
   end.
 
