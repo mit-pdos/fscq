@@ -110,13 +110,13 @@ run_fuse disk_fn fuse_args = do
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
   ref <- newIORef s
   m_fsxp <- newMVar fsxp
-  fuseRun "fscq" fuse_args (fscqFSOps disk_fn ds (doFScall ds ref) m_fsxp) defaultExceptionHandler useDowncalls
+  fuseRun "fscq" fuse_args (fscqFSOps getFuseContext disk_fn ds (doFScall ds ref) m_fsxp) defaultExceptionHandler useDowncalls
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
-fscqFSOps fn ds fr m_fsxp = defaultFuseOps
-  { fuseGetFileStat = fscqGetFileStat fr m_fsxp
+fscqFSOps :: IO FuseContext -> String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
+fscqFSOps getctx fn ds fr m_fsxp = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat getctx fr m_fsxp
   , fuseOpen = fscqOpen fr m_fsxp
   , fuseCreateFile = fscqCreateFile fr m_fsxp
   , fuseCreateDevice = fscqCreate fr m_fsxp
@@ -127,7 +127,7 @@ fscqFSOps fn ds fr m_fsxp = defaultFuseOps
   , fuseWrite = fscqWrite fr m_fsxp
   , fuseSetFileSize = fscqSetFileSize fr m_fsxp
   , fuseOpenDirectory = fscqOpenDirectory fr m_fsxp
-  , fuseReadDirectory = fscqReadDirectory fr m_fsxp
+  , fuseReadDirectory = fscqReadDirectory getctx fr m_fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats fr m_fsxp
   , fuseDestroy = fscqDestroy ds fn fr m_fsxp
   , fuseSetFileTimes = fscqSetFileTimes
@@ -264,14 +264,14 @@ fileStat ctx attr = FileStat
   , statStatusChangeTime = 0
   }
 
-fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
-fscqGetFileStat fr m_fsxp (_:path)
+fscqGetFileStat :: IO FuseContext -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat getctx fr m_fsxp (_:path)
   | (path == "sync") = withMVar m_fsxp $ \fsxp -> do
-    ctx <- getFuseContext
+    ctx <- getctx
     _ <- fr $ AsyncFS._AFS__umount fsxp
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | path == "stats" = do
-    ctx <- getFuseContext
+    ctx <- getctx
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
@@ -282,13 +282,13 @@ fscqGetFileStat fr m_fsxp (_:path)
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (inum, isdir)
       | isdir -> do
-        ctx <- getFuseContext
+        ctx <- getctx
         return $ Right $ dirStat ctx
       | otherwise -> do
         (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
-        ctx <- getFuseContext
+        ctx <- getctx
         return $ Right $ fileStat ctx attr
-fscqGetFileStat _ _ _ = return $ Left eNOENT
+fscqGetFileStat _ _ _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno HT)
 fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
@@ -303,10 +303,10 @@ fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
       | otherwise -> return $ Left eNOTDIR
 fscqOpenDirectory _ _ "" = return $ Left eNOENT
 
-fscqReadDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
+fscqReadDirectory :: IO FuseContext -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory getctx fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
   debugStart "READDIR" dnum
-  ctx <- getFuseContext
+  ctx <- getctx
   (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
   files_stat <- mapM (mkstat fsxp ctx) files
   return $ Right $ [(".",          dirStat ctx)
