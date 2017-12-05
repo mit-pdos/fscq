@@ -52,7 +52,9 @@ GHCARGS    := -j$(J) -O2 -threaded -rtsopts
 		# -eventlog
 HSLIB_FUSE := hscgen/Fuse.hs hslib/libopfuse.a
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
-HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
+HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs \
+	hslib/Interpreter.hs hslib/ConcurInterp.hs \
+	hslib/FscqFs.hs hslib/CfscqFs.hs
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
 		   ocamlfuse/Unix_util.ml \
@@ -113,7 +115,7 @@ hscgen/%.hs: hslib/%.hsc
 	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen -ihscgen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -lopfuse -Lhslib -o $@
 
 parstat: parstat.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_POST) parallelize.c parallelize.h
@@ -121,7 +123,7 @@ parstat: parstat.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_POST) parallelize.c paralleli
 	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen -ihscgen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< parallelize.c -ihslib -icodegen -ihscgen -lfuse -o $@
 
 $(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
