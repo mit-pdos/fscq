@@ -78,7 +78,7 @@ Section FsSpecs.
 
   Ltac solve_fs_rep t :=
     match goal with
-    | [ H: Log.LOG.rep _ _ _ _ ?hm (add_buffers ?vd) |- fs_rep _ ?vd ?hm' _ _ ] =>
+    | [ H: Log.LOG.rep _ _ _ _ _ ?hm (add_buffers ?vd) |- fs_rep _ ?vd ?hm' _ _ ] =>
       first [ constr_eq hm hm' |
               eapply fs_rep_hashmap_incr; [ | now eauto ] ];
       unfold fs_rep; t

@@ -171,13 +171,13 @@ Module OptFS.
 
     Definition file_get_attr_ok : forall fsxp inum mscs,
         translation_spec
-          (SPEC {< '(ds, pathname, Fm, Ftop, tree, f, ilist, frees),
-                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
+          (SPEC {< '(ds, sm, pathname, Fm, Ftop, tree, f, ilist, frees),
+                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
                      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
                        POST:hm' RET:^(mscs',r)
-                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] *
+                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
+                            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
                             [[ r = DFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]]
                               CRASH:hm'
                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
@@ -191,15 +191,15 @@ Module OptFS.
 
     Theorem lookup_ok: forall fsxp dnum fnlist mscs,
         translation_spec
-          (SPEC {< '(ds, Fm, Ftop, tree, ilist, frees),
+          (SPEC {< '(ds, sm, Fm, Ftop, tree, ilist, frees),
                  PRE:hm
-                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
                      [[ dirtree_inum tree = dnum]] *
                      [[ dirtree_isdir tree = true ]]
                        POST:hm' RET:^(mscs', r)
-                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] *
+                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
+                            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
                             [[ (isError r /\ None = find_name fnlist tree) \/
                                (exists v, r = OK v /\ Some v = find_name fnlist tree)%type ]] *
                             [[ MSAlloc mscs' = MSAlloc mscs ]]
@@ -214,14 +214,14 @@ Module OptFS.
 
     Theorem read_fblock_ok : forall fsxp inum off mscs,
         translation_spec
-          (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees),
-                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
+          (SPEC {< '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees),
+                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
                      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
                      [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
                        POST:hm' RET:^(mscs', r)
-                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] *
+                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
+                            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
                             [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
                               CRASH:hm'
                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
@@ -236,19 +236,19 @@ Module OptFS.
 
     Theorem file_set_attr_ok : forall fsxp inum attr mscs,
         translation_spec
-          (SPEC {< '(ds, pathname, Fm, Ftop, tree, f, ilist, frees),
-                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
+          (SPEC {< '(ds, sm, pathname, Fm, Ftop, tree, f, ilist, frees),
+                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
                      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
                        POST:hm' RET:^(mscs', ok)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
                             ([[ isError ok  ]] *
-                             (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                             (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
                               [[ BFILE.mscs_same_except_log mscs mscs' ]] *
-                              [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]) \/
+                              [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]]) \/
                              ([[ ok = OK tt  ]] * exists d tree' f' ilist',
-                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
+                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') sm hm' *
+                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs' sm)]]] *
                                  [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
                                  [[ f' = mk_dirfile (DFData f) attr ]] *
                                  [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
@@ -260,7 +260,7 @@ Module OptFS.
                                      exists d tree' f' ilist' mscs',
                                        [[ MSAlloc mscs' = MSAlloc mscs ]] *
                                        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs' sm)]]] *
                                        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
                                        [[ f' = mk_dirfile (DFData f) attr ]] *
                                        [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
@@ -276,18 +276,18 @@ Module OptFS.
 
     Theorem file_truncate_ok : forall fsxp inum sz mscs,
         translation_spec
-          (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, ilist, frees),
+          (SPEC {< '(ds, sm, Fm, Ftop, tree, pathname, f, ilist, frees),
                  PRE:hm
-                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs)]]] *
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
                      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
                        POST:hm' RET:^(mscs', r)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                            ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                             [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
+                            ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
+                             [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] \/
                              [[ r = OK tt ]] * exists d tree' f' ilist' frees',
-                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs')]]] *
+                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') sm hm' *
+                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm)]]] *
                                  [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
                                  [[ f' = mk_dirfile (setlen (DFData f) sz ($0, nil)) (DFAttr f) ]] *
                                  [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
@@ -298,7 +298,7 @@ Module OptFS.
                                      exists d tree' f' ilist' frees' mscs',
                                        [[ MSAlloc mscs' = MSAlloc mscs ]] *
                                        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs')]]] *
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm)]]] *
                                        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
                                        [[ f' = mk_dirfile (setlen (DFData f) sz ($0, nil)) (DFAttr f) ]] *
                                        [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
@@ -314,15 +314,15 @@ Module OptFS.
 
     Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
         translation_spec
-          (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist),
+          (SPEC {< '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist),
                  PRE:hm
-                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs)]]] *
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
                      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
                      [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
                        POST:hm' RET:^(mscs')
-                                exists tree' f' ds' bn,
-                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+                                exists tree' f' ds' sm' bn,
+                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' hm' *
                                   [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
                                   [[ BFILE.block_belong_to_file ilist bn inum off ]] *
                                   [[ MSAlloc mscs' = MSAlloc mscs ]] *
@@ -330,7 +330,7 @@ Module OptFS.
                                   [[ MSAllocC mscs' = MSAllocC mscs ]] *
                                   [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
                                   (* spec about files on the latest diskset *)
-                                  [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs') ]]] *
+                                  [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs' sm') ]]] *
                                   [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
                                   [[[ (DFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
                                   [[ DFAttr f' = DFAttr f ]] *
@@ -350,21 +350,21 @@ Module OptFS.
 
     Theorem create_ok : forall fsxp dnum name mscs,
         translation_spec
-          (SPEC {< '(ds, pathname, Fm, Ftop, tree, tree_elem, ilist, frees),
+          (SPEC {< '(ds, sm, pathname, Fm, Ftop, tree, tree_elem, ilist, frees),
                  PRE:hm
-                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
                      [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
                        POST:hm' RET:^(mscs',r)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
                             ([[ isError r ]] *
-                             LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                             [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]
+                             LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
+                             [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]]
                              \/ exists inum,
                                 [[ r = OK inum ]] * exists d tree' ilist' frees',
-                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
+                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') sm hm' *
                                   [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum dirfile0) tree ]] *
-                                  [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs') ]]] *
+                                  [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm) ]]] *
                                   [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                                                   ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
                               XCRASH:hm'
@@ -372,7 +372,10 @@ Module OptFS.
                                      exists d inum tree' ilist' frees' mscs',
                                        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
                                        [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum dirfile0) tree ]] *
-                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs') ]]]
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm) ]]] *
+                                         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                         ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+                                       [[ MSAlloc mscs' = MSAlloc mscs ]]
                                        >})
           (create fsxp dnum name mscs).
     Proof.
@@ -383,23 +386,23 @@ Module OptFS.
 
     Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
         translation_spec
-          (SPEC {< '(ds, Fm, Ftop, tree, cwd, tree_elem, ilist, frees),
+          (SPEC {< '(ds, sm, Fm, Ftop, tree, cwd, tree_elem, ilist, frees),
                  PRE:hm
-                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
                      [[ find_subtree cwd tree = Some (TreeDir dnum tree_elem) ]]
                        POST:hm' RET:^(mscs', ok)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                            ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
+                            ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] \/
                              [[ ok = OK tt ]] *
-                             rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
+                             rename_rep ds mscs' sm Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
                               XCRASH:hm'
                                        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
                                      exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees' mscs',
                                        [[ MSAlloc mscs' = MSAlloc mscs ]] *
                                        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-                                       rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
+                                       rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' sm Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
                                        >})
           (rename fsxp dnum srcpath srcname dstpath dstname mscs).
     Proof.
@@ -410,21 +413,21 @@ Module OptFS.
 
     Theorem delete_ok : forall fsxp dnum name mscs,
         translation_spec
-          (SPEC {< '(ds, pathname, Fm, Ftop, tree, tree_elem, frees, ilist),
+          (SPEC {< '(ds, sm, pathname, Fm, Ftop, tree, tree_elem, frees, ilist),
                  PRE:hm
-                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
                      [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
                        POST:hm' RET:^(mscs', ok)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
                             ([[ isError ok ]] *
-                             LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                             [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
+                             LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
+                             [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] \/
                              [[ ok = OK tt ]] * exists d tree' ilist' frees',
-                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
+                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') sm hm' *
                                  [[ tree' = update_subtree pathname
                                                            (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
-                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs') ]]] *
+                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm) ]]] *
                                  [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                                                  ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
                                  [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
@@ -437,7 +440,7 @@ Module OptFS.
                                        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
                                        [[ tree' = update_subtree pathname
                                                                  (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
-                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs') ]]] *
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm) ]]] *
                                        [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                                                        ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
                                        [[ forall inum def', inum <> dnum ->

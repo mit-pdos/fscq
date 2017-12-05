@@ -30,10 +30,10 @@ Section FilesystemProtocol.
   Set Default Proof Using "P".
 
   Definition fs_rep vd hm mscs tree :=
-    exists ds ilist frees,
+    exists sm ds ilist frees,
       LOG.rep (FSLayout.FSXPLog (fsxp P)) (SB.rep (fsxp P))
-              (LOG.NoTxn ds) (MSLL mscs) hm (add_buffers vd) /\
-      (DirTreeRep.rep (fsxp P) Pred.emp tree ilist frees mscs)
+              (LOG.NoTxn ds) (MSLL mscs) sm hm (add_buffers vd) /\
+      (DirTreeRep.rep (fsxp P) Pred.emp tree ilist frees mscs sm)
         (list2nmem (ds!!)).
 
   Definition root_inode_rep tree :=
@@ -365,7 +365,7 @@ Section FilesystemProtocol.
   Proof.
     unfold fs_rep; intros.
     repeat deex.
-    exists ds, ilist, frees; intuition eauto.
+    exists sm, ds, ilist, frees; intuition.
     eapply LOG.rep_hashmap_subset; eauto.
   Qed.
 
