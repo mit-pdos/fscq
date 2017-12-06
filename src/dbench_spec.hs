@@ -38,70 +38,66 @@ main = hspec $ do
     it "whitespace parser should be greedy" $ do
       (whitespace >> eof, "  \t") `shouldParseTo` ()
     it "status constants should parse" $ do
-      (expectedStatus, "SUCCESS") `shouldParseTo` ExpectSuccess
-      (expectedStatus, "ERROR") `shouldParseTo` ExpectError
-      (expectedStatus, "*") `shouldParseTo` DontCare
+      (expectedStatus, "NT_STATUS_OK") `shouldParseTo` StatusOk
+      (expectedStatus, "NT_STATUS_OBJECT_NAME_NOT_FOUND") `shouldParseTo` StatusNameNotFound
+      (expectedStatus, "NT_STATUS_OBJECT_PATH_NOT_FOUND") `shouldParseTo` StatusPathNotFound
+      (expectedStatus, "NT_STATUS_NO_SUCH_FILE") `shouldParseTo` StatusNoSuchFile
   describe "path parser" $ do
-    it "should parse normal paths as one component" $ do
-      (path, "\"/foo\"") `shouldParseTo` Path [CPath "/foo"]
-    it "should parse references at end" $ do
-      (path, "\"/foo/$1\"") `shouldParseTo` Path [CPath "/foo/", Reference 1]
-    it "should parse references in middle" $ do
-      (path, "\"/foo/$1/bar\"") `shouldParseTo` Path [CPath "/foo/", Reference 1, CPath "/bar"]
-    it "should skip other dollar signs" $ do
-      (path, "\"/foo/$name\"") `shouldParseTo` Path [CPath "/foo/$name"]
-  describe "pattern parser" $ do
-    it "should parse constant patterns" $ do
-      (patternP, "\"foo.dat\"") `shouldParseTo` "foo.dat"
-    it "should parse complex patterns" $ do
-      (patternP, "\"file[01].dat\"") `shouldParseTo`
-        Pattern [CPattern "file", AnyChar "01", CPattern ".dat"]
-    it "should parse patterns at end" $ do
-      (patternP, "\"file[01]\"") `shouldParseTo`
-        Pattern [CPattern "file", AnyChar "01"]
-  describe "offset parser" $ do
-    it "base offset should parse numbers" $ do
-      (baseOffset, "0x1000") `shouldParseTo` ConstantOffset 0x1000
-    it "base offset should parse random token" $ do
-      (baseOffset, "*") `shouldParseTo` Random
-    it "offset transform should parse alignment" $ do
-      (offsetTransform <*> return Random, "/10") `shouldParseTo` Align 10 Random
-    it "offset transform should parse add" $ do
-      (offsetTransform <*> return Random, "+0x10") `shouldParseTo` Add 0x10 Random
-    it "offset should parse single modifications" $ do
-      (offset, "*/10") `shouldParseTo` Align 10 Random
-    it "offset should parse multiple modifications" $ do
-      (offset, "*/10+1") `shouldParseTo` Add 1 (Align 10 Random)
-    it "offset should parse all modifications" $ do
-      (offset, "*/10+1%2") `shouldParseTo` Modulo 2 (Add 1 (Align 10 Random))
-    it "offset should parse modifications of constants" $ do
-      (offset, "0x13/10") `shouldParseTo` Align 10 (ConstantOffset 0x13)
+    it "should parse normal paths" $ do
+      (path, "\"/foo\"") `shouldParseTo` "/foo"
+    it "should parse paths with forward slashes" $ do
+      (path, "\"\\foo\\bar\"") `shouldParseTo` "\\foo\\bar"
   describe "command parser" $ do
-    it "should parse operations" $ do
-      (command, "READ \"/foo\" * 1024 *") `shouldParseTo` Read "/foo" Random 1024 DontCare
-      (command, "WRITE \"/foo\" * 1024 ERROR") `shouldParseTo` Write "/foo" Random 1024 ExpectError
-      (command, "OPEN \"/here/there\" 0xc SUCCESS") `shouldParseTo` Open "/here/there" 0xc ExpectSuccess
-      (command, "MKDIR \"/here/there\" SUCCESS") `shouldParseTo` Mkdir "/here/there" ExpectSuccess
-      (command, "RMDIR \"/here/there\" SUCCESS") `shouldParseTo` Rmdir "/here/there" ExpectSuccess
-    it "should parse control commands" $ do
-      (command, "RANDOMSTRING 1 \"file[01].dat\"") `shouldParseTo`
-        RandomString 1 (Pattern [CPattern "file", AnyChar "01", CPattern ".dat"])
-      (command, "REPEAT 10\nREAD \"/foo\" * 1024 *") `shouldParseTo` Repeat 10 (Read "/foo" Random 1024 DontCare)
-    it "should not parse repeat in isolation" $ do
-      command `shouldNotParse` "REPEAT 10"
+    it "should parse common operations" $ do
+      (command, "NTCreateX \"\\clients\\client1\" 0x1 0x2 16385 NT_STATUS_OK") `shouldParseTo`
+        CreateX "\\clients\\client1" (CreateOptions 0x1) (CreateDisposition 0x2) (Handle 16385) StatusOk
+      (command, "WriteX 10002 1835008 32768 32768 NT_STATUS_OK") `shouldParseTo`
+        WriteX (Handle 10002) 1835008 32768 32768 StatusOk
+      (command, "ReadX 10003 0 4096 4096 NT_STATUS_OK") `shouldParseTo`
+        ReadX (Handle 10003) 0 4096 4096 StatusOk
+      (command, "QUERY_PATH_INFORMATION \"\\PPTB1E4.TMP\" 1004 NT_STATUS_OK") `shouldParseTo`
+        QueryPath "\\PPTB1E4.TMP" 1004 StatusOk
+    it "should parse other operations" $ do
+      (command, "Close 10003 NT_STATUS_OK") `shouldParseTo`
+        Close (Handle 10003) StatusOk
+      (command, "FIND_FIRST \"\\clients\\client1\\~dmtmp\\<.JNK\" 260 1366 0 NT_STATUS_NO_SUCH_FILE") `shouldParseTo`
+        FindFirst (Pattern "\\clients\\client1\\~dmtmp\\<.JNK") 260 1366 0 StatusNoSuchFile
+      (command, "Unlink \"\\clients\\client1\\~dmtmp\\PWRPNT\\NEWPCB.PPT\" 0x6 NT_STATUS_OK") `shouldParseTo`
+        Unlink "\\clients\\client1\\~dmtmp\\PWRPNT\\NEWPCB.PPT" 0x6 StatusOk
+      (command, "QUERY_FS_INFORMATION 259 NT_STATUS_OK") `shouldParseTo`
+        QueryFilesystem 259 StatusOk
+      (command, "QUERY_FILE_INFORMATION 9938 258 NT_STATUS_OK") `shouldParseTo`
+        QueryFile (Handle 9938) 258 StatusOk
+      (command, "SET_FILE_INFORMATION 10017 1004 NT_STATUS_OK") `shouldParseTo`
+        SetFileInfo (Handle 10017) 1004 StatusOk
+      (command, "Flush 10024 NT_STATUS_OK") `shouldParseTo`
+        Flush (Handle 10024) StatusOk
+      (command, "Rename \"\\clients\\client1\\~dmtmp\\PWRPNT\\NEWPCB.PPT\" \"\\clients\\client1\\~dmtmp\\PWRPNT\\PPTC112.TMP\" NT_STATUS_OK") `shouldParseTo`
+        Rename "\\clients\\client1\\~dmtmp\\PWRPNT\\NEWPCB.PPT" "\\clients\\client1\\~dmtmp\\PWRPNT\\PPTC112.TMP" StatusOk
+      (command, "LockX 10430 2147483538 1 NT_STATUS_OK") `shouldParseTo`
+        LockX (Handle 10430) 2147483538 1 StatusOk
+      (command, "UnlockX 10430 2147483538 1 NT_STATUS_OK") `shouldParseTo`
+        UnlockX (Handle 10430) 2147483538 1 StatusOk
+      (command, "Mkdir \"\\clients\" NT_STATUS_OK") `shouldParseTo`
+        Mkdir "\\clients" StatusOk
+      (command, "Deltree \"\\clients\\client1\" NT_STATUS_OK") `shouldParseTo`
+        Deltree "\\clients\\client1" StatusOk
     it "should handle whitespace" $ do
-      (command, "READ \"/foo\"  \t*   1024 *\t") `shouldParseTo` Read "/foo" Random 1024 DontCare
+      (command, "Close  10003  \tNT_STATUS_OK") `shouldParseTo`
+        Close (Handle 10003) StatusOk
     it "internal newlines should not be allowed" $ do
-      command `shouldNotParse` "WRITE \"/foo\" * \n 1024 ERROR"
+      command `shouldNotParse` "WriteX 100002 12 \n 1 2 NT_STATUS_OK"
   describe "loadfile parser" $ do
     it "should parse two commands" $ do
       (script, T.unlines
-        ["RANDOMSTRING 1 \"\""
-        , "READ \"/f\" * 1 *"]) `shouldParseTo`
-        [RandomString 1 "", Read "/f" Random 1 DontCare]
+        ["Mkdir \"\\clients\" NT_STATUS_OK"
+        , "NTCreateX \"\\clients\\f\" 0x1 0x2 12 NT_STATUS_OK"]) `shouldParseTo`
+        [Mkdir "\\clients" StatusOk
+        , CreateX "\\clients\\f" (CreateOptions 0x1) (CreateDisposition 0x2) (Handle 12) StatusOk]
     it "should skip comments" $ do
       (script, T.unlines
-        ["RANDOMSTRING 1 \"\""
+        ["Mkdir \"\\clients\" NT_STATUS_OK"
         , "# this is just a comment"
-        , "READ \"/f\" * 1 *"]) `shouldParseTo`
-        [RandomString 1 "", Read "/f" Random 1 DontCare]
+        , "NTCreateX \"\\clients\\f\" 0x1 0x2 12 NT_STATUS_OK"]) `shouldParseTo`
+        [Mkdir "\\clients" StatusOk
+        , CreateX "\\clients\\f" (CreateOptions 0x1) (CreateDisposition 0x2) (Handle 12) StatusOk]
