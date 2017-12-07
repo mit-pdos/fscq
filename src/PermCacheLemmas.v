@@ -669,8 +669,6 @@ Proof.
   induction l; intros; simpl; eauto.
 Qed.
 
-Hint Resolve sync_invariant_arrayS.
-
 
  Lemma mem_pred_cachepred_refl_arrayN : forall l start bm m,
     arrayN (@ptsto _ _ _) start l m ->
@@ -746,8 +744,609 @@ Lemma mem_pred_cachepred_refl_arrayS : forall l start bm m,
   Qed.
 
 
+  Lemma block_mem_subset_mem_pred_cachepred:
+    forall bm bm' cs d,
+      bm c= bm' ->
+      mem_pred (HighAEQ:=addr_eq_dec) (cachepred (CSMap cs) bm) d
+      =p=> mem_pred (HighAEQ:=addr_eq_dec) (cachepred (CSMap cs) bm') d.
+  Proof.
+    intros.
+    apply mem_pred_pimpl; intros.
+    unfold cachepred.
+    destruct (find a (CSMap cs)); cancel.
+    destruct p_2; cancel;
+    specialize (H p_1); cleanup; auto.
+  Qed.
+  
+  Lemma block_mem_subset_rep:
+    forall bm bm' cs d,
+      bm c= bm' ->
+          rep cs d bm =p=> rep cs  d bm'.
+  Proof.
+    unfold rep; intros; cancel.
+    apply block_mem_subset_mem_pred_cachepred; eauto.
+  Qed.
+  
+  Hint Resolve block_mem_subset_mem_pred_cachepred block_mem_subset_rep.
+  
+  Theorem sync_synrep_helper_1 : forall m cs d0 d a (F : @pred _ addr_eq_dec _) bm v,
+    synrep cs d0 d bm m ->
+    (F * a |+> v)%pred d ->
+    exists (F0 : @pred _ addr_eq_dec _) v0,
+    (F0 * a |+> v0)%pred d0.
+  Proof.
+    unfold synrep, rep, synrep', ptsto_subset; intros.
+    case_eq (d0 a); intros.
+    - destruct v0.
+      eapply any_sep_star_ptsto in H1.
+      pred_apply.
+      safecancel.
+      eassign (t0, l).
+      eassign l.
+      cancel.
+      firstorder.
+    - destruct H.
+      destruct_lift H.
+      destruct_lift H2.
+      destruct_lift H0.
+      apply ptsto_valid' in H0.
+      eapply mem_pred_absent_lm in H; eauto.
+      eapply mem_pred_absent_hm in H2; eauto.
+      congruence.
+
+      unfold synpred, ptsto_subset; intros.
+      destruct (Map.find a0 (CSMap cs)); try destruct p; try destruct b; cancel.
+
+      unfold cachepred, ptsto_subset; intros.
+      destruct (Map.find a0 (CSMap cs)); try destruct p; try destruct b; cancel.
+  Qed.
+
+  Theorem sync_synrep_helper_2 : forall cs d0 d bm a (F : @pred _ addr_eq_dec _) v,
+    (F * a |+> v)%pred d ->
+    synrep cs d0 d bm =p=> synrep cs d0 d bm * exists (F0 : @pred _ addr_eq_dec _) v0,
+    [[ (F0 * a |+> v0)%pred d0 ]].
+  Proof.
+    unfold pimpl; intros.
+    eapply sync_synrep_helper_1 in H; eauto; repeat deex.
+    pred_apply; cancel.
+    eassign F0; cancel.
+  Qed.
+
+  
+   Lemma sync_xform_cachepred : forall m bm a vs,
+    sync_xform (cachepred m bm a vs) =p=> 
+      exists v, [[ List.In v (vsmerge vs) ]] * a |=> v.
+  Proof.
+    unfold cachepred; intros.
+    case_eq (Map.find a m); intros; try destruct p, b.
+    - rewrite sync_xform_exists_comm.
+      apply pimpl_exists_l; intro.
+      repeat rewrite sync_xform_sep_star_dist, sync_xform_lift_empty.
+      rewrite sync_xform_ptsto_subset_precise; simpl.
+      cancel.
+    - rewrite sync_xform_sep_star_dist, sync_xform_lift_empty.
+      rewrite sync_xform_ptsto_subset_precise; simpl.
+      cancel.
+    - rewrite sync_xform_ptsto_subset_precise; cancel.
+  Qed.
 
 
+
+Theorem sync_xform_mem_pred : forall prd (hm : rawdisk),
+  sync_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
+  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => sync_xform (prd a v)) hm.
+Proof.
+  unfold mem_pred; intros; split.
+  rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
+  repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+  rewrite sync_xform_listpred; cancel.
+
+  rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
+  apply pimpl_exists_r; eexists.
+  repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+  rewrite sync_xform_listpred; cancel.
+Qed.
+
+  
+  Lemma sync_xform_mem_pred_cachepred : forall cm bm m,
+    sync_xform (mem_pred (HighAEQ:=addr_eq_dec) (cachepred cm bm) m) =p=> exists m',
+      mem_pred (HighAEQ:=addr_eq_dec) (cachepred (Map.empty (handle * bool)) bm) m' * [[ possible_crash m m' ]].
+  Proof.
+    intros.
+    rewrite sync_xform_mem_pred.
+    unfold mem_pred at 1.
+    xform_norm; subst.
+
+    rename hm_avs into l.
+    revert H; revert l.
+    induction l; simpl; intros.
+    cancel.
+    apply mem_pred_empty_mem.
+    unfold possible_crash; intuition.
+
+    inversion H; destruct a; subst; simpl in *.
+    unfold mem_pred_one; simpl.
+
+    rewrite IHl by auto.
+    xform_norm.
+    rewrite sync_xform_cachepred.
+    norml; unfold stars; simpl.
+    apply pimpl_exists_r.
+    exists (upd m' n (v, nil)).
+    rewrite <- mem_pred_absorb.
+    unfold cachepred at 3; unfold ptsto_subset.
+    rewrite MapFacts.empty_o; cancel.
+    erewrite <- notindomain_mem_eq; auto.
+    eapply possible_crash_notindomain; eauto.
+    apply avs2mem_notindomain; auto.
+    erewrite <- notindomain_mem_eq; auto.
+    eapply possible_crash_notindomain; eauto.
+    apply avs2mem_notindomain; auto.
+    cleanup.
+    apply possible_crash_upd; eauto.
+    apply possible_crash_upd; eauto.
+    unfold vsmerge; simpl; auto.
+  Qed.
+
+
+
+ Lemma xform_cachepred_ptsto : forall m bm a vs,
+    crash_xform (cachepred m bm a vs) =p=> 
+      exists v, [[ List.In v (vsmerge vs) ]] * a |=> v.
+  Proof.
+    unfold cachepred; intros.
+    case_eq (Map.find a m); intros; try destruct p, b.
+    - xform_norm; subst.
+      rewrite crash_xform_ptsto_subset.
+      cancel; subst.
+    - xform_norm; subst.
+      rewrite crash_xform_ptsto_subset.
+      cancel.
+    - xform_norm; subst.
+      rewrite crash_xform_ptsto_subset.
+      cancel.
+  Qed.
+
+
+Theorem xform_listpred : forall V (l : list V) prd,
+  crash_xform (listpred prd l) <=p=> listpred (fun x => crash_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto; xform_dist; auto.
+  rewrite IHl; auto.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma crash_xform_pprd : forall A B (prd : A -> B -> rawpred),
+  (fun p => crash_xform (pprd prd p)) =
+  (pprd (fun x y => crash_xform (prd x y))).
+Proof.
+  unfold pprd, prod_curry, crash_xform; intros.
+  apply functional_extensionality; intros; destruct x; auto.
+Qed.
+
+Theorem xform_listmatch : forall A B (a : list A) (b : list B) prd,
+  crash_xform (listmatch prd a b) <=p=> listmatch (fun x y => crash_xform (prd x y)) a b.
+Proof.
+  unfold listmatch; intros; split; xform_norm;
+  rewrite xform_listpred; cancel;
+  rewrite crash_xform_pprd; auto.
+Qed.
+
+Theorem xform_listpred_idem_l : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) =p=> prd e) ->
+  crash_xform (listpred prd l) =p=> listpred prd l.
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist.
+  rewrite H.
+  rewrite IHl; auto.
+Qed.
+
+
+Theorem xform_listpred_idem_r : forall V (l : list V) prd,
+  (forall e,  prd e =p=> crash_xform (prd e)) ->
+  listpred prd l =p=> crash_xform (listpred prd l).
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist; auto.
+  xform_dist.
+  rewrite <- H.
+  rewrite <- IHl; auto.
+Qed.
+
+Theorem xform_listpred_idem : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) <=p=> prd e) ->
+  crash_xform (listpred prd l) <=p=> listpred prd l.
+Proof.
+  split.
+  apply xform_listpred_idem_l; intros.
+  apply H.
+  apply xform_listpred_idem_r; intros.
+  apply H.
+Qed.
+
+Theorem xform_listmatch_idem_l : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) =p=> prd a b) ->
+  crash_xform (listmatch prd a b) =p=> listmatch prd a b.
+Proof.
+  unfold listmatch; intros.
+  xform_norm; cancel.
+  apply xform_listpred_idem_l; intros.
+  destruct e; cbn; auto.
+Qed.
+
+Theorem xform_listmatch_idem_r : forall A B (a : list A) (b : list B) prd,
+  (forall a b,  prd a b =p=> crash_xform (prd a b)) ->
+  listmatch prd a b =p=> crash_xform (listmatch prd a b).
+Proof.
+  unfold listmatch; intros.
+  cancel.
+  xform_normr.
+  rewrite <- xform_listpred_idem_r; cancel.
+  auto.
+Qed.
+
+Theorem xform_listmatch_idem : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) <=p=> prd a b) ->
+  crash_xform (listmatch prd a b) <=p=> listmatch prd a b.
+Proof.
+  split.
+  apply xform_listmatch_idem_l; auto.
+  apply H.
+  apply xform_listmatch_idem_r; auto.
+  apply H.
+Qed.
+
+Lemma xform_listpred_ptsto : forall l,
+  crash_xform (listpred (fun a => a |->?) l) =p=>
+               listpred (fun a => a |->?) l.
+Proof.
+  induction l; simpl.
+  rewrite crash_invariant_emp; auto.
+  xform_dist.
+  rewrite crash_xform_ptsto_exis, IHl.
+  auto.
+Qed.
+
+Lemma xform_listpred_ptsto_fp : forall FP,
+  (forall a, crash_xform (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
+  forall l,
+  crash_xform (listpred (fun a => exists v, a |-> v * [[ FP v ]]) l) =p=>
+               listpred (fun a => exists v, a |-> v * [[ FP v ]]) l.
+Proof.
+  induction l; simpl.
+  rewrite crash_invariant_emp; auto.
+  xform_dist.
+  rewrite H.
+  rewrite IHl.
+  cancel.
+Qed.
+
+Theorem sync_invariant_listpred : forall T prd (l : list T),
+  (forall x, sync_invariant (prd x)) ->
+  sync_invariant (listpred prd l).
+Proof.
+  induction l; simpl; eauto.
+Qed.
+
+Hint Resolve sync_invariant_listpred.
+
+Theorem sync_xform_listpred : forall V (l : list V) prd,
+  sync_xform (listpred prd l) <=p=> listpred (fun x => sync_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto.
+  apply sync_xform_emp.
+  apply sync_xform_emp.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma sync_xform_listpred' : forall T (l : list T) p q,
+  (forall x, sync_xform (p x) =p=> q x) ->
+  sync_xform (listpred p l) =p=> listpred q l.
+Proof.
+  induction l; simpl; intros; auto.
+  apply sync_xform_emp.
+  repeat rewrite sync_xform_sep_star_dist.
+  rewrite IHl by eauto.
+  rewrite H; auto.
+Qed.
+
+Theorem xform_mem_pred : forall prd (hm : rawdisk),
+  crash_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
+  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => crash_xform (prd a v)) hm.
+Proof.
+  unfold mem_pred; intros; split.
+  xform_norm; subst.
+  rewrite xform_listpred.
+  cancel.
+
+  cancel; subst.
+  xform_normr; cancel.
+  rewrite xform_listpred.
+  cancel.
+  eauto.
+Qed.
+
+Theorem sync_invariant_mem_pred : forall HighAT HighAEQ HighV (prd : HighAT -> HighV -> _) hm,
+  (forall a v, sync_invariant (prd a v)) ->
+  sync_invariant (@mem_pred _ _ _ _ HighAEQ _ prd hm).
+Proof.
+  unfold mem_pred; eauto.
+Qed.
+  
+  Lemma xform_mem_pred_cachepred : forall cs bm hm,
+    crash_xform (mem_pred (HighAEQ:=addr_eq_dec) (cachepred cs bm) hm) =p=> 
+      exists m', [[ possible_crash hm m' ]] *
+      mem_pred (HighAEQ:=addr_eq_dec) (cachepred (Map.empty _) bm) m'.
+  Proof.
+    intros.
+    rewrite xform_mem_pred.
+    unfold mem_pred at 1.
+    xform_norm; subst.
+
+    rename hm_avs into l.
+    revert H; revert l.
+    induction l; simpl; intros.
+    cancel.
+    apply mem_pred_empty_mem.
+    unfold possible_crash; intuition.
+
+    inversion H; destruct a; subst; simpl in *.
+    unfold mem_pred_one; simpl.
+
+    rewrite IHl by auto.
+    xform_norm.
+    rewrite xform_cachepred_ptsto.
+    norml; unfold stars; simpl.
+    apply pimpl_exists_r.
+    exists (upd m' n (v, nil)).
+    rewrite <- mem_pred_absorb.
+    unfold cachepred at 3; unfold ptsto_subset.
+    rewrite MapFacts.empty_o; cancel.
+    erewrite <- notindomain_mem_eq; auto.
+    eapply possible_crash_notindomain; eauto.
+    apply avs2mem_notindomain; auto.
+    erewrite <- notindomain_mem_eq; auto.
+    eapply possible_crash_notindomain; eauto.
+    apply avs2mem_notindomain; auto.
+    cleanup; apply possible_crash_upd; eauto.
+    cleanup; apply possible_crash_upd; eauto.
+    unfold vsmerge; simpl; eauto.
+  Qed.
+
+
+  Lemma crash_xform_rep: forall cs bm m,
+    crash_xform (rep cs m bm) =p=>
+       exists m' cs', [[ possible_crash m m' ]] * rep cs' m' bm.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite xform_mem_pred_cachepred.
+    cancel.
+    eassign (cache0 (CSMaxCount cs)); cancel.
+    all: unfold cache0; simpl; eauto.
+    unfold size_valid in *; intuition.
+    unfold addr_valid in *; intuition.
+    eapply MapFacts.empty_in_iff; eauto.
+  Qed.
+
+  Lemma crash_xform_rep': forall cs bm m,
+    crash_xform (rep cs m bm) =p=>
+       exists m' cs' bm', [[ possible_crash m m' ]] * [[ bm c= bm' ]] * rep cs' m' bm'.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite xform_mem_pred_cachepred.
+    cancel.
+    eassign (cache0 (CSMaxCount cs)); cancel.
+    all: unfold cache0; simpl; eauto.
+    unfold size_valid in *; intuition.
+    unfold addr_valid in *; intuition.
+    eapply MapFacts.empty_in_iff; eauto.
+  Qed.
+
+
+  Lemma crash_xform_rep_pred : forall cs m bm (F : pred),
+    F%pred m ->
+    crash_xform (rep cs m bm) =p=>
+    exists m' cs', rep cs' m' bm * [[ (crash_xform F)%pred m' ]].
+  Proof.
+    intros.
+    rewrite crash_xform_rep.
+    norm. cancel. split; auto.
+    exists m; eauto.
+  Qed.
+
+  Lemma listpred_cachepred_mem_except : forall a v l m buf bm,
+    listpred (mem_pred_one (cachepred buf bm)) ((a, v) :: l) m ->
+    listpred (mem_pred_one (cachepred buf bm)) l (mem_except m a).
+  Proof.
+    unfold mem_pred_one; simpl; intros.
+    unfold cachepred at 1 in H.
+    destruct (Map.find a buf) eqn: Heq; try destruct p, b;
+    unfold ptsto_subset in H; destruct_lift H;
+    eapply ptsto_mem_except; pred_apply; eauto.
+  Qed.
+
+
+  Lemma mem_pred_cachepred_refl : forall m m' m'' cm bm,
+    mem_pred (HighAEQ:=addr_eq_dec) (cachepred cm bm) m' m'' ->
+    mem_match m m' ->
+    mem_pred (HighAEQ:=addr_eq_dec) (cachepred (Map.empty (handle * bool)) bm) m m.
+  Proof.
+    unfold mem_pred; intros.
+    destruct H; destruct_lift H.
+    generalize dependent m''.
+    generalize dependent m.
+    generalize dependent x.
+    induction x; intros.
+    - exists nil.
+      rewrite listpred_nil in *.
+      apply sep_star_assoc.
+      apply lift_impl; intros.
+      simpl; auto.
+      cbn in *; subst.
+      assert (@emp _ addr_eq_dec _ m) by firstorder.
+      apply lift_impl; intros; auto.
+      apply emp_empty_mem_only; auto.
+
+    - destruct a.
+      inversion H2; subst.
+      edestruct IHx; eauto.
+      + rewrite notindomain_mem_eq with (a := n).
+        erewrite mem_except_upd.
+        apply mem_match_except; eauto.
+        apply avs2mem_notindomain; eauto.
+      + eapply listpred_cachepred_mem_except; eauto.
+      + destruct (mem_match_cases n H0).
+        exists x0.
+        destruct H3.
+        rewrite mem_except_none in H1; eauto.
+
+        do 3 destruct H3.
+        exists ((n, x1) :: x0).
+        destruct_lift H1.
+        apply sep_star_assoc.
+        apply lift_impl; intros.
+        apply NoDup_cons; eauto.
+        eapply avs2mem_none_notin; eauto.
+        denote mem_except as Hx; rewrite <- Hx.
+        apply mem_except_eq.
+
+        apply lift_impl; intros.
+        cbn; denote mem_except as Hx; setoid_rewrite <- Hx.
+        rewrite upd_mem_except.
+        rewrite upd_nop; auto.
+
+        unfold mem_pred_one, cachepred at 1; simpl.
+        unfold ptsto_subset; simpl.
+        apply pimpl_exists_r_star.
+        exists (snd x1).
+        apply sep_star_assoc.
+        destruct x1; simpl in *.
+        apply mem_except_ptsto; eauto.
+        unfold mem_pred_one in H1; simpl in *.
+        pred_apply' H1; cancel.
+  Qed.
+
+ 
+  Lemma possible_crash_mem_match : forall (m1 m2 : rawdisk),
+    possible_crash m1 m2 ->
+    @mem_match _ _ addr_eq_dec m1 m2.
+  Proof.
+    unfold possible_crash, mem_match; intuition.
+    specialize (H a); intuition.
+    repeat deex; congruence.
+    specialize (H a); intuition.
+    repeat deex; congruence.
+  Qed.
+
+  Lemma listpred_cachepred_notin : forall cs bm l m a,
+    ~ List.In a (List.map fst l) ->
+    listpred (mem_pred_one (cachepred cs bm)) l m ->
+    m a = None.
+  Proof.
+    induction l; intros; eauto.
+    destruct a; subst; simpl in *; intuition.
+    unfold mem_pred_one at 1, cachepred at 1 in H0; simpl in *.
+    destruct (Map.find n cs) eqn: Heq; try destruct p, b;
+    unfold ptsto_subset in *; destruct_lifts;
+    eapply notindomain_mem_except with (a' := n); eauto;
+    apply IHl; eauto;
+    eapply ptsto_mem_except; eauto.
+  Qed.
+
+  Lemma mem_pred_cachepred_none : forall m1 m2 cs bm a,
+    mem_pred (HighAEQ:= addr_eq_dec) (cachepred cs bm) m1 m2 ->
+    m1 a = None ->
+    m2 a = None.
+  Proof.
+    unfold mem_pred; intros.
+    destruct_lift H; subst.
+    rename dummy into l.
+    apply avs2mem_none_notin in H0 as Hx.
+    erewrite listpred_cachepred_notin with (m := m2); eauto.
+  Qed.
+
+  Lemma mem_pred_cachepred_some : forall m1 m2 cs bm a v,
+    mem_pred (HighAEQ:= addr_eq_dec) (cachepred cs bm) m1 m2 ->
+    synced_mem m1 ->
+    m1 a = Some v ->
+    m2 a = Some v.
+  Proof.
+    intros.
+    specialize (H0 a); intuition try congruence; repeat deex.
+    rewrite H0 in H1; inversion_clear H1; subst.
+    eapply mem_pred_extract in H; eauto.
+    unfold cachepred in H at 2.
+    destruct (Map.find a cs) eqn:?; try destruct p, b;
+    unfold ptsto_subset in H; destruct_lift H;
+    denote incl as Hx; apply incl_in_nil in Hx; subst.
+    intuition.
+    eapply ptsto_valid'; eauto.
+    eapply ptsto_valid'; eauto.
+  Qed.
+
+  Lemma mem_pred_cachepred_eq : forall m1 m2 cs bm,
+    mem_pred (HighAEQ:= addr_eq_dec) (cachepred cs bm) m1 m2 ->
+    synced_mem m1 ->
+    m1 = m2.
+  Proof.
+    intros.
+    apply functional_extensionality; intros.
+    destruct (m1 x) eqn: Heq.
+    erewrite mem_pred_cachepred_some; eauto.
+    eapply mem_pred_cachepred_none in H; eauto.
+  Qed.
+
+  Lemma mem_pred_possible_crash_trans : forall m m1 m2 cs bm,
+    possible_crash m m1 ->
+    mem_pred (HighAEQ:= addr_eq_dec) (cachepred cs bm) m1 m2 ->
+    possible_crash m1 m2.
+  Proof.
+    intros.
+    replace m2 with m1.
+    apply possible_crash_refl.
+    eapply possible_crash_synced; eauto.
+    eapply mem_pred_cachepred_eq; eauto.
+    eapply possible_crash_synced; eauto.
+  Qed.
+
+
+  Lemma crash_xform_rep_r: forall m m' cs' bm,
+    possible_crash m m' ->
+    rep cs' m' bm =p=> crash_xform (rep (cache0 (CSMaxCount cs')) m bm).
+  Proof.
+    unfold rep; intros.
+    cancel.
+    xform_normr.
+    cancel.
+    unfold pimpl, crash_xform; intros.
+    eexists; split.
+    eapply mem_pred_cachepred_refl; eauto.
+    apply possible_crash_mem_match; auto.
+    eapply possible_crash_trans.
+    eauto.
+    eapply mem_pred_possible_crash_trans; eauto.
+    unfold size_valid in *; intuition.
+    unfold addr_valid in *; intuition.
+    eapply MapFacts.empty_in_iff; eauto.
+  Qed.
+
+  Lemma crash_xform_rep_r_pred : forall cs m bm (F : pred),
+    (crash_xform F)%pred m ->
+    rep cs m bm =p=> exists m', crash_xform (rep (cache0 (CSMaxCount cs)) m' bm) * [[ F m' ]].
+  Proof.
+    intros.
+    unfold crash_xform in H; deex.
+    rewrite crash_xform_rep_r by eauto.
+    cancel.
+  Qed.
 
 
 

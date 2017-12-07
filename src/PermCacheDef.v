@@ -14,7 +14,7 @@ Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
 Require Import ADestructPair DestructVarname.
-Require Export PermInstr.
+Require Export PermProgLoop.
 
 Import AddrMap.
 Import Map MapFacts.

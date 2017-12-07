@@ -2,6 +2,7 @@ Require Import Mem Pred.
 Require Import List.
 Require Import Morphisms.
 Require Import Word.
+Require Import Arith FunctionalExtensionality ProofIrrelevance.
 Require Export PermProgMonad PermPredCrash.
 Require Export PermBlockmem PermHashmap.
 
@@ -129,7 +130,30 @@ Notation "{!< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH
     bm'' at level 0, hm'' at level 0,
       hm at level 0, hm' at level 0).
 
-
+Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'XCRASH' : bm'' , hm'' , crash >} p1" :=
+  (forall T (rx: _ -> prog T), corr2 pr%pred
+   (fun done_ crash_ bm hm =>
+    exists F_,
+    (exis (fun e1 => .. (exis (fun e2 =>
+     F_ * pre *
+     [[ sync_invariant F_ ]] *
+     [[ forall r_ , corr2 pr
+        (fun done'_ crash'_ bm' hm' =>
+           post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
+           [[ bm c= bm' ]] *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
+        (rx r_) ]] *
+     [[ forall realcrash bm'' hm'',
+          crash_xform realcrash =p=> crash_xform crash ->
+          (F_ * realcrash * [[ exists l, hashmap_subset l hm hm'' ]] *
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
+     )) .. ))
+   )%pred
+   (Bind p1 rx)%pred)
+    (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
+     bm'' at level 0, hm'' at level 0,
+      hm at level 0, hm' at level 0,
+    e1 closed binder, e2 closed binder).
 
 
 Theorem pimpl_ok2:
@@ -222,3 +246,21 @@ Ltac monad_simpl_one :=
   end.
 
 Ltac monad_simpl := repeat monad_simpl_one.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

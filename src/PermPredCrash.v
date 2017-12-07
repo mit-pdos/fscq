@@ -1432,3 +1432,16 @@ Proof.
   rewrite IHl by eauto.
   rewrite H; auto.
 Qed.
+
+Lemma sync_invariant_sync_mem_apply:
+  forall (P: rawpred) m,
+    P m ->
+    sync_invariant P ->
+    P (sync_mem m).
+Proof.
+  unfold sync_invariant; intros.
+  eapply H0; eauto.
+  apply possible_sync_sync_mem.
+Qed.
+
+

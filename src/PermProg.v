@@ -102,25 +102,9 @@ Inductive exec:
                         
 | CrashWrite : forall pr d bm hm a i tr,
                  exec pr tr d bm hm (Write a i) (Crashed d bm hm) tr
-                         
-| CrashSeal : forall pr d bm hm t b tr,
-                exec pr tr d bm hm (Seal t b) (Crashed d bm hm) tr
-                        
-| CrashUnseal : forall pr d bm hm i tr,
-                  exec pr tr d bm hm (Unseal i) (Crashed d bm hm) tr
                        
 | CrashSync : forall pr d bm hm tr,
                 exec pr tr d bm hm (Sync) (Crashed d bm hm) tr
-
-| CrashHash : forall pr d bm hm tr sz (buf : word sz),
-                exec pr tr d bm hm (Hash buf) (Crashed d bm hm) tr
-         
-| CrashHash2 : forall pr d bm hm tr sz1 sz2 (buf1 : word sz1)
-                (buf2 : word sz2),
-                 exec pr tr d bm hm (Hash2 buf1 buf2) (Crashed d bm hm) tr
-                    
-| CrashRet : forall T pr d bm hm (r: T) tr,
-              exec pr tr d bm hm (Ret r) (Crashed d bm hm) tr
 
 | CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d d' bm bm' hm hm' tr tr' r,
                 exec pr tr d bm hm p1 r tr' ->
