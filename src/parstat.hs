@@ -15,17 +15,6 @@ import CfscqFs
 import GenericFs
 import System.Posix.IO (defaultFileFlags)
 
--- FFI
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (FunPtr, freeHaskellFunPtr)
-
-foreign import ccall safe "wrapper"
-  mkAction :: IO () -> IO (FunPtr (IO ()))
-
-type CAction = IO ()
-foreign import ccall "parallelize.h parallel"
-  parallel :: CInt -> CInt -> FunPtr CAction -> IO ()
-
 elapsedMicros :: TimeSpec -> IO Float
 elapsedMicros start = do
   end <- getTime Monotonic
@@ -40,7 +29,6 @@ data StatOptions = StatOptions
   , optN :: Int
   , optMeasureSpeedup :: Bool
   , optReadMem :: Bool
-  , optPthreads :: Bool
   }
 
 instance Options StatOptions where
@@ -57,8 +45,6 @@ instance Options StatOptions where
          "run with n=1 and compare performance"
     <*> simpleOption "readmem" False
          "rather than stat, just read memory"
-    <*> simpleOption "pthreads" False
-         "use pthreads for parallelism rather than Concurrent Haskell"
 
 runInThread :: IO a -> IO (MVar a)
 runInThread act = do
@@ -75,12 +61,6 @@ replicateInParallelIterate par iters act = do
   ms <- replicateM par . runInThread . replicateM_ iters $ act
   forM_ ms takeMVar
 
-replicateInParallelIterateFFI :: Int -> Int -> IO () -> IO ()
-replicateInParallelIterateFFI n iters act = do
-  cAct <- mkAction act
-  parallel (fromIntegral n) (fromIntegral iters) cAct
-  freeHaskellFunPtr cAct
-
 statOp :: StatOptions -> FuseOperations fh -> IO ()
 statOp opts fs =
   if optReadMem opts then fuseGetFileSystemStats fs "/" >> return ()
@@ -92,12 +72,10 @@ statOp opts fs =
       _ <- fuseGetFileStat fs "/dir1/file1"
       return ()
 
-timeParallel :: StatOptions -> Int -> Int -> IO () -> IO Float
-timeParallel opts par iters op = do
-  replicatePar <- return $ if optPthreads opts then replicateInParallelIterateFFI
-                           else replicateInParallelIterate
+timeParallel :: Int -> Int -> IO () -> IO Float
+timeParallel par iters op = do
   start <- getTime Monotonic
-  replicatePar par iters op
+  replicateInParallelIterate par iters op
   totalTime <- elapsedMicros start
   return totalTime
 
@@ -110,12 +88,12 @@ seqIters opts = optIters opts
 parstat_main :: StatOptions -> FuseOperations fh -> IO ()
 parstat_main opts fs = do
   op <- return $ statOp opts fs
-  _ <- timeParallel opts 1 10 op
-  parTime <- timeParallel opts (optN opts) (optIters opts) op
+  _ <- timeParallel 1 10 op
+  parTime <- timeParallel (optN opts) (optIters opts) op
   timePerOp <- return $ parTime/(fromIntegral $ parallelIters opts)
   putStrLn $ show timePerOp ++ " us/op"
   when (optMeasureSpeedup opts) $ do
-    seqTime <- timeParallel opts 1 (optIters opts) op
+    seqTime <- timeParallel 1 (optIters opts) op
     seqTimePerOp <- return $ seqTime/(fromIntegral $ seqIters opts)
     putStrLn $ "seq time " ++ show seqTimePerOp ++ " us/op"
     putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
