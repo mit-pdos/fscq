@@ -178,3 +178,6 @@ script :: ParserT Script
 script = catMaybes <$>
   manyTill (lexemeLn (Just <$> command)
              <|> (comment >> return Nothing)) eof
+
+parseScript :: String -> T.Text -> Either ParseError Script
+parseScript = runParser script ()

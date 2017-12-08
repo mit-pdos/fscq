@@ -17,7 +17,6 @@ import Word
 import Disk
 import Prog
 import Fuse (defaultFuseOps,
-             FuseContext(..),
              FuseOperations(..),
              FileStat(..),
              SyncType(..),
@@ -89,8 +88,8 @@ doFScall ds ref f = do
   -- elapsed <- elapsedTime start
   return r
 
-initFscq :: String -> IO FuseContext -> IO (FuseOperations HT)
-initFscq disk_fn getFuseContext = do
+initFscq :: String -> IO (UserID, GroupID) -> IO (FuseOperations HT)
+initFscq disk_fn getIds = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of
     "/tmp/crashlog.img" -> init_disk_crashlog disk_fn
@@ -116,13 +115,13 @@ initFscq disk_fn getFuseContext = do
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
   ref <- newMVar s
   m_fsxp <- newMVar fsxp
-  return $ fscqFSOps getFuseContext disk_fn ds (doFScall ds ref) m_fsxp
+  return $ fscqFSOps getIds disk_fn ds (doFScall ds ref) m_fsxp
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: IO FuseContext -> String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
-fscqFSOps getctx fn ds fr m_fsxp = defaultFuseOps
-  { fuseGetFileStat = fscqGetFileStat getctx fr m_fsxp
+fscqFSOps :: IO (UserID, GroupID) -> String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
+fscqFSOps getIds fn ds fr m_fsxp = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat getIds fr m_fsxp
   , fuseOpen = fscqOpen fr m_fsxp
   , fuseCreateFile = fscqCreateFile fr m_fsxp
   , fuseCreateDevice = fscqCreate fr m_fsxp
@@ -133,7 +132,7 @@ fscqFSOps getctx fn ds fr m_fsxp = defaultFuseOps
   , fuseWrite = fscqWrite fr m_fsxp
   , fuseSetFileSize = fscqSetFileSize fr m_fsxp
   , fuseOpenDirectory = fscqOpenDirectory fr m_fsxp
-  , fuseReadDirectory = fscqReadDirectory getctx fr m_fsxp
+  , fuseReadDirectory = fscqReadDirectory getIds fr m_fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats fr m_fsxp
   , fuseDestroy = fscqDestroy ds fn fr m_fsxp
   , fuseSetFileTimes = fscqSetFileTimes
@@ -198,8 +197,8 @@ fscqDestroy ds disk_fn fr m_fsxp  = withMVar m_fsxp $ \fsxp -> do
       materializeCrashes idxref flushgroups
     _ -> return ()
 
-dirStat :: FuseContext -> FileStat
-dirStat ctx = FileStat
+dirStat :: (UserID, GroupID) -> FileStat
+dirStat (uid, gid) = FileStat
   { statEntryType = Directory
   , statFileMode = foldr1 unionFileModes
                      [ ownerReadMode, ownerWriteMode, ownerExecuteMode
@@ -207,8 +206,8 @@ dirStat ctx = FileStat
                      , otherReadMode, otherExecuteMode
                      ]
   , statLinkCount = 2
-  , statFileOwner = fuseCtxUserID ctx
-  , statFileGroup = fuseCtxGroupID ctx
+  , statFileOwner = uid
+  , statFileGroup = gid
   , statSpecialDeviceID = 0
   , statFileSize = 4096
   , statBlocks = 1
@@ -222,8 +221,8 @@ attrToType attr =
   if t == 0 then RegularFile else Socket
   where t = wordToNat 32 $ _INODE__coq_AType attr
 
-fileStat :: FuseContext -> INODE__Coq_iattr -> FileStat
-fileStat ctx attr = FileStat
+fileStat :: (UserID, GroupID) -> INODE__Coq_iattr -> FileStat
+fileStat (uid, gid) attr = FileStat
   { statEntryType = attrToType attr
   , statFileMode = foldr1 unionFileModes
                      [ ownerReadMode, ownerWriteMode, ownerExecuteMode
@@ -231,8 +230,8 @@ fileStat ctx attr = FileStat
                      , otherReadMode, otherWriteMode, otherExecuteMode
                      ]
   , statLinkCount = 1
-  , statFileOwner = fuseCtxUserID ctx
-  , statFileGroup = fuseCtxGroupID ctx
+  , statFileOwner = uid
+  , statFileGroup = gid
   , statSpecialDeviceID = 0
   , statFileSize = fromIntegral $ wordToNat 64 $ _INODE__coq_ABytes attr
   , statBlocks = 1
@@ -241,14 +240,14 @@ fileStat ctx attr = FileStat
   , statStatusChangeTime = 0
   }
 
-fscqGetFileStat :: IO FuseContext -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
-fscqGetFileStat getctx fr m_fsxp (_:path)
+fscqGetFileStat :: IO (UserID, GroupID) -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat getIds fr m_fsxp (_:path)
   | (path == "sync") = withMVar m_fsxp $ \fsxp -> do
-    ctx <- getctx
+    ctx <- getIds
     _ <- fr $ AsyncFS._AFS__umount fsxp
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | path == "stats" = do
-    ctx <- getctx
+    ctx <- getIds
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
@@ -259,11 +258,11 @@ fscqGetFileStat getctx fr m_fsxp (_:path)
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (inum, isdir)
       | isdir -> do
-        ctx <- getctx
+        ctx <- getIds
         return $ Right $ dirStat ctx
       | otherwise -> do
         (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
-        ctx <- getctx
+        ctx <- getIds
         return $ Right $ fileStat ctx attr
 fscqGetFileStat _ _ _ _ = return $ Left eNOENT
 
@@ -280,10 +279,10 @@ fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
       | otherwise -> return $ Left eNOTDIR
 fscqOpenDirectory _ _ "" = return $ Left eNOENT
 
-fscqReadDirectory :: IO FuseContext -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory getctx fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
+fscqReadDirectory :: IO (UserID, GroupID) -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory getIds fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
   debugStart "READDIR" dnum
-  ctx <- getctx
+  ctx <- getIds
   (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
   files_stat <- mapM (mkstat fsxp ctx) files
   return $ Right $ [(".",          dirStat ctx)
