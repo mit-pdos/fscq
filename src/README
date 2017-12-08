@@ -16,7 +16,7 @@ the stock version of GHC is sufficiently recent, so just run:
   echo 'library-profiling: True' >> ~/.cabal/config
   cabal user-config update
   cabal update
-  cabal install cryptohash clock rdtsc digest options
+  cabal install cryptohash clock rdtsc digest options parsec text
 
 You also need to install headers for FUSE:
 
