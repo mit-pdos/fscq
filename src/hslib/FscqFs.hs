@@ -88,8 +88,8 @@ doFScall ds ref f = do
   -- elapsed <- elapsedTime start
   return r
 
-initFscq :: String -> IO (UserID, GroupID) -> IO (FuseOperations HT)
-initFscq disk_fn getIds = do
+initFscq :: String -> Bool -> IO (UserID, GroupID) -> IO (FuseOperations HT)
+initFscq disk_fn silent getIds = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of
     "/tmp/crashlog.img" -> init_disk_crashlog disk_fn
@@ -97,7 +97,7 @@ initFscq disk_fn getIds = do
   (s, fsxp) <- if fileExists
   then
     do
-      putStrLn $ "Recovering file system"
+      unless silent $ putStrLn $ "Recovering file system"
       res <- I.run ds $ AsyncFS._AFS__recover cachesize
       case res of
         Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
@@ -105,14 +105,14 @@ initFscq disk_fn getIds = do
           return (s, fsxp)
   else
     do
-      putStrLn $ "Initializing file system"
+      unless silent $ putStrLn $ "Initializing file system"
       res <- I.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (s, fsxp) -> do
           set_nblocks_disk ds $ fromIntegral $ coq_FSXPMaxBlock fsxp
           return (s, fsxp)
-  putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
+  unless silent $ putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
   ref <- newMVar s
   m_fsxp <- newMVar fsxp
   return $ fscqFSOps getIds disk_fn ds (doFScall ds ref) m_fsxp

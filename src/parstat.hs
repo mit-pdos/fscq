@@ -105,5 +105,5 @@ main = runCommand $ \opts args -> do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
   else if optFscq opts
-    then initFscq (optDiskImg opts) getProcessIds >>= parstat_main opts
-    else initCfscq (optDiskImg opts) getProcessIds >>= parstat_main opts
+    then initFscq (optDiskImg opts) True getProcessIds >>= parstat_main opts
+    else initCfscq (optDiskImg opts) True getProcessIds >>= parstat_main opts

@@ -27,6 +27,6 @@ getFuseIds = do
 main :: IO ()
 main = runCommand $ \opts args -> case args of
   disk_fn:fuse_args -> do
-    fs <- initFscq disk_fn getFuseIds
+    fs <- initFscq disk_fn False getFuseIds
     fuseRun "fscq" fuse_args fs defaultExceptionHandler (optUseDowncalls opts)
   _ -> putStrLn $ "Usage: fscq disk -f /tmp/ft"
