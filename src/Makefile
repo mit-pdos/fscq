@@ -54,7 +54,7 @@ HSLIB_FUSE := hscgen/Fuse.hs hslib/libopfuse.a
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs \
 	hslib/Interpreter.hs hslib/ConcurInterp.hs \
-	hslib/FscqFs.hs hslib/CfscqFs.hs \
+	hslib/FscqFs.hs hslib/CfscqFs.hs hslib/GenericFs.hs \
 	hslib/Dbench.hs
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
@@ -125,7 +125,7 @@ parstat: parstat.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_POST) parallelize.c paralleli
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen -ihscgen
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< parallelize.c -ihslib -icodegen -ihscgen -lfuse -o $@
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< parallelize.c -ihslib -icodegen -ihscgen -optl -lfuse -lopfuse -Lhslib -o $@
 
 $(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )

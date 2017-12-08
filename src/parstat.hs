@@ -3,143 +3,21 @@
 
 module Main where
 
-import System.FilePath.Posix
 import System.Clock
 import Control.Monad
 import Options
 import System.Exit
 import Control.Concurrent
-import Control.Monad (when)
-import Data.IORef
+
+import Fuse
+import FscqFs
+import CfscqFs
+import GenericFs
+import System.Posix.IO (defaultFileFlags)
 
 -- FFI
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (FunPtr, freeHaskellFunPtr)
-
-import Disk
-import Interpreter as SeqI
-import ConcurInterp as I
-
--- FSCQ extracted code
-import qualified Errno
-import qualified Prog
-import qualified BFile
-import qualified AsyncFS
-import qualified FSLayout
-import qualified ConcurrentFS as CFS
-import qualified Rec
-import FSProtocol hiding (fsxp)
-import CCLProg
-
-type FSprog a = Coq_cprog a
-type FSrunner = forall a. FSprog (CFS.SyscallResult a) -> IO a
-
-type MSCS = BFile.BFILE__Coq_memstate
-type FSCQprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
-type FSCQrunner = forall a. FSCQprog a -> IO a
-doSeqCall :: DiskState -> MVar MSCS -> FSCQrunner
-doSeqCall ds ref f = do
-  s <- takeMVar ref
-  (s', r) <- SeqI.run ds $ f s
-  putMVar ref s'
-  return r
-
-cachesize :: Integer
-cachesize = 100000
-
-doFScall :: I.ConcurState -> FSrunner
-doFScall s p = do
-  r <- I.run s p
-  case r of
-    CFS.Done v -> return v
-    CFS.TryAgain -> error $ "system call loop failed?"
-    CFS.SyscallFailed -> error $ "system call failed"
-
-class Filesystem a where
-  getFileStat :: a -> FilePath -> IO (Maybe Rec.Rec__Coq_data)
-  openFile :: a -> FilePath -> IO (Maybe Integer)
-  readMem :: a -> IO ()
-
-data CfscqFs = CfscqFs I.ConcurState FsParams
-
-init_cfscq :: FilePath -> IO CfscqFs
-init_cfscq disk_fn = do
-  ds <- init_disk disk_fn
-  (mscs0, fsxp_val) <- do
-      res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
-      case res of
-        Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
-        Errno.OK (mscs0, fsxp_val) -> do
-          return (mscs0, fsxp_val)
-  s <- I.newState ds
-  fsP <- I.run s (CFS.init fsxp_val mscs0)
-  return $ CfscqFs s fsP
-
-instance Filesystem CfscqFs where
-  getFileStat (CfscqFs s fsP) (_:path) = do
-    nameparts <- return $ splitDirectories path
-    (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
-    case r of
-      Errno.Err _ -> return $ Nothing
-      Errno.OK (inum, isdir)
-        | isdir -> return $ Nothing
-        | otherwise -> do
-          (attr, ()) <- doFScall s $ CFS.file_get_attr fsP inum
-          return $ Just attr
-  getFileStat _ _ = return $ Nothing
-
-  openFile (CfscqFs s fsP) (_:path) = do
-    nameparts <- return $ splitDirectories path
-    (r, ()) <- doFScall s $ CFS.lookup fsP nameparts
-    case r of
-      Errno.Err _ -> return $ Nothing
-      Errno.OK (inum, isdir)
-        | isdir -> return $ Nothing
-        | otherwise -> return $ Just inum
-  openFile _ _  = return $ Nothing
-
-  readMem (CfscqFs s _) = readIORef (I.memory s) >> return ()
-
-data FscqFs = FscqFs FSCQrunner (MVar FSLayout.Coq_fs_xparams)
-
-init_fscq :: FilePath -> IO FscqFs
-init_fscq disk_fn = do
-  ds <- init_disk disk_fn
-  (mscs0, fsxp_val) <- do
-      res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
-      case res of
-        Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
-        Errno.OK (mscs0, fsxp_val) -> do
-          return (mscs0, fsxp_val)
-  m_mscs <- newMVar mscs0
-  m_fsxp <- newMVar fsxp_val
-  return $ FscqFs (doSeqCall ds m_mscs) m_fsxp
-
-instance Filesystem FscqFs where
-
-  getFileStat (FscqFs fr m_fsxp) (_:path) = withMVar m_fsxp $ \fsxp -> do
-    nameparts <- return $ splitDirectories path
-    (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (FSLayout.coq_FSXPRootInum fsxp) nameparts
-    case r of
-      Errno.Err _ -> return $ Nothing
-      Errno.OK (inum, isdir)
-        | isdir -> return $ Nothing
-        | otherwise -> do
-          (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
-          return $ Just attr
-  getFileStat _ _ = return $ Nothing
-
-  openFile (FscqFs fr m_fsxp) (_:path) = withMVar m_fsxp $ \fsxp -> do
-    nameparts <- return $ splitDirectories path
-    (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (FSLayout.coq_FSXPRootInum fsxp) nameparts
-    case r of
-      Errno.Err _ -> return $ Nothing
-      Errno.OK (inum, isdir)
-        | isdir -> return $ Nothing
-        | otherwise -> return $ Just inum
-  openFile _ _ = return $ Nothing
-
-  readMem (FscqFs _ m_fsxp) = withMVar m_fsxp $ \_ -> return ()
 
 foreign import ccall safe "wrapper"
   mkAction :: IO () -> IO (FunPtr (IO ()))
@@ -203,15 +81,15 @@ replicateInParallelIterateFFI n iters act = do
   parallel (fromIntegral n) (fromIntegral iters) cAct
   freeHaskellFunPtr cAct
 
-statOp :: Filesystem a => StatOptions -> a -> IO ()
+statOp :: StatOptions -> FuseOperations fh -> IO ()
 statOp opts fs =
-  if optReadMem opts then readMem fs
+  if optReadMem opts then fuseGetFileSystemStats fs "/" >> return ()
     else do
-      _ <- openFile fs "/"
-      _ <- getFileStat fs "/"
-      _ <- openFile fs "/dir1"
-      _ <- getFileStat fs "/dir1"
-      _ <- getFileStat fs "/dir1/file1"
+      _ <- fuseOpen fs "/" ReadOnly defaultFileFlags
+      _ <- fuseGetFileStat fs "/"
+      _ <- fuseOpen fs "/dir1" ReadOnly defaultFileFlags
+      _ <- fuseGetFileStat fs "/dir1"
+      _ <- fuseGetFileStat fs "/dir1/file1"
       return ()
 
 timeParallel :: StatOptions -> Int -> Int -> IO () -> IO Float
@@ -229,7 +107,7 @@ parallelIters opts = optIters opts * optN opts
 seqIters :: StatOptions -> Int
 seqIters opts = optIters opts
 
-parstat_main :: Filesystem a => StatOptions -> a -> IO ()
+parstat_main :: StatOptions -> FuseOperations fh -> IO ()
 parstat_main opts fs = do
   op <- return $ statOp opts fs
   _ <- timeParallel opts 1 10 op
@@ -249,5 +127,5 @@ main = runCommand $ \opts args -> do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
   else if optFscq opts
-    then init_fscq (optDiskImg opts) >>= parstat_main opts
-    else init_cfscq (optDiskImg opts) >>= parstat_main opts
+    then initFscq (optDiskImg opts) getProcessIds >>= parstat_main opts
+    else initCfscq (optDiskImg opts) getProcessIds >>= parstat_main opts
