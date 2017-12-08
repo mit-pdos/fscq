@@ -29,6 +29,7 @@ data StatOptions = StatOptions
   , optN :: Int
   , optMeasureSpeedup :: Bool
   , optReadMem :: Bool
+  , optMachineReadable :: Bool
   }
 
 instance Options StatOptions where
@@ -45,6 +46,8 @@ instance Options StatOptions where
          "run with n=1 and compare performance"
     <*> simpleOption "readmem" False
          "rather than stat, just read memory"
+    <*> simpleOption "machine-readable" False
+         "output in TSV format"
 
 runInThread :: IO a -> IO (MVar a)
 runInThread act = do
@@ -85,18 +88,29 @@ parallelIters opts = optIters opts * optN opts
 seqIters :: StatOptions -> Int
 seqIters opts = optIters opts
 
+reportResults :: StatOptions -> Int -> Float -> IO ()
+reportResults opts n timePerOp =
+  if optMachineReadable opts then
+    putStrLn $ show (optIters opts) ++ "\t" ++ show n ++ "\t" ++ show timePerOp
+  else
+    if n == 1 then
+      putStrLn $ "seq time " ++ show timePerOp ++ " us/op"
+    else
+      putStrLn $ show timePerOp ++ " us/op"
+
 parstat_main :: StatOptions -> FuseOperations fh -> IO ()
 parstat_main opts fs = do
   op <- return $ statOp opts fs
   _ <- timeParallel 1 10 op
   parTime <- timeParallel (optN opts) (optIters opts) op
   timePerOp <- return $ parTime/(fromIntegral $ parallelIters opts)
-  putStrLn $ show timePerOp ++ " us/op"
+  reportResults opts (optN opts) timePerOp
   when (optMeasureSpeedup opts) $ do
     seqTime <- timeParallel 1 (optIters opts) op
     seqTimePerOp <- return $ seqTime/(fromIntegral $ seqIters opts)
-    putStrLn $ "seq time " ++ show seqTimePerOp ++ " us/op"
-    putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
+    reportResults opts 1 seqTimePerOp
+    unless (optMachineReadable opts) $
+      putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
   return ()
 
 main :: IO ()
