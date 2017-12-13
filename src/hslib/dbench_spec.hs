@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Monad.Identity (Identity)
 import qualified Data.Text as T
-import           Dbench
+import           DbenchScript
 import           Test.Hspec
 import           Text.Parsec
 

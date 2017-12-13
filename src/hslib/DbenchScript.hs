@@ -1,5 +1,5 @@
 {-# LANGUAGE Rank2Types, FlexibleContexts #-}
-module Dbench where
+module DbenchScript where
 
 import           Control.Monad (void)
 import           Data.Maybe (catMaybes)

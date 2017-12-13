@@ -55,7 +55,7 @@ HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs \
 	hslib/Interpreter.hs hslib/ConcurInterp.hs \
 	hslib/FscqFs.hs hslib/CfscqFs.hs hslib/GenericFs.hs \
-	hslib/Dbench.hs
+	hslib/DbenchScript.hs
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
 		   ocamlfuse/Unix_util.ml \
@@ -72,7 +72,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: vio proof clean
 
-all: cfscq fscq mkfs parstat translate
+all: cfscq fscq mkfs parstat dbench translate
 
 -include $(OCAMLFUSE_DEP)
 
