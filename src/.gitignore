@@ -16,6 +16,7 @@ _build
 /mkfs
 /parbench
 /translate
+/dbench
 /mlfuse
 /mlmkfs
 /coqbuild
