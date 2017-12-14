@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes, ForeignFunctionInterface #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
@@ -8,6 +9,7 @@ import Control.Monad
 import Options
 import System.Exit
 import Control.Concurrent
+import Control.Monad (void)
 
 import Fuse
 import FscqFs
@@ -22,18 +24,33 @@ elapsedMicros start = do
       elapsed = (fromIntegral elapsedNanos)/1e3 :: Float in
     return elapsed
 
-data StatOptions = StatOptions
+timeIt :: IO a -> IO Float
+timeIt act = do
+  start <- getTime Monotonic
+  _ <- act
+  totalTime <- elapsedMicros start
+  return totalTime
+
+statOp :: FuseOperations fh -> IO ()
+statOp fs = do
+    _ <- fuseOpen fs "/" ReadOnly defaultFileFlags
+    _ <- fuseGetFileStat fs "/"
+    _ <- fuseOpen fs "/dir1" ReadOnly defaultFileFlags
+    _ <- fuseGetFileStat fs "/dir1"
+    _ <- fuseGetFileStat fs "/dir1/file1"
+    return ()
+
+statfsOp :: FuseOperations fh -> IO ()
+statfsOp fs = void $ fuseGetFileSystemStats fs "/"
+
+data ParOptions = ParOptions
   { optFscq :: Bool
   , optDiskImg :: FilePath
   , optIters :: Int
-  , optN :: Int
-  , optMeasureSpeedup :: Bool
-  , optReadMem :: Bool
-  , optMachineReadable :: Bool
-  }
+  , optN :: Int }
 
-instance Options StatOptions where
-  defineOptions = pure StatOptions
+instance Options ParOptions where
+  defineOptions = pure ParOptions
     <*> simpleOption "fscq" False
         "run sequential FSCQ"
     <*> simpleOption "img" "disk.img"
@@ -42,12 +59,6 @@ instance Options StatOptions where
          "number of iterations of stat to run"
     <*> simpleOption "n" 1
          "number of parallel threads to issue stats from"
-    <*> simpleOption "speedup" False
-         "run with n=1 and compare performance"
-    <*> simpleOption "readmem" False
-         "rather than stat, just read memory"
-    <*> simpleOption "machine-readable" False
-         "output in TSV format"
 
 runInThread :: IO a -> IO (MVar a)
 runInThread act = do
@@ -57,67 +68,60 @@ runInThread act = do
     putMVar m v
   return m
 
--- replicateInParallelIterate par iters op runs (op iters times) in n parallel
--- copies
-replicateInParallelIterate :: Int -> Int -> IO () -> IO ()
-replicateInParallelIterate par iters act = do
-  ms <- replicateM par . runInThread . replicateM_ iters $ act
-  forM_ ms takeMVar
+-- replicateInParallel par iters act runs act in n parallel copies, passing
+-- 0..n-1 to each copy
+replicateInParallel :: Int -> (Int -> IO a) -> IO [a]
+replicateInParallel par act = do
+  ms <- mapM (runInThread . act) [0..par-1]
+  mapM takeMVar ms
 
-statOp :: StatOptions -> FuseOperations fh -> IO ()
-statOp opts fs =
-  if optReadMem opts then fuseGetFileSystemStats fs "/" >> return ()
-    else do
-      _ <- fuseOpen fs "/" ReadOnly defaultFileFlags
-      _ <- fuseGetFileStat fs "/"
-      _ <- fuseOpen fs "/dir1" ReadOnly defaultFileFlags
-      _ <- fuseGetFileStat fs "/dir1"
-      _ <- fuseGetFileStat fs "/dir1/file1"
-      return ()
+data RtsInfo =
+  RtsInfo { rtsN :: Int }
 
-timeParallel :: Int -> Int -> IO () -> IO Float
-timeParallel par iters op = do
-  start <- getTime Monotonic
-  replicateInParallelIterate par iters op
-  totalTime <- elapsedMicros start
-  return totalTime
+data DataPoint =
+  DataPoint { pRts :: RtsInfo
+            , pIters :: Int
+            , pPar :: Int
+            , pElapsedMicros :: Float }
 
-parallelIters :: StatOptions -> Int
-parallelIters opts = optIters opts * optN opts
+reportRtsInfo :: RtsInfo -> String
+reportRtsInfo RtsInfo{..} = show rtsN
 
-seqIters :: StatOptions -> Int
-seqIters opts = optIters opts
+rtsHeader :: String
+rtsHeader = "RTS N"
 
-reportResults :: StatOptions -> Int -> Float -> IO ()
-reportResults opts n timePerOp =
-  if optMachineReadable opts then
-    putStrLn $ show (optIters opts) ++ "\t" ++ show n ++ "\t" ++ show timePerOp
+reportPoint :: DataPoint -> String
+reportPoint DataPoint{..} = reportRtsInfo pRts ++ "\t" ++
+  show pIters ++ "\t" ++
+  show pPar ++ "\t" ++
+  show pElapsedMicros
+
+pointHeader :: String
+pointHeader = rtsHeader ++ "\t" ++ "iters\tthreads\ttotal us"
+
+getRtsInfo :: IO RtsInfo
+getRtsInfo = RtsInfo <$> getNumCapabilities
+
+parallelBench :: ParOptions -> (Int -> IO a) -> IO DataPoint
+parallelBench opts act = do
+  totalMicros <- timeIt $ replicateInParallel
+    (optN opts)
+    (replicateM_ (optIters opts) . act)
+  rts <- getRtsInfo
+  return $ DataPoint rts (optIters opts) (optN opts) totalMicros
+
+withFs :: ParOptions -> (forall fh. FuseOperations fh -> IO a) -> IO a
+withFs opts act =
+  if optFscq opts then
+    initFscq (optDiskImg opts) True getProcessIds >>= act
   else
-    if n == 1 then
-      putStrLn $ "seq time " ++ show timePerOp ++ " us/op"
-    else
-      putStrLn $ show timePerOp ++ " us/op"
-
-parstat_main :: StatOptions -> FuseOperations fh -> IO ()
-parstat_main opts fs = do
-  op <- return $ statOp opts fs
-  _ <- timeParallel 1 10 op
-  parTime <- timeParallel (optN opts) (optIters opts) op
-  timePerOp <- return $ parTime/(fromIntegral $ parallelIters opts)
-  reportResults opts (optN opts) timePerOp
-  when (optMeasureSpeedup opts) $ do
-    seqTime <- timeParallel 1 (optIters opts) op
-    seqTimePerOp <- return $ seqTime/(fromIntegral $ seqIters opts)
-    reportResults opts 1 seqTimePerOp
-    unless (optMachineReadable opts) $
-      putStrLn $ "speedup of " ++ show (seqTimePerOp / timePerOp)
-  return ()
+    initCfscq (optDiskImg opts) True getProcessIds >>= act
 
 main :: IO ()
 main = runCommand $ \opts args -> do
   if length args > 0 then do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
-  else if optFscq opts
-    then initFscq (optDiskImg opts) True getProcessIds >>= parstat_main opts
-    else initCfscq (optDiskImg opts) True getProcessIds >>= parstat_main opts
+  else do
+    p <- withFs opts $ \fs -> parallelBench opts (\_ -> statOp fs)
+    putStrLn $ reportPoint p
