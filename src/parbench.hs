@@ -105,7 +105,8 @@ data ParOptions = ParOptions
   { optFscq :: Bool
   , optDiskImg :: FilePath
   , optIters :: Int
-  , optN :: Int }
+  , optN :: Int
+  , optWarmup :: Bool }
 
 instance Options ParOptions where
   defineOptions = pure ParOptions
@@ -117,6 +118,8 @@ instance Options ParOptions where
          "number of iterations of stat to run"
     <*> simpleOption "n" 1
          "number of parallel threads to issue stats from"
+    <*> simpleOption "warmup" True
+         "warmup by running 10 untimed iterations"
 
 type Parcommand a = Subcommand ParOptions (IO a)
 
@@ -134,6 +137,7 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
 
 parallelBench :: ParOptions -> String -> (Int -> IO a) -> IO DataPoint
 parallelBench opts name act = do
+  when (optWarmup opts) $ forM_ [1..(optN opts)-1] $ replicateM_ 10 . act
   totalMicros <- timeIt $ replicateInParallel
     (optN opts)
     (replicateM_ (optIters opts) . act)
