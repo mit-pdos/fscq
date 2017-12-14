@@ -35,6 +35,60 @@ statOp _ fs = do
 statfsOp :: NoOptions -> Filesystem -> IO ()
 statfsOp _ fs = void $ fuseGetFileSystemStats fs "/"
 
+data ScanDirOptions =
+  ScanDirOptions { optScanRoot :: String }
+instance Options ScanDirOptions where
+  defineOptions = pure ScanDirOptions <*>
+    simpleOption "dir" "/"
+      "root directory to scan from"
+
+getResult :: String -> Either Errno a -> IO a
+getResult fname (Left e) = ioError (errnoToIOError "" e Nothing (Just fname))
+getResult _ (Right a) = return a
+
+isDot :: FilePath -> Bool
+isDot p = p == "." || p == ".."
+
+filterDots :: [(FilePath, a)] -> [(FilePath, a)]
+filterDots = filter (not . isDot . fst)
+
+isFile :: FileStat -> Bool
+isFile s =
+  case statEntryType s of
+  RegularFile -> True
+  _ -> False
+
+isDirectory :: FileStat -> Bool
+isDirectory s = case statEntryType s of
+  Directory -> True
+  _ -> False
+
+onlyDirectories :: [(FilePath, FileStat)] -> [FilePath]
+onlyDirectories = map fst . filter (isDirectory . snd)
+
+traverseDirectory :: Filesystem -> FilePath -> IO [(FilePath, FileStat)]
+traverseDirectory fs p = do
+  dnum <- getResult p =<< fuseOpenDirectory fs p
+  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  let entries = filterDots allEntries in do
+  recursive <- concat <$> mapM (traverseDirectory fs) (onlyDirectories entries)
+  return $ entries ++ recursive
+
+catFiles :: Filesystem -> [(FilePath, FileStat)] -> IO ()
+catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
+  fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
+  _ <- getResult p =<< fuseRead fs p fh (fromIntegral $ statFileSize s) 0
+  return ()
+
+catDirOp :: ScanDirOptions -> Filesystem -> IO ()
+catDirOp ScanDirOptions{..} fs = do
+  entries <- traverseDirectory fs optScanRoot
+  catFiles fs entries
+
+traverseDirOp :: ScanDirOptions -> Filesystem -> IO ()
+traverseDirOp ScanDirOptions{..} fs =
+  void $ traverseDirectory fs optScanRoot
+
 -- mini benchmarking library
 
 elapsedMicros :: TimeSpec -> IO Float
@@ -55,6 +109,8 @@ runInThread :: IO a -> IO (MVar a)
 runInThread act = do
   m <- newEmptyMVar
   _ <- forkIO $ do
+    -- TODO: if act throws an exception, takeMVar blocks indefinitely
+    -- should probably switch to IO () -> IO (MVar ()) and close the channel
     v <- act
     putMVar m v
   return m
@@ -165,4 +221,6 @@ headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
 main :: IO ()
 main = runSubcommand [ simpleBenchmark "stat" statOp
                      , simpleBenchmark "statfs" statfsOp
+                     , simpleBenchmark "cat-dir" catDirOp
+                     , simpleBenchmark "traverse-dir" traverseDirOp
                      , headerCommand ]
