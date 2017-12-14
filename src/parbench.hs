@@ -8,7 +8,7 @@ module Main where
 import Control.Concurrent
 import Control.Monad
 import Control.Monad (void)
-import Data.List (intercalate)
+import Data.List (intercalate, dropWhileEnd)
 import Options
 import System.Clock
 import System.Exit
@@ -66,13 +66,18 @@ isDirectory s = case statEntryType s of
 onlyDirectories :: [(FilePath, FileStat)] -> [FilePath]
 onlyDirectories = map fst . filter (isDirectory . snd)
 
+pathJoin :: FilePath -> FilePath -> FilePath
+pathJoin p1 p2 = dropWhileEnd (== '/') p1 ++ "/" ++ p2
+
 traverseDirectory :: Filesystem -> FilePath -> IO [(FilePath, FileStat)]
 traverseDirectory fs p = do
   dnum <- getResult p =<< fuseOpenDirectory fs p
   allEntries <- getResult p =<< fuseReadDirectory fs p dnum
-  let entries = filterDots allEntries in do
-  recursive <- concat <$> mapM (traverseDirectory fs) (onlyDirectories entries)
-  return $ entries ++ recursive
+  let entries = filterDots allEntries
+      paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
+      directories = onlyDirectories paths
+  recursive <- concat <$> mapM (traverseDirectory fs) directories
+  return $ paths ++ recursive
 
 catFiles :: Filesystem -> [(FilePath, FileStat)] -> IO ()
 catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
