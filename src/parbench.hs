@@ -1,21 +1,41 @@
 {-# LANGUAGE RankNTypes, ForeignFunctionInterface #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
-import System.Clock
-import Control.Monad
-import Options
-import System.Exit
 import Control.Concurrent
+import Control.Monad
 import Control.Monad (void)
+import Data.List (intercalate)
+import Options
+import System.Clock
+import System.Exit
 
 import Fuse
 import FscqFs
 import CfscqFs
 import GenericFs
 import System.Posix.IO (defaultFileFlags)
+
+data NoOptions = NoOptions {}
+instance Options NoOptions where
+  defineOptions = pure NoOptions
+
+statOp :: NoOptions -> Filesystem -> IO ()
+statOp _ fs = do
+    _ <- fuseOpen fs "/" ReadOnly defaultFileFlags
+    _ <- fuseGetFileStat fs "/"
+    _ <- fuseOpen fs "/dir1" ReadOnly defaultFileFlags
+    _ <- fuseGetFileStat fs "/dir1"
+    _ <- fuseGetFileStat fs "/dir1/file1"
+    return ()
+
+statfsOp :: NoOptions -> Filesystem -> IO ()
+statfsOp _ fs = void $ fuseGetFileSystemStats fs "/"
+
+-- mini benchmarking library
 
 elapsedMicros :: TimeSpec -> IO Float
 elapsedMicros start = do
@@ -30,35 +50,6 @@ timeIt act = do
   _ <- act
   totalTime <- elapsedMicros start
   return totalTime
-
-statOp :: FuseOperations fh -> IO ()
-statOp fs = do
-    _ <- fuseOpen fs "/" ReadOnly defaultFileFlags
-    _ <- fuseGetFileStat fs "/"
-    _ <- fuseOpen fs "/dir1" ReadOnly defaultFileFlags
-    _ <- fuseGetFileStat fs "/dir1"
-    _ <- fuseGetFileStat fs "/dir1/file1"
-    return ()
-
-statfsOp :: FuseOperations fh -> IO ()
-statfsOp fs = void $ fuseGetFileSystemStats fs "/"
-
-data ParOptions = ParOptions
-  { optFscq :: Bool
-  , optDiskImg :: FilePath
-  , optIters :: Int
-  , optN :: Int }
-
-instance Options ParOptions where
-  defineOptions = pure ParOptions
-    <*> simpleOption "fscq" False
-        "run sequential FSCQ"
-    <*> simpleOption "img" "disk.img"
-         "path to FSCQ disk image"
-    <*> simpleOption "iters" 100
-         "number of iterations of stat to run"
-    <*> simpleOption "n" 1
-         "number of parallel threads to issue stats from"
 
 runInThread :: IO a -> IO (MVar a)
 runInThread act = do
@@ -80,6 +71,7 @@ data RtsInfo =
 
 data DataPoint =
   DataPoint { pRts :: RtsInfo
+            , pName :: String
             , pIters :: Int
             , pPar :: Int
             , pElapsedMicros :: Float }
@@ -91,37 +83,82 @@ rtsHeader :: String
 rtsHeader = "RTS N"
 
 reportPoint :: DataPoint -> String
-reportPoint DataPoint{..} = reportRtsInfo pRts ++ "\t" ++
-  show pIters ++ "\t" ++
-  show pPar ++ "\t" ++
-  show pElapsedMicros
+reportPoint DataPoint{..} = intercalate "\t"
+  [ reportRtsInfo pRts
+  , pName
+  , show pIters
+  , show pPar
+  , show pElapsedMicros ]
 
 pointHeader :: String
-pointHeader = rtsHeader ++ "\t" ++ "iters\tthreads\ttotal us"
+pointHeader = intercalate "\t"
+  [ rtsHeader
+  , "name"
+  , "iters"
+  , "threads"
+  , "total us" ]
 
 getRtsInfo :: IO RtsInfo
 getRtsInfo = RtsInfo <$> getNumCapabilities
 
-parallelBench :: ParOptions -> (Int -> IO a) -> IO DataPoint
-parallelBench opts act = do
+data ParOptions = ParOptions
+  { optFscq :: Bool
+  , optDiskImg :: FilePath
+  , optIters :: Int
+  , optN :: Int }
+
+instance Options ParOptions where
+  defineOptions = pure ParOptions
+    <*> simpleOption "fscq" False
+        "run sequential FSCQ"
+    <*> simpleOption "img" "disk.img"
+         "path to FSCQ disk image"
+    <*> simpleOption "iters" 100
+         "number of iterations of stat to run"
+    <*> simpleOption "n" 1
+         "number of parallel threads to issue stats from"
+
+type Parcommand a = Subcommand ParOptions (IO a)
+
+checkArgs :: [String] -> IO ()
+checkArgs args = when (length args > 0) $ do
+    putStrLn "arguments are unused, pass options as flags"
+    exitWith (ExitFailure 1)
+
+parcommand :: Options subcmdOpts =>
+              String -> (ParOptions -> subcmdOpts -> IO a) ->
+              Parcommand a
+parcommand name action = subcommand name $ \opts cmdOpts args -> do
+  checkArgs args
+  action opts cmdOpts
+
+parallelBench :: ParOptions -> String -> (Int -> IO a) -> IO DataPoint
+parallelBench opts name act = do
   totalMicros <- timeIt $ replicateInParallel
     (optN opts)
     (replicateM_ (optIters opts) . act)
   rts <- getRtsInfo
-  return $ DataPoint rts (optIters opts) (optN opts) totalMicros
+  return $ DataPoint rts name (optIters opts) (optN opts) totalMicros
 
-withFs :: ParOptions -> (forall fh. FuseOperations fh -> IO a) -> IO a
+withFs :: ParOptions -> (Filesystem -> IO a) -> IO a
 withFs opts act =
   if optFscq opts then
     initFscq (optDiskImg opts) True getProcessIds >>= act
   else
     initCfscq (optDiskImg opts) True getProcessIds >>= act
 
+simpleBenchmark :: Options subcmdOpts =>
+                   String -> (subcmdOpts -> Filesystem -> IO a) ->
+                   Parcommand ()
+simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
+  p <- withFs opts $ \fs -> parallelBench opts name (\_ -> act cmdOpts fs)
+  putStrLn $ reportPoint p
+
+headerCommand :: Parcommand ()
+headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
+  putStrLn pointHeader
+
 main :: IO ()
-main = runCommand $ \opts args -> do
-  if length args > 0 then do
-    putStrLn "arguments are unused, pass options as flags"
-    exitWith (ExitFailure 1)
-  else do
-    p <- withFs opts $ \fs -> parallelBench opts (\_ -> statOp fs)
-    putStrLn $ reportPoint p
+main = runSubcommand [ simpleBenchmark "stat" statOp
+                     , simpleBenchmark "statfs" statfsOp
+                     , headerCommand ]

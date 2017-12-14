@@ -13,3 +13,5 @@ getFuseIds = do
 getProcessIds :: IO (UserID, GroupID)
 getProcessIds = do
   (,) <$> getRealUserID <*> getRealGroupID
+
+type Filesystem = FuseOperations Integer
