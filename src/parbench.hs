@@ -138,6 +138,11 @@ getRtsInfo = do
   gc <- getGCFlags
   return $ RtsInfo n (fromIntegral (minAllocAreaSize gc) * 4.0 / 1000 )
 
+rtsValues :: RtsInfo -> [(String, String)]
+rtsValues RtsInfo{..} =
+  [ ("capabilities", show rtsN)
+  , ("alloc area MB", show rtsMinAllocMB) ]
+
 data DataPoint =
   DataPoint { pRts :: RtsInfo
             , pBenchName :: String
@@ -145,6 +150,21 @@ data DataPoint =
             , pIters :: Int
             , pPar :: Int
             , pElapsedMicros :: Float }
+
+dataValues :: DataPoint -> [(String, String)]
+dataValues DataPoint{..} =
+  rtsValues pRts ++
+  [ ("benchmark", pBenchName)
+  , ("system", pSystem)
+  , ("iters", show pIters)
+  , ("par", show pPar)
+  , ("total micros", show pElapsedMicros) ]
+
+valueHeader :: [(String, String)] -> String
+valueHeader kvs = intercalate "\t" (map fst kvs)
+
+valueData :: [(String, String)] -> String
+valueData kvs = intercalate "\t" (map snd kvs)
 
 emptyData :: DataPoint
 emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
@@ -154,34 +174,6 @@ emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
                       , pIters = 0
                       , pPar = 0
                       , pElapsedMicros = 0.0 }
-
-reportRtsInfo :: RtsInfo -> String
-reportRtsInfo RtsInfo{..} = intercalate "\t"
-  [ show rtsN
-  , show rtsMinAllocMB ]
-
-rtsHeader :: String
-rtsHeader = intercalate "\t"
-  [ "RTS N"
-  , "alloc area MB" ]
-
-reportPoint :: DataPoint -> String
-reportPoint DataPoint{..} = intercalate "\t"
-  [ reportRtsInfo pRts
-  , pBenchName
-  , pSystem
-  , show pIters
-  , show pPar
-  , show pElapsedMicros ]
-
-pointHeader :: String
-pointHeader = intercalate "\t"
-  [ rtsHeader
-  , "benchmark"
-  , "system"
-  , "iters"
-  , "threads"
-  , "total us" ]
 
 data ParOptions = ParOptions
   { optFscq :: Bool
@@ -248,11 +240,11 @@ simpleBenchmark :: Options subcmdOpts =>
                    Parcommand ()
 simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
   p <- withFs opts $ \fs -> parallelBench opts name (\_ -> act cmdOpts fs)
-  putStrLn $ reportPoint p
+  putStrLn . valueData . dataValues $ p
 
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
-  putStrLn pointHeader
+  putStrLn . valueHeader . dataValues $ emptyData
 
 main :: IO ()
 main = runSubcommand [ simpleBenchmark "stat" statOp
