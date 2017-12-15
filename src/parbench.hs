@@ -194,6 +194,7 @@ data ParOptions = ParOptions
   { optFscq :: Bool
   , optDiskImg :: FilePath
   , optIters :: Int
+  , optTargetMs :: Int
   , optN :: Int
   , optWarmup :: Bool }
 
@@ -204,7 +205,9 @@ instance Options ParOptions where
     <*> simpleOption "img" "disk.img"
          "path to FSCQ disk image"
     <*> simpleOption "iters" 100
-         "number of iterations of stat to run"
+         "number of iterations to run"
+    <*> simpleOption "target-ms" 0
+         "pick iterations to run for at least this many ms (0 to disable)"
     <*> simpleOption "n" 1
          "number of parallel threads to issue stats from"
     <*> simpleOption "warmup" True
@@ -216,7 +219,6 @@ optsData ParOptions{..} = do
   rts <- getRtsInfo
   return $ emptyData{ pRts=rts
                     , pSystem=if optFscq then "fscq" else "cfscq"
-                    , pIters=optIters
                     , pPar=optN }
 
 type Parcommand a = Subcommand ParOptions (IO a)
@@ -233,15 +235,40 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
   checkArgs args
   action opts cmdOpts
 
+searchIters :: (Int -> IO a) -> Float -> IO (Float, Int)
+searchIters act targetMicros = go 1
+  where go iters = do
+          performMajorGC
+          micros <- timeIt $ act iters
+          if micros < targetMicros
+            then let iters' = fromInteger . round $
+                       (fromIntegral iters :: Float) * targetMicros / micros
+                     nextIters = max
+                       (min
+                         (iters'+(iters' `div` 5))
+                         (100*iters))
+                       (iters+1) in
+                 go nextIters
+          else return (micros, iters)
+
+pickAndRunIters :: ParOptions -> (Int -> IO a) -> IO (Float, Int)
+pickAndRunIters ParOptions{..} act = do
+  if optTargetMs > 0 then
+    searchIters act (fromIntegral optTargetMs * 1000)
+  else do
+     t <- timeIt $ act optIters
+     return (t, optIters)
+
 parallelBench :: ParOptions -> String -> (Int -> IO a) -> IO DataPoint
 parallelBench opts name act = do
   when (optWarmup opts) $ forM_ [1..(optN opts)-1] $ replicateM_ 10 . act
   performMajorGC
-  totalMicros <- timeIt $ replicateInParallel
+  (totalMicros, iters) <- pickAndRunIters opts $ \iters -> replicateInParallel
     (optN opts)
-    (replicateM_ (optIters opts) . act)
+    (replicateM_ iters . act)
   p <- optsData opts
   return $ p{ pBenchName=name
+            , pIters=iters
             , pElapsedMicros=totalMicros}
 
 withFs :: ParOptions -> (Filesystem -> IO a) -> IO a
