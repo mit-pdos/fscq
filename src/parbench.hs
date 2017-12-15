@@ -13,12 +13,14 @@ import Options
 import System.Clock
 import System.Exit
 
-import Fuse
-import FscqFs
 import CfscqFs
+import FscqFs
+import Fuse
 import GenericFs
 import System.Posix.IO (defaultFileFlags)
+
 import GHC.RTS.Flags
+import System.Mem (performMajorGC)
 
 data NoOptions = NoOptions {}
 instance Options NoOptions where
@@ -221,6 +223,7 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
 parallelBench :: ParOptions -> String -> (Int -> IO a) -> IO DataPoint
 parallelBench opts name act = do
   when (optWarmup opts) $ forM_ [1..(optN opts)-1] $ replicateM_ 10 . act
+  performMajorGC
   totalMicros <- timeIt $ replicateInParallel
     (optN opts)
     (replicateM_ (optIters opts) . act)
