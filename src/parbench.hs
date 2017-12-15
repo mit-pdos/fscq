@@ -5,22 +5,23 @@
 
 module Main where
 
-import Control.Concurrent
-import Control.Monad
-import Control.Monad (void)
-import Data.List (intercalate, dropWhileEnd)
-import Options
-import System.Clock
-import System.Exit
+import           Control.Concurrent
+import           Control.Monad
+import           Control.Monad (void)
+import qualified Data.ByteString as BS
+import           Data.List (intercalate, dropWhileEnd)
+import           Options
+import           System.Clock
+import           System.Exit
 
-import CfscqFs
-import FscqFs
-import Fuse
-import GenericFs
-import System.Posix.IO (defaultFileFlags)
+import           CfscqFs
+import           FscqFs
+import           Fuse
+import           GenericFs
+import           System.Posix.IO (defaultFileFlags)
 
-import GHC.RTS.Flags
-import System.Mem (performMajorGC)
+import           GHC.RTS.Flags
+import           System.Mem (performMajorGC)
 
 data NoOptions = NoOptions {}
 instance Options NoOptions where
@@ -76,9 +77,14 @@ traverseDirectory fs p = do
 readEntireFile :: Filesystem -> FilePath -> IO ()
 readEntireFile fs p = do
   fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
-  -- TODO: read entire file in 4KB chunks
-  _ <- getResult p =<< fuseRead fs p fh 4096 0
-  return ()
+  go fh 0
+    where chunkSize :: Num a => a
+          chunkSize = 4096
+          go fh off = do
+            bs <- getResult p =<< fuseRead fs p fh chunkSize off
+            if BS.length bs < chunkSize
+              then return ()
+              else go fh (off+chunkSize)
 
 catFiles :: Filesystem -> [(FilePath, FileStat)] -> IO ()
 catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
