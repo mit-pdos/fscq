@@ -132,10 +132,19 @@ data RtsInfo =
 
 data DataPoint =
   DataPoint { pRts :: RtsInfo
-            , pName :: String
+            , pBenchName :: String
+            , pSystem :: String
             , pIters :: Int
             , pPar :: Int
             , pElapsedMicros :: Float }
+
+emptyData :: DataPoint
+emptyData = DataPoint { pRts = RtsInfo{rtsN = 0}
+                      , pBenchName = ""
+                      , pSystem = "none"
+                      , pIters = 0
+                      , pPar = 0
+                      , pElapsedMicros = 0.0 }
 
 reportRtsInfo :: RtsInfo -> String
 reportRtsInfo RtsInfo{..} = show rtsN
@@ -146,7 +155,8 @@ rtsHeader = "RTS N"
 reportPoint :: DataPoint -> String
 reportPoint DataPoint{..} = intercalate "\t"
   [ reportRtsInfo pRts
-  , pName
+  , pBenchName
+  , pSystem
   , show pIters
   , show pPar
   , show pElapsedMicros ]
@@ -154,7 +164,8 @@ reportPoint DataPoint{..} = intercalate "\t"
 pointHeader :: String
 pointHeader = intercalate "\t"
   [ rtsHeader
-  , "name"
+  , "benchmark"
+  , "system"
   , "iters"
   , "threads"
   , "total us" ]
@@ -182,6 +193,15 @@ instance Options ParOptions where
     <*> simpleOption "warmup" True
          "warmup by running 10 untimed iterations"
 
+-- fill in some dimensions based on global options
+optsData :: ParOptions -> IO DataPoint
+optsData ParOptions{..} = do
+  rts <- getRtsInfo
+  return $ emptyData{ pRts=rts
+                    , pSystem=if optFscq then "fscq" else "cfscq"
+                    , pIters=optIters
+                    , pPar=optN }
+
 type Parcommand a = Subcommand ParOptions (IO a)
 
 checkArgs :: [String] -> IO ()
@@ -202,8 +222,9 @@ parallelBench opts name act = do
   totalMicros <- timeIt $ replicateInParallel
     (optN opts)
     (replicateM_ (optIters opts) . act)
-  rts <- getRtsInfo
-  return $ DataPoint rts name (optIters opts) (optN opts) totalMicros
+  p <- optsData opts
+  return $ p{ pBenchName=name
+            , pElapsedMicros=totalMicros}
 
 withFs :: ParOptions -> (Filesystem -> IO a) -> IO a
 withFs opts act =
