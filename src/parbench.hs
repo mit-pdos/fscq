@@ -26,15 +26,6 @@ data NoOptions = NoOptions {}
 instance Options NoOptions where
   defineOptions = pure NoOptions
 
-statOp :: NoOptions -> Filesystem -> IO ()
-statOp _ fs = do
-    _ <- fuseOpen fs "/" ReadOnly defaultFileFlags
-    _ <- fuseGetFileStat fs "/"
-    _ <- fuseOpen fs "/dir1" ReadOnly defaultFileFlags
-    _ <- fuseGetFileStat fs "/dir1"
-    _ <- fuseGetFileStat fs "/dir1/file1"
-    return ()
-
 statfsOp :: NoOptions -> Filesystem -> IO ()
 statfsOp _ fs = void $ fuseGetFileSystemStats fs "/"
 
@@ -82,11 +73,16 @@ traverseDirectory fs p = do
   recursive <- concat <$> mapM (traverseDirectory fs) directories
   return $ paths ++ recursive
 
+readEntireFile :: Filesystem -> FilePath -> IO ()
+readEntireFile fs p = do
+  fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
+  -- TODO: read entire file in 4KB chunks
+  _ <- getResult p =<< fuseRead fs p fh 4096 0
+  return ()
+
 catFiles :: Filesystem -> [(FilePath, FileStat)] -> IO ()
 catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
-  fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
-  _ <- getResult p =<< fuseRead fs p fh (fromIntegral $ statFileSize s) 0
-  return ()
+  readEntireFile fs p
 
 catDirOp :: ScanDirOptions -> Filesystem -> IO ()
 catDirOp ScanDirOptions{..} fs = do
@@ -96,6 +92,23 @@ catDirOp ScanDirOptions{..} fs = do
 traverseDirOp :: ScanDirOptions -> Filesystem -> IO ()
 traverseDirOp ScanDirOptions{..} fs =
   void $ traverseDirectory fs optScanRoot
+
+data FileOpOptions =
+  FileOpOptions { optFile :: String }
+instance Options FileOpOptions where
+  defineOptions = pure FileOpOptions <*>
+    simpleOption "file" "/small"
+      "file to operate on"
+
+statOp :: FileOpOptions -> Filesystem -> IO ()
+statOp FileOpOptions{..} fs = do
+    _ <- fuseGetFileStat fs optFile
+    return ()
+
+catFileOp :: FileOpOptions -> Filesystem -> IO ()
+catFileOp FileOpOptions{..} fs = do
+    _ <- readEntireFile fs optFile
+    return ()
 
 -- mini benchmarking library
 
@@ -253,5 +266,6 @@ main :: IO ()
 main = runSubcommand [ simpleBenchmark "stat" statOp
                      , simpleBenchmark "statfs" statfsOp
                      , simpleBenchmark "cat-dir" catDirOp
+                     , simpleBenchmark "cat-file" catFileOp
                      , simpleBenchmark "traverse-dir" traverseDirOp
                      , headerCommand ]
