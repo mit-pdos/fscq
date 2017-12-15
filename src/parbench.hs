@@ -18,6 +18,7 @@ import FscqFs
 import CfscqFs
 import GenericFs
 import System.Posix.IO (defaultFileFlags)
+import GHC.RTS.Flags
 
 data NoOptions = NoOptions {}
 instance Options NoOptions where
@@ -128,7 +129,14 @@ replicateInParallel par act = do
   mapM takeMVar ms
 
 data RtsInfo =
-  RtsInfo { rtsN :: Int }
+  RtsInfo { rtsN :: Int
+          , rtsMinAllocMB :: Float }
+
+getRtsInfo :: IO RtsInfo
+getRtsInfo = do
+  n <- getNumCapabilities
+  gc <- getGCFlags
+  return $ RtsInfo n (fromIntegral (minAllocAreaSize gc) * 4.0 / 1000 )
 
 data DataPoint =
   DataPoint { pRts :: RtsInfo
@@ -139,7 +147,8 @@ data DataPoint =
             , pElapsedMicros :: Float }
 
 emptyData :: DataPoint
-emptyData = DataPoint { pRts = RtsInfo{rtsN = 0}
+emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
+                                      , rtsMinAllocMB = 0.0 }
                       , pBenchName = ""
                       , pSystem = "none"
                       , pIters = 0
@@ -147,10 +156,14 @@ emptyData = DataPoint { pRts = RtsInfo{rtsN = 0}
                       , pElapsedMicros = 0.0 }
 
 reportRtsInfo :: RtsInfo -> String
-reportRtsInfo RtsInfo{..} = show rtsN
+reportRtsInfo RtsInfo{..} = intercalate "\t"
+  [ show rtsN
+  , show rtsMinAllocMB ]
 
 rtsHeader :: String
-rtsHeader = "RTS N"
+rtsHeader = intercalate "\t"
+  [ "RTS N"
+  , "alloc area MB" ]
 
 reportPoint :: DataPoint -> String
 reportPoint DataPoint{..} = intercalate "\t"
@@ -169,9 +182,6 @@ pointHeader = intercalate "\t"
   , "iters"
   , "threads"
   , "total us" ]
-
-getRtsInfo :: IO RtsInfo
-getRtsInfo = RtsInfo <$> getNumCapabilities
 
 data ParOptions = ParOptions
   { optFscq :: Bool
