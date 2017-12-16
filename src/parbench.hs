@@ -166,6 +166,7 @@ rtsValues RtsInfo{..} =
 
 data DataPoint =
   DataPoint { pRts :: RtsInfo
+            , pWarmup :: Bool
             , pBenchName :: String
             , pSystem :: String
             , pIters :: Int
@@ -175,7 +176,8 @@ data DataPoint =
 dataValues :: DataPoint -> [(String, String)]
 dataValues DataPoint{..} =
   rtsValues pRts ++
-  [ ("benchmark", pBenchName)
+  [ ("warmup", if pWarmup then "warmup" else "cold")
+  , ("benchmark", pBenchName)
   , ("system", pSystem)
   , ("iters", show pIters)
   , ("par", show pPar)
@@ -190,6 +192,7 @@ valueData kvs = intercalate "\t" (map snd kvs)
 emptyData :: DataPoint
 emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
                                       , rtsMinAllocMB = 0.0 }
+                      , pWarmup = False
                       , pBenchName = ""
                       , pSystem = "none"
                       , pIters = 0
@@ -224,6 +227,7 @@ optsData :: ParOptions -> IO DataPoint
 optsData ParOptions{..} = do
   rts <- getRtsInfo
   return $ emptyData{ pRts=rts
+                    , pWarmup=optWarmup
                     , pSystem=if optFscq then "fscq" else "cfscq"
                     , pPar=optN }
 
@@ -266,23 +270,22 @@ pickAndRunIters ParOptions{..} act = do
      return (t, optIters)
 
 parallelBench :: ParOptions -> String -> (Int -> IO a) -> IO DataPoint
-parallelBench opts name act = do
-  when (optWarmup opts) $ forM_ [1..(optN opts)-1] $ replicateM_ 10 . act
+parallelBench opts@ParOptions{..} name act = do
+  when optWarmup $ forM_ [1..optN-1] $ act
   performMajorGC
-  (totalMicros, iters) <- pickAndRunIters opts $ \iters -> replicateInParallel
-    (optN opts)
-    (replicateM_ iters . act)
+  (totalMicros, iters) <- pickAndRunIters opts $ \iters ->
+    replicateInParallel optN (replicateM_ iters . act)
   p <- optsData opts
   return $ p{ pBenchName=name
             , pIters=iters
             , pElapsedMicros=totalMicros}
 
 withFs :: ParOptions -> (Filesystem -> IO a) -> IO a
-withFs opts act =
-  if optFscq opts then
-    initFscq (optDiskImg opts) True getProcessIds >>= act
+withFs ParOptions{..} act =
+  if optFscq then
+    initFscq optDiskImg True getProcessIds >>= act
   else
-    initCfscq (optDiskImg opts) True getProcessIds >>= act
+    initCfscq optDiskImg True getProcessIds >>= act
 
 simpleBenchmark :: Options subcmdOpts =>
                    String -> (subcmdOpts -> Filesystem -> IO a) ->
