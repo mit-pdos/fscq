@@ -142,9 +142,11 @@ runInThread act = do
     putMVar m v
   return m
 
+type ThreadNum = Int
+
 -- replicateInParallel par iters act runs act in n parallel copies, passing
 -- 0..n-1 to each copy
-replicateInParallel :: Int -> (Int -> IO a) -> IO [a]
+replicateInParallel :: Int -> (ThreadNum -> IO a) -> IO [a]
 replicateInParallel par act = do
   ms <- mapM (runInThread . act) [0..par-1]
   mapM takeMVar ms
@@ -169,6 +171,7 @@ data DataPoint =
             , pWarmup :: Bool
             , pBenchName :: String
             , pSystem :: String
+            , pReps :: Int
             , pIters :: Int
             , pPar :: Int
             , pElapsedMicros :: Float }
@@ -179,6 +182,7 @@ dataValues DataPoint{..} =
   [ ("warmup", if pWarmup then "warmup" else "cold")
   , ("benchmark", pBenchName)
   , ("system", pSystem)
+  , ("reps", show pReps)
   , ("iters", show pIters)
   , ("par", show pPar)
   , ("total micros", show pElapsedMicros) ]
@@ -195,6 +199,7 @@ emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
                       , pWarmup = False
                       , pBenchName = ""
                       , pSystem = "none"
+                      , pReps = 0
                       , pIters = 0
                       , pPar = 0
                       , pElapsedMicros = 0.0 }
@@ -202,6 +207,7 @@ emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
 data ParOptions = ParOptions
   { optFscq :: Bool
   , optDiskImg :: FilePath
+  , optReps :: Int
   , optIters :: Int
   , optTargetMs :: Int
   , optN :: Int
@@ -213,7 +219,9 @@ instance Options ParOptions where
         "run sequential FSCQ"
     <*> simpleOption "img" "disk.img"
          "path to FSCQ disk image"
-    <*> simpleOption "iters" 100
+    <*> simpleOption "reps" 1
+         "number of repetitions to run per data point"
+    <*> simpleOption "iters" 1
          "number of iterations to run"
     <*> simpleOption "target-ms" 0
          "pick iterations to run for at least this many ms (0 to disable)"
@@ -227,6 +235,7 @@ optsData :: ParOptions -> IO DataPoint
 optsData ParOptions{..} = do
   rts <- getRtsInfo
   return $ emptyData{ pRts=rts
+                    , pReps=optReps
                     , pWarmup=optWarmup
                     , pSystem=if optFscq then "fscq" else "cfscq"
                     , pPar=optN }
@@ -245,40 +254,46 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
   checkArgs args
   action opts cmdOpts
 
-searchIters :: (Int -> IO a) -> Float -> IO (Float, Int)
+type NumIters = Int
+
+searchIters :: (NumIters -> IO [Float]) -> Float -> IO [Float]
 searchIters act targetMicros = go 1
   where go iters = do
           performMajorGC
-          micros <- timeIt $ act iters
-          if micros < targetMicros
+          micros <- act iters
+          if sum micros < targetMicros
             then let iters' = fromInteger . round $
-                       (fromIntegral iters :: Float) * targetMicros / micros
+                       (fromIntegral iters :: Float) * targetMicros / sum micros
                      nextIters = max
                        (min
                          (iters'+(iters' `div` 5))
                          (100*iters))
                        (iters+1) in
                  go nextIters
-          else return (micros, iters)
+          else return micros
 
-pickAndRunIters :: ParOptions -> (Int -> IO a) -> IO (Float, Int)
+pickAndRunIters :: ParOptions -> (NumIters -> IO [Float]) -> IO [Float]
 pickAndRunIters ParOptions{..} act = do
   if optTargetMs > 0 then
     searchIters act (fromIntegral optTargetMs * 1000)
-  else do
-     t <- timeIt $ act optIters
-     return (t, optIters)
+  else act optIters
 
-parallelBench :: ParOptions -> String -> (Int -> IO a) -> IO DataPoint
-parallelBench opts@ParOptions{..} name act = do
-  when optWarmup $ forM_ [0..optN-1] $ act
+parallelTimeForIters :: Int -> (ThreadNum -> IO a) -> Int -> IO [Float]
+parallelTimeForIters par act iters =
+  concat <$> (replicateInParallel par $ \tid ->
+    if tid == 0
+    then replicateM iters (timeIt . act $ tid)
+    else replicateM_ iters (act tid) >> return [])
+
+parallelBench :: ParOptions -> (ThreadNum -> IO a) -> IO [DataPoint]
+parallelBench opts@ParOptions{..} act = do
+  when optWarmup $ forM_ [0..optN-1] act
   performMajorGC
-  (totalMicros, iters) <- pickAndRunIters opts $ \iters ->
-    replicateInParallel optN (replicateM_ iters . act)
+  micros <- pickAndRunIters opts $
+    parallelTimeForIters optN $ replicateM_ optReps . act
   p <- optsData opts
-  return $ p{ pBenchName=name
-            , pIters=iters
-            , pElapsedMicros=totalMicros}
+  return $ map (\t -> p{ pIters=length micros
+                       , pElapsedMicros=t }) micros
 
 withFs :: ParOptions -> (Filesystem -> IO a) -> IO a
 withFs ParOptions{..} act =
@@ -291,8 +306,9 @@ simpleBenchmark :: Options subcmdOpts =>
                    String -> (subcmdOpts -> Filesystem -> IO a) ->
                    Parcommand ()
 simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
-  p <- withFs opts $ \fs -> parallelBench opts name (\_ -> act cmdOpts fs)
-  putStrLn . valueData . dataValues $ p
+  ps <- withFs opts $ \fs -> parallelBench opts (\_ -> act cmdOpts fs)
+  forM_ ps $ \p ->
+    putStrLn . valueData . dataValues $ p{pBenchName = name}
 
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
