@@ -271,7 +271,7 @@ pickAndRunIters ParOptions{..} act = do
 
 parallelBench :: ParOptions -> String -> (Int -> IO a) -> IO DataPoint
 parallelBench opts@ParOptions{..} name act = do
-  when optWarmup $ forM_ [1..optN-1] $ act
+  when optWarmup $ forM_ [0..optN-1] $ act
   performMajorGC
   (totalMicros, iters) <- pickAndRunIters opts $ \iters ->
     replicateInParallel optN (replicateM_ iters . act)
