@@ -312,13 +312,61 @@ withFs ParOptions{..} act =
   else
     initCfscq optDiskImg True getProcessIds >>= act
 
+reportData :: [DataPoint] -> IO ()
+reportData = mapM_ (putStrLn . valueData . dataValues)
+
 simpleBenchmark :: Options subcmdOpts =>
                    String -> (subcmdOpts -> Filesystem -> IO a) ->
                    Parcommand ()
 simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
   ps <- withFs opts $ \fs -> parallelBench opts (\_ -> act cmdOpts fs)
-  forM_ ps $ \p ->
-    putStrLn . valueData . dataValues $ p{pBenchName = name}
+  reportData $ map (\p -> p{pBenchName=name}) ps
+
+data IOConcurOptions =
+  IOConcurOptions { optLargeFile :: String
+                  , optSmallFile :: String }
+
+instance Options IOConcurOptions where
+  defineOptions = IOConcurOptions <$>
+    simpleOption "large-file" "/large"
+       "path to large file to read once"
+    <*> simpleOption "small-file" "/small"
+       "path to small file to read <reps> times"
+
+parIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
+parIOConcur reps IOConcurOptions{..} fs = do
+  m1 <- runInThread (timeIt $ readEntireFile fs optLargeFile)
+  m2 <- runInThread (timeIt $ replicateM_ reps (readEntireFile fs optSmallFile))
+  largeMicros <- takeMVar m1
+  smallMicros <- takeMVar m2
+  return (largeMicros, smallMicros)
+
+seqIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
+seqIOConcur reps IOConcurOptions{..} fs = do
+  largeMicros <- timeIt $ readEntireFile fs optLargeFile
+  smallMicros <- timeIt $ replicateM_ reps (readEntireFile fs optSmallFile)
+  return (largeMicros, smallMicros)
+
+runIOConcur :: ParOptions -> IOConcurOptions -> Filesystem -> IO [DataPoint]
+runIOConcur opts@ParOptions{..} ioOpts fs = do
+  (largeMicros, smallMicros) <-
+    if optN >= 2
+    then parIOConcur optReps ioOpts fs
+    else seqIOConcur optReps ioOpts fs
+  basePoint <- optsData opts
+  let p = basePoint{ pIters=1
+                   , pWarmup=False } in
+    return $ [ p{ pBenchName="ioconcur-large"
+                , pReps=1
+                , pElapsedMicros=largeMicros }
+              , p{ pBenchName="ioconcur-small"
+                 , pReps=optReps
+                 , pElapsedMicros=smallMicros} ]
+
+ioConcurCommand :: Parcommand ()
+ioConcurCommand = parcommand "io-concur" $ \opts cmdOpts -> do
+  ps <- withFs opts $ runIOConcur opts cmdOpts
+  reportData ps
 
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
@@ -330,4 +378,5 @@ main = runSubcommand [ simpleBenchmark "stat" statOp
                      , simpleBenchmark "cat-dir" catDirOp
                      , simpleBenchmark "cat-file" catFileOp
                      , simpleBenchmark "traverse-dir" traverseDirOp
+                     , ioConcurCommand
                      , headerCommand ]
