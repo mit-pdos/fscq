@@ -14,6 +14,7 @@ import Control.Concurrent.MVar
 import Data.IORef
 import qualified Data.Map.Strict as Map
 import System.CPUTime.Rdtsc
+import System.IO (hPutStrLn, stderr)
 
 verbose :: Bool
 verbose = False
@@ -25,7 +26,7 @@ timing :: Bool
 timing = True
 
 debugmsg :: String -> IO ()
-debugmsg s = when verbose $ putStrLn s
+debugmsg s = when verbose $ hPutStrLn stderr s
 
 type TID = Int
 
@@ -96,7 +97,7 @@ run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
 run_dcode _ (Debug s n) = do
-  when (showDebugs || verbose) $ putStrLn $ "debug: " ++ s ++ " " ++ show n;
+  when (showDebugs || verbose) $ hPutStrLn stderr $ "debug: " ++ s ++ " " ++ show n;
   return $ unsafeCoerce ()
 run_dcode _ (Rdtsc) = do
   if timing then do

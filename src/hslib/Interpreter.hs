@@ -7,6 +7,7 @@ import Data.Word
 -- import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Digest.CRC32 as CRC32
 import System.CPUTime.Rdtsc
+import System.IO (hPutStrLn, stderr)
 
 -- import qualified System.Exit
 -- import qualified System.Random
@@ -38,7 +39,7 @@ timing = True
 debugmsg :: String -> IO ()
 debugmsg s =
   if verbose then
-    putStrLn s
+    hPutStrLn stderr s
   else
     return ()
 
@@ -90,7 +91,7 @@ run_dcode _ AlertModified = do
   return $ unsafeCoerce ()
 run_dcode _ (Debug s n) = do
   if output then do
-    putStrLn $ "debug: " ++ s ++ " " ++ (show n)
+    hPutStrLn stderr $ "debug: " ++ s ++ " " ++ (show n)
     return $ unsafeCoerce ()
   else
     return $ unsafeCoerce ()
@@ -110,7 +111,6 @@ run_dcode _ (Hash2 sz1 sz2 w1 w2) = do
   c2 <- crc32_word_update c1 sz2 w2
   return $ unsafeCoerce $ W $ fromIntegral c2
 run_dcode ds (Bind p1 p2) = do
-  debugmsg $ "Bind"
   r1 <- run_dcode ds p1
   r2 <- run_dcode ds (p2 r1)
   return r2
