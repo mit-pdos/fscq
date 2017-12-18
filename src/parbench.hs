@@ -13,6 +13,7 @@ import           Data.List (intercalate, dropWhileEnd)
 import           Options
 import           System.Clock
 import           System.Exit
+import           System.IO (hPutStrLn, stderr)
 
 import           CfscqFs
 import           FscqFs
@@ -205,7 +206,8 @@ emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
                       , pElapsedMicros = 0.0 }
 
 data ParOptions = ParOptions
-  { optFscq :: Bool
+  { optVerbose :: Bool
+  , optFscq :: Bool
   , optDiskImg :: FilePath
   , optReps :: Int
   , optIters :: Int
@@ -215,6 +217,8 @@ data ParOptions = ParOptions
 
 instance Options ParOptions where
   defineOptions = pure ParOptions
+    <*> simpleOption "verbose" False
+        "print debug statements for parbench itself"
     <*> simpleOption "fscq" False
         "run sequential FSCQ"
     <*> simpleOption "img" "disk.img"
@@ -240,6 +244,9 @@ optsData ParOptions{..} = do
                     , pSystem=if optFscq then "fscq" else "cfscq"
                     , pPar=optN }
 
+logVerbose :: ParOptions -> String -> IO ()
+logVerbose ParOptions{..} s = when optVerbose $ hPutStrLn stderr s
+
 type Parcommand a = Subcommand ParOptions (IO a)
 
 checkArgs :: [String] -> IO ()
@@ -256,10 +263,11 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
 
 type NumIters = Int
 
-searchIters :: (NumIters -> IO [Float]) -> Float -> IO [Float]
-searchIters act targetMicros = go 1
+searchIters :: ParOptions -> (NumIters -> IO [Float]) -> Float -> IO [Float]
+searchIters opts act targetMicros = go 1
   where go iters = do
           performMajorGC
+          logVerbose opts $ "trying " ++ show iters ++ " iters"
           micros <- act iters
           if sum micros < targetMicros
             then let iters' = fromInteger . round $
@@ -273,9 +281,9 @@ searchIters act targetMicros = go 1
           else return micros
 
 pickAndRunIters :: ParOptions -> (NumIters -> IO [Float]) -> IO [Float]
-pickAndRunIters ParOptions{..} act = do
+pickAndRunIters opts@ParOptions{..} act = do
   if optTargetMs > 0 then
-    searchIters act (fromIntegral optTargetMs * 1000)
+    searchIters opts act (fromIntegral optTargetMs * 1000)
   else act optIters
 
 parallelTimeForIters :: Int -> (ThreadNum -> IO a) -> Int -> IO [Float]
@@ -287,7 +295,9 @@ parallelTimeForIters par act iters =
 
 parallelBench :: ParOptions -> (ThreadNum -> IO a) -> IO [DataPoint]
 parallelBench opts@ParOptions{..} act = do
-  when optWarmup $ forM_ [0..optN-1] act
+  when optWarmup $ do
+    forM_ [0..optN-1] act
+    logVerbose opts "===> warmup done <==="
   performMajorGC
   micros <- pickAndRunIters opts $
     parallelTimeForIters optN $ replicateM_ optReps . act
