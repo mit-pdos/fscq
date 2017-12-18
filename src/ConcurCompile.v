@@ -443,9 +443,10 @@ Section ConcurCompile.
     | _ => progress (autounfold with compile)
     | _ => progress
             (cbn [MSICache MSLL MSAlloc MSAllocC MSIAllocC MSCache
-                           MemLog.MLog.MSCache
+                           MemLog.MLog.MSCache MemLog.MLog.mk_memstate
+                           LOG.MSLL GLog.MSLL
                            CSMap CSMaxCount CSCount CSEvict
-                           modified_or])
+                           modified_or fst snd])
 
     (* monad laws *)
     | [ |- Compiled (Bind (Ret _) _) ] =>
@@ -746,7 +747,17 @@ Section ConcurCompile.
     matching on success results) *)
 
     repeat compile;
-      apply compile_refl.
+      match goal with
+      | [ |- Compiled (translate'
+                        (if _ then Prog.Bind (Prog.Write _ _) (fun _ => Prog.Ret _)
+                         else Prog.Ret _)
+                        _ _) ] =>
+        apply compile_refl
+      | [ |- Compiled (translate'
+                        (match MapUtils.AddrMap.Map.elements _ with | _ => _ end)
+                        _ _) ] =>
+        apply compile_refl
+      end.
   Defined.
 
   Definition CompiledLookup fsxp dnum names ams ls c :
