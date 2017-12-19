@@ -30,8 +30,8 @@ import System.IO (hPutStrLn, stderr)
 verbose :: Bool
 verbose = False
 
-output :: Bool
-output = False
+showDebugs :: Bool
+showDebugs = False
 
 timing :: Bool
 timing = True
@@ -90,7 +90,7 @@ run_dcode _ AlertModified = do
   debugmsg $ "AlertModified"
   return $ unsafeCoerce ()
 run_dcode _ (Debug s n) = do
-  if output then do
+  if showDebugs then do
     hPutStrLn stderr $ "debug: " ++ s ++ " " ++ (show n)
     return $ unsafeCoerce ()
   else
