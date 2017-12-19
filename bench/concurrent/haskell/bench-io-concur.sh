@@ -19,9 +19,9 @@ parbench +RTS -N1 -qg -RTS --warmup=false --iters=1 \
          cat-file --file '/large' --fscq=false | summary
 
 info "small reads"
-bench --warmup=false --reps=25000 cat-file --file '/small' --fscq=true \
+parbench +RTS -N1 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=true \
     | summary
-bench --warmup=false --reps=25000 cat-file --file '/small' --fscq=false \
+parbench +RTS -N1 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=false \
     | summary
 sep
 
