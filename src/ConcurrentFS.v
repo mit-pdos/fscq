@@ -86,9 +86,11 @@ Section ConcurrentFS.
     _ <- Assgn1 (ccache P) c;
       Unlock.
 
-  Definition yieldOnMiss (e:OptimisticException) : cprog unit :=
+  Definition yieldOnMiss (start:nat) (e:OptimisticException) : cprog unit :=
     match e with
     | CacheMiss a =>
+      end_t <- Rdtsc;
+      _ <- Debug "write cache miss" (end_t - start);
       YieldTillReady a
     | _ => Ret tt
     end.
@@ -96,7 +98,8 @@ Section ConcurrentFS.
   Definition write_syscall T (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
-          (do '(c, mscs) <- startLocked;
+          (start <- Rdtsc;
+             do '(c, mscs) <- startLocked;
              do '(r, c) <- p mscs Locked c;
              match r with
              | Success _ (ms', r) =>
@@ -105,10 +108,12 @@ Section ConcurrentFS.
                                  (fsmem P) ms'
                                  (fstree P) (fun (_:TID) => update r));
                  _ <- Unlock;
+                 end_t <- Rdtsc;
+                 _ <- Debug "write finish" (end_t - start);
                  Ret (Done r)
              | Failure e =>
                _ <- finishRollback c;
-                 _ <- yieldOnMiss e;
+                 _ <- yieldOnMiss start e;
                  Ret (match e with
                       | CacheMiss a =>
                         TryAgain
@@ -122,10 +127,13 @@ Section ConcurrentFS.
   (* to finish up read-only syscalls if they want to update the memory, we have
   to run them under write_syscall *)
   Definition retry_readonly_syscall T (p: OptimisticProg T) :=
+    start <- Rdtsc;
     r <- readonly_syscall p;
       match r with
       | Done v => Ret (Done v)
-      | TryAgain => write_syscall p (fun _ tree => tree)
+      | TryAgain => end_t <- Rdtsc;
+                     _ <- Debug "read-only write" (end_t - start);
+                     write_syscall p (fun _ tree => tree)
       | SyscallFailed => Ret SyscallFailed
       end.
 
