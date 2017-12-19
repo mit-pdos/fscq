@@ -12,6 +12,7 @@ summary() {
     awk '{print $4 " " $5 " " $9/1000 " ms"}'
 }
 
+info "==> I/O concurrency"
 info "no warmup large read"
 parbench +RTS -N1 -qg -RTS --warmup=false --iters=1 \
          cat-file --file '/large' --fscq=true | summary
