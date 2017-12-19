@@ -251,13 +251,17 @@ Module GLog.
   (************* program *)
 
   Definition read xp a (ms : memstate) :=
-    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
-    match Map.find a vm with
-    | Some v =>  Ret ^(ms, v)
-    | None =>
-        let^ (mm', v) <- MLog.read xp a mm;
-        Ret ^(mk_memstate vm ts mm', v)
-    end.
+    t1 <- Rdtsc;
+      r <- (let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+           match Map.find a vm with
+           | Some v =>  Ret ^(ms, v)
+           | None =>
+             let^ (mm', v) <- MLog.read xp a mm;
+                  Ret ^(mk_memstate vm ts mm', v)
+                end);
+      t2 <- Rdtsc;
+      _ <- Debug "GLog.read" (t2-t1);
+      Ret r.
 
   (* Submit a committed transaction.
      It might fail if the transaction is too big to fit into the log.
