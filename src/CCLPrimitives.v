@@ -593,6 +593,7 @@ Hint Extern 0 {{ Assgn1 _ _; _ }} => apply Assgn1_ok : prog.
 Hint Extern 0 {{ Assgn2_abs _; _ }} => apply Assgn2_abs_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
+Hint Extern 0 {{ Rdtsc; _ }} => apply Rdtsc_ok : prog.
 Hint Extern 0 {{ YieldTillReady _; _ }} => apply YieldTillReady_ok : prog.
 Hint Extern 0 {{ Unlock; _ }} => apply Unlock_ok : prog.
 

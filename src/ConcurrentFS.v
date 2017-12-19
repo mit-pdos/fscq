@@ -423,19 +423,19 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ finishRollback _; _ }} => apply finishRollback_ok : prog.
 
-  Theorem yieldOnMiss_ok : forall tid e,
+  Theorem yieldOnMiss_ok : forall tid s e,
       cprog_spec G tid
                  (fun (_:unit) sigma =>
                     {| precondition := True;
                        postcondition :=
                          fun sigma' r => sigma' = sigma /\ r = tt; |})
-                 (yieldOnMiss e).
+                 (yieldOnMiss s e).
   Proof.
     unfold yieldOnMiss; intros.
-    destruct e; step; finish.
+    destruct e; repeat step; finish.
   Qed.
 
-  Hint Extern 1 {{ yieldOnMiss _; _ }} => apply yieldOnMiss_ok : prog.
+  Hint Extern 1 {{ yieldOnMiss _ _; _ }} => apply yieldOnMiss_ok : prog.
 
   Definition same_fs_update tid homedirs tree T (update update': T -> dirtree -> dirtree) :=
     forall r tree', homedir_rely tid homedirs tree tree' ->
