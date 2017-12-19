@@ -102,3 +102,23 @@ Proof.
   eapply H in H5.
   eapply ExecBindFail; eauto.
 Qed.
+
+Lemma exec_equiv_bind1 : forall (G: Protocol)
+                           T T' (p p': cprog T) (rx: T -> cprog T'),
+    exec_equiv G p p' ->
+    exec_equiv G (Bind p rx) (Bind p' rx).
+Proof.
+  intros.
+  apply exec_equiv_bind; auto.
+  reflexivity.
+Qed.
+
+Lemma exec_equiv_bind2 : forall (G: Protocol)
+                           T T' (p: cprog T) (rx1 rx2: T -> cprog T'),
+    (forall v, exec_equiv G (rx1 v) (rx2 v)) ->
+    exec_equiv G (Bind p rx1) (Bind p rx2).
+Proof.
+  intros.
+  apply exec_equiv_bind; auto.
+  reflexivity.
+Qed.

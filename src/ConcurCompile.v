@@ -737,6 +737,74 @@ Section ConcurCompile.
   Hint Unfold BUFCACHE.read_array BUFCACHE.read : compile.
   Hint Unfold BUFCACHE.writeback : compile.
 
+  Ltac comp :=
+    match goal with
+    | [ |- Compiled (Bind (Bind _ _) _) ] =>
+      monad_compile
+    | [ |- Compiled (Bind (Ret _) _) ] =>
+      monad_compile
+    | [ |- Compiled (Bind Rdtsc _) ] =>
+      apply compile_bind; intros
+
+    (* terminating programs that cannot be improved *)
+    | [ |- Compiled (Ret _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheRead _ _ _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheInit  _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheCommit  _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheAbort  _)] =>
+      apply compile_refl
+    | [ |- Compiled (Rdtsc)] =>
+      apply compile_refl
+    | [ |- Compiled (Debug _  _)] =>
+      apply compile_refl
+    end.
+
+  Ltac skip := apply compile_bind; [ apply compile_refl | intros ].
+
+  Definition Compiled_read_fblock fsxp inum off ams ls c :
+    Compiled (translate' (AsyncFS.AFS.read_fblock fsxp inum off ams) ls c).
+  Proof.
+    unfold AsyncFS.AFS.read_fblock.
+    simpl.
+    repeat comp.
+    skip.
+
+    eapply compile_equiv.
+    apply exec_equiv_bind1.
+
+    instantiate (1 := Ret (match v1 with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v1; simpl.
+    destruct r; simpl.
+    etransitivity.
+    apply monad_left_id.
+    reflexivity.
+    reflexivity.
+
+    repeat comp.
+    skip.
+
+    eapply compile_equiv.
+    apply exec_equiv_bind1.
+    instantiate (1 := Ret (let '(r', cs') := v2 in _)).
+    destruct v2.
+    reflexivity.
+
+    repeat comp.
+    skip.
+    skip.
+    skip.
+
+    eapply compile_equiv.
+    instantiate (1 := Ret v5).
+    destruct v5.
+    etransitivity; [ apply monad_left_id | reflexivity ].
+    comp.
+  Defined.
+
   Definition CompiledReadBlock fsxp inum off ams ls c :
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.
@@ -746,18 +814,11 @@ Section ConcurCompile.
     cases? (even in other cases we should reduce the overhead of always pattern
     matching on success results) *)
 
-    repeat compile;
-      match goal with
-      | [ |- Compiled (translate'
-                        (if _ then Prog.Bind (Prog.Write _ _) (fun _ => Prog.Ret _)
-                         else Prog.Ret _)
-                        _ _) ] =>
-        apply compile_refl
-      | [ |- Compiled (translate'
-                        (match MapUtils.AddrMap.Map.elements _ with | _ => _ end)
-                        _ _) ] =>
-        apply compile_refl
-      end.
+    repeat comp.
+    skip.
+    apply compile_bind; intros.
+    apply Compiled_read_fblock.
+    apply compile_refl.
   Defined.
 
   Definition CompiledLookup fsxp dnum names ams ls c :
