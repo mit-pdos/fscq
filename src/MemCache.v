@@ -2,9 +2,9 @@ Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import OrderedTypeEx.
 Require Import AsyncDisk.
+Require Import MapUtils.
 
-Module Map := FMapAVL.Make(Nat_as_OT).
-Module MapFacts := WFacts_fun Nat_as_OT Map.
+Import AddrMap.
 
 Section MemCache.
 
