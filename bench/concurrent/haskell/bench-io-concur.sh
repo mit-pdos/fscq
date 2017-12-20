@@ -1,5 +1,30 @@
 #!/usr/bin/env bash
 
+summary() {
+    awk '{print $4 " " $5 " " $9/1000 " ms"}'
+}
+
+function bench() {
+    parbench +RTS -qg -RTS --warmup=false --fscq=true "$@" | summary
+    parbench +RTS -qg -RTS --warmup=false --fscq=false "$@" | summary
+}
+
+function suite() {
+    # these sanity check sequential, which does the same work but in one run
+    #info "no warmup large read"
+    #bench cat-file --file '/large' "$@"
+
+    #info "small reads"
+    #bench cat-file --iters=1 --reps=25000 --file '/small' "$@"
+
+    info "sequential"
+    bench io-concur --reps=25000 --n=1 "$@"
+    sep
+
+    info "parallel"
+    bench io-concur --reps=25000 --n=2 "$@"
+}
+
 info() {
     echo -e "\e[34m$1\e[0m"
 }
@@ -8,44 +33,9 @@ sep() {
     echo ""
 }
 
-summary() {
-    awk '{print $4 " " $5 " " $9/1000 " ms"}'
-}
-
-info "==> I/O concurrency"
-info "no warmup large read"
-parbench +RTS -N1 -qg -RTS --warmup=false --iters=1 \
-         cat-file --file '/large' --fscq=true | summary
-parbench +RTS -N1 -qg -RTS --warmup=false --iters=1 \
-         cat-file --file '/large' --fscq=false | summary
-
-info "no warmup large read (N=2)"
-parbench +RTS -N2 -qg -RTS --warmup=false --iters=1 \
-         cat-file --file '/large' --fscq=true | summary
-parbench +RTS -N2 -qg -RTS --warmup=false --iters=1 \
-         cat-file --file '/large' --fscq=false | summary
+info "==> I/O concurrency (N=1)"
+suite +RTS -N1 -RTS
 sep
 
-info "small reads"
-parbench +RTS -N1 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=true \
-    | summary
-parbench +RTS -N1 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=false \
-    | summary
-info "small reads (N=2)"
-parbench +RTS -N2 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=true \
-    | summary
-parbench +RTS -N2 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=false \
-    | summary
-sep
-
-ioconcur() {
-    parbench +RTS -qg -RTS io-concur --reps=25000 "$@" --fscq=true | summary
-    parbench +RTS -qg -RTS io-concur --reps=25000 "$@" --fscq=false | summary
-}
-
-info "sequential"
-ioconcur +RTS -N1 -RTS --n=1
-info "N=1"
-ioconcur +RTS -N1 -RTS --n=2
-info "N=2"
-ioconcur +RTS -N2 -RTS --n=2
+info "==> I/O concurrency (N=2)"
+suite +RTS -N2 -RTS
