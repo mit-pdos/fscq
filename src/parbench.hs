@@ -143,6 +143,16 @@ runInThread act = do
     putMVar m v
   return m
 
+timeAsync :: IO a -> IO (MVar Float)
+timeAsync act = do
+  start <- getTime Monotonic
+  m <- newEmptyMVar
+  _ <- forkIO $ do
+    _ <- act
+    totalTime <- elapsedMicros start
+    putMVar m totalTime
+  return m
+
 type ThreadNum = Int
 
 -- replicateInParallel par iters act runs act in n parallel copies, passing
@@ -335,8 +345,8 @@ instance Options IOConcurOptions where
 
 parIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
 parIOConcur reps IOConcurOptions{..} fs = do
-  m1 <- runInThread (timeIt $ readEntireFile fs optLargeFile)
-  m2 <- runInThread (timeIt $ replicateM_ reps (readEntireFile fs optSmallFile))
+  m1 <- timeAsync $ readEntireFile fs optLargeFile
+  m2 <- timeAsync $ replicateM_ reps (readEntireFile fs optSmallFile)
   largeMicros <- takeMVar m1
   smallMicros <- takeMVar m2
   return (largeMicros, smallMicros)
