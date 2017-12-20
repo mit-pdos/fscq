@@ -49,7 +49,7 @@ Section OptimisticTranslator.
                                 do '(_, cs) <- CacheWrite cs a v;
                                   Ret (Success NoChange tt, cs)
                               else
-                                Ret (Failure WriteRequired, cs)
+                                Ret (Failure (CacheMiss a), cs)
            | Prog.Sync => Ret (Success NoChange tt, cs)
            | Prog.Hash buf => v <- Hash buf;
                                Ret (Success NoChange v, cs)

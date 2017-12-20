@@ -95,11 +95,18 @@ Section ConcurrentFS.
     | _ => Ret tt
     end.
 
-  Definition write_syscall T (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :
+  Definition EnsureFilled (c:Cache) (a:option nat) : cprog Cache :=
+    match a with
+    | Some a => do '(_, cs) <- CacheRead (caches c c) a Locked; Ret (cache cs)
+    | None => Ret c
+    end.
+
+  Definition write_syscall T (a:option nat) (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
           (start <- Rdtsc;
              do '(c, mscs) <- startLocked;
+             c <- EnsureFilled c a;
              do '(r, c) <- p mscs Locked c;
              match r with
              | Success _ (ms', r) =>
@@ -135,7 +142,10 @@ Section ConcurrentFS.
                      _ <- Debug "read-only write" (end_t - start);
                      (* TODO: if e is a CacheMiss a, then should run
                         [CacheRead a;; p] to fill cache *)
-                     write_syscall p (fun _ tree => tree)
+                     write_syscall (match e with
+                                    | CacheMiss a => Some a
+                                    | _ => None
+                                    end) p (fun _ tree => tree)
       | SyscallFailed => Ret SyscallFailed
       end.
 
@@ -509,7 +519,7 @@ Section ConcurrentFS.
 
   Opaque allowed_fs_update.
 
-  Theorem write_syscall_ok' : forall T (p: OptimisticProg T) A
+  Theorem write_syscall_ok' : forall m_a T (p: OptimisticProg T) A
                                 (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
                             (fs_spec P fsspec tid mscs Locked c)
@@ -537,7 +547,7 @@ Section ConcurrentFS.
                                           Sigma.init_disk sigma' = Sigma.disk sigma'
                              | SyscallFailed => tree'' = tree'
                              end |})
-                 (write_syscall p update).
+                 (write_syscall m_a p update).
   Proof using Type.
     unfold write_syscall; intros.
     apply retry_spec' with SyscallFailed.
@@ -674,7 +684,7 @@ Section ConcurrentFS.
   Qed.
 
   (* remove TryAgain from postcondition due to infinite retry *)
-  Theorem write_syscall_ok : forall T (p: OptimisticProg T) A
+  Theorem write_syscall_ok : forall m_a T (p: OptimisticProg T) A
                                (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
                             (fs_spec P fsspec tid mscs Locked c)
@@ -701,7 +711,7 @@ Section ConcurrentFS.
                              | TryAgain _ => False
                              | SyscallFailed => tree'' = tree'
                              end |})
-                 (write_syscall p update).
+                 (write_syscall m_a p update).
   Proof using Type.
     intros.
     apply write_syscall_ok' with (update:=update) in H.
@@ -862,7 +872,8 @@ Section ConcurrentFS.
                        end).
 
   Definition file_set_attr inum attr :=
-    write_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
+    write_syscall None
+                  (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
                   (fun '(b, _) tree =>
                      match b with
                      | OK _ => dirtree_alter_file
@@ -933,7 +944,8 @@ Section ConcurrentFS.
   Qed.
 
   Definition create dnum name :=
-    write_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
+    write_syscall None
+                  (fun mscs => OptFS.create (fsxp P) dnum name mscs)
                   (fun '(r, _) tree =>
                      match r with
                      | OK inum =>
@@ -1002,7 +1014,8 @@ Section ConcurrentFS.
   Qed.
 
   Definition file_truncate inum sz :=
-    write_syscall (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
+    write_syscall None
+                  (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
                   (fun '(r, _) tree =>
                      match r with
                      | OK _ => dirtree_alter_file
@@ -1161,7 +1174,8 @@ Section ConcurrentFS.
   Qed.
 
   Definition update_fblock_d inum off b :=
-    write_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
+    write_syscall None
+                  (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
                   (fun _ tree =>
                      dirtree_alter_file
                        inum (fun f =>
@@ -1226,7 +1240,8 @@ Section ConcurrentFS.
   Qed.
 
   Definition delete dnum name :=
-    write_syscall (fun mscs => OptFS.delete (fsxp P) dnum name mscs)
+    write_syscall None
+                  (fun mscs => OptFS.delete (fsxp P) dnum name mscs)
                   (fun '(r, _) tree =>
                      match r with
                      | OK _ => alter_inum
@@ -1293,7 +1308,8 @@ Section ConcurrentFS.
   Qed.
 
   Definition rename dnum srcpath srcname dstpath dstname :=
-    write_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
+    write_syscall None
+                  (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
                   (fun '(r, _) tree =>
                      match r with
                      | OK _ => alter_inum
@@ -1390,37 +1406,44 @@ Section ConcurrentFS.
     retry_readonly_syscall (fun mscs => OptFS.statfs (fsxp P) mscs).
 
   Definition mkdir dnum name :=
-    write_syscall (fun mscs => OptFS.mkdir (fsxp P) dnum name mscs)
+    write_syscall None
+                  (fun mscs => OptFS.mkdir (fsxp P) dnum name mscs)
                   (fun _ tree => tree).
 
   Definition file_get_sz inum :=
     retry_readonly_syscall (fun mscs => OptFS.file_get_sz (fsxp P) inum mscs).
 
   Definition file_set_sz inum sz :=
-    write_syscall (fun mscs => OptFS.file_set_sz (fsxp P) inum sz mscs)
+    write_syscall None
+                  (fun mscs => OptFS.file_set_sz (fsxp P) inum sz mscs)
                   (fun _ tree => tree).
 
   Definition readdir dnum :=
     retry_readonly_syscall (fun mscs => OptFS.readdir (fsxp P) dnum mscs).
 
   Definition tree_sync :=
-    write_syscall (fun mscs => OptFS.tree_sync (fsxp P) mscs)
+    write_syscall None
+                  (fun mscs => OptFS.tree_sync (fsxp P) mscs)
                   (fun _ tree => tree).
 
   Definition file_sync inum :=
-    write_syscall (fun mscs => OptFS.file_sync (fsxp P) inum mscs)
+    write_syscall None
+                  (fun mscs => OptFS.file_sync (fsxp P) inum mscs)
                   (fun _ tree => tree).
 
   Definition update_fblock inum off b :=
-    write_syscall (fun mscs => OptFS.update_fblock (fsxp P) inum off b mscs)
+    write_syscall None
+                  (fun mscs => OptFS.update_fblock (fsxp P) inum off b mscs)
                   (fun _ tree => tree).
 
   Definition mksock dnum name :=
-    write_syscall (fun mscs => OptFS.mksock (fsxp P) dnum name mscs)
+    write_syscall None
+                  (fun mscs => OptFS.mksock (fsxp P) dnum name mscs)
                   (fun _ tree => tree).
 
   Definition umount :=
-    write_syscall (fun mscs => OptFS.umount (fsxp P) mscs)
+    write_syscall None
+                  (fun mscs => OptFS.umount (fsxp P) mscs)
                   (fun _ tree => tree).
 
 End ConcurrentFS.
