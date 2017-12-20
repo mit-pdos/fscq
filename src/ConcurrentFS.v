@@ -140,8 +140,6 @@ Section ConcurrentFS.
       | Done v => Ret (Done v)
       | TryAgain e => end_t <- Rdtsc;
                      _ <- Debug "read-only write" (end_t - start);
-                     (* TODO: if e is a CacheMiss a, then should run
-                        [CacheRead a;; p] to fill cache *)
                      write_syscall (match e with
                                     | CacheMiss a => Some a
                                     | _ => None
