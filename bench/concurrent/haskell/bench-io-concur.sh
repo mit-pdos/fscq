@@ -19,10 +19,22 @@ parbench +RTS -N1 -qg -RTS --warmup=false --iters=1 \
 parbench +RTS -N1 -qg -RTS --warmup=false --iters=1 \
          cat-file --file '/large' --fscq=false | summary
 
+info "no warmup large read (N=2)"
+parbench +RTS -N2 -qg -RTS --warmup=false --iters=1 \
+         cat-file --file '/large' --fscq=true | summary
+parbench +RTS -N2 -qg -RTS --warmup=false --iters=1 \
+         cat-file --file '/large' --fscq=false | summary
+sep
+
 info "small reads"
 parbench +RTS -N1 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=true \
     | summary
 parbench +RTS -N1 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=false \
+    | summary
+info "small reads (N=2)"
+parbench +RTS -N2 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=true \
+    | summary
+parbench +RTS -N2 -qg -RTS --warmup=false --reps=25000 cat-file --file '/small' --fscq=false \
     | summary
 sep
 
