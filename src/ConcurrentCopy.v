@@ -14,7 +14,7 @@ Section ConcurrentCopy.
       match r with
       | Done v => p' v
       | SyscallFailed => Ret SyscallFailed
-      | TryAgain => Ret TryAgain (* will not happen *)
+      | TryAgain e => Ret (TryAgain e) (* will not happen *)
       end.
 
   Definition copy_attrs inum dnum dstname :=
@@ -127,7 +127,7 @@ Section ConcurrentCopy.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | None => True
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => True
                              end |})
                  (copy_attrs inum dnum dstname).
@@ -189,7 +189,7 @@ Section ConcurrentCopy.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | false => True
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => True
                              end |})
                  (copy_block inum inum').
@@ -252,7 +252,7 @@ Section ConcurrentCopy.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | None => True
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => True
                              end |})
                  (copy inum dnum dstname).

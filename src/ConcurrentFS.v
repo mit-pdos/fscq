@@ -15,7 +15,7 @@ Import OptimisticCache.
 
 Inductive SyscallResult {T} :=
 | Done (v:T)
-| TryAgain
+| TryAgain (e:OptimisticException)
 | SyscallFailed.
 
 Arguments SyscallResult T : clear implicits.
@@ -60,18 +60,18 @@ Section ConcurrentFS.
            | Success f (ms', r) =>
              match f with
              | NoChange => Done r
-             | Modified => TryAgain
+             | Modified => TryAgain WriteRequired
              end
            | Failure e =>
              match e with
              | Unsupported => SyscallFailed
-             | _ => TryAgain
+             | _ => TryAgain e
              end
            end).
 
   Definition guard {T} (r:SyscallResult T)
     : {(exists v, r = Done v) \/ r = SyscallFailed}
-      + {r = TryAgain}.
+      + {exists e, r = TryAgain e}.
   Proof.
     destruct r; eauto.
   Defined.
@@ -116,7 +116,7 @@ Section ConcurrentFS.
                  _ <- yieldOnMiss start e;
                  Ret (match e with
                       | CacheMiss a =>
-                        TryAgain
+                        TryAgain e
                       | WriteRequired => (* unreachable - have write lock *)
                         SyscallFailed
                       | Unsupported =>
@@ -131,8 +131,10 @@ Section ConcurrentFS.
     r <- readonly_syscall p;
       match r with
       | Done v => Ret (Done v)
-      | TryAgain => end_t <- Rdtsc;
+      | TryAgain e => end_t <- Rdtsc;
                      _ <- Debug "read-only write" (end_t - start);
+                     (* TODO: if e is a CacheMiss a, then should run
+                        [CacheRead a;; p] to fill cache *)
                      write_syscall p (fun _ tree => tree)
       | SyscallFailed => Ret SyscallFailed
       end.
@@ -259,7 +261,7 @@ Section ConcurrentFS.
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done v => fs_post (fsspec a) v
-                             | TryAgain => True
+                             | TryAgain _ => True
                              | SyscallFailed => True
                              end |})
                  (readonly_syscall p).
@@ -432,7 +434,7 @@ Section ConcurrentFS.
                  (yieldOnMiss s e).
   Proof.
     unfold yieldOnMiss; intros.
-    destruct e; repeat step; finish.
+    destruct e; repeat (step; finish).
   Qed.
 
   Hint Extern 1 {{ yieldOnMiss _ _; _ }} => apply yieldOnMiss_ok : prog.
@@ -531,7 +533,7 @@ Section ConcurrentFS.
                              | Done v => fs_post (fsspec a) v /\
                                         tree'' = fs_dirup (fsspec a) v tree' /\
                                         Sigma.init_disk sigma' = Sigma.disk sigma'
-                             | TryAgain => tree'' = tree' /\
+                             | TryAgain _ => tree'' = tree' /\
                                           Sigma.init_disk sigma' = Sigma.disk sigma'
                              | SyscallFailed => tree'' = tree'
                              end |})
@@ -544,6 +546,7 @@ Section ConcurrentFS.
       descend; intuition eauto.
       reflexivity.
     - step.
+      step.
       descend; simpl in *; intuition eauto.
 
       monad_simpl.
@@ -553,6 +556,7 @@ Section ConcurrentFS.
       (* destruct return value of optimistic program *)
       destruct a1.
       + (* returned successfully *)
+        rename r into start.
         destruct v as [ms' r].
 
         (* Assgn2_abs *)
@@ -604,9 +608,11 @@ Section ConcurrentFS.
         reflexivity.
 
         step; finish.
+        step; finish.
+        step; finish.
 
         (* next iteration of loop *)
-        destruct (guard r0); simpl.
+        destruct (guard r1); simpl.
         * (* succeeded, return *)
           step; finish.
           match goal with
@@ -633,7 +639,7 @@ Section ConcurrentFS.
 
         (* need to loop around depending on guard r (in particular, will stop on
         SyscallFailed) *)
-        destruct (guard r) eqn:? .
+        destruct (guard r0) eqn:? .
         step; finish.
         destruct e; auto.
         intuition; repeat deex; try discriminate.
@@ -653,7 +659,7 @@ Section ConcurrentFS.
 
         step; simplify.
         intuition trivial.
-        destruct r; intuition; subst.
+        destruct r0; intuition; subst.
         exists tree'0, (fs_dirup (fsspec a0) v tree'0).
         descend; simpl in *; intuition eauto.
         etransitivity; eauto.
@@ -692,7 +698,7 @@ Section ConcurrentFS.
                              | Done v => fs_post (fsspec a) v /\
                                         tree'' = fs_dirup (fsspec a) v tree' /\
                                         Sigma.init_disk sigma' = Sigma.disk sigma'
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => tree'' = tree'
                              end |})
                  (write_syscall p update).
@@ -730,12 +736,14 @@ Section ConcurrentFS.
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done v => fs_post (fsspec a) v
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => True
                              end |})
                  (retry_readonly_syscall p).
   Proof using Type.
     unfold retry_readonly_syscall; intros.
+    step.
+    rename r into start.
 
     unfold cprog_spec; intros.
     eapply cprog_ok_weaken;
@@ -744,7 +752,9 @@ Section ConcurrentFS.
 
     destruct r.
     - step; finish.
-    - eapply cprog_ok_weaken;
+    - repeat (step; finish).
+      rename r into end_t.
+      eapply cprog_ok_weaken;
       [ monad_simpl; eapply write_syscall_ok; eauto | ];
       simplify; finish.
       eapply is_allowed_fs_update; intros; reflexivity.
@@ -809,7 +819,7 @@ Section ConcurrentFS.
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done (attr, _) => attr = DFAttr f
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => True
                              end |})
                  (file_get_attr inum).
@@ -887,7 +897,7 @@ Section ConcurrentFS.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | Err _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (file_set_attr inum attr).
@@ -955,7 +965,7 @@ Section ConcurrentFS.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (create dnum name).
@@ -1024,7 +1034,7 @@ Section ConcurrentFS.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | Err _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (file_truncate inum sz).
@@ -1082,7 +1092,7 @@ Section ConcurrentFS.
                                              | OK v => find_name pathname tree = Some v
                                              | Err _ => find_name pathname tree = None
                                              end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => True
                              end |})
                  (lookup pathname).
@@ -1130,7 +1140,7 @@ Section ConcurrentFS.
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done (r, _) => r = fst vs
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => True
                              end |})
                  (read_fblock inum off).
@@ -1181,7 +1191,7 @@ Section ConcurrentFS.
                                find_subtree (homedirs tid) tree' = Some homedir' /\
                                DFAttr f' = DFAttr f /\
                                (Fd * off |-> (b, AsyncDisk.vsmerge vs))%pred (GenSepN.list2nmem (DFData f'))
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (update_fblock_d inum off b).
@@ -1248,7 +1258,7 @@ Section ConcurrentFS.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | Err _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (delete dnum name).
@@ -1337,7 +1347,7 @@ Section ConcurrentFS.
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | Err _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
-                             | TryAgain => False
+                             | TryAgain _ => False
                              | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (rename dnum srcpath srcname dstpath dstname).

@@ -97,7 +97,7 @@ doFScall s p = do
   r <- I.run s p
   case r of
     CFS.Done v -> return v
-    CFS.TryAgain -> error $ "system call loop failed?"
+    CFS.TryAgain _ -> error $ "system call loop failed?"
     CFS.SyscallFailed -> error $ "system call failed"
 
 initCfscq :: String -> Bool -> IO (UserID, GroupID) -> IO (FuseOperations HT)
