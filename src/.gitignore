@@ -38,3 +38,4 @@ Makefile.coqproof
 *.cmxa
 *.prof
 /hslib/libopfuse.a
+*.log
