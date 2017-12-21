@@ -362,10 +362,13 @@ Module AFS.
     }.
 
   Definition read_fblock fsxp inum off ams :=
+    t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, b) <- DIRTREE.read fsxp inum off (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), b);
+    t2 <- Rdtsc;
+    Debug "read_fblock" (t2-t1) ;;
     Ret r.
 
   Definition file_truncate fsxp inum sz ams :=

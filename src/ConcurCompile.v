@@ -776,8 +776,8 @@ Section ConcurCompile.
     eapply compile_equiv.
     apply exec_equiv_bind1.
 
-    instantiate (1 := Ret (match v0 with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
-    destruct v0; simpl.
+    instantiate (1 := Ret (match v1 with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v1; simpl.
     destruct r; simpl.
     etransitivity.
     apply monad_left_id.
@@ -789,8 +789,8 @@ Section ConcurCompile.
 
     eapply compile_equiv.
     apply exec_equiv_bind1.
-    instantiate (1 := Ret (let '(r', cs') := v1 in _)).
-    destruct v1.
+    instantiate (1 := Ret (let '(r', cs') := v2 in _)).
+    destruct v2.
     reflexivity.
 
     repeat comp.
@@ -799,9 +799,9 @@ Section ConcurCompile.
     skip.
 
     eapply compile_equiv.
-    instantiate (1 := Ret v4).
-    destruct v4.
-    reflexivity.
+    instantiate (1 := Ret v5).
+    destruct v5.
+    etransitivity; [ apply monad_left_id | reflexivity ].
     comp.
   Defined.
 
