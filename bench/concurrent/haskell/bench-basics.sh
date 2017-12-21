@@ -25,10 +25,6 @@ info "traverse large file directory"
 bench --target-ms=1000 --reps=5 traverse-dir --dir '/large-dir'
 sep
 
-info "traverse small file directory"
-bench --target-ms=1000 --reps=5 traverse-dir --dir '/large-dir-small-files'
-sep
-
 info "==> reading data"
 info "cat linux.tar.xz"
 bench --iters=1 --reps=4 cat-file --file '/linux-source/linux.tar.xz'
