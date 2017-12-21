@@ -331,20 +331,14 @@ Module AFS.
     }.
 
   Definition file_get_attr fsxp inum ams :=
-    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), attr);
-    t2 <- Rdtsc ;
-    Debug "get_attr" (t2-t1) ;;
     Ret r.
 
   Definition file_get_sz fsxp inum ams :=
-    t1 <- Rdtsc ;
     let^ (ams, attr) <- file_get_attr fsxp inum ams;
-    t2 <- Rdtsc ;
-    Debug "file_get_sz" (t2-t1) ;;
     Ret ^(ams, INODE.ABytes attr).
 
   Definition file_set_attr fsxp inum attr ams :=
@@ -368,13 +362,10 @@ Module AFS.
     }.
 
   Definition read_fblock fsxp inum off ams :=
-    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, b) <- DIRTREE.read fsxp inum off (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), b);
-    t2 <- Rdtsc ;
-    Debug "read_fblock" (t2-t1) ;;
     Ret r.
 
   Definition file_truncate fsxp inum sz ams :=
@@ -505,13 +496,10 @@ Module AFS.
     Ret res.
 
   Definition lookup fsxp dnum names ams :=
-    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), r);
-    t2 <- Rdtsc ;
-    Debug "lookup" (t2-t1) ;;
     Ret r.
 
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
