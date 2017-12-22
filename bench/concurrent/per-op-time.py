@@ -33,4 +33,4 @@ if __name__ == "__main__":
     timings.sort(key=lambda e: e[1], reverse=True)
     for syscall, time in timings:
         if time >= syscall_timings["<all>"]*.01:
-            print("{:10} {}".format(syscall, time))
+            print("{:15} {:6.4f}s".format(syscall, time))
