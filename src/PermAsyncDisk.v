@@ -94,6 +94,10 @@ Defined.
 Definition tagged_block := (tag * block)%type.
 Definition valuset := (tagged_block * list tagged_block)%type.
 
+Definition tagged_block0 := (Public, natToWord valulen 0).
+Definition valuset0 := (tagged_block0, nil:list tagged_block). 
+
+
 (* Async-disk *)
 Definition rawdisk := @mem addr addr_eq_dec valuset.
 Definition vsmerge (vs : valuset) : list tagged_block := fst vs :: snd vs.

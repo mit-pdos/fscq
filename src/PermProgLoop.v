@@ -274,6 +274,25 @@ Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' no
    l1 closed binder, l2 closed binder,
    body at level 9).
 
+Notation "'For' i < n 'Blockmem' bm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        $0 n
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun bm hm => ([[ bm = bm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun bm hm => crashed%pred)) .. )))
+  (at level 9, i at level 0, n at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
 
 Notation "'For' i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i =>
@@ -456,6 +475,26 @@ Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' n
    l1 closed binder, l2 closed binder,
    body at level 9).
 
+Notation "'ForN' i < n 'Blockmem' bm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForN_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        0 n
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun bm hm => ([[ bm = bm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun bm hm => crashed%pred)) .. )))))
+  (at level 9, i at level 0, n at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
 Notation "'ForN' i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForN_ (fun i =>
           (pair_args_helper (fun l1 => ..
@@ -475,6 +514,47 @@ Notation "'ForN' i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar'
    g1 closed binder, g2 closed binder,
    l1 closed binder, l2 closed binder,
    body at level 9).
+
+Notation "'ForN' x <= i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForN_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        x (n - x)
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun bm hm => ([[ bm = bm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun bm hm => crashed%pred)) .. )))))
+  (at level 9, i at level 0, n at level 0, x at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
+Notation "'ForN' x <= i < n 'Blockmem' bm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForN_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        x (n - x)
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun bm hm => ([[ bm = bm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun bm hm => crashed%pred)) .. )))))
+  (at level 9, i at level 0, n at level 0, x at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
 
 Notation "'ForN' x <= i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForN_ (fun i =>
@@ -604,7 +684,23 @@ Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'I
    l1 closed binder, l2 closed binder,
    body at level 9).
 
-Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'ForEach' elem rest lst 'Blockmem' bm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
+        lst
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+         fun bm hm => ([[ bm = bm0 ]] * nocrash)%pred)) ..))  )) .. ))))
+        (pair_args_helper (fun bm0 =>
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun bm hm => crashed%pred)) .. )))))
+  (at level 9, elem at level 0, rest at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
+
+Notation "'ForEach' elem rest lst 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
         lst
         (pair_args_helper (fun bm0 =>

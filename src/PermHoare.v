@@ -11,8 +11,6 @@ Set Implicit Arguments.
 
 (** ** Hoare logic *)
 
-Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
-
 Definition donecond (T: Type) := tagged_disk -> block_mem -> hashmap -> T -> Prop.
 Definition crashcond :=  block_mem -> hashmap -> @pred addr addr_eq_dec valuset .
 

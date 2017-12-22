@@ -2,7 +2,7 @@ Require Import List.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
-Require Import Array.
+Require Import PermArray.
 Require Import Pred.
 Require Import WordAuto.
 Require Import Omega.
@@ -664,7 +664,6 @@ Theorem init_load_ok :
     >!} init_load cachesize.
   Proof.
     unfold init_load, init; step.
-    apply sync_invariant_arrayS.
     step.
     
     eapply pimpl_ok2; monad_simpl; eauto.
@@ -859,50 +858,7 @@ Theorem init_load_ok :
     eapply arrayN_subset_oob'; eauto.
   Qed.
 
-  Lemma arrayN_selN_subset : forall F a st l m def,
-    (F * arrayN ptsto_subset st l)%pred m ->
-    a >= st ->
-    a < st + length l ->
-    let vs0 := (selN l (a - st) def) in
-    exists vs, m a = Some vs /\ fst vs = fst vs0 /\ incl (snd vs) (snd vs0).
-  Proof.
-    cbn; intros.
-    rewrite arrayN_isolate with (i := a - st) in H by omega.
-    unfold ptsto_subset at 2 in H; destruct_lift H; simpl in *.
-    eexists; split; try split.
-    eapply ptsto_valid.
-    pred_apply; replace (st + (a - st)) with a by omega.
-    eassign ((fst (selN l (a - st) def), dummy)).
-    cancel.
-    simpl; auto.
-    auto.
-  Qed.
 
-  Lemma arrayN_subset_memupd : forall F l a i v vs vs' m,
-    (F * arrayN ptsto_subset a l)%pred m ->
-    incl vs' vs ->
-    i < length l ->
-    (F * arrayN ptsto_subset a (updN l i (v, vs)))%pred (Mem.upd m (a + i) (v, vs')).
-  Proof.
-    intros.
-    rewrite arrayN_isolate with (i := i) in H by auto.
-    unfold ptsto_subset at 2 in H; destruct_lift H.
-    setoid_rewrite sep_star_comm in H.
-    apply sep_star_assoc in H.
-    apply ptsto_upd with (v := (v, vs')) in H.
-    pred_apply' H.
-    setoid_rewrite arrayN_isolate with (i := i) at 3.
-    unfold ptsto_subset at 4.
-    rewrite selN_updN_eq by auto.
-    cancel.
-    rewrite firstn_updN_oob by auto.
-    rewrite skipn_updN by auto.
-    cancel.
-    rewrite length_updN; auto.
-    Grab Existential Variables. all: apply (v, nil).
-  Qed.
-
-(*  
   Lemma crash_xform_arrayN_subset: forall l st,
     crash_xform (arrayN ptsto_subset st l) =p=>
       exists l', [[ possible_crash_list l l' ]] *
@@ -960,7 +916,7 @@ Theorem init_load_ok :
     eapply Forall_cons2; eauto.
   Qed.
 
-  Lemma crash_xform_arrayN_subset_combine_nils: forall (l : list valu) st,
+  Lemma crash_xform_arrayN_subset_combine_nils: forall (l : list tagged_block) st,
     crash_xform (arrayN ptsto_subset st (List.combine l (repeat nil (length l)))) =p=>
     arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
   Proof.
@@ -972,7 +928,7 @@ Theorem init_load_ok :
     inversion H; subst; simpl; auto.
   Qed.
 
-  Lemma crash_xform_arrayN_subset_synced: forall (l : list valu) st,
+  Lemma crash_xform_arrayN_subset_synced: forall (l : list tagged_block) st,
     crash_xform (arrayN ptsto_subset st (synced_list l)) =p=>
     arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
   Proof.
@@ -984,20 +940,6 @@ Theorem init_load_ok :
     inversion H; subst; simpl; auto.
   Qed.
 
-*)
-
-
-
-
-
-
-
-
-
-
-  Definition vsupd vs i v :=  updN vs i (v, vsmerge (selN vs i ((Public, $0), nil))).
-  Definition vssync (vs: list valuset) i :=  updN vs i (fst (selN vs i ((Public, $0), nil)), nil).
-  
   Lemma write_array_xcrash_ok : forall cs d bm F a i v vs,
     (F * arrayN ptsto_subset a vs)%pred d ->
     i < length vs ->
@@ -1018,14 +960,14 @@ Theorem init_load_ok :
     rewrite <- crash_xform_rep_r; eauto.
     unfold rep; cancel; eauto.    
     eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
-    apply incl_tl; apply incl_refl.
+    apply incl_tl.
     apply incl_cons2; auto.
 
      2: apply arrayN_subset_memupd; eauto.
     rewrite <- crash_xform_rep_r; eauto.
     unfold rep; cancel; eauto.    
     eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
-    apply incl_tl; apply incl_refl.
+    apply incl_tl.
     apply incl_cons2; auto.    
   Qed.
 
@@ -1105,89 +1047,3 @@ Theorem init_load_ok :
   Hint Extern 1 ({{_ | _}} Bind (read_array _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_ | _}} Bind (write_array _ _ _ _) _) => apply write_array_ok : prog.
   Hint Extern 1 ({{_ | _}} Bind (sync_array _ _ _) _) => apply sync_array_ok : prog.
-
-
-  Definition read_range A a nr (vfold : A -> valu -> A) a0 cs :=
-    let^ (cs, r) <- ForN i < nr
-    Ghost [ F crash d vs ]
-    Loopvar [ cs pf ]
-    Invariant
-      rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
-      [[ pf = fold_left vfold (firstn i (map fst vs)) a0 ]]
-    OnCrash  crash
-    Begin
-      let^ (cs, v) <- read_array a i cs;
-      Ret ^(cs, vfold pf v)
-    Rof ^(cs, a0);
-    Ret ^(cs, r).
-
-
-  Definition write_range a l cs :=
-    let^ (cs) <- ForN i < length l
-    Ghost [ F crash vs ]
-    Loopvar [ cs ]
-    Invariant
-      exists d', rep cs d' *
-      [[ (F * arrayN ptsto_subset a (vsupd_range vs (firstn i l)))%pred d' ]]
-    OnCrash crash
-    Begin
-      cs <- write_array a i (selN l i $0) cs;
-      Ret ^(cs)
-    Rof ^(cs);
-    Ret cs.
-
-  Definition sync_range a nr cs :=
-    let^ (cs) <- ForN i < nr
-    Ghost [ F crash vs d0 ]
-    Loopvar [ cs ]
-    Invariant
-      exists d', synrep cs d0 d' *
-      [[ (F * arrayN ptsto_subset a (vssync_range vs i))%pred d' ]]
-    OnCrash crash
-    Begin
-      cs <- sync_array a i cs;
-      Ret ^(cs)
-    Rof ^(cs);
-    Ret cs.
-
-  Definition write_vecs a l cs :=
-    let^ (cs) <- ForN i < length l
-    Ghost [ F crash vs ]
-    Loopvar [ cs ]
-    Invariant
-      exists d', rep cs d' *
-      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn i l)))%pred d' ]]
-    OnCrash crash
-    Begin
-      let v := selN l i (0, $0) in
-      cs <- write_array a (fst v) (snd v) cs;
-      Ret ^(cs)
-    Rof ^(cs);
-    Ret cs.
-
-  Definition sync_vecs a l cs :=
-    let^ (cs) <- ForEach i irest l
-    Ghost [ F crash vs d0 ]
-    Loopvar [ cs ]
-    Invariant
-      exists d' iprefix, synrep cs d0 d' *
-      [[ iprefix ++ irest = l ]] *
-      [[ (F * arrayN ptsto_subset a (vssync_vecs vs iprefix))%pred d' ]]
-    OnCrash crash
-    Begin
-      cs <- sync_array a i cs;
-      Ret ^(cs)
-    Rof ^(cs);
-    Ret cs.
-
-  Definition sync_vecs_now a l cs :=
-    cs <- begin_sync cs;
-    cs <- sync_vecs a l cs;
-    cs <- end_sync cs;
-    Ret cs.
-
-  Definition sync_all cs :=
-    cs <- sync_vecs_now 0 (map fst (Map.elements (CSMap cs))) cs;
-    Ret cs.
-
-  Hint Extern 0 (okToUnify (arrayN ?pts ?a _) (arrayN ?pts ?a _)) => constructor : okToUnify.

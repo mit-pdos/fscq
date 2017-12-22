@@ -2,7 +2,7 @@ Require Import List.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
-Require Import Array.
+Require Import PermArray.
 Require Import Mem Pred.
 Require Import WordAuto.
 Require Import Omega.
@@ -174,4 +174,107 @@ Definition write_array a i v cs :=
 
 Definition sync_array a i cs :=
   cs <- sync (a + i) cs;;
+     Ret cs.
+
+Fixpoint extract_blocks (bm: block_mem) hl :=
+  match hl with
+  | nil => nil
+  | h::t => match bm h with
+           | None => extract_blocks bm t
+           | Some tb => tb::extract_blocks bm t
+           end
+  end.
+
+  Definition read_range a nr a0 cs :=
+    let^ (cs, r) <- ForN i < nr
+    Blockmem bm
+    Ghost [ F crash d vs ]
+    Loopvar [ cs pf ]
+    Invariant
+    rep cs d bm * [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
+    [[ extract_blocks bm pf = firstn i (List.map fst vs) ]]
+    OnCrash crash
+    Begin
+      let^ (cs, v) <- read_array a i cs;;
+      Ret ^(cs, v::pf)
+    Rof ^(cs, a0);;
+    Ret ^(cs, r).
+
+
+         
+Definition write_range a l cs :=
+  let^ (cs, tt) <- ForN i < length l
+    Blockmem bm                          
+    Ghost [ F crash vs vls ]
+    Loopvar [ cs x ]
+    Invariant
+    exists d', rep cs d' bm *
+      [[ length vls = length l ]] *
+      [[ vls = extract_blocks bm l ]] *
+      [[ (F * arrayN ptsto_subset a (vsupd_range vs (firstn i vls)))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- write_array a i (selN l i 0) cs;;
+      Ret ^(cs, tt)
+    Rof ^(cs, tt);;
   Ret cs.
+
+  Definition sync_range a nr cs :=
+    let^ (cs, tt) <- ForN i < nr
+    Blockmem bm                    
+    Ghost [ F crash vs d0 ]
+    Loopvar [ cs tt ]
+    Invariant
+      exists d', synrep cs d0 d' bm *
+      [[ (F * arrayN ptsto_subset a (vssync_range vs i))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- sync_array a i cs;;
+      Ret ^(cs, tt)
+    Rof ^(cs, tt);;
+    Ret cs.
+
+  Definition write_vecs a l cs :=
+    let^ (cs, tt) <- ForN i < length l
+    Blockmem bm                          
+    Ghost [ F crash vs vls ]
+    Loopvar [ cs tt ]
+    Invariant
+    exists d', rep cs d' bm *
+     [[ vls = extract_blocks bm (List.map snd l) ]] *
+      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn i (List.combine (List.map fst l) vls))))%pred d' ]]
+    OnCrash crash
+    Begin
+      let v := selN l i (0, 0) in
+      cs <- write_array a (fst v) (snd v) cs;;
+      Ret ^(cs, tt)
+    Rof ^(cs, tt);;
+    Ret cs.
+
+  Definition sync_vecs a l cs :=
+    let^ (cs, tt) <- ForEach i irest l
+    Blockmem bm        
+    Ghost [ F crash vs d0 ]
+    Loopvar [ cs tt ]
+    Invariant
+      exists d' iprefix, synrep cs d0 d' bm *
+      [[ iprefix ++ irest = l ]] *
+      [[ (F * arrayN ptsto_subset a (vssync_vecs vs iprefix))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- sync_array a i cs;;
+      Ret ^(cs, tt)
+    Rof ^(cs, tt);;
+    Ret cs.
+
+  Definition sync_vecs_now a l cs :=
+    cs <- begin_sync cs;;
+    cs <- sync_vecs a l cs;;
+    cs <- end_sync cs;;
+    Ret cs.
+
+  Definition sync_all cs :=
+    cs <- sync_vecs_now 0 (List.map fst (Map.elements (CSMap cs))) cs;;
+    Ret cs.
+
+  Hint Extern 0 (okToUnify (arrayN ?pts ?a _) (arrayN ?pts ?a _)) => constructor : okToUnify.

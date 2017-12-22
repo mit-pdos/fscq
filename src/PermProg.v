@@ -48,11 +48,6 @@ Inductive prog : Type -> Type :=
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
 
-Notation "p1 :; p2" := (Bind p1 (fun _: unit => p2))
-                              (at level 60, right associativity).
-Notation "x <- p1 ;; p2" := (Bind p1 (fun x => p2))
-                             (at level 60, right associativity).
-
 
 Inductive exec:
   forall T, perm -> trace -> tagged_disk ->
@@ -88,7 +83,7 @@ Inductive exec:
                 hash_safe hm h buf ->
                 hash_fwd buf = h ->
                 exec pr tr d bm hm (Hash2 buf1 buf2) (Finished d bm (upd_hashmap' hm h buf) tt) tr
-                    
+                     
 | ExecRet : forall T pr d bm hm (r: T) tr,
               exec pr tr d bm hm (Ret r) (Finished d bm hm r) tr
                    
@@ -110,3 +105,33 @@ Inductive exec:
                 exec pr tr d bm hm p1 r tr' ->
                 r = (Crashed d' bm' hm') ->
                 exec pr tr d bm hm (Bind p1 p2) r tr'.
+
+
+
+
+Notation "p1 :; p2" := (Bind p1 (fun _: unit => p2))
+                              (at level 60, right associativity).
+Notation "x <- p1 ;; p2" := (Bind p1 (fun x => p2))
+                             (at level 60, right associativity).
+
+
+Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
+Notation "^( a )" := (pair a tt).
+Notation "^( a , .. , b )" := (pair a .. (pair b tt) .. ).
+
+
+Notation "'let^' ( a ) <- p1 ;; p2" :=
+  (Bind p1
+    (pair_args_helper (fun a (_:unit) => p2))
+  )
+  (at level 60, right associativity, a ident,
+   format "'[v' let^ ( a )  <-  p1 ;; '/' p2 ']'").
+
+Notation "'let^' ( a , .. , b ) <- p1 ;; p2" :=
+  (Bind p1
+    (pair_args_helper (fun a => ..
+      (fun b => p2)
+    ..))
+  )
+    (at level 60, right associativity, a closed binder, b closed binder,
+     format "'[v' let^ ( a , .. , b )  <-  p1 ;; '/' p2 ']'").

@@ -2,7 +2,7 @@ Require Import List.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
-Require Import Array.
+Require Import PermArray.
 Require Import Pred.
 Require Import WordAuto.
 Require Import Omega.
