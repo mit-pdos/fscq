@@ -19,155 +19,154 @@ Require Export PermCacheSec.
 Import ListNotations.
 
 
- Module DescSig <: RASig.
+Module DescSig <: RASig.
 
-    Definition xparams := log_xparams.
-    Definition RAStart := LogDescriptor.
-    Definition RALen := LogDescLen.
-    Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
-
-    Definition itemtype := Rec.WordF addrlen.
-    Definition items_per_val := valulen / addrlen.
-
-    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-    Proof.
-      unfold items_per_val; simpl.
-      rewrite valulen_is.
-      cbv; auto.
-    Qed.
-
-  End DescSig.
-
-
-  Module DataSig <: RASig.
-
-    Definition xparams := log_xparams.
-    Definition RAStart := LogData.
-    Definition RALen := LogLen.
-    Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
-
-    Definition itemtype := Rec.WordF valulen.
-    Definition items_per_val := 1.
-
-    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-    Proof.
-      unfold items_per_val; simpl.
-      rewrite valulen_is.
-      cbv; auto.
-    Qed.
-
-  End DataSig.
-
-  Module Desc := AsyncRecArray DescSig.
-  Module Data := AsyncRecArray DataSig.
-  Module DescDefs := Desc.Defs.
-  Module DataDefs := Data.Defs.
-
-
-  Definition header_type := Rec.RecF ([("previous_ndesc", Rec.WordF addrlen);
-                                       ("previous_ndata", Rec.WordF addrlen);
-                                       ("ndesc", Rec.WordF addrlen);
-                                       ("ndata", Rec.WordF addrlen);
-                                       ("addr_checksum", Rec.WordF hashlen);
-                                       ("valu_checksum", Rec.WordF hashlen)]).
-  Definition header := Rec.data header_type.
-  Definition hdr := ((nat * nat) * (nat * nat) * (word hashlen * word hashlen))%type.
-  Definition previous_length (header : hdr) := fst (fst header).
-  Definition current_length (header : hdr) := snd (fst header).
-  Definition checksum (header : hdr) := snd header.
-  Definition mk_header (len : hdr) : header :=
-    ($ (fst (previous_length len)),
-     ($ (snd (previous_length len)),
-      ($ (fst (current_length len)),
-       ($ (snd (current_length len)),
-        (fst (checksum len),
-         (snd (checksum len), tt)))))).
-  
-  Theorem hdrsz_ok : Rec.len header_type <= valulen.
-  Proof.
-    rewrite valulen_is. apply leb_complete. compute. trivial.
-  Qed.
-  Local Hint Resolve hdrsz_ok.
-  
-  Lemma plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
-  Proof.
-    apply le_plus_minus_r; auto.
-  Qed.
-  
-  Definition hdr2val (h : header) : valu.
-    set (zext (Rec.to_word h) (valulen - Rec.len header_type)) as r.
-    rewrite plus_minus_header in r.
-    refine r.
-  Defined.
-  
-  Definition val2hdr (v : valu) : header.
-    apply Rec.of_word.
-    rewrite <- plus_minus_header in v.
-    refine (split1 _ _ v).
-  Defined.
-  
-  Arguments hdr2val: simpl never.
-  
-  Lemma val2hdr2val : forall h,
-                        val2hdr (hdr2val h) = h.
-  Proof.
-    unfold val2hdr, hdr2val.
-    unfold eq_rec_r, eq_rec.
-    intros.
-    rewrite <- plus_minus_header.
-    unfold zext.
-    autorewrite with core; auto.
-    simpl; destruct h; tauto.
-  Qed.
-  
-  Arguments val2hdr: simpl never.
-  Opaque val2hdr.  (* for some reason "simpl never" doesn't work *)
-  
-  
   Definition xparams := log_xparams.
-  Definition LAHdr := LogHeader.
-  
-  Inductive state : Type :=
-  | Synced : hdr -> state
-  | Unsync : hdr -> hdr -> state
-  .
-  
-  Definition hdr_goodSize header :=
-    goodSize addrlen (fst (previous_length header)) /\
-    goodSize addrlen (snd (previous_length header)) /\
-    goodSize addrlen (fst (current_length header)) /\
-    goodSize addrlen (snd (current_length header)).
-  
-  Definition state_goodSize st :=
-    match st with
-    | Synced n => hdr_goodSize n
-    | Unsync n o => hdr_goodSize n /\ hdr_goodSize o
-    end.
-  
-  Definition rep xp state : @rawpred :=
-    ([[ state_goodSize state ]] *
-     match state with
-     | Synced n =>
-       (LAHdr xp) |+> ((Public, hdr2val (mk_header n)), nil)
-     | Unsync n o =>
-       (LAHdr xp) |+> ((Public, hdr2val (mk_header n)), [(Public, hdr2val (mk_header o))]%list)
-     end)%pred.
-  
-  
-  
+  Definition RAStart := LogDescriptor.
+  Definition RALen := LogDescLen.
+  Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
+
+  Definition itemtype := Rec.WordF addrlen.
+  Definition items_per_val := valulen / addrlen.
+
+  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+  Proof.
+    unfold items_per_val; simpl.
+    rewrite valulen_is.
+    cbv; auto.
+  Qed.
+
+End DescSig.
+
+
+Module DataSig <: RASig.
+
+  Definition xparams := log_xparams.
+  Definition RAStart := LogData.
+  Definition RALen := LogLen.
+  Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
+
+  Definition itemtype := Rec.WordF valulen.
+  Definition items_per_val := 1.
+
+  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+  Proof.
+    unfold items_per_val; simpl.
+    rewrite valulen_is.
+    cbv; auto.
+  Qed.
+
+End DataSig.
+
+Module Desc := AsyncRecArray DescSig.
+Module Data := AsyncRecArray DataSig.
+Module DescDefs := Desc.Defs.
+Module DataDefs := Data.Defs.
+
+
+Definition header_type := Rec.RecF ([("previous_ndesc", Rec.WordF addrlen);
+                                     ("previous_ndata", Rec.WordF addrlen);
+                                     ("ndesc", Rec.WordF addrlen);
+                                     ("ndata", Rec.WordF addrlen);
+                                     ("addr_checksum", Rec.WordF hashlen);
+                                     ("valu_checksum", Rec.WordF hashlen)]).
+Definition header := Rec.data header_type.
+Definition hdr := ((nat * nat) * (nat * nat) * (word hashlen * word hashlen))%type.
+Definition previous_length (header : hdr) := fst (fst header).
+Definition current_length (header : hdr) := snd (fst header).
+Definition checksum (header : hdr) := snd header.
+Definition mk_header (len : hdr) : header :=
+  ($ (fst (previous_length len)),
+   ($ (snd (previous_length len)),
+    ($ (fst (current_length len)),
+     ($ (snd (current_length len)),
+      (fst (checksum len),
+       (snd (checksum len), tt)))))).
+
+Theorem hdrsz_ok : Rec.len header_type <= valulen.
+Proof.
+  rewrite valulen_is. apply leb_complete. compute. trivial.
+Qed.
+Local Hint Resolve hdrsz_ok.
+
+Lemma plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
+Proof.
+  apply le_plus_minus_r; auto.
+Qed.
+
+Definition hdr2val (h : header) : valu.
+  set (zext (Rec.to_word h) (valulen - Rec.len header_type)) as r.
+  rewrite plus_minus_header in r.
+  refine r.
+Defined.
+
+Definition val2hdr (v : valu) : header.
+  apply Rec.of_word.
+  rewrite <- plus_minus_header in v.
+  refine (split1 _ _ v).
+Defined.
+
+Arguments hdr2val: simpl never.
+
+Lemma val2hdr2val : forall h,
+                      val2hdr (hdr2val h) = h.
+Proof.
+  unfold val2hdr, hdr2val.
+  unfold eq_rec_r, eq_rec.
+  intros.
+  rewrite <- plus_minus_header.
+  unfold zext.
+  autorewrite with core; auto.
+  simpl; destruct h; tauto.
+Qed.
+
+Arguments val2hdr: simpl never.
+Opaque val2hdr.  (* for some reason "simpl never" doesn't work *)
+
+
+Definition xparams := log_xparams.
+Definition LAHdr := LogHeader.
+
+Inductive state : Type :=
+| Synced : hdr -> state
+| Unsync : hdr -> hdr -> state
+.
+
+Definition hdr_goodSize header :=
+  goodSize addrlen (fst (previous_length header)) /\
+  goodSize addrlen (snd (previous_length header)) /\
+  goodSize addrlen (fst (current_length header)) /\
+  goodSize addrlen (snd (current_length header)).
+
+Definition state_goodSize st :=
+  match st with
+  | Synced n => hdr_goodSize n
+  | Unsync n o => hdr_goodSize n /\ hdr_goodSize o
+  end.
+
+Definition rep xp state : @rawpred :=
+  ([[ state_goodSize state ]] *
+   match state with
+   | Synced n =>
+     (LAHdr xp) |+> ((Public, hdr2val (mk_header n)), nil)
+   | Unsync n o =>
+     (LAHdr xp) |+> ((Public, hdr2val (mk_header n)), [(Public, hdr2val (mk_header o))]%list)
+   end)%pred.
+
+
+
 Definition read xp cs := Eval compute_rec in
       csh <- read (LAHdr xp) cs;;
       let cs := fst csh in
       let h := snd csh in    
       v <- Unseal h;;
       let header := (val2hdr v) in
-      Ret (cs,
-           ((# (header :-> "previous_ndesc"),
-             # (header :-> "previous_ndata")),
-            (# (header :-> "ndesc"),
-             # (header :-> "ndata")),
-            (header :-> "addr_checksum",
-             header :-> "valu_checksum"))).
+      Ret (cs, ((# (header :-> "previous_ndesc"),
+                 # (header :-> "previous_ndata")),
+                (# (header :-> "ndesc"),
+                 # (header :-> "ndata")),
+                (header :-> "addr_checksum",
+                 header :-> "valu_checksum"))).
 
 Definition write xp n cs :=
     h <- Seal Public (hdr2val (mk_header n));;

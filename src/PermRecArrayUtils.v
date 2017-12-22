@@ -50,7 +50,7 @@ Module RADefs (RA : RASig).
 
   Definition itemlist := list item.
 
-  Definition nils n := @repeat (list tagged_block) nil n.
+  Definition nils T n := @repeat (list T) nil n.
 
   Local Hint Resolve eq_nat_dec : core.
 
@@ -532,8 +532,8 @@ Module RADefs (RA : RASig).
     destruct (in_app_or a b x); small_t.
   Qed.
 
-  Lemma nils_length : forall n,
-    length (nils n) = n.
+  Lemma nils_length : forall T n,
+    length (nils T n) = n.
   Proof.
     unfold nils; intros.
     apply repeat_length.

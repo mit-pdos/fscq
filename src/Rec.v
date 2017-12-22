@@ -1,7 +1,6 @@
 Require Import Arith List String Omega Bool.
 Require Import Word.
 Require Import Eqdep_dec.
-Require Import Array.
 Require Import Psatz.
 Require Import ProofIrrelevance.
 Require Import ListUtils.
