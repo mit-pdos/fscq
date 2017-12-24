@@ -50,7 +50,7 @@ Module RADefs (RA : RASig).
 
   Definition itemlist := list item.
 
-  Definition nils T n := @repeat (list T) nil n.
+  Definition nils {T} n := @repeat (list T) nil n.
 
   Local Hint Resolve eq_nat_dec : core.
 

@@ -18,6 +18,50 @@ Require Export PermDiskLogHdr.
 
 Set Implicit Arguments.
 
+Module DescSig <: RASig.
+
+  Definition xparams := log_xparams.
+  Definition RAStart := LogDescriptor.
+  Definition RALen := LogDescLen.
+  Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
+
+  Definition itemtype := Rec.WordF addrlen.
+  Definition items_per_val := valulen / addrlen.
+
+  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+  Proof.
+    unfold items_per_val; simpl.
+    rewrite valulen_is.
+    cbv; auto.
+  Qed.
+
+End DescSig.
+
+
+Module DataSig <: RASig.
+
+  Definition xparams := log_xparams.
+  Definition RAStart := LogData.
+  Definition RALen := LogLen.
+  Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
+
+  Definition itemtype := Rec.WordF valulen.
+  Definition items_per_val := 1.
+
+  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+  Proof.
+    unfold items_per_val; simpl.
+    rewrite valulen_is.
+    cbv; auto.
+  Qed.
+
+End DataSig.
+
+Module Desc := AsyncRecArray DescSig.
+Module Data := AsyncRecArray DataSig.
+Module DescDefs := Desc.Defs.
+Module DataDefs := Data.Defs.
+
 Definition entry := (addr * tagged_block)%type.
 Definition contents := list entry.
 
@@ -48,6 +92,7 @@ Inductive state :=
 .
 
 Definition ent_addr (e : entry) := addr2w (fst e).
+Definition ent_block (e : entry) := fst (snd e).
 Definition ent_tag (e : entry) := fst (snd e).
 Definition ent_valu (e : entry) := snd (snd e).
 
@@ -61,6 +106,7 @@ Fixpoint log_nonzero (log : contents) : list entry :=
   | nil => nil
   end.
 
+Definition blocks_nonzero (log : contents) := map ent_block (log_nonzero log).
 Definition vals_nonzero (log : contents) := map ent_valu (log_nonzero log).
 Definition tags_nonzero (log : contents) := map ent_tag (log_nonzero log).
 
@@ -84,9 +130,11 @@ Definition addr_valid (e : entry) := goodSize addrlen (fst e).
 
 Definition entry_valid (ent : entry) := fst ent <> 0 /\ addr_valid ent.
 
+Definition addr_tags n := repeat Public n.
+
 Definition rep_contents xp (log : contents) : rawpred :=
   ( [[ Forall addr_valid log ]] *
-    Desc.array_rep xp 0 (Desc.Synced (map ent_tag log) (map ent_addr log)) *
+    Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log log)) (map ent_addr log)) *
     Data.array_rep xp 0 (Data.Synced (tags_nonzero log) (vals_nonzero log)) *
     Desc.avail_rep xp (ndesc_log log) (LogDescLen xp - (ndesc_log log)) *
     Data.avail_rep xp (ndata_log log) (LogLen xp - (ndata_log log))
@@ -101,9 +149,9 @@ Definition padded_log (log : contents) :=
 Definition rep_contents_unmatched xp (old : contents) new_addr new_tag new_valu : rawpred :=
   ( [[ Forall addr_valid old ]] *
     (*[[ Forall addr_valid new ]] **)
-    Desc.array_rep xp 0 (Desc.Synced (map ent_tag (padded_log old))
+    Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log (padded_log old)))
                                      (map ent_addr (padded_log old))) *
-    Desc.array_rep xp (ndesc_log old) (Desc.Synced new_tag new_addr) *
+    Desc.array_rep xp (ndesc_log old) (Desc.Synced  (addr_tags (ndesc_list new_addr)) new_addr) *
     Data.array_rep xp 0 (Data.Synced (tags_nonzero (padded_log old))
                                      (vals_nonzero (padded_log old))) *
     Data.array_rep xp (ndata_log old) (Data.Synced new_tag new_valu) *
@@ -121,7 +169,7 @@ Definition loglen_invalid xp ndesc ndata :=
 
 Definition checksums_match (l : contents) h hm :=
   hash_list_rep (rev (DescDefs.ipack (map ent_addr l))) (fst h) hm /\
-  hash_list_rep (rev (vals_nonzero l)) (snd h) hm.
+  hash_list_rep (rev (blocks_nonzero l)) (snd h) hm.
 
 Definition hide_or (P : Prop) := P.
 Opaque hide_or.

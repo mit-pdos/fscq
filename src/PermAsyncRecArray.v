@@ -29,6 +29,7 @@ Module AsyncRecArray (RA : RASig).
   Module Defs := RADefs RA.
   Import RA Defs.
 
+
   Definition items_valid xp start (items : itemlist) :=
     xparams_ok xp /\  start <= (RALen xp) /\
     Forall Rec.well_formed items /\
@@ -39,25 +40,27 @@ Module AsyncRecArray (RA : RASig).
   | Synced : list tag -> itemlist -> state
   | Unsync : list tag -> itemlist -> state
   .
-  
-  Definition rep_common xp start items tl (vl: list tagged_block) (vsl : list (list tagged_block)) :=
-    items_valid xp start items /\
-    eqlen tl (ipack items) /\
-    vl = combine tl (ipack items) /\ eqlen vl vsl.
 
-  Definition synced_array xp start items tl :=
-    (exists (vl: list tagged_block) vsl, [[ rep_common xp start items tl vl vsl /\
+  (* This rep states that there is a packed and tagged version of the itemlist *)
+  Definition rep_common xp start tags items (vl: list tagged_block)
+             (vsl : list (list tagged_block)) :=
+    items_valid xp start items /\
+    eqlen tags (ipack items) /\
+    vl = combine tags (ipack items) /\ eqlen vl vsl.
+
+  Definition synced_array xp start tags items :=
+    (exists (vl: list tagged_block) vsl, [[ rep_common xp start tags items vl vsl /\
         vsl = nils (length vl) ]] *
     arrayS ((RAStart xp ) + start) (combine vl vsl))%pred.
 
-  Definition unsync_array xp start items tl :=
-    (exists vl vsl, [[ rep_common xp start items tl vl vsl ]] *
+  Definition unsync_array xp start tags items :=
+    (exists vl vsl, [[ rep_common xp start tags items vl vsl ]] *
     arrayS ((RAStart xp ) + start) (combine vl vsl))%pred.
 
   Definition array_rep xp start (st : state) :=
    (match st with
-    | Synced tags items => synced_array xp start items tags
-    | Unsync tags items => unsync_array xp start items tags
+    | Synced tags items => synced_array xp start tags items
+    | Unsync tags items => unsync_array xp start tags items
     end)%pred.
 
   Definition avail_rep xp start nr : rawpred :=
@@ -143,8 +146,9 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
   Lemma synced_array_is : forall xp start items tags,
-    synced_array xp start items tags =p=>
-    arrayS ((RAStart xp) + start) (combine (combine tags (ipack items)) (nils (length (ipack items)))).
+    synced_array xp start tags items =p=>
+  arrayS ((RAStart xp) + start) (combine (combine tags (ipack items))
+                                         (nils (length (ipack items)))).
   Proof.
     unfold synced_array, rep_common; cancel; subst; auto.
     setoid_rewrite combine_length.
@@ -297,7 +301,7 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
   Lemma xform_unsync_array_avail : forall xp st l tl,
-    crash_xform (unsync_array xp st l tl) =p=>
+    crash_xform (unsync_array xp st tl l) =p=>
       avail_rep xp st (divup (length l) items_per_val).
   Proof.
     unfold unsync_array, avail_rep, rep_common; intros.

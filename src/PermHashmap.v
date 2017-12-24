@@ -1,4 +1,4 @@
-Require Import Word.
+Require Import Word Omega.
 Require Import EqdepFacts.
 Require Import Arith.
 Require Import ListUtils.
@@ -6,7 +6,6 @@ Require Import List.
 Require Import PermProg.
 
 Set Implicit Arguments.
-
 
 Definition hash2 sz1 sz2 (a : word sz1) (b : word sz2) :=
   hash_fwd (Word.combine a b).
@@ -17,14 +16,14 @@ Definition hash2 sz1 sz2 (a : word sz1) (b : word sz2) :=
     When the list of values is empty, h must be equal to the default hash
     value.
 *)
-Inductive hash_list_rep : (list valu) -> word hashlen -> hashmap -> Prop :=
+Inductive hash_list_rep : (list tagged_block) -> word hashlen -> hashmap -> Prop :=
   | HL_nil : forall hl hm,
-      hl = hash_fwd default_valu ->
+      hl = default_hash ->
       hash_list_rep nil hl hm
   | HL_cons : forall l hl hl' x hm,
       hash_list_rep l hl hm ->
-      hl' = hash2 x hl ->
-      hashmap_get hm hl' = Some (existT _ _ (Word.combine x hl)) ->
+      hl' = hash2 (encode x) hl ->
+      hashmap_get hm hl' = Some (existT _ _ (Word.combine (encode x) hl)) ->
       hash_list_rep (x :: l) hl' hm.
 
 (** hash_list_prefixes takes in a list of values vl, a list of hashes hl,
@@ -33,7 +32,7 @@ Inductive hash_list_rep : (list valu) -> word hashlen -> hashmap -> Prop :=
     TODO: This could probably be merged into hash_list_rep, but not sure
     how much more work that would be right now.
 *)
-Inductive hash_list_prefixes : list valu -> list (word hashlen) -> hashmap -> Prop :=
+Inductive hash_list_prefixes : list tagged_block -> list (word hashlen) -> hashmap -> Prop :=
   | HLP_default : forall hm,
     hash_list_prefixes nil nil hm
   | HLP_cons : forall v h vl hl hm,
@@ -73,7 +72,7 @@ Ltac contradict_hashmap_get_default H hm :=
   let Hx := fresh in
   contradict H;
   destruct hm; unfold hashmap_get, default_hash;
-  destruct (weq (hash_fwd default_valu) (hash_fwd default_valu));
+  destruct (weq (hash_fwd (encode tagged_block0)) (hash_fwd (encode tagged_block0)));
   intro Hx; try existT_wordsz_neq Hx;
   intuition.
 
@@ -91,7 +90,7 @@ Proof.
 Qed.
 
 Theorem hashmap_get_default : forall hm,
-  hashmap_get hm default_hash = Some (existT _ _ default_valu).
+  hashmap_get hm default_hash = Some (existT _ _ default_encoding).
 Proof.
   unfold hashmap_get.
   destruct hm; destruct (weq default_hash default_hash);
@@ -149,11 +148,10 @@ Qed.
 Theorem hash_list_injective : forall l1 l2 hv hm,
   hash_list_rep l1 hv hm -> hash_list_rep l2 hv hm -> l1 = l2.
 Proof.
-  induction l1;
-    intros;
-    inversion H; inversion H0;
-    unfold hash2 in *; intuition;
-    subst; auto.
+  induction l1; intros;
+  inversion H; inversion H0;
+  unfold hash2 in *; intuition;
+  subst; auto.
 
   contradict_hashmap_get_default H6 hm.
 
@@ -164,7 +162,8 @@ Proof.
   inversion H10.
   existT_wordsz_eq H2.
   intuition.
-  apply IHl1 in H8; congruence.
+  apply encode_inj in H4.
+  subst; apply IHl1 in H8; try congruence.  
 Qed.
 
 Theorem hash_list_injective2 : forall l h1 h2 hm,
@@ -270,10 +269,10 @@ Proof.
   eapply IHhm2; eauto.
 Qed.
 
-(*Lemma hash_list_prefixes_forall : forall i vl hl hm default defaultv,
+Lemma hash_list_prefixes_forall : forall i vl hl hm default defaultv,
   hash_list_prefixes vl hl hm ->
   i < length hl - 1 ->
-  selN hl i default = hash2 (selN vl i defaultv) (selN hl (i + 1) default).
+  selN hl i default = hash2 (encode (selN vl i defaultv)) (selN hl (i + 1) default).
 Proof.
   induction i; intros.
   destruct hl. inversion H0.
@@ -294,7 +293,7 @@ Proof.
   eapply IHi.
   inversion H; subst. eauto.
   simpl in *. omega.
-Qed.*)
+Qed.
 
 
 Theorem hash_list_prefixes_upd : forall vl hl hm h sz (k : word sz),

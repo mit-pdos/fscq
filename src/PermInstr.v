@@ -329,6 +329,40 @@ Proof.
   }
 Qed.
 
+Theorem hash_ok:
+  forall sz (buf : word sz) pr,
+  {!< F,
+  PERM: pr
+  PRE:bm, hm,
+    F
+  POST:bm', hm',
+    RET:h     F * [[ bm' = bm ]] *
+              [[ hash_safe hm h buf ]] *
+              [[ h = hash_fwd buf ]] *
+              [[ hm' = upd_hashmap' hm h buf ]]
+  CRASH:bm'', hm'',
+    false_pred (* Can't crash *)                            
+  >!} Hash buf.
+Proof.
+Admitted.
+
+Theorem hash2_ok:
+  forall sz1 sz2 (buf1 : word sz1) (buf2 : word sz2) pr,
+  {!< F,
+  PERM: pr
+  PRE:bm, hm,
+    F
+  POST:bm', hm',
+    RET:h     F * [[ bm' = bm ]] *
+              [[ hash_safe hm h (Word.combine buf1 buf2) ]] *
+              [[ h = hash_fwd (Word.combine buf1 buf2) ]] *
+              [[ hm' = upd_hashmap' hm h (Word.combine buf1 buf2) ]]
+  CRASH:bm'', hm'',
+    false_pred (* Can't crash *)           
+  >!} Hash2 buf1 buf2.
+Proof.
+Admitted.
+
 Lemma ret_secure:
   forall T pr (v: T),
      {!< F,
@@ -431,64 +465,6 @@ Proof.
   }
 Qed.
 
-
-
-(*
-Lemma exec_trace_irrelevance:
-  forall T (p: prog T) pr tr tr' tr'' d bm r,
-    exec pr tr d bm p r (tr'++tr) ->
-    exec pr tr'' d bm p r (tr'++tr'').
-Proof.
-  induction p; intros;
-  repeat inv_exec_perm; simpl in *; cleanup;
-  try solve [ econstructor; eauto].
-  specialize (trace_app H8); intros; cleanup.
-  constructor; eauto.
-  specialize (trace_app H0); intros; cleanup.
-  specialize (trace_app H1); intros; cleanup.
-  econstructor; eauto.
-  eapply IHp; eauto.
-  rewrite <- app_assoc in *; eapply H; eauto.
-Qed.
-
-Lemma exec_permission_drop:
-  forall T (p: prog T) pr pr' d bm tr r tr',
-    exec pr' tr d bm p r tr' ->
-    permitted pr pr' ->
-    exists tr'', exec pr tr d bm p r tr''.
-Proof.
-  induction p; intros;
-  repeat inv_exec_perm; simpl in *; cleanup;
-  try solve [ eexists; econstructor; eauto ].
-  specialize (trace_app H0); intros; cleanup.
-  specialize (trace_app H2); intros; cleanup.
-  specialize (IHp _ _ _ _ _ _ _ H0 H1); cleanup.
-  specialize (H _ _ _ _ _ _ _ _ H2 H1); cleanup.
-  specialize (trace_app H3); intros; cleanup.
-  specialize (trace_app H); intros; cleanup.
-  eexists; econstructor; eauto.
-  eapply exec_trace_irrelevance; eauto.
-Qed.
-
-
-Lemma exec_trace_match:
-  forall T (p: prog T) pr1 pr2 tr tr1 tr2 d bm r,
-    exec pr2 tr d bm  p r (tr2++tr) ->
-    exec pr1 tr d bm  p r (tr1++tr) ->
-    trace_match pr1 pr2 tr1 tr2.
-Proof.
-  induction p; intros; repeat inv_exec_perm; subst;
-  try solve [ (rewrite H10 in H12
-             || rewrite H7 in H11
-             || rewrite H5 in H8); clear_trace; cleanup; apply trace_match_refl];
-  try solve [ clear_trace; cleanup; apply trace_match_refl].
-  specialize (trace_app H8); intros; cleanup.
-  specialize (trace_app H9); intros; cleanup.
-  simpl; intuition eauto.
-  eapply IHp; eauto.
-  rewrite <- app_assoc; eapply H; eauto.
-Qed.
-*)
 Lemma sync_secure:
   forall pr,
      {!< F,
@@ -658,6 +634,8 @@ Hint Extern 1 (corr2 _ _ (Bind (Read _) _)) => apply read_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Write _ _) _)) => apply write_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Seal _ _) _)) => apply seal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Unseal _) _)) => apply unseal_secure : prog.
+Hint Extern 1 ({{_|_}} Bind (Hash _) _) => apply hash_ok : prog.
+Hint Extern 1 ({{_|_}} Bind (Hash2 _ _) _) => apply hash2_ok : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.
 

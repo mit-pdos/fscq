@@ -18,7 +18,7 @@ Require Export PermCacheSec.
 
 Import ListNotations.
 
-
+(*
 Module DescSig <: RASig.
 
   Definition xparams := log_xparams.
@@ -62,7 +62,7 @@ Module Desc := AsyncRecArray DescSig.
 Module Data := AsyncRecArray DataSig.
 Module DescDefs := Desc.Defs.
 Module DataDefs := Data.Defs.
-
+ *)
 
 Definition header_type := Rec.RecF ([("previous_ndesc", Rec.WordF addrlen);
                                      ("previous_ndata", Rec.WordF addrlen);
@@ -117,7 +117,9 @@ Proof.
   rewrite <- plus_minus_header.
   unfold zext.
   autorewrite with core; auto.
-  simpl; destruct h; tauto.
+  simpl; destruct h; simpl.
+  apply Rec.of_to_id.
+  simpl; tauto.
 Qed.
 
 Arguments val2hdr: simpl never.
@@ -184,7 +186,7 @@ Definition sync_now xp cs :=
      Ret cs.
 
 Definition init xp cs :=
-  h <- Hash default_valu;;
+  h <- Hash default_encoding;;
     hdr <- Seal Public (hdr2val (mk_header((0, 0), (0, 0), (h, h))));;
     cs <- PermCacheDef.write (LAHdr xp) hdr cs;;
     cs <- begin_sync cs;;
@@ -342,13 +344,13 @@ Theorem init_ok :
      POST:bm', hm', RET: cs
         exists d', PermCacheDef.rep cs d' bm'*
          [[ (F * rep xp (Synced ((0, 0), (0, 0),
-                                 (hash_fwd default_valu,
-                                  hash_fwd default_valu))))%pred d' ]]
+                                 (hash_fwd default_encoding,
+                                  hash_fwd default_encoding))))%pred d' ]]
      CRASH:bm'', hm'',
         any
     >} init xp cs.
 Proof.
-  unfold init, rep; intros.
+  unfold init; intros.
   step.
   step.
   safestep.
