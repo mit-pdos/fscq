@@ -29,7 +29,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermProgAuto PermSec \
 	      PermProgMonad PermHoare PermSepAuto \
 	      PermInstr PermProgLoop \
-              PermCacheDef PermCacheLemmas PermCacheSec \
+              PermCacheDef PermCacheLemmas PermCacheSec PermCacheRangeSec \
 	      PermDiskLogHdr
 
 VS         := $(MODULES:%=%.v)
@@ -126,7 +126,7 @@ $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
 $(VS_VIO): coqbuild/Makefile.coq
-	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick )
+	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick ) #quick was here
 	@touch coqbuild/*.vio
 
 checkproofs: coqbuild/Makefile.coq

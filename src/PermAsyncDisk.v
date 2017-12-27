@@ -109,7 +109,7 @@ Parameter encoding_length: nat.
 Parameter encode: tagged_block -> word encoding_length.
 Parameter decode: word encoding_length -> tagged_block.
 Axiom encode_inj: forall b1 b2, encode b1 = encode b2 <-> b1 = b2.
-Axiom decode_inj: forall w1 w2, decode w1 = decode w2 <-> w1 = w2.
+(* Axiom decode_inj: forall w1 w2, decode w1 = decode w2 <-> w1 = w2. *)
 Axiom encode_decode: forall b, decode (encode b) = b.
 Axiom decode_encode: forall w, encode (decode w) = w.
 

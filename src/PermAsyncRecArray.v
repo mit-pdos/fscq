@@ -15,7 +15,7 @@ Require Import Rounding.
 Require Import List ListUtils.
 Require Import Psatz. 
 Require Import Classes.SetoidTactics.
-Require Export PermCacheSec PermRecArrayUtils.
+Require Export PermCacheRangeSec PermRecArrayUtils.
 
 Import ListNotations.
 
@@ -183,7 +183,7 @@ Module AsyncRecArray (RA : RASig).
     cancel.
     subst; repeat setoid_rewrite ipack_nil; simpl; auto;
     unfold items_valid in *; intuition.
-    rewrite nils_length; auto.
+    unfold nils; rewrite repeat_length; auto.
   Qed.
 
   Theorem sync_invariant_array_rep : forall xp a st,
@@ -203,7 +203,7 @@ Module AsyncRecArray (RA : RASig).
   Hint Rewrite list_chunk_nil ipack_nil.
   Hint Rewrite Nat.add_0_r Nat.add_0_l.
   Hint Rewrite synced_array_is.
-  Hint Rewrite combine_length nils_length : lists.
+  Hint Rewrite combine_length : lists.
   Hint Rewrite ipack_length divup_mul.
 
   Ltac rewrite_ignore H :=
@@ -295,7 +295,7 @@ Module AsyncRecArray (RA : RASig).
 
     symmetry; apply combine_map_fst_snd.
 
-    unfold eqlen; rewrite nils_length; auto.
+    unfold eqlen; unfold nils; rewrite repeat_length; auto.
     rewrite fold_left_iunpack_length.
     rewrite map_length. setoid_rewrite Hlength; auto.
   Qed.
@@ -348,7 +348,7 @@ Module AsyncRecArray (RA : RASig).
     rewrite ipack_length; auto.
     rewrite H; auto.
     rewrite H5; auto.
-    rewrite nils_length at 2; auto.
+    unfold nils at 2; rewrite repeat_length; auto.
     rewrite <- ipack_length.
     setoid_rewrite combine_length.
     rewrite Nat.min_l; simplen.
@@ -410,7 +410,6 @@ Module AsyncRecArray (RA : RASig).
 
   Local Hint Resolve items_per_val_not_0 items_per_val_gt_0 items_per_val_gt_0'.
 
-  (*
   Lemma array_rep_synced_app : forall xp start na ta tb a b,
     length a = na * items_per_val ->
     array_rep xp start (Synced ta a) *
@@ -418,17 +417,24 @@ Module AsyncRecArray (RA : RASig).
     array_rep xp start (Synced (ta ++ tb) (a ++ b)).
   Proof.
     simpl; intros;
-    unfold synced_array, rep_common, nils; norm; subst; intuition.
+    unfold synced_array, rep_common, nils, eqlen; norm; subst; intuition.
     cancel.
     erewrite ipack_app by eauto.
     setoid_rewrite combine_length.
     repeat rewrite min_r.
     rewrite app_length, Nat.add_assoc.
     rewrite <- repeat_app.
-    rewrite combine_app.
-    rewrite arrayN_app. combine_length_eq by auto.
-    repeat rewrite ipack_length.
+     unfold eqlen in H1.
+    rewrite combine_app; auto.
+    rewrite combine_app, arrayN_app. repeat setoid_rewrite combine_length_eq; auto.
+    rewrite H1; repeat rewrite ipack_length. 
     cancel.
+    rewrite repeat_length; auto.
+    setoid_rewrite combine_length_eq; try rewrite repeat_length; auto.
+    unfold eqlen in *.
+    repeat rewrite app_length; omega.
+    simplen.
+    simplen.
 
     unfold items_valid, roundup in *; intuition.
     apply well_formed_app_iff; auto.
@@ -442,58 +448,89 @@ Module AsyncRecArray (RA : RASig).
 
     erewrite ipack_app; eauto.
     simplen.
+    simplen.
   Qed.
 
-  Lemma array_rep_synced_app_rev : forall xp start na a b,
+  Lemma array_rep_synced_app_rev :
+    forall xp start na ta tb a b,
     length a = na * items_per_val ->
-    array_rep xp start (Synced (a ++ b)) =p=>
-    array_rep xp start (Synced a) *
-    array_rep xp (start + (divup (length a) items_per_val)) (Synced b).
+    length ta = length (ipack a) ->                                 
+    array_rep xp start (Synced (ta ++ tb) (a ++ b)) =p=>
+    array_rep xp start (Synced ta a) *
+    array_rep xp (start + (divup (length a) items_per_val)) (Synced tb b).
   Proof.
     simpl; intros;
     unfold synced_array, rep_common, nils, eqlen; norm; subst; intuition;
     try rewrite repeat_length; auto.
     cancel.
     erewrite ipack_app by eauto.
-    rewrite app_length, Nat.add_assoc.
+    (* rewrite app_length, Nat.add_assoc. *)
+    repeat rewrite combine_app, app_length; auto.
     rewrite <- repeat_app.
-    rewrite combine_app, arrayN_app, combine_length_eq by (rewrite repeat_length; auto).
-    repeat rewrite ipack_length.
+    rewrite combine_app, arrayN_app. repeat setoid_rewrite combine_length_eq; auto.
+    rewrite H0; repeat rewrite ipack_length; rewrite Nat.add_assoc.
     cancel.
-    apply (@items_valid_app xp start a b H1).
+    simplen.
+    erewrite ipack_app in H1; eauto; repeat rewrite app_length in *.
+    omega.
+    erewrite ipack_app in H1; eauto; repeat rewrite app_length in *.
+    rewrite H0 in H1. apply plus_reg_l in H1; auto.
+    simplen.    
+    
+    apply (@items_valid_app xp start a b H2).
     rewrite H, divup_mul by auto.
     eapply items_valid_app3; eauto.
+    erewrite ipack_app in H1; eauto; repeat rewrite app_length in *.
+    rewrite H0 in H1. apply plus_reg_l in H1; auto.
   Qed.
 
   (** read count blocks starting from the beginning *)
   Definition read_all xp count cs :=
-    let^ (cs, r) <- read_range (RAStart xp) count iunpack nil cs;;
+    let^ (cs, r) <- read_range (RAStart xp) count cs;;
     Ret ^(cs, r).
 
-  Theorem read_all_ok : forall xp count cs,
-    {< F d items,
-    PRE:hm         BUFCACHE.rep cs d *
-                   [[ length items = (count * items_per_val)%nat /\
-                      Forall Rec.well_formed items /\ xparams_ok xp ]] *
-                   [[ (F * array_rep xp 0 (Synced items))%pred d ]]
-    POST:hm' RET:^(cs, r)
-                   BUFCACHE.rep cs d *
-                   [[ (F * array_rep xp 0 (Synced items))%pred d ]] *
-                   [[ r = items ]]
-    CRASH:hm'  exists cs', BUFCACHE.rep cs' d
+    Theorem read_all_ok :
+    forall xp count cs pr,
+    {< F d tags items,
+    PERM: pr
+    PRE:bm, hm,
+      PermCacheDef.rep cs d bm *
+      [[ length items = (count * items_per_val)%nat /\
+         length tags = count /\
+         Forall Rec.well_formed items /\ xparams_ok xp ]] *
+      [[ (F * array_rep xp 0 (Synced tags items))%pred d ]]
+    POST:bm', hm',
+       RET: ^(cs, r)
+          PermCacheDef.rep cs d bm' *
+          [[ (F * array_rep xp 0 (Synced tags items))%pred d ]] *
+          [[ extract_blocks bm' r = combine tags (ipack items) ]]
+    CRASH:bm'', hm'',
+      exists cs', PermCacheDef.rep cs' d bm''
     >} read_all xp count cs.
   Proof.
     unfold read_all.
     step.
     rewrite synced_array_is, Nat.add_0_r; cancel.
     simplen.
+    repeat setoid_rewrite combine_length_eq; auto.
+    simplen.
+    unfold nils; simplen.
+    simplen.
 
     step; subst.
-    rewrite map_fst_combine by simplen.
-    rewrite firstn_oob by simplen.
-    eapply iunpack_ipack; eauto.
+    step.
+    rewrite H13.
+    rewrite map_fst_combine.
+    rewrite firstn_oob; auto.
+    repeat setoid_rewrite combine_length_eq; auto.
+    simplen.
+    unfold nils; simplen.
+    eexists; repeat (eapply hashmap_subset_trans; eauto).
   Qed.
 
+Hint Extern 1 ({{_|_}} Bind (read_all _ _ _) _) => apply read_all_ok : prog.
+
+(*
   Lemma vsupd_range_unsync_array : forall xp start items old_vs,
     items_valid xp start items ->
     eqlen old_vs (ipack items) ->
@@ -658,7 +695,7 @@ Module AsyncRecArray (RA : RASig).
     apply vssync_range_sync_array; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} Bind (read_all _ _ _) _) => apply read_all_ok : prog.
+  
   Hint Extern 1 ({{_}} Bind (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
   Hint Extern 1 ({{_}} Bind (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
 *)

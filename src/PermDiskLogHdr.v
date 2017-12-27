@@ -14,55 +14,9 @@ Require Import Rounding.
 Require Import List ListUtils.
 Require Import Psatz.
 Require Import PermAsyncRecArray.
-Require Export PermCacheSec.
+Require Export PermCacheRangeSec.
 
 Import ListNotations.
-
-(*
-Module DescSig <: RASig.
-
-  Definition xparams := log_xparams.
-  Definition RAStart := LogDescriptor.
-  Definition RALen := LogDescLen.
-  Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
-
-  Definition itemtype := Rec.WordF addrlen.
-  Definition items_per_val := valulen / addrlen.
-
-  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-  Proof.
-    unfold items_per_val; simpl.
-    rewrite valulen_is.
-    cbv; auto.
-  Qed.
-
-End DescSig.
-
-
-Module DataSig <: RASig.
-
-  Definition xparams := log_xparams.
-  Definition RAStart := LogData.
-  Definition RALen := LogLen.
-  Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
-
-  Definition itemtype := Rec.WordF valulen.
-  Definition items_per_val := 1.
-
-  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-  Proof.
-    unfold items_per_val; simpl.
-    rewrite valulen_is.
-    cbv; auto.
-  Qed.
-
-End DataSig.
-
-Module Desc := AsyncRecArray DescSig.
-Module Data := AsyncRecArray DataSig.
-Module DescDefs := Desc.Defs.
-Module DataDefs := Data.Defs.
- *)
 
 Definition header_type := Rec.RecF ([("previous_ndesc", Rec.WordF addrlen);
                                      ("previous_ndata", Rec.WordF addrlen);
@@ -158,12 +112,10 @@ Definition rep xp state : @rawpred :=
 
 
 Definition read xp cs := Eval compute_rec in
-      csh <- read (LAHdr xp) cs;;
-      let cs := fst csh in
-      let h := snd csh in    
+      let^ (cs, h) <- read (LAHdr xp) cs;;   
       v <- Unseal h;;
       let header := (val2hdr v) in
-      Ret (cs, ((# (header :-> "previous_ndesc"),
+      Ret ^(cs, ((# (header :-> "previous_ndesc"),
                  # (header :-> "previous_ndata")),
                 (# (header :-> "ndesc"),
                  # (header :-> "ndata")),
@@ -269,7 +221,6 @@ Theorem read_ok :
 Proof.
   unfold read.
   hoare.
-  apply upd_eq; auto.
   subst; rewrite val2hdr2val; simpl.
   unfold hdr_goodSize in *; intuition.
   repeat rewrite wordToNat_natToWord_idempotent'; auto.

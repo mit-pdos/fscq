@@ -56,6 +56,7 @@ Definition addr_clean (cm : cachemap) a :=
 Definition addrs_clean cm al :=
   Forall (addr_clean cm) al.
 
+
 Definition cachepred (cache : cachemap) (bm: block_mem) (a : addr) (vs: valuset): @Pred.pred _ addr_eq_dec valuset :=
   (match find a cache with
    | None =>
@@ -129,12 +130,12 @@ Definition maybe_evict (cs : cachestate) : prog cachestate :=
     end.
 
 Definition read a cs :=
-    cs <- maybe_evict cs;;
     match Map.find a (CSMap cs) with
-    | Some (h, dirty) => Ret (cs, h)
+    | Some (h, _) => Ret ^(cs, h)
     | None =>
+      cs <- maybe_evict cs;;
       h <- Read a;;
-      Ret (mk_cs (Map.add a (h, false) (CSMap cs))
+      Ret ^(mk_cs (Map.add a (h, false) (CSMap cs))
                  (CSMaxCount cs) (CSCount cs + 1) (eviction_update (CSEvict cs) a), h)
     end.
 
@@ -162,7 +163,7 @@ Definition end_sync (cs : cachestate) :=
 
 Definition init (cachesize : nat) :=
   Sync:;
-  Ret (cache0 cachesize).
+  Ret ^(cache0 cachesize).
 
 Definition read_array a i cs :=
   r <- read (a + i) cs;;
@@ -176,29 +177,22 @@ Definition sync_array a i cs :=
   cs <- sync (a + i) cs;;
      Ret cs.
 
-Fixpoint extract_blocks (bm: block_mem) hl :=
-  match hl with
-  | nil => nil
-  | h::t => match bm h with
-           | None => extract_blocks bm t
-           | Some tb => tb::extract_blocks bm t
-           end
-  end.
-
-  Definition read_range a nr a0 cs :=
+Definition read_range a nr cs :=
     let^ (cs, r) <- ForN i < nr
     Blockmem bm
     Ghost [ F crash d vs ]
-    Loopvar [ cs pf ]
+    Loopvar [ cs (pf: list handle) ]
     Invariant
-    rep cs d bm * [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
-    [[ extract_blocks bm pf = firstn i (List.map fst vs) ]]
+    rep cs d bm *
+    [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
+    [[ length pf = i ]] *
+    [[ extract_blocks bm (rev pf) = firstn i (List.map fst vs) ]]
     OnCrash crash
     Begin
       let^ (cs, v) <- read_array a i cs;;
       Ret ^(cs, v::pf)
-    Rof ^(cs, a0);;
-    Ret ^(cs, r).
+    Rof ^(cs, nil);;
+    Ret ^(cs, rev(r)).
 
 
          
@@ -209,7 +203,6 @@ Definition write_range a l cs :=
     Loopvar [ cs x ]
     Invariant
     exists d', rep cs d' bm *
-      [[ length vls = length l ]] *
       [[ vls = extract_blocks bm l ]] *
       [[ (F * arrayN ptsto_subset a (vsupd_range vs (firstn i vls)))%pred d' ]]
     OnCrash crash
@@ -219,7 +212,7 @@ Definition write_range a l cs :=
     Rof ^(cs, tt);;
   Ret cs.
 
-  Definition sync_range a nr cs :=
+Definition sync_range a nr cs :=
     let^ (cs, tt) <- ForN i < nr
     Blockmem bm                    
     Ghost [ F crash vs d0 ]

@@ -130,7 +130,7 @@ Notation "'let^' ( a ) <- p1 ;; p2" :=
 Notation "'let^' ( a , .. , b ) <- p1 ;; p2" :=
   (Bind p1
     (pair_args_helper (fun a => ..
-      (fun b => p2)
+      (pair_args_helper (fun b (_:unit) => p2))
     ..))
   )
     (at level 60, right associativity, a closed binder, b closed binder,

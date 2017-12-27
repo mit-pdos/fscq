@@ -35,7 +35,7 @@ Notation "'RET' : r post" :=
 Notation "'RET' : ^( ra , .. , rb ) post" :=
   (fun F =>
     (pair_args_helper (fun ra => ..
-      (fun rb => (F * post)%pred)
+      (pair_args_helper (fun rb (_:unit) => (F * post)%pred))
     ..))
   )%pred
   (at level 0, post at level 90, ra closed binder, rb closed binder, only parsing).

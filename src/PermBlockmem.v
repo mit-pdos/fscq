@@ -1,4 +1,4 @@
-Require Import Mem.
+Require Import Mem List ListUtils Omega.
 Require Export PermProg.
 
 Definition block_mem_subset (bm' bm: block_mem) :=
@@ -95,3 +95,80 @@ Hint Resolve block_mem_subset_refl block_mem_subset_upd_none
      block_mem_subset_upd_nop block_mem_subset_upd_irrel
      block_mem_subset_extract_none block_mem_subset_extract_some
      block_mem_subset_trans.
+
+Fixpoint extract_blocks (bm: block_mem) hl :=
+  match hl with
+  | nil => nil
+  | h::t => match bm h with
+           | None => extract_blocks bm t
+           | Some tb => tb::extract_blocks bm t
+           end
+  end.
+
+
+Lemma extract_blocks_app:
+  forall l1 l2 bm,
+    extract_blocks bm (l1 ++ l2) = extract_blocks bm l1 ++ extract_blocks bm l2.
+Proof.
+  induction l1; intros; simpl; auto.
+  destruct (bm a).
+  rewrite IHl1, app_comm_cons; auto.
+  auto.
+Qed.
+
+Lemma extract_blocks_length_le:
+  forall bm l,
+    length (extract_blocks bm l) <= length l.
+Proof.
+  induction l; simpl in *; intros; eauto.
+  destruct (bm a); simpl; omega.
+Qed.
+
+Lemma extract_blocks_length_lt:
+  forall l h bm,
+    List.In h l ->
+    bm h = None ->
+    length (extract_blocks bm l) < length l.
+Proof.
+  induction l; simpl in *; intros; intuition.
+  subst; rewrite H0.
+  pose proof (extract_blocks_length_le bm l); omega.
+  specialize (IHl _ _ H1 H0).
+  destruct (bm a); simpl; omega.
+Qed.
+
+Lemma extract_blocks_rev_length_eq:
+  forall bm l,
+    length (extract_blocks bm l) =
+    length (extract_blocks bm (rev l)).
+Proof.
+  induction l; simpl; intuition.
+  rewrite extract_blocks_app; simpl.
+  destruct (bm a); simpl;
+  rewrite IHl, app_length; simpl; omega.
+Qed.
+
+Lemma extract_blocks_upd_not_in:
+  forall l h tb bm,
+    ~List.In h l ->
+    extract_blocks (upd bm h tb) l = extract_blocks bm l.
+Proof.
+  induction l; simpl in *; intros; intuition.
+  rewrite upd_ne; auto.
+  rewrite IHl; eauto.
+Qed.
+
+Lemma extract_blocks_selN:
+  forall bm l a def deftb,
+    length l = length (extract_blocks bm l) ->
+    a < length l ->
+    bm (selN l a def) = Some (selN (extract_blocks bm l) a deftb).
+Proof.
+  induction l; simpl; intros; try omega.
+  destruct a0;
+  destruct (bm a); simpl; auto.
+  pose proof (extract_blocks_length_le bm l); omega.
+  simpl in *.
+  apply IHl; omega.
+  pose proof (extract_blocks_length_le bm l); omega.
+Qed.

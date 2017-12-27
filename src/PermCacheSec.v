@@ -11,7 +11,7 @@ Require Import OrderedTypeEx.
 Require Import Arith.
 Require Import MapUtils.
 Require Import MemPred.
-Require Import ListPred.
+Require Import ListPred. 
 Require Import FunctionalExtensionality.
 Require Import ADestructPair DestructVarname.
 Require Export PermCacheLemmas.
@@ -83,7 +83,9 @@ Theorem writeback_ok :
        rep cs d bm
      POST: bm', hm',
        RET:cs'
-         rep cs' d bm' * [[ bm' = bm ]] *
+          rep cs' d bm' * [[ bm' = bm ]] *
+          [[ forall a, find a (CSMap cs) = None ->
+              find a (CSMap cs') = None ]] * 
           [[ addr_clean (CSMap cs') a ]] * 
           [[ In a (CSMap cs) -> In a (CSMap cs')]]
      CRASH:bm'', hm'',
@@ -132,6 +134,11 @@ Proof.
       repeat rewrite map_add_dup_cardinal; auto.      
       destruct (Nat.eq_dec a a0); subst; try congruence.
       apply add_neq_in_iff in H5; eauto.
+        
+      destruct (addr_eq_dec a a0); subst.
+      congruence.
+      rewrite add_neq_o; auto.
+      
       unfold addr_clean.
       right; eexists; apply add_eq_o; eauto.
       apply add_in_iff; intuition.
@@ -165,6 +172,8 @@ Theorem evict_ok :
     POST: bm', hm',
       RET:cs'
         rep cs' d bm' * [[ bm' = bm ]] *
+        [[ forall a, find a (CSMap cs) = None ->
+              find a (CSMap cs') = None ]] *     
         [[ ~ In a (CSMap cs') ]] *
         [[ In a (CSMap cs) -> cardinal (CSMap cs') < CSMaxCount cs' ]]
     CRASH: bm'', hm'',
@@ -182,6 +191,10 @@ Theorem evict_ok :
       apply size_valid_remove; auto.
       eapply in_find_iff; intuition; congruence.
       apply addr_valid_remove; auto.
+
+      rewrite remove_o.
+      destruct (eq_dec a a0); subst; eauto.
+
       eapply remove_1; eauto.
       eapply size_valid_remove_cardinal_ok; eauto.
       eexists; eapply hashmap_subset_trans; eauto.
@@ -194,6 +207,11 @@ Theorem evict_ok :
       unfold not; intros.
       eapply in_find_iff in D; congruence.
       apply addr_valid_remove; auto.
+      
+      
+      rewrite remove_o.
+      destruct (eq_dec a a0); subst; eauto.
+      
       eapply remove_1; eauto.
       eapply size_valid_remove_cardinal_ok; eauto.
       eexists; eapply hashmap_subset_trans; eauto.
@@ -212,6 +230,8 @@ Theorem maybe_evict_ok :
       rep cs d bm
     POST: bm', hm', RET:cs'
       rep cs' d bm'* [[ bm' = bm ]] *
+      [[ forall a, find a (CSMap cs) = None ->
+              find a (CSMap cs') = None ]] *                 
       [[ cardinal (CSMap cs') < CSMaxCount cs' ]]
     CRASH:bm'', hm'',
         exists cs', rep cs' d bm''
@@ -239,47 +259,59 @@ Theorem read_ok :
     PRE: bm, hm,
       rep cs d bm *
       [[ (sep_star (AEQ:= addr_eq_dec) F (a |+> tbs))%pred d ]]
-    POST: bm', hm', (RET:^(cs', r)
-      rep cs' d bm' * [[ bm' = upd bm r (fst tbs) ]])%pred
+    POST: bm', hm',
+      RET:^(cs', r)
+        rep cs' d bm' *
+        [[ match find a (CSMap cs) with
+           | None => bm' = upd bm r (fst tbs) /\ bm r = None
+           | Some _ => bm' = bm
+           end ]] *
+        [[ bm' r = Some (fst tbs) ]]
     CRASH:bm'', hm'',
       exists cs', rep cs' d bm''
   >} read a cs.
 Proof.
   unfold read; intros.
-  safestep; eauto.
-  eapply ptsto_subset_valid' in H4 as Hx; cleanup; simpl in *.
   repeat destruct_branch.
-  step. step_r.
-  unfold rep in *; erewrite mem_pred_extract with (a := a) in H5; eauto; 
-  unfold cachepred at 2 in H5; rewrite Heqo in H5.
-  destruct p_2; destruct_lift H5;
-  symmetry; eapply upd_nop; eauto.
-  eexists; eapply hashmap_subset_trans; eauto.
-
-  safestep.
-  unfold rep in *; erewrite mem_pred_extract with (a := a); eauto; 
-  unfold cachepred at 2; rewrite Heqo.
-  eassign (t0, x).
-  eassign (F_ * [[ size_valid r_ ]] *
-                   [[ addr_valid d (CSMap r_) ]] *
-                   mem_pred (HighAEQ:=addr_eq_dec)
-                            (cachepred (CSMap r_) bm) (mem_except d a))%pred.
-  cancel.
-  eauto.
-  unfold rep in *; hoare.
-  
-  rewrite sep_star_comm.
-  eapply mem_pred_cachepred_add_absorb_clean; eauto.
-  apply size_valid_add; auto.
-  eapply addr_valid_add; eauto.
-  eexists; eapply hashmap_subset_trans; eauto.
-  eapply hashmap_subset_trans; eauto.
-  
-  rewrite <- H1; unfold rep; cancel; eauto.
-  (eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto]);
-  unfold cachepred at 3; rewrite Heqo;
-  cancel; eauto.
-  eexists; eapply hashmap_subset_trans; eauto.
+  {
+    safestep; eauto.
+    eapply ptsto_subset_valid' in H5 as Hx; cleanup; simpl in *.
+    step_r.
+    unfold rep in *; erewrite mem_pred_extract with (a := a) in H1; eauto; 
+    unfold cachepred at 2 in H1; rewrite Heqo in H1.
+    destruct p_2; destruct_lift H1; eauto.
+    cancel; eauto.
+  }
+  {
+    safestep.
+    eapply ptsto_subset_valid' in H4 as Hx; cleanup; simpl in *.    
+    unfold rep; safestep_r.
+    specialize (H14 _ Heqo).
+    unfold rep in *; erewrite mem_pred_extract with (a := a); eauto; 
+    unfold cachepred at 2; rewrite H14.
+    eassign (t0, x).
+    eassign (F_ * [[ size_valid r_ ]] *
+             [[ addr_valid d (CSMap r_) ]] *
+             mem_pred (HighAEQ:=addr_eq_dec)
+                      (cachepred (CSMap r_) bm) (mem_except d a))%pred.
+    cancel.
+    eauto.
+    unfold rep in *; hoare.
+    
+    rewrite sep_star_comm.
+    eapply mem_pred_cachepred_add_absorb_clean; eauto.
+    apply size_valid_add; auto.
+    eapply addr_valid_add; eauto.       
+    apply upd_eq; auto.
+    
+    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    
+    rewrite <- H1; unfold rep; cancel; eauto.
+    (eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto]);
+    unfold cachepred at 3; rewrite H14; eauto;
+    cancel; eauto.
+    eexists; eapply hashmap_subset_trans; eauto.
+  }
 Qed.
 
 Hint Extern 1 (corr2 _ _ (Bind (read _ _) _)) => apply read_ok : prog.
@@ -327,7 +359,7 @@ Proof.
       simpl; apply incl_tl; auto.
       
       eapply size_valid_add_in; eauto.
-      eapply addr_valid_upd_add; eauto.
+      eapply addr_valid_upd_add; eauto.        
     }
     eapply ptsto_subset_upd; eauto; apply incl_refl.
     eexists; eapply hashmap_subset_trans; eauto.
@@ -655,7 +687,7 @@ Theorem init_load_ok :
     PRE: bm, hm,
       arrayS 0 disk *
       [[ cachesize <> 0 ]]
-    POST:bm',hm', RET:cs
+    POST:bm',hm', RET:^(cs)
       exists d,
       rep cs d bm' * [[ bm' = bm ]] *
       [[ arrayS 0 disk d ]]
@@ -675,10 +707,12 @@ Theorem init_load_ok :
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     exists m.
+    inversion H13; subst.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm.
     apply sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
+    inversion H13; subst.
     apply sync_xform_arrayS in H0.
     eapply mem_pred_cachepred_refl_arrayS; eauto.
     apply size_valid_cache0; eauto.
@@ -698,7 +732,7 @@ Theorem init_load_ok :
     PRE:bm, hm,
       exists cs, rep cs d bm *
       [[ F d ]] * [[ cachesize <> 0 ]]
-    POST:bm', hm', RET:cs'
+    POST:bm', hm', RET:^(cs')
       exists d', rep cs' d' bm' * [[ bm' = bm ]] *
              [[ (crash_xform F) d' ]]
     CRASH:bm'', hm'',
@@ -800,8 +834,14 @@ Theorem init_load_ok :
         rep cs d bm *
         [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
         [[ i < length vs ]]
-    POST:bm', hm', RET:^(cs, h)
-        rep cs d bm' * [[ bm' = upd bm h (fst (selN vs i ((Public, $0), nil)))]]
+    POST:bm', hm',
+      RET:^(cs', h)
+        rep cs' d bm' *
+        [[ match find (a + i) (CSMap cs) with
+           | None => bm' = upd bm h (fst (selN vs i valuset0)) /\ bm h = None
+           | Some _ => bm' = bm
+           end ]] *
+        [[ bm' h = Some (fst (selN vs i valuset0)) ]]
     CRASH:bm'', hm'',
       exists cs', rep cs' d bm''
     >} read_array a i cs.
@@ -815,161 +855,6 @@ Theorem init_load_ok :
   Qed.
 
 
-
-  Theorem sync_invariant_arrayN_subset : forall vs a,
-    sync_invariant (arrayN ptsto_subset a vs).
-  Proof.
-    induction vs; simpl; auto.
-  Qed.
-
-  Lemma arrayN_subset_oob': forall l a i m,
-    i >= length l
-    -> arrayN ptsto_subset a l m
-    -> m (a + i) = None.
-  Proof.
-    induction l; intros; auto; simpl in *.
-    destruct (eq_nat_dec i 0); auto.
-    subst; simpl in *; omega.
-
-    unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
-    repeat deex.
-    unfold mem_union.
-    unfold ptsto_subset in H2.
-    destruct_lift H2.
-    unfold ptsto in H1; destruct H1.
-    pose proof (IHl (S a0) (i - 1)).
-    replace (S a0 + (i - 1)) with (a0 + i) in H3 by omega.
-    destruct (m1 (a0 + i)) eqn:?.
-    contradict Heqo.
-    rewrite H2; try congruence.
-    omega.
-    apply H3.
-    omega.
-    auto.
-  Qed.
-
-  Lemma arrayN_subset_oob: forall l i m,
-    i >= length l
-    -> arrayN ptsto_subset 0 l m
-    -> m i = None.
-  Proof.
-    intros.
-    replace i with (0 + i) by omega.
-    eapply arrayN_subset_oob'; eauto.
-  Qed.
-
-
-  Lemma crash_xform_arrayN_subset: forall l st,
-    crash_xform (arrayN ptsto_subset st l) =p=>
-      exists l', [[ possible_crash_list l l' ]] *
-      arrayN ptsto_subset st (synced_list l').
-  Proof.
-    unfold possible_crash_list.
-    induction l; simpl; intros.
-    cancel.
-    instantiate (1 := nil).
-    simpl; auto. auto.
-
-    xform.
-    rewrite IHl.
-    rewrite crash_xform_ptsto_subset; unfold ptsto_subset, synced_list.
-    cancel; [ instantiate (1 := v' :: l') | .. ]; simpl; auto; try cancel;
-    destruct i; simpl; auto;
-    destruct (H4 i); try omega; simpl; auto.
-  Qed.
-
-  Lemma crash_xform_arrayN_subset_r: forall l l' st,
-    possible_crash_list l' l ->
-    arrayN ptsto_subset st (synced_list l) =p=>
-     crash_xform (arrayN ptsto_subset st l').
-  Proof.
-    unfold possible_crash_list.
-    induction l; simpl; intros; auto.
-    - intuition; destruct l'; simpl in *; try congruence.
-      apply crash_invariant_emp_r.
-    - intuition; destruct l'; simpl in *; try congruence.
-      pose proof (H1 0) as H1'. simpl in H1'.
-      rewrite IHl.
-      rewrite crash_xform_sep_star_dist.
-      rewrite <- crash_xform_ptsto_subset_r with (v := a) by (apply H1'; omega).
-      rewrite ptsto_subset_pimpl_ptsto.
-      apply pimpl_refl.
-      intuition.
-      specialize (H1 (S i)). simpl in H1. apply H1. omega.
-  Qed.
-
-  Hint Resolve incl_refl.
-
-  Lemma crash_xform_synced_arrayN_subset: forall l st,
-    Forall (fun x => snd x = nil) l ->
-    crash_xform (arrayN ptsto_subset st l) =p=> arrayN ptsto_subset st l.
-  Proof.
-    induction l; simpl; auto; intros.
-    xform.
-    rewrite IHl.
-    cancel; subst.
-    rewrite crash_xform_ptsto_subset; unfold ptsto_subset.
-    cancel.
-    inversion H; simpl in *; subst; auto.
-    inversion H; simpl in *; subst.
-    inversion H0.
-    eapply Forall_cons2; eauto.
-  Qed.
-
-  Lemma crash_xform_arrayN_subset_combine_nils: forall (l : list tagged_block) st,
-    crash_xform (arrayN ptsto_subset st (List.combine l (repeat nil (length l)))) =p=>
-    arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
-  Proof.
-    intros.
-    apply crash_xform_synced_arrayN_subset.
-    rewrite Forall_forall; intros.
-    induction l; simpl in *.
-    inversion H.
-    inversion H; subst; simpl; auto.
-  Qed.
-
-  Lemma crash_xform_arrayN_subset_synced: forall (l : list tagged_block) st,
-    crash_xform (arrayN ptsto_subset st (synced_list l)) =p=>
-    arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
-  Proof.
-    intros.
-    apply crash_xform_synced_arrayN_subset.
-    rewrite Forall_forall; intros.
-    induction l; simpl in *.
-    inversion H.
-    inversion H; subst; simpl; auto.
-  Qed.
-
-  Lemma write_array_xcrash_ok : forall cs d bm F a i v vs,
-    (F * arrayN ptsto_subset a vs)%pred d ->
-    i < length vs ->
-    crash_xform (rep cs d bm) =p=>
-    crash_xform (exists cs' d', rep cs' d' bm *
-      [[ (F * arrayN ptsto_subset a (vsupd vs i v))%pred d' ]]).
-  Proof.
-    intros.
-    rewrite crash_xform_rep.
-    unfold rep at 1; xform_norm.
-
-    edestruct arrayN_selN_subset with (a := a + i); eauto; try omega; intuition.
-    replace (a + i - a) with i in * by omega.
-    edestruct possible_crash_sel_exis; eauto; intuition.
-    
-    xcrash.
-    2: apply arrayN_subset_memupd; eauto.
-    rewrite <- crash_xform_rep_r; eauto.
-    unfold rep; cancel; eauto.    
-    eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
-    apply incl_tl.
-    apply incl_cons2; auto.
-
-     2: apply arrayN_subset_memupd; eauto.
-    rewrite <- crash_xform_rep_r; eauto.
-    unfold rep; cancel; eauto.    
-    eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
-    apply incl_tl.
-    apply incl_cons2; auto.    
-  Qed.
 
   Theorem write_array_ok :
     forall a i h cs pr,
@@ -1047,3 +932,4 @@ Theorem init_load_ok :
   Hint Extern 1 ({{_ | _}} Bind (read_array _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_ | _}} Bind (write_array _ _ _ _) _) => apply write_array_ok : prog.
   Hint Extern 1 ({{_ | _}} Bind (sync_array _ _ _) _) => apply sync_array_ok : prog.
+
