@@ -35,7 +35,8 @@ Set Implicit Arguments.
    POST:bm', hm',
       RET:^(cs, r)
        rep cs d bm' *
-      [[ extract_blocks bm' r = firstn nr (List.map fst vs)]]
+      [[ extract_blocks bm' r = firstn nr (List.map fst vs)]] *
+      [[ length r = nr ]]
     CRASH:bm'', hm'',
       exists cs', rep cs' d bm''
     >} read_range a nr cs.
@@ -67,7 +68,6 @@ Set Implicit Arguments.
 
     rewrite extract_blocks_upd_not_in; eauto.
     rewrite H13; auto.
-    Search List.In rev.
     unfold not; intros Hx;
     apply in_rev in Hx; auto.
     eapply le_trans; [| eauto]; omega.
@@ -81,12 +81,14 @@ Set Implicit Arguments.
 
     step.
     step.
+    apply rev_length.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
     rewrite <- H1; cancel.
     eauto.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
 
-    Unshelve. all: eauto.
+    Unshelve.
+    all: eauto.
     exact tt.
     unfold EqDec; apply handle_eq_dec.
     exact tagged_block0.

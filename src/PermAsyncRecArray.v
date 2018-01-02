@@ -1,12 +1,6 @@
 Require Import Arith.
 Require Import Bool.
 Require Import Pred.
-(*
-Require Import PermProg.
-Require Import PermHoare.
-Require Import PermSepAuto.
-Require Import PermInstr.
-*)
 Require Import Omega.
 Require Import Word.
 Require Import Rec.
@@ -503,7 +497,8 @@ Module AsyncRecArray (RA : RASig).
        RET: ^(cs, r)
           PermCacheDef.rep cs d bm' *
           [[ (F * array_rep xp 0 (Synced tags items))%pred d ]] *
-          [[ extract_blocks bm' r = combine tags (ipack items) ]]
+          [[ extract_blocks bm' r = combine tags (ipack items) ]] *
+          [[ length r = length (combine tags (ipack items)) ]]
     CRASH:bm'', hm'',
       exists cs', PermCacheDef.rep cs' d bm''
     >} read_all xp count cs.
@@ -511,20 +506,21 @@ Module AsyncRecArray (RA : RASig).
     unfold read_all.
     step.
     rewrite synced_array_is, Nat.add_0_r; cancel.
-    simplen.
+    assert (A: length tags = length (ipack items)).
+    rewrite ipack_length, H0, divup_mul; auto.
     repeat setoid_rewrite combine_length_eq; auto.
-    simplen.
-    unfold nils; simplen.
-    simplen.
+    rewrite nils_length; auto.
 
+    assert (A: length tags = length (ipack items)).
+    rewrite ipack_length, H0, divup_mul; auto.
     step; subst.
     step.
-    rewrite H13.
+    rewrite H14.
     rewrite map_fst_combine.
     rewrite firstn_oob; auto.
     repeat setoid_rewrite combine_length_eq; auto.
-    simplen.
-    unfold nils; simplen.
+    rewrite nils_length; setoid_rewrite combine_length_eq; auto.
+    rewrite H13; setoid_rewrite combine_length_eq; auto.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
   Qed.
 

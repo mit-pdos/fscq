@@ -533,7 +533,7 @@ Module RADefs (RA : RASig).
   Qed.
 
   Lemma nils_length : forall T n,
-    length (nils T n) = n.
+    length (@nils T n) = n.
   Proof.
     unfold nils; intros.
     apply repeat_length.

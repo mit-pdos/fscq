@@ -172,3 +172,44 @@ Proof.
   apply IHl; omega.
   pose proof (extract_blocks_length_le bm l); omega.
 Qed.
+
+
+Lemma extract_blocks_subset:
+  forall bm bm' hl,
+    length (extract_blocks bm hl) = length hl ->
+    bm c= bm' ->
+    extract_blocks bm hl = extract_blocks bm' hl.
+Proof.
+  unfold block_mem_subset; induction hl; intros; simpl in *; auto.
+  destruct (bm a) eqn:D;
+  specialize (H0 a) as Hx; destruct Hx.
+  erewrite H2; eauto.
+  rewrite IHhl; eauto.
+  pose proof (extract_blocks_length_le bm hl).
+  omega.
+Qed.
+
+Lemma extract_blocks_selN_inside:
+  forall bm l a def deftb,
+    length l = length (extract_blocks bm l) ->
+    a < length l ->
+    selN (extract_blocks bm l) a deftb::nil = extract_blocks bm (selN l a def :: nil).
+Proof.
+  induction l; simpl; intros; try omega.
+  destruct a0; destruct (bm a); simpl in *; auto.
+  pose proof (extract_blocks_length_le bm l); omega.
+  erewrite IHl; try omega; auto.
+  pose proof (extract_blocks_length_le bm l); omega.
+Qed.
+
+Lemma extract_blocks_firstn_length:
+  forall bm l n,
+    length l = length (extract_blocks bm l) ->
+    length (firstn n l) = length (extract_blocks bm (firstn n l)).
+Proof.
+  induction l; simpl; intros; try omega.
+  rewrite firstn_nil; auto.
+  destruct n; simpl; auto.
+  destruct (bm a); simpl in *; auto.
+  pose proof (extract_blocks_length_le bm l); omega.
+Qed.
