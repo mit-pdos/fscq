@@ -242,8 +242,6 @@ Section ConcurrentFS.
     unfold reportBailout; intros.
     destruct r; try solve [ step; finish ].
     destruct f; try solve [ step; finish ].
-    unfold cprog_spec; intros.
-    eapply cprog_ok_weaken; [ apply Debug_ok | ]; finish.
   Qed.
 
   Hint Extern 1 {{ reportBailout _; _ }} => apply reportBailout_ok : prog.
@@ -1131,8 +1129,12 @@ Section ConcurrentFS.
     step; finish.
   Qed.
 
+  Definition proj_comp G T {p: LocalLock -> Cache -> cprog T}
+             (cp: forall ls c, Compiled G (p ls c)) :
+    LocalLock -> Cache -> cprog T := fun ls c => compiled_prog (cp ls c).
+
   Definition read_fblock inum off :=
-    retry_readonly_syscall (fun mscs => read_fblock G (fsxp P) inum off mscs).
+    retry_readonly_syscall (fun mscs => proj_comp (CompiledReadBlock G (fsxp P) inum off mscs)).
 
   Theorem read_fblock_ok : forall inum off tid,
       cprog_spec G tid
