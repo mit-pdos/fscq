@@ -45,6 +45,8 @@ Executing debug instructions (which writes to stdout) is extremely slow and skew
 # Mysteries
 
 Why is CFSCQ faster than FSCQ for statfs and stat?
+- statfs is mostly measuring Haskell code to get `fsxp` and `mscs`, so its understandable
+- `stat` is odd, but it's also really fast and probably unrelated to the overall performance story
 
 Why does traversing a directory not parallelize beyond 2x?
 
