@@ -53,3 +53,4 @@ Why does traversing a directory not parallelize beyond 2x?
 Where exactly does CFSCQ's sequential overhead come from?
 
 What is the impact of compiling away translation?
+- for `read_attr` has no impact, and for `read_fblock` seems to make things worse (from 1.13x to 2.23x compared to FSCQ)
