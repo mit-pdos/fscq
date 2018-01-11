@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 import re
-STRACE_RE = re.compile(r"""[0-9 ]*(?P<syscall>\w*)\(.*<(?P<time>[0-9.]*)>$""")
+STRACE_RE = re.compile(r"""[0-9 ]*((?P<syscall>\w*)\(.*|<... (?P<syscall_resumed>.*) resumed>.*)<(?P<time>[0-9.]*)>$""")
 
 def parse_line(line):
     m = STRACE_RE.match(line.rstrip())
     if m is None:
         return None
-    return {'syscall': m.group('syscall'),
+    return {'syscall': m.group('syscall') or m.group('syscall_resumed'),
             'time': float(m.group('time')) }
 
 if __name__ == "__main__":
