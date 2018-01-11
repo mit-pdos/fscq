@@ -34,8 +34,8 @@ sep() {
 }
 
 info "==> I/O concurrency (N=1)"
-suite +RTS -N1 -RTS
+suite +RTS -N1 -RTS "$@"
 sep
 
 info "==> I/O concurrency (N=2)"
-suite +RTS -N2 -RTS
+suite +RTS -N2 -RTS "$@"
