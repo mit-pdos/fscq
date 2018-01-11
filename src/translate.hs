@@ -41,20 +41,21 @@ instance Show a => Show (OptimisticTranslator.Result a) where
 main :: IO ()
 main = do
   ds <- init_disk "/dev/null"
+  fscqSt <- SeqI.newFscqState ds
   cs <- I.newState ds
   putStrLn "add_tuple results:"
-  measureAction "fscq prog " (SeqI.run ds $ add_tuple ((5,6),7) True)
+  measureAction "fscq prog " (SeqI.run fscqSt $ add_tuple ((5,6),7) True)
   measureAction "translate " (I.run cs $ add_tuple_concur ((5,6),7) True)
   measureAction "compiled  " (I.run cs $ add_tuple_compiled ((5,6),7) True)
   measureAction "raw       " (I.run cs $ add_tuple_concur_raw ((5,6),7) True)
   putStrLn ""
   putStrLn "consecutive rdtsc:"
-  t <- SeqI.run ds consecutive_rdtsc
+  t <- SeqI.run fscqSt consecutive_rdtsc
   putStrLn $ "fscq:      " ++ show t
   (t, _) <- I.run cs consecutive_rdtsc_concur
   putStrLn $ "translate: " ++ show t
   putStrLn ""
   putStrLn "speed of rdtscs:"
-  measureAction "fscq prog " (SeqI.run ds $ consecutive_rdtsc)
+  measureAction "fscq prog " (SeqI.run fscqSt $ consecutive_rdtsc)
   measureAction "translate " (I.run cs $ consecutive_rdtsc_concur)
   measureAction "compiled  " (I.run cs $ consecutive_rdtsc_compiled)
