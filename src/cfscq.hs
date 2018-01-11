@@ -4,8 +4,8 @@ module Main where
 
 import CfscqFs
 import Fuse
+import GenericFs
 import Options
-import System.Posix.Types (UserID, GroupID)
 
 data CfscqOptions = CfscqOptions
   { 
@@ -19,14 +19,9 @@ instance Options CfscqOptions where
     <*> simpleOption "use-downcalls" True
          "use downcalls (opqueue) rather than C->HS upcalls"
 
-getFuseIds :: IO (UserID, GroupID)
-getFuseIds = do
-  ctx <- getFuseContext
-  return (fuseCtxUserID ctx, fuseCtxGroupID ctx)
-
 main :: IO ()
 main = runCommand $ \opts args -> case args of
   disk_fn:fuse_args -> do
     fs <- initCfscq disk_fn False getFuseIds
-    fuseRun "cfscq" fuse_args fs defaultExceptionHandler (optUseDowncalls opts)
+    fuseRun "cfscq" fuse_args (fuseOps fs) defaultExceptionHandler (optUseDowncalls opts)
   _ -> putStrLn $ "Usage: cfscq disk -f /tmp/ft"
