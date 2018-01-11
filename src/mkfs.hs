@@ -29,8 +29,9 @@ main = runCommand $ \opts args -> do
   case args of
     [fn] -> do
       ds <- init_disk fn
+      fscqSt <- I.newFscqState ds
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs (optCachesize opts) (optDataBitmaps opts) (optInodeBitmaps opts) (optLogDescBlocks opts)
+      res <- I.run fscqSt $ AsyncFS._AFS__mkfs (optCachesize opts) (optDataBitmaps opts) (optInodeBitmaps opts) (optLogDescBlocks opts)
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (_, fsxp) ->
