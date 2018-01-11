@@ -330,6 +330,7 @@ withFs ParOptions{..} act =
 reportTimings :: ParOptions -> Filesystem -> IO ()
 reportTimings ParOptions{..} fs = when optShowDebug $ do
   tm <- readIORef (timings fs)
+  writeIORef (timings fs) emptyTimings
   printTimings tm
 
 reportData :: [DataPoint] -> IO ()
