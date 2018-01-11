@@ -38,6 +38,8 @@ import qualified Errno
 import ShowErrno
 import qualified BFile
 import System.Clock
+import GenericFs
+import Timings
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -79,7 +81,7 @@ elapsedTime start = do
 type MSCS = BFile.BFILE__Coq_memstate
 type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
-doFScall :: DiskState -> MVar MSCS -> FSrunner
+doFScall :: FscqState -> MVar MSCS -> FSrunner
 doFScall ds ref f = do
   -- start <- getTime Monotonic
   s <- takeMVar ref
@@ -88,17 +90,18 @@ doFScall ds ref f = do
   -- elapsed <- elapsedTime start
   return r
 
-initFscq :: String -> Bool -> IO (UserID, GroupID) -> IO (FuseOperations HT)
+initFscq :: String -> Bool -> IO (UserID, GroupID) -> IO Filesystem
 initFscq disk_fn silent getIds = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of
     "/tmp/crashlog.img" -> init_disk_crashlog disk_fn
     _ -> init_disk disk_fn
+  fscqSt <- newFscqState ds
   (s, fsxp) <- if fileExists
   then
     do
       unless silent $ putStrLn $ "Recovering file system"
-      res <- I.run ds $ AsyncFS._AFS__recover cachesize
+      res <- I.run fscqSt $ AsyncFS._AFS__recover cachesize
       case res of
         Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
         Errno.OK (s, fsxp) -> do
@@ -106,7 +109,7 @@ initFscq disk_fn silent getIds = do
   else
     do
       unless silent $ putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
+      res <- I.run fscqSt $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (s, fsxp) -> do
@@ -115,7 +118,7 @@ initFscq disk_fn silent getIds = do
   unless silent $ putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
   ref <- newMVar s
   m_fsxp <- newMVar fsxp
-  return $ fscqFSOps getIds disk_fn ds (doFScall ds ref) m_fsxp
+  return $ Filesystem (fscqFSOps getIds disk_fn ds (doFScall fscqSt ref) m_fsxp) (I.timings fscqSt)
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html

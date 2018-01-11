@@ -39,6 +39,7 @@ import Control.Monad
 import qualified Errno
 import ShowErrno
 import System.Clock
+import GenericFs
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -100,17 +101,18 @@ doFScall s p = do
     CFS.TryAgain _ -> error $ "system call loop failed?"
     CFS.SyscallFailed -> error $ "system call failed"
 
-initCfscq :: String -> Bool -> IO (UserID, GroupID) -> IO (FuseOperations HT)
+initCfscq :: String -> Bool -> IO (UserID, GroupID) -> IO Filesystem
 initCfscq disk_fn silent getIds = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of
     "/tmp/crashlog.img" -> init_disk_crashlog disk_fn
     _ -> init_disk disk_fn
+  fscqSt <- newFscqState ds
   (mscs0, fsxp_val) <- if fileExists
   then
     do
       unless silent $ putStrLn $ "Recovering file system"
-      res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
+      res <- SeqI.run fscqSt $ AsyncFS._AFS__recover cachesize
       case res of
         Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
         Errno.OK (mscs0, fsxp_val) -> do
@@ -118,7 +120,7 @@ initCfscq disk_fn silent getIds = do
   else
     do
       unless silent $ putStrLn $ "Initializing file system"
-      res <- SeqI.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
+      res <- SeqI.run fscqSt $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (mscs0, fsxp_val) -> do
@@ -127,7 +129,7 @@ initCfscq disk_fn silent getIds = do
   unless silent $ putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp_val) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp_val)
   s <- I.newState ds
   fsP <- I.run s (CFS.init fsxp_val mscs0)
-  return $ fscqFSOps getIds disk_fn ds (doFScall s) s fsP
+  return $ Filesystem (fscqFSOps getIds disk_fn ds (doFScall s) s fsP) (I.timings s)
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html

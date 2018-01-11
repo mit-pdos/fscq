@@ -2,25 +2,23 @@
 
 module ConcurInterp where
 
-import CCLProg
+import           CCLProg
+import           Data.Word
 import qualified Disk
-import Word
-import Data.Word
+import           Timings
+import           Word
 -- import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Digest.CRC32 as CRC32
-import Control.Monad (when)
-import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar
-import Data.IORef
+import           Control.Monad (when)
+import           Control.Concurrent (forkIO)
+import           Control.Concurrent.MVar
+import           Data.IORef
+import           System.CPUTime.Rdtsc
+import           System.IO (hPutStrLn, stderr)
 import qualified Data.Map.Strict as Map
-import System.CPUTime.Rdtsc
-import System.IO (hPutStrLn, stderr)
 
 verbose :: Bool
 verbose = False
-
-showDebugs :: Bool
-showDebugs = False
 
 timing :: Bool
 timing = True
@@ -36,6 +34,7 @@ data ConcurState = ConcurState
   { disk :: Disk.DiskState
   , memory :: IORef Heap
   , pendingReads :: IORef (Map.Map Integer (MVar Coq_word))
+  , timings :: IORef Timings
   , lock :: MVar () }
 
 instance Show LocalLock where
@@ -94,12 +93,12 @@ wait_for_read s a = do
       return ()
 
 run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
-run_dcode _ (Ret r) = do
+run_dcode _ (Ret r) = {-# SCC "dcode-ret" #-} do
   return r
-run_dcode _ (Debug s n) = do
-  when (showDebugs || verbose) $ hPutStrLn stderr $ "debug: " ++ s ++ " " ++ show n;
+run_dcode cs (Debug s n) = {-# SCC "dcode-debug" #-} do
+  modifyIORef' (timings cs) (insertTime s n)
   return $ unsafeCoerce ()
-run_dcode _ (Rdtsc) = do
+run_dcode _ (Rdtsc) = {-# SCC "dcode-rdtsc" #-} do
   if timing then do
     r <- rdtsc
     return $ unsafeCoerce (fromIntegral r :: Integer)
@@ -114,11 +113,11 @@ run_dcode s (Alloc v) = do
   debugmsg $ "Alloc -> " ++ show i
   return $ unsafeCoerce i
 run_dcode s (ReadTxn txn) = do
-  debugmsg $ "ReadTxn"
+  debugmsg "ReadTxn"
   h <- readIORef (memory s)
   r <- return $ interp_rtxn txn h
   return $ unsafeCoerce r
-run_dcode s (AssgnTxn txn) = do
+run_dcode s (AssgnTxn txn) = {-# SCC "dcode-assgn" #-} do
   debugmsg $ "AssgnTxn"
   atomicModifyIORef (memory s) $ \h ->
     let h' = interp_wtxn txn h in
@@ -151,7 +150,7 @@ run_dcode s (YieldTillReady a) = do
   debugmsg $ "YieldTillReady " ++ show a
   wait_for_read s a
   return $ unsafeCoerce ()
-run_dcode ds (Bind p1 p2) = do
+run_dcode ds (Bind p1 p2) = {-# SCC "dcode-bind" #-} do
   r1 <- run_dcode ds p1
   r2 <- run_dcode ds (p2 r1)
   return r2
@@ -160,6 +159,7 @@ newState :: Disk.DiskState -> IO ConcurState
 newState ds = pure ConcurState
     <*> return ds
     <*> newIORef (Map.fromList [(0, unsafeCoerce ())])
+    <*> newIORef Map.empty
     <*> newIORef Map.empty
     <*> newMVar ()
 

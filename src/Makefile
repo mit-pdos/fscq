@@ -53,6 +53,7 @@ GHCARGS    := -j$(J) -O2 -threaded -rtsopts
 HSLIB_FUSE := hscgen/Fuse.hs hslib/libopfuse.a
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs \
+	hslib/Timings.hs \
 	hslib/Interpreter.hs hslib/ConcurInterp.hs \
 	hslib/FscqFs.hs hslib/CfscqFs.hs hslib/GenericFs.hs \
 	hslib/DbenchScript.hs

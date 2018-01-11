@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes, ForeignFunctionInterface #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
@@ -9,6 +9,7 @@ import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad (void)
 import qualified Data.ByteString as BS
+import           Data.IORef
 import           Data.List (intercalate, dropWhileEnd)
 import           Options
 import           System.Clock
@@ -20,6 +21,7 @@ import           FscqFs
 import           Fuse
 import           GenericFs
 import           System.Posix.IO (defaultFileFlags)
+import           Timings
 
 import           GHC.RTS.Flags
 import           System.Mem (performMajorGC)
@@ -29,7 +31,7 @@ instance Options NoOptions where
   defineOptions = pure NoOptions
 
 statfsOp :: NoOptions -> Filesystem -> IO ()
-statfsOp _ fs = void $ fuseGetFileSystemStats fs "/"
+statfsOp _ Filesystem{fuseOps=fs} = void $ fuseGetFileSystemStats fs "/"
 
 data ScanDirOptions =
   ScanDirOptions { optScanRoot :: String }
@@ -66,9 +68,9 @@ pathJoin :: FilePath -> FilePath -> FilePath
 pathJoin p1 p2 = dropWhileEnd (== '/') p1 ++ "/" ++ p2
 
 traverseDirectory :: Filesystem -> FilePath -> IO [(FilePath, FileStat)]
-traverseDirectory fs p = do
-  dnum <- getResult p =<< fuseOpenDirectory fs p
-  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+traverseDirectory fs@Filesystem{fuseOps} p = do
+  dnum <- getResult p =<< fuseOpenDirectory fuseOps p
+  allEntries <- getResult p =<< fuseReadDirectory fuseOps p dnum
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       directories = onlyDirectories paths
@@ -76,7 +78,7 @@ traverseDirectory fs p = do
   return $ paths ++ recursive
 
 readEntireFile :: Filesystem -> FilePath -> IO ()
-readEntireFile fs p = do
+readEntireFile Filesystem{fuseOps=fs} p = do
   fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
   go fh 0
     where chunkSize :: Num a => a
@@ -108,7 +110,7 @@ instance Options FileOpOptions where
       "file to operate on"
 
 statOp :: FileOpOptions -> Filesystem -> IO ()
-statOp FileOpOptions{..} fs = do
+statOp FileOpOptions{..} Filesystem{fuseOps=fs} = do
     _ <- fuseGetFileStat fs optFile
     return ()
 
@@ -217,6 +219,7 @@ emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
 
 data ParOptions = ParOptions
   { optVerbose :: Bool
+  , optShowDebug :: Bool
   , optFscq :: Bool
   , optDiskImg :: FilePath
   , optReps :: Int
@@ -229,6 +232,8 @@ instance Options ParOptions where
   defineOptions = pure ParOptions
     <*> simpleOption "verbose" False
         "print debug statements for parbench itself"
+    <*> simpleOption "debug" False
+        "print debug statements from (C)FSCQ"
     <*> simpleOption "fscq" False
         "run sequential FSCQ"
     <*> simpleOption "img" "disk.img"
@@ -322,6 +327,11 @@ withFs ParOptions{..} act =
   else
     initCfscq optDiskImg True getProcessIds >>= act
 
+reportTimings :: ParOptions -> Filesystem -> IO ()
+reportTimings ParOptions{..} fs = when optShowDebug $ do
+  tm <- readIORef (timings fs)
+  printTimings tm
+
 reportData :: [DataPoint] -> IO ()
 reportData = mapM_ (putStrLn . valueData . dataValues)
 
@@ -330,6 +340,7 @@ simpleBenchmark :: Options subcmdOpts =>
                    Parcommand ()
 simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
   ps <- withFs opts $ \fs -> parallelBench opts (\_ -> act cmdOpts fs)
+    <* reportTimings opts fs
   reportData $ map (\p -> p{pBenchName=name}) ps
 
 data IOConcurOptions =
@@ -375,7 +386,8 @@ runIOConcur opts@ParOptions{..} ioOpts fs = do
 
 ioConcurCommand :: Parcommand ()
 ioConcurCommand = parcommand "io-concur" $ \opts cmdOpts -> do
-  ps <- withFs opts $ runIOConcur opts cmdOpts
+  ps <- withFs opts $ \fs -> runIOConcur opts cmdOpts fs
+    <* reportTimings opts fs
   reportData ps
 
 headerCommand :: Parcommand ()

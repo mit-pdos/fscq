@@ -1,9 +1,10 @@
 module GenericFs where
 
+import Data.IORef
 import Fuse
-import System.Posix.User
 import System.Posix.Types
-import Data.ByteString as BS
+import System.Posix.User
+import Timings
 
 getFuseIds :: IO (UserID, GroupID)
 getFuseIds = do
@@ -14,4 +15,6 @@ getProcessIds :: IO (UserID, GroupID)
 getProcessIds = do
   (,) <$> getRealUserID <*> getRealGroupID
 
-type Filesystem = FuseOperations Integer
+data Filesystem =
+  Filesystem { fuseOps :: FuseOperations Integer
+             , timings :: IORef Timings }
