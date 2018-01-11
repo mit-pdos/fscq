@@ -1,11 +1,13 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 
+import Control.Exception (evaluate)
 import Control.Monad
 import Disk
 import Foreign.Marshal.Alloc
-import Control.Exception (evaluate)
 import Options
+import System.Random (getStdGen)
+import System.Random.Shuffle (shuffle')
 import UnixIO
 
 data ReadType = ReadDisk | Simple | CpuIntensive
@@ -15,6 +17,7 @@ data MainOptions = MainOptions
   { optDiskImg :: FilePath
   , optTotalDataMb :: Int
   , optSkipSizeKb :: Int
+  , optRandom :: Bool
   , optReadType :: ReadType
   , optFibonacciArg :: Int }
 
@@ -26,6 +29,8 @@ instance Options MainOptions where
         "total MB to read"
     <*> simpleOption "skip-kb" 4
         "read 4KB every this many KB"
+    <*> simpleOption "random" False
+        "read in random order"
     <*> defineOption (optionType_enum "read type (ReadDisk|Simple|CpuIntensive)") (\o -> o
         { optionLongFlags = ["read-type"]
         , optionDefault = Simple
@@ -64,14 +69,17 @@ cpu_read fibArg (S fd _ _ _) a = do
       return ()
     else error $ "simple_read: short read: " ++ show cc ++ " @ " ++ show a
 
+shuffleList :: [a] -> IO [a]
+shuffleList xs = shuffle' xs (length xs) <$> getStdGen
+
 mainCmd :: MainOptions -> [String] -> IO ()
 mainCmd opts@MainOptions{..} _ = do
   ds <- init_disk optDiskImg
-  let offsets = readOffsets opts in
-    case optReadType of
-      Simple -> forM_ offsets $ simple_read ds
-      ReadDisk -> forM_ offsets $ read_disk ds . fromIntegral
-      CpuIntensive -> forM_ offsets $ cpu_read optFibonacciArg ds
+  offsets <- if optRandom then shuffleList (readOffsets opts) else return (readOffsets opts)
+  case optReadType of
+    Simple -> forM_ offsets $ simple_read ds
+    ReadDisk -> forM_ offsets $ read_disk ds . fromIntegral
+    CpuIntensive -> forM_ offsets $ cpu_read optFibonacciArg ds
 
 main :: IO ()
 main = runCommand mainCmd
