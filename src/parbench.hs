@@ -5,26 +5,28 @@
 
 module Main where
 
-import           Control.Concurrent
-import           Control.Monad
-import           Control.Monad (void)
-import qualified Data.ByteString as BS
-import           Data.IORef
-import           Data.List (intercalate, dropWhileEnd)
-import           Options
-import           System.Clock
-import           System.Exit
-import           System.IO (hPutStrLn, stderr)
+import Control.Concurrent
+import Control.Monad
+import Control.Monad (void)
+import Data.IORef
+import Data.List (intercalate, dropWhileEnd)
+import Options
+import System.Clock
+import System.Exit
+import System.IO (hPutStrLn, stderr)
+import System.Random (getStdGen)
+import System.Random.Shuffle (shuffle')
 
-import           CfscqFs
-import           FscqFs
-import           Fuse
-import           GenericFs
-import           System.Posix.IO (defaultFileFlags)
-import           Timings
+import CfscqFs
+import FscqFs
+import Fuse
+import GenericFs
+import System.Posix.IO (defaultFileFlags)
+import System.Posix.Types (FileOffset)
+import Timings
 
-import           GHC.RTS.Flags
-import           System.Mem (performMajorGC)
+import GHC.RTS.Flags
+import System.Mem (performMajorGC)
 
 data NoOptions = NoOptions {}
 instance Options NoOptions where
@@ -77,21 +79,24 @@ traverseDirectory fs@Filesystem{fuseOps} p = do
   recursive <- concat <$> mapM (traverseDirectory fs) directories
   return $ paths ++ recursive
 
-readEntireFile :: Filesystem -> FilePath -> IO ()
-readEntireFile Filesystem{fuseOps=fs} p = do
+shuffleList :: [a] -> IO [a]
+shuffleList xs = shuffle' xs (length xs) <$> getStdGen
+
+readEntireFile :: Filesystem -> Maybe FileOffset -> FilePath -> IO ()
+readEntireFile Filesystem{fuseOps=fs} msize p = do
   fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
-  go fh 0
-    where chunkSize :: Num a => a
-          chunkSize = 4096
-          go fh off = do
-            bs <- getResult p =<< fuseRead fs p fh chunkSize off
-            if BS.length bs < chunkSize
-              then return ()
-              else go fh (off+chunkSize)
+  fileSize <- case msize of
+    Just s -> return $ fromIntegral s
+    Nothing -> do
+      s <- getResult p =<< fuseGetFileStat fs p
+      return $ statFileSize s
+  offsets <- shuffleList [0,4096..fileSize]
+  forM_ offsets $ \off ->
+    fuseRead fs p fh 4096 off
 
 catFiles :: Filesystem -> [(FilePath, FileStat)] -> IO ()
 catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
-  readEntireFile fs p
+  readEntireFile fs (Just $ statFileSize s) p
 
 catDirOp :: ScanDirOptions -> Filesystem -> IO ()
 catDirOp ScanDirOptions{..} fs = do
@@ -116,7 +121,7 @@ statOp FileOpOptions{..} Filesystem{fuseOps=fs} = do
 
 catFileOp :: FileOpOptions -> Filesystem -> IO ()
 catFileOp FileOpOptions{..} fs = do
-    _ <- readEntireFile fs optFile
+    _ <- readEntireFile fs Nothing optFile
     return ()
 
 -- mini benchmarking library
@@ -356,16 +361,16 @@ instance Options IOConcurOptions where
 
 parIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
 parIOConcur reps IOConcurOptions{..} fs = do
-  m1 <- timeAsync $ readEntireFile fs optLargeFile
-  m2 <- timeAsync $ replicateM_ reps (readEntireFile fs optSmallFile)
+  m1 <- timeAsync $ readEntireFile fs Nothing optLargeFile
+  m2 <- timeAsync $ replicateM_ reps (readEntireFile fs Nothing optSmallFile)
   largeMicros <- takeMVar m1
   smallMicros <- takeMVar m2
   return (largeMicros, smallMicros)
 
 seqIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
 seqIOConcur reps IOConcurOptions{..} fs = do
-  largeMicros <- timeIt $ readEntireFile fs optLargeFile
-  smallMicros <- timeIt $ replicateM_ reps (readEntireFile fs optSmallFile)
+  largeMicros <- timeIt $ readEntireFile fs Nothing optLargeFile
+  smallMicros <- timeIt $ replicateM_ reps (readEntireFile fs Nothing optSmallFile)
   return (largeMicros, smallMicros)
 
 runIOConcur :: ParOptions -> IOConcurOptions -> Filesystem -> IO [DataPoint]
