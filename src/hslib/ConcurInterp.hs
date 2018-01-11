@@ -20,6 +20,9 @@ import qualified Data.Map.Strict as Map
 verbose :: Bool
 verbose = False
 
+recordDebugs :: Bool
+recordDebugs = False
+
 timing :: Bool
 timing = True
 
@@ -96,7 +99,7 @@ run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = {-# SCC "dcode-ret" #-} do
   return r
 run_dcode cs (Debug s n) = {-# SCC "dcode-debug" #-} do
-  modifyIORef' (timings cs) (insertTime s n)
+  when recordDebugs $ modifyIORef' (timings cs) (insertTime s n)
   return $ unsafeCoerce ()
 run_dcode _ (Rdtsc) = {-# SCC "dcode-rdtsc" #-} do
   if timing then do

@@ -10,6 +10,7 @@ import           System.CPUTime.Rdtsc
 import           System.IO (hPutStrLn, stderr)
 import           Timings
 import           Data.IORef
+import           Control.Monad (when)
 
 -- import qualified System.Exit
 -- import qualified System.Random
@@ -31,6 +32,9 @@ import           Data.IORef
 
 verbose :: Bool
 verbose = False
+
+recordDebugs :: Bool
+recordDebugs = False
 
 timing :: Bool
 timing = True
@@ -98,7 +102,7 @@ run_dcode _ AlertModified = do
   debugmsg $ "AlertModified"
   return $ unsafeCoerce ()
 run_dcode FscqState{timings=tm_ref} (Debug s n) = {-# SCC "dcode-debug" #-} do
-  modifyIORef' tm_ref (insertTime s n)
+  when recordDebugs $ modifyIORef' tm_ref (insertTime s n)
   return $ unsafeCoerce ()
 run_dcode _ (Rdtsc) = {-# SCC "dcode-rdtsc" #-} do
   if timing then do
