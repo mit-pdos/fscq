@@ -14,7 +14,7 @@ import Options
 import System.Clock
 import System.Exit
 import System.IO (hPutStrLn, stderr)
-import System.Random (getStdGen)
+import System.Random (getStdGen, setStdGen, mkStdGen)
 import System.Random.Shuffle (shuffle')
 
 import CfscqFs
@@ -405,10 +405,12 @@ headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
   putStrLn . valueHeader . dataValues $ emptyData
 
 main :: IO ()
-main = runSubcommand [ simpleBenchmark "stat" statOp
-                     , simpleBenchmark "statfs" statfsOp
-                     , simpleBenchmark "cat-dir" catDirOp
-                     , simpleBenchmark "cat-file" catFileOp
-                     , simpleBenchmark "traverse-dir" traverseDirOp
-                     , ioConcurCommand
-                     , headerCommand ]
+main = do
+  setStdGen (mkStdGen 0)
+  runSubcommand [ simpleBenchmark "stat" statOp
+                , simpleBenchmark "statfs" statfsOp
+                , simpleBenchmark "cat-dir" catDirOp
+                , simpleBenchmark "cat-file" catFileOp
+                , simpleBenchmark "traverse-dir" traverseDirOp
+                , ioConcurCommand
+                , headerCommand ]
