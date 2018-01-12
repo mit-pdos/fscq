@@ -11,6 +11,7 @@ import           Control.Monad.State
 import qualified Data.Map.Strict as Map
 import           Data.Monoid
 import           System.IO (hPutStrLn, stderr)
+import           Text.Printf
 
 data Aggregate = Aggregate Integer Int
 
@@ -32,4 +33,8 @@ emptyTimings = Map.empty
 printTimings :: Timings -> IO ()
 printTimings tm =
   forM_ (Map.assocs tm) $ \(name, Aggregate s c) ->
-    hPutStrLn stderr $ name ++ " " ++ show c ++ " -> " ++ show (fromIntegral s/3333000::Double)
+    let total_us = fromIntegral s/3333::Double
+        mean_us = total_us/fromIntegral c
+        total_ms = total_us/1000
+        l = printf "%30s %6.1fus aggregate: %-7d -> %8.1fms" name mean_us c total_ms in
+    hPutStrLn stderr l
