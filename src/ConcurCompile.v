@@ -821,6 +821,21 @@ Section ConcurCompile.
     apply compile_refl.
   Defined.
 
+  Definition CompiledReadBlock_full fsxp inum off ams ls c :
+    Compiled (OptFS.read_fblock fsxp inum off ams ls c).
+  Proof.
+    unfold OptFS.read_fblock, translate.
+
+    repeat compile;
+      apply compile_refl.
+  Defined.
+
+  Definition CompiledReadBlock_none fsxp inum off ams ls c :
+    Compiled (OptFS.read_fblock fsxp inum off ams ls c).
+  Proof.
+    apply compile_refl.
+  Defined.
+
   Definition CompiledLookup fsxp dnum names ams ls c :
     Compiled (OptFS.lookup fsxp dnum names ams ls c).
   Proof.

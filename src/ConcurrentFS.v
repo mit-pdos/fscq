@@ -1134,7 +1134,7 @@ Section ConcurrentFS.
     LocalLock -> Cache -> cprog T := fun ls c => compiled_prog (cp ls c).
 
   Definition read_fblock inum off :=
-    retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).
+    retry_readonly_syscall (fun mscs => proj_comp (CompiledReadBlock_none G (fsxp P) inum off mscs)).
 
   Theorem read_fblock_ok : forall inum off tid,
       cprog_spec G tid
