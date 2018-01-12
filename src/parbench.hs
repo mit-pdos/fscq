@@ -79,6 +79,11 @@ traverseDirectory fs@Filesystem{fuseOps} p = do
   recursive <- concat <$> mapM (traverseDirectory fs) directories
   return $ paths ++ recursive
 
+getFileSize :: FuseOperations Integer -> FilePath -> IO FileOffset
+getFileSize fs p = do
+  s <- getResult p =<< fuseGetFileStat fs p
+  return $ statFileSize s
+
 shuffleList :: [a] -> IO [a]
 shuffleList xs = shuffle' xs (length xs) <$> getStdGen
 
@@ -86,10 +91,8 @@ readEntireFile :: Filesystem -> Maybe FileOffset -> FilePath -> IO ()
 readEntireFile Filesystem{fuseOps=fs} msize p = do
   fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
   fileSize <- case msize of
-    Just s -> return $ fromIntegral s
-    Nothing -> do
-      s <- getResult p =<< fuseGetFileStat fs p
-      return $ statFileSize s
+    Just s -> return s
+    Nothing -> getFileSize fs p
   offsets <- shuffleList [0,4096..fileSize]
   forM_ offsets $ \off ->
     fuseRead fs p fh 4096 off
@@ -362,7 +365,8 @@ instance Options IOConcurOptions where
 parIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
 parIOConcur reps IOConcurOptions{..} fs = do
   m1 <- timeAsync $ readEntireFile fs Nothing optLargeFile
-  m2 <- timeAsync $ replicateM_ reps (readEntireFile fs Nothing optSmallFile)
+  size <- getFileSize (fuseOps fs) optSmallFile
+  m2 <- timeAsync $ replicateM_ reps (readEntireFile fs (Just size) optSmallFile)
   largeMicros <- takeMVar m1
   smallMicros <- takeMVar m2
   return (largeMicros, smallMicros)
@@ -370,7 +374,8 @@ parIOConcur reps IOConcurOptions{..} fs = do
 seqIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
 seqIOConcur reps IOConcurOptions{..} fs = do
   largeMicros <- timeIt $ readEntireFile fs Nothing optLargeFile
-  smallMicros <- timeIt $ replicateM_ reps (readEntireFile fs Nothing optSmallFile)
+  size <- getFileSize (fuseOps fs) optSmallFile
+  smallMicros <- timeIt $ replicateM_ reps (readEntireFile fs (Just size) optSmallFile)
   return (largeMicros, smallMicros)
 
 runIOConcur :: ParOptions -> IOConcurOptions -> Filesystem -> IO [DataPoint]
