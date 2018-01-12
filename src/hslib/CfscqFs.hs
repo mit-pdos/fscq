@@ -427,9 +427,8 @@ fscqRead ds fr fsP (_:path) inum byteCount offset
 
   where
     read_piece (BR blk off count) = do
-      (W w, ()) <- fr $ CFS.read_fblock fsP inum blk
-      bs <- i2bs w 4096
-      return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) bs
+      (wbuf, ()) <- fr $ CFS.read_fblock fsP inum blk
+      return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) $ w2bs wbuf 4096
 
 fscqRead _ _ _ _ _ _ _ = return $ Left eIO
 
