@@ -26,9 +26,9 @@ bench --target-ms=1000 --reps=5 traverse-dir --dir '/large-dir' "$@"
 sep
 
 info "==> reading data"
-info "cat linux.tar.xz"
-bench --iters=1 --reps=4 cat-file --file '/linux-source/linux.tar.xz' "$@"
-sep
+#info "cat linux.tar.xz"
+#bench --iters=1 --reps=4 cat-file --file '/linux-source/linux.tar.xz' "$@"
+#sep
 
 info "cat large"
 bench --iters=1 --reps=2 cat-file --file '/large' "$@"

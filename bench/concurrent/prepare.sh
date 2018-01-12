@@ -33,7 +33,7 @@ for num in $(seq 1 100); do
 done
 
 dd if=/dev/urandom of="$mnt/small" bs=4k count=1
-dd if=/dev/urandom of="$mnt/large" bs=1k count=100000
+dd if=/dev/urandom of="$mnt/large" bs=1k count=20000
 
 for num in $(seq 1 20); do
   mkdir "$mnt/dir$num"
