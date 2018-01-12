@@ -36,5 +36,5 @@ printTimings tm =
     let total_us = fromIntegral s/3333::Double
         mean_us = total_us/fromIntegral c
         total_ms = total_us/1000
-        l = printf "%30s %6.1fus aggregate: %-7d -> %8.1fms" name mean_us c total_ms in
+        l = printf "%30s %7.1fus aggregate: %-7d -> %8.1fms" name mean_us c total_ms in
     hPutStrLn stderr l

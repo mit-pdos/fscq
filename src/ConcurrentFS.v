@@ -91,22 +91,28 @@ Section ConcurrentFS.
     | CacheMiss a =>
       end_t <- Rdtsc;
       _ <- Debug "write cache miss" (end_t - start);
-      YieldTillReady a
+      _ <- YieldTillReady a;
+      end_t' <- Rdtsc;
+      Debug "cache miss fill" (end_t' - end_t)
     | _ => Ret tt
     end.
 
   Definition EnsureFilled (c:Cache) (a:option nat) : cprog Cache :=
     match a with
-    | Some a => do '(_, cs) <- CacheRead (caches c c) a Locked; Ret (cache cs)
+    | Some a => start <- Rdtsc;
+                 do '(_, cs) <- CacheRead (caches c c) a Locked;
+                 end_t <- Rdtsc;
+                 _ <- Debug "EnsureFilled fill" (end_t - start);
+                 Ret (cache cs)
     | None => Ret c
     end.
 
   Definition write_syscall T (a:option nat) (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
-          (start <- Rdtsc;
-             do '(c, mscs) <- startLocked;
+          (  do '(c, mscs) <- startLocked;
              c <- EnsureFilled c a;
+             start <- Rdtsc;
              do '(r, c) <- p mscs Locked c;
              match r with
              | Success _ (ms', r) =>
@@ -137,7 +143,9 @@ Section ConcurrentFS.
     start <- Rdtsc;
     r <- readonly_syscall p;
       match r with
-      | Done v => Ret (Done v)
+      | Done v => end_t <- Rdtsc;
+                   _ <- Debug "read-only finish" (end_t - start);
+                   Ret (Done v)
       | TryAgain e => end_t <- Rdtsc;
                      _ <- Debug "read-only write" (end_t - start);
                      write_syscall (match e with
