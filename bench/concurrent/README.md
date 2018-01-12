@@ -46,6 +46,10 @@ Executing debug instructions (which writes to stdout) is extremely slow and skew
 
 Solved by buffering debug info, with the additional precaution of only recording aggregate statistics. The main cost is constructing the debug strings (which we do as a `String`).
 
+## Reading data was generally slow in CFSCQ
+
+Profiles showed `i2buf` in CFSCQ but not in FSCQ - turns out FSCQ now uses `w2bs` for some word/buffer manipulation, which hadn't been ported to the `read_piece` implementation in `CfscqFs.hs`.
+
 # Mysteries
 
 Why is CFSCQ faster than FSCQ for statfs and stat?
@@ -55,8 +59,9 @@ Why is CFSCQ faster than FSCQ for statfs and stat?
 What is the impact of compiling away translation?
 - for `read_attr` has no impact, and for `read_fblock` seems to make things worse (from 1.13x to 2.23x compared to FSCQ)
 
-Where exactly does CFSCQ's sequential overhead come from?
-
 Why is reading files so much slower than FSCQ for warm workloads?
+- at least in part due to a missing FSCQ optimization
+
+Where exactly does CFSCQ's sequential overhead come from?
 
 Why does traversing a directory not parallelize beyond 2x?
