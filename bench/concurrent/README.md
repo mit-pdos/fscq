@@ -1,6 +1,6 @@
 # Overview
 
-There are two high level questions: how much I/O concurrency does CFSCQ provide, and how much read-only parallelism does CFSCQ provide.
+There are two high level questions: how much I/O concurrency does CFSCQ provide? and, how much read-only parallelism does CFSCQ provide?
 
 ## Focused questions
 
@@ -30,6 +30,8 @@ Broadly:
 
 Linux preads are observed to have prefetching, and coincidentally we spend about as much CPU time as disk reads, so that FSCQ observes nearly perfect I/O concurrency. Specifically, disk latency is so perfectly hidden by I/O concurrency that a physical disk and in-memory disk have about the same performance.
 
+Addressed by reading files in random order. Alternately, opening with `O_DIRECT` does solve the problem (from a C benchmark), but this is awkward to fix in Haskell since the standard library doesn't allow passing `O_DIRECT` (we'd also have to align the read buffer).
+
 ## CFSCQ re-executes code
 
 CFSCQ must have some overhead due to re-execution, and this is significant in CPU-bottlenecked workloads. One case is avoidable: upon a cache miss during read-only execution, we can forward the missed address in order to read it immediately once we have the write lock.
@@ -42,15 +44,19 @@ The impact of translation is still unclear, since it seemingly impacts overall e
 
 Executing debug instructions (which writes to stdout) is extremely slow and skews measurements if timings are nested.
 
+Solved by buffering debug info, with the additional precaution of only recording aggregate statistics. The main cost is constructing the debug strings (which we do as a `String`).
+
 # Mysteries
 
 Why is CFSCQ faster than FSCQ for statfs and stat?
 - statfs is mostly measuring Haskell code to get `fsxp` and `mscs`, so its understandable
 - `stat` is odd, but it's also really fast and probably unrelated to the overall performance story
 
-Why does traversing a directory not parallelize beyond 2x?
+What is the impact of compiling away translation?
+- for `read_attr` has no impact, and for `read_fblock` seems to make things worse (from 1.13x to 2.23x compared to FSCQ)
 
 Where exactly does CFSCQ's sequential overhead come from?
 
-What is the impact of compiling away translation?
-- for `read_attr` has no impact, and for `read_fblock` seems to make things worse (from 1.13x to 2.23x compared to FSCQ)
+Why is reading files so much slower than FSCQ for warm workloads?
+
+Why does traversing a directory not parallelize beyond 2x?
