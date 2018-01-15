@@ -321,14 +321,18 @@ Module LOG.
     Ret (mk_memstate (Map.add a v cm) mm).
 
   Definition read xp a ms :=
-    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    t0 <- Rdtsc;
+    r <- (let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     match Map.find a cm with
     | Some v =>  Ret ^(ms, v)
     | None =>
         let^ (mm', v) <- GLog.read xp a mm;
              let ms' := mk_memstate cm mm' in
         Ret ^(ms', v)
-    end.
+           end);
+    t1 <- Rdtsc;
+    _ <- Debug "LOG.read" (t1-t0);
+    Ret r.
 
   Definition commit xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in

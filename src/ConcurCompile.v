@@ -786,7 +786,13 @@ Section ConcurCompile.
     destruct f; auto.
   Qed.
 
-  Hint Rewrite modified_or_nochange modified_or_failure  : modified.
+  Lemma modified_or_modified : forall f T (v:T),
+      modified_or f (Success Modified v) = Success Modified v.
+  Proof.
+    destruct f; auto.
+  Qed.
+
+  Hint Rewrite modified_or_nochange modified_or_failure modified_or_modified  : modified.
 
   Ltac exec_monad_simpl :=
     repeat match goal with
@@ -805,57 +811,200 @@ Section ConcurCompile.
              reflexivity
            end.
 
+  Definition Compiled_inode_ind_get lxp ir off ms ls c :
+    Compiled (translate' (INODE.Ind.get lxp ir off ms) ls c).
+  Proof.
+    unfold INODE.Ind.get.
+    repeat compile;
+      apply compile_refl.
+  Defined.
+
+  Ltac compile_match :=
+    match goal with
+    | |- Compiled (Bind (match ?d with | _ => _ end) _) =>
+      destruct d
+    | |- Compiled (Bind (?p _ _) _) =>
+      match p with
+      | match ?d with | _ => _ end => destruct d
+      end
+    end.
+
+  Definition Compiled_inode_ind_get' lxp ir off ms ls c :
+    Compiled (translate' (INODE.Ind.get lxp ir off ms) ls c).
+  Proof.
+    unfold INODE.Ind.get; simpl.
+    unfold If_.
+    repeat comp.
+    eapply compile_equiv.
+    rewrite ?translate'_match_sumbool.
+    reflexivity.
+
+    compile_match.
+    simpl; repeat comp; autorewrite with compile.
+
+    compile_match.
+    compile_match.
+    simpl; repeat comp.
+    simpl; repeat comp; autorewrite with compile.
+    skip.
+    destruct v1 as [ [|] ];
+      simpl; repeat comp.
+
+    eapply compile_equiv;
+      [ exec_monad_simpl; reflexivity | ];
+      repeat comp.
+    compile_match.
+    compile_match.
+    simpl; repeat comp; autorewrite with compile.
+    simpl; repeat comp; autorewrite with compile.
+    skip.
+
+    destruct v1 as [ [|] ];
+      simpl; repeat comp.
+    eapply compile_equiv;
+      [ exec_monad_simpl; reflexivity | ];
+      repeat comp.
+    unfold pair_args_helper; simpl.
+    eapply compile_equiv.
+    rewrite ?translate'_match_sumbool;
+      autorewrite with compile.
+    reflexivity.
+    compile_match.
+    simpl; repeat comp; autorewrite with compile.
+    repeat comp.
+    simpl; repeat comp; autorewrite with compile.
+    skip.
+
+    destruct v5 as [ [|] ];
+      simpl; repeat comp.
+    eapply compile_equiv;
+      [ exec_monad_simpl; reflexivity | ];
+      repeat comp.
+    eapply compile_equiv;
+      [ exec_monad_simpl; reflexivity | ];
+      repeat comp.
+    compile_match.
+    simpl; repeat comp; autorewrite with compile.
+    simpl; repeat comp; autorewrite with compile.
+    skip.
+    destruct v1 as [ [|] ];
+      simpl; repeat comp.
+    eapply compile_equiv;
+      [ exec_monad_simpl; reflexivity | ];
+      repeat comp.
+    unfold pair_args_helper; simpl.
+    skip.
+    destruct v4; repeat comp.
+    compile_match;
+      repeat comp.
+  Defined.
+
+  Opaque INODE.Ind.get.
+
+  Definition Compiled_log_read xp a ms ls c :
+    Compiled (translate' (LOG.read xp a ms) ls c).
+  Proof.
+    unfold LOG.read.
+    simpl.
+    repeat comp.
+    skip.
+    destruct v0 as [ [|] ];
+      simpl; repeat comp.
+  Defined.
+
+  Opaque LOG.read.
+
+  Definition Compiled_inode_irec_get lxp xp ix cache ms ls c :
+    Compiled (translate' (INODE.IRec.get lxp xp ix cache ms) ls c).
+  Proof.
+    unfold INODE.IRec.get; simpl.
+    match goal with
+    | |- context[match ?d with | _ => _ end] =>
+      destruct d
+    end; simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_log_read.
+    eapply compile_equiv.
+    apply exec_equiv_bind1.
+    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v as [ [|] ]; simpl.
+    exec_monad_simpl.
+    reflexivity.
+    reflexivity.
+
+    repeat comp.
+    eapply compile_equiv.
+    eapply exec_equiv_bind1.
+    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v; simpl.
+    destruct r; simpl.
+    exec_monad_simpl.
+    reflexivity.
+    reflexivity.
+    repeat comp.
+    eapply compile_equiv.
+    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v as [ [|] ]; simpl;
+      exec_monad_simpl.
+    reflexivity.
+    reflexivity.
+    comp.
+  Defined.
+
+  Definition Compiled_inode_getbnum lxp xp inum off cache ms ls c :
+    Compiled (translate' (INODE.getbnum lxp xp inum off cache ms) ls c).
+  Proof.
+    unfold INODE.getbnum.
+    simpl.
+    repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+
+    eapply compile_equiv.
+    apply exec_equiv_bind1.
+    instantiate (1 := Ret v0).
+    destruct v0 as [ [|] ]; simpl.
+    exec_monad_simpl.
+    reflexivity.
+
+    repeat comp.
+    destruct v0 as [ [|] ];
+      simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_get'.
+    destruct v1 as [ [|] ];
+      simpl; repeat comp.
+  Defined.
+
+  Opaque INODE.getbnum.
+
   Definition Compiled_read_fblock fsxp inum off ams ls c :
     Compiled (translate' (AsyncFS.AFS.read_fblock fsxp inum off ams) ls c).
   Proof.
     unfold AsyncFS.AFS.read_fblock.
     simpl.
     repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_inode_getbnum.
+
+    destruct v0 as [ [|] ].
+    repeat comp.
     skip.
 
-    eapply compile_equiv.
-    apply exec_equiv_bind1.
-
-    instantiate (1 := Ret v1).
-    destruct v1; simpl.
-    destruct r; simpl.
-    exec_monad_simpl.
-    reflexivity.
-
-    repeat comp.
     destruct v1 as [ [|] ].
     repeat comp.
-    skip.
 
-    destruct v2 as [ [|] ].
+    eapply compile_equiv;
+      [ exec_monad_simpl;
+        reflexivity | ];
+      repeat comp.
     repeat comp.
-
-    eapply compile_equiv.
-    exec_monad_simpl.
-    reflexivity.
-
-    skip.
-    destruct v5 as [ [|] ]; simpl.
-    repeat comp.
-
-    eapply compile_equiv.
-    exec_monad_simpl.
-    reflexivity.
-
-    repeat comp.
-    repeat comp.
-
-    eapply compile_equiv.
-    exec_monad_simpl.
-    reflexivity.
-    repeat comp.
-    repeat comp.
-
-    eapply compile_equiv.
-    exec_monad_simpl.
-    reflexivity.
-    comp.
-
+    eapply compile_equiv;
+      [ exec_monad_simpl;
+        reflexivity | ];
+      repeat comp.
     repeat comp.
   Defined.
 
