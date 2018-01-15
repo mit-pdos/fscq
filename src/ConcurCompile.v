@@ -737,14 +737,18 @@ Section ConcurCompile.
   Hint Unfold BUFCACHE.read_array BUFCACHE.read : compile.
   Hint Unfold BUFCACHE.writeback : compile.
 
+  Ltac skip := apply compile_bind; [ apply compile_refl | intros ].
+
   Ltac comp :=
     match goal with
     | [ |- Compiled (Bind (Bind _ _) _) ] =>
       monad_compile
     | [ |- Compiled (Bind (Ret _) _) ] =>
       monad_compile
-    | [ |- Compiled (Bind Rdtsc _) ] =>
-      apply compile_bind; intros
+    | [ |- Compiled (Bind (Rdtsc) _) ] =>
+      skip
+    | [ |- Compiled (Bind (Debug _ _) _) ] =>
+      skip
 
     (* terminating programs that cannot be improved *)
     | [ |- Compiled (Ret _)] =>
@@ -759,11 +763,47 @@ Section ConcurCompile.
       apply compile_refl
     | [ |- Compiled (Rdtsc)] =>
       apply compile_refl
-    | [ |- Compiled (Debug _  _)] =>
+    | [ |- Compiled (Debug _ _)] =>
       apply compile_refl
     end.
 
-  Ltac skip := apply compile_bind; [ apply compile_refl | intros ].
+  Lemma modified_or_failure : forall T e f,
+      modified_or f (Failure e) = @Failure T e.
+  Proof.
+    destruct f; auto.
+  Qed.
+
+  Definition flag_or f f' :=
+    match f with
+    | NoChange => f'
+    | Modified => Modified
+    end.
+
+  Lemma modified_or_success : forall f T f' (v:T),
+      modified_or f (Success f' v) =
+      Success (flag_or f f') v.
+  Proof.
+    destruct f; auto.
+  Qed.
+
+  Hint Rewrite modified_or_nochange modified_or_failure  : modified.
+
+  Ltac exec_monad_simpl :=
+    repeat match goal with
+           | [ |- exec_equiv _ _ _ ] =>
+             progress autorewrite with modified
+           | [ |- exec_equiv _ (Bind
+                                 (match modified_or _ (Success _ _) with
+                                  | _ => _
+                                  end) _) _ ] =>
+             rewrite modified_or_success
+           | [ |- exec_equiv _ (Bind (Ret _) _) _ ] =>
+             etransitivity; [ apply monad_left_id | ]; simpl
+           | [ |- exec_equiv _ (Bind (Bind _ _) _) _ ] =>
+             etransitivity; [ apply monad_assoc | ]; simpl
+           | [ |- exec_equiv _ ?x ?x ] =>
+             reflexivity
+           end.
 
   Definition Compiled_read_fblock fsxp inum off ams ls c :
     Compiled (translate' (AsyncFS.AFS.read_fblock fsxp inum off ams) ls c).
@@ -776,33 +816,47 @@ Section ConcurCompile.
     eapply compile_equiv.
     apply exec_equiv_bind1.
 
-    instantiate (1 := Ret (match v1 with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    instantiate (1 := Ret v1).
     destruct v1; simpl.
     destruct r; simpl.
-    etransitivity.
-    apply monad_left_id.
-    reflexivity.
+    exec_monad_simpl.
     reflexivity.
 
     repeat comp.
+    destruct v1 as [ [|] ].
+    repeat comp.
     skip.
 
+    destruct v2 as [ [|] ].
+    repeat comp.
+
     eapply compile_equiv.
-    apply exec_equiv_bind1.
-    instantiate (1 := Ret (let '(r', cs') := v2 in _)).
-    destruct v2.
+    exec_monad_simpl.
+    reflexivity.
+
+    skip.
+    destruct v5 as [ [|] ]; simpl.
+    repeat comp.
+
+    eapply compile_equiv.
+    exec_monad_simpl.
     reflexivity.
 
     repeat comp.
-    skip.
-    skip.
-    skip.
+    repeat comp.
 
     eapply compile_equiv.
-    instantiate (1 := Ret v5).
-    destruct v5.
-    etransitivity; [ apply monad_left_id | reflexivity ].
+    exec_monad_simpl.
+    reflexivity.
+    repeat comp.
+    repeat comp.
+
+    eapply compile_equiv.
+    exec_monad_simpl.
+    reflexivity.
     comp.
+
+    repeat comp.
   Defined.
 
   Definition CompiledReadBlock fsxp inum off ams ls c :
