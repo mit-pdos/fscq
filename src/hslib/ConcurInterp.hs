@@ -115,7 +115,7 @@ run_dcode s (Alloc v) = do
         (h', i)
   debugmsg $ "Alloc -> " ++ show i
   return $ unsafeCoerce i
-run_dcode s (ReadTxn txn) = do
+run_dcode s (ReadTxn txn) = {-# SCC "dcode-readtxn" #-} do
   debugmsg "ReadTxn"
   h <- readIORef (memory s)
   r <- return $ interp_rtxn txn h
@@ -134,7 +134,7 @@ run_dcode _ (Hash sz w) = do
   debugmsg $ "Hash " ++ (show sz)
   c <- crc32_word_update 0 sz w
   return $ unsafeCoerce $ W $ fromIntegral c
-run_dcode s (SetLock l l') = do
+run_dcode s (SetLock l l') = {-# SCC "dcode-setlock" #-} do
   debugmsg $ "SetLock " ++ show l ++ " " ++ show l'
   case (l, l') of
     (Unacquired, Locked) -> takeMVar (lock s)
@@ -149,7 +149,7 @@ run_dcode s (WaitForRead a) = do
   debugmsg $ "WaitForRead " ++ show a
   val <- get_read s a
   return $ unsafeCoerce val
-run_dcode s (YieldTillReady a) = do
+run_dcode s (YieldTillReady a) = {-# SCC "dcode-yield-till-ready" #-} do
   debugmsg $ "YieldTillReady " ++ show a
   wait_for_read s a
   return $ unsafeCoerce ()
