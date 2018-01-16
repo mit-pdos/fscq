@@ -30,6 +30,7 @@ Extract Inlined Constant StringUtils.String_as_OT.string_compare =>
             if x Prelude.< y then Prelude.LT else Prelude.GT)".
 
 Extract Inlined Constant DirName.ascii2byte => "Word.ascii2byte".
+Extract Inlined Constant DirName.wbitset => "Word.wbitset".
 
 Extraction Inline Logic.eq_rect_r Logic.eq_rect.
 

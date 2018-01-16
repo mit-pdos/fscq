@@ -85,6 +85,11 @@ wbit :: Integer -> Integer -> Coq_word -> Coq_word
 wbit sz _ (W n) = wrap sz (2^n)
 wbit sz _ (W64 n) = wrap sz (2^n)
 
+wbitset :: Integer -> Coq_word -> Coq_word -> Bool
+wbitset _ (W bitpos) (W n) = Data.Bits.testBit n (fromIntegral bitpos)
+wbitset _ (W64 bitpos) (W n) = Data.Bits.testBit n (fromIntegral bitpos)
+wbitset _ (W64 bitpos) (W64 n) = Data.Bits.testBit n (fromIntegral bitpos)
+
 wand :: Integer -> Coq_word -> Coq_word -> Coq_word
 wand _ (W x) (W y) = W $ (Data.Bits..&.) x y
 wand _ (W x) (W64 y) = W64 $ (Data.Bits..&.) (fromIntegral x) y
