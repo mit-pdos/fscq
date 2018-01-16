@@ -137,7 +137,7 @@ split2 :: Integer -> Integer -> Coq_word -> Coq_word
 --   | sz1 `rem` 8 == 0 && sz2 `rem` 8 == 0 = case sz1 `quot` 8 of
 --     (I# sz1#) -> case sz2 `quot` 8 of
 --       (I# sz2#) -> W $ importIntegerFromByteArray ba (int2Word# sz1#) (int2Word# sz2#) 0#
-split2 sz1 _ (W w) = W $ w `Data.Bits.shiftR` (fromIntegral sz1)
+split2 sz1 _ (W w) = {-# SCC "split2-shiftR" #-} W $ w `Data.Bits.shiftR` (fromIntegral sz1)
 split2 sz1 sz2 (W64 w) = split2 sz1 sz2 (W $ fromIntegral w)
 split2 sz1 sz2 w = split2 sz1 sz2 (unbs w)
 
