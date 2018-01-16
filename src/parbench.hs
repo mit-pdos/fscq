@@ -316,12 +316,13 @@ parallelTimeForIters par act iters =
     then replicateM iters (timeIt . act $ tid)
     else replicateM_ iters (act tid) >> return [])
 
-parallelBench :: ParOptions -> (ThreadNum -> IO a) -> IO [DataPoint]
-parallelBench opts@ParOptions{..} act = do
+parallelBench :: ParOptions -> (ThreadNum -> IO a) -> IO () -> IO [DataPoint]
+parallelBench opts@ParOptions{..} act prepare = do
   when optWarmup $ do
     forM_ [0..optN-1] act
     logVerbose opts "===> warmup done <==="
   performMajorGC
+  prepare
   micros <- pickAndRunIters opts $
     parallelTimeForIters optN $ replicateM_ optReps . act
   p <- optsData opts
@@ -340,6 +341,9 @@ reportTimings ParOptions{..} fs = when optShowDebug $ do
   tm <- readIORef (timings fs)
   printTimings tm
 
+clearTimings :: Filesystem -> IO ()
+clearTimings fs = writeIORef (timings fs) emptyTimings
+
 reportData :: [DataPoint] -> IO ()
 reportData = mapM_ (putStrLn . valueData . dataValues)
 
@@ -347,7 +351,7 @@ simpleBenchmark :: Options subcmdOpts =>
                    String -> (subcmdOpts -> Filesystem -> IO a) ->
                    Parcommand ()
 simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> parallelBench opts (\_ -> act cmdOpts fs)
+  ps <- withFs opts $ \fs -> parallelBench opts (\_ -> act cmdOpts fs) (clearTimings fs)
     <* reportTimings opts fs
   reportData $ map (\p -> p{pBenchName=name}) ps
 
