@@ -9,7 +9,7 @@ sep() {
 }
 
 bench() {
-    bencher --RTS +RTS -N4 -qg -RTS "$@"
+    bencher --n=4 --RTS -- +RTS -N4 -qg -RTS "$@"
 }
 
 info "==> metadata-only"
