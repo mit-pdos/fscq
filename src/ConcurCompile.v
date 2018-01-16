@@ -821,6 +821,8 @@ Section ConcurCompile.
 
   Ltac compile_match :=
     match goal with
+    | |- Compiled ((match ?d with | _ => _ end) _ _) =>
+      destruct d
     | |- Compiled (Bind (match ?d with | _ => _ end) _) =>
       destruct d
     | |- Compiled (Bind (?p _ _) _) =>
@@ -828,6 +830,48 @@ Section ConcurCompile.
       | match ?d with | _ => _ end => destruct d
       end
     end.
+
+  Definition Compiled_mlog_read xp a ms ls c :
+    Compiled (translate' (MemLog.MLog.read xp a ms) ls c).
+  Proof.
+    unfold MemLog.MLog.read; simpl.
+    eapply compile_equiv.
+    rewrite translate'_match_opt.
+    reflexivity.
+    compile_match;
+      simpl; repeat comp.
+    skip.
+    destruct v as [ [|] ];
+      simpl; repeat comp.
+    skip.
+    eapply compile_equiv.
+    eapply exec_equiv_bind; intros.
+    instantiate (1 := Ret (let '(r, cs) := v0 in _)).
+    destruct v0; simpl; reflexivity.
+    instantiate (1 := fun v1 => Ret (match v1 with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v1 as [ [|] ].
+    exec_monad_simpl.
+    reflexivity.
+    exec_monad_simpl.
+    reflexivity.
+    repeat comp.
+  Defined.
+
+  Definition Compiled_glog_read xp a ms ls c :
+    Compiled (translate' (GLog.read xp a ms) ls c).
+  Proof.
+    unfold GLog.read; simpl.
+    eapply compile_equiv.
+    rewrite translate'_match_opt.
+    reflexivity.
+    compile_match.
+    simpl; repeat comp.
+    simpl; repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_mlog_read.
+    destruct v as [ [|] ]; repeat comp.
+  Defined.
 
   Definition Compiled_inode_ind_get' lxp ir off ms ls c :
     Compiled (translate' (INODE.Ind.get lxp ir off ms) ls c).
@@ -907,9 +951,22 @@ Section ConcurCompile.
     unfold LOG.read.
     simpl.
     repeat comp.
-    skip.
+    eapply compile_equiv.
+    rewrite translate'_match_opt.
+    reflexivity.
+    compile_match.
+    simpl; repeat comp.
+    simpl; repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_glog_read.
+
     destruct v0 as [ [|] ];
       simpl; repeat comp.
+    eapply compile_equiv.
+    exec_monad_simpl.
+    reflexivity.
+    repeat comp.
   Defined.
 
   Opaque LOG.read.
