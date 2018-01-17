@@ -811,14 +811,6 @@ Section ConcurCompile.
              reflexivity
            end.
 
-  Definition Compiled_inode_ind_get lxp ir off ms ls c :
-    Compiled (translate' (INODE.Ind.get lxp ir off ms) ls c).
-  Proof.
-    unfold INODE.Ind.get.
-    repeat compile;
-      apply compile_refl.
-  Defined.
-
   Ltac compile_match :=
     match goal with
     | |- Compiled ((match ?d with | _ => _ end) _ _) =>
@@ -873,74 +865,115 @@ Section ConcurCompile.
     destruct v as [ [|] ]; repeat comp.
   Defined.
 
-  Definition Compiled_inode_ind_get' lxp ir off ms ls c :
+  Opaque GLog.read.
+
+  Ltac equiv_t t :=
+    eapply compile_equiv;
+    [ t; reflexivity | ];
+    simpl; repeat comp.
+
+  Definition Compiled_inode_ind_indrec_get lxp xp ix ms ls c :
+    Compiled (translate' (INODE.Ind.IndRec.get lxp xp ix ms) ls c).
+  Proof.
+    unfold INODE.Ind.IndRec.get; simpl.
+    repeat comp.
+    equiv_t ltac:(rewrite translate'_match_opt).
+    compile_match;
+      simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_glog_read.
+
+    destruct v0 as [ [|] ];
+      simpl; repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque INODE.Ind.IndRec.get.
+
+  Definition Compiled_inode_ind_get lxp ir off ms ls c :
     Compiled (translate' (INODE.Ind.get lxp ir off ms) ls c).
   Proof.
     unfold INODE.Ind.get; simpl.
     unfold If_.
     repeat comp.
     eapply compile_equiv.
+    rewrite ?Nat.mul_1_r.
     rewrite ?translate'_match_sumbool.
     reflexivity.
 
     compile_match.
-    simpl; repeat comp; autorewrite with compile.
+    simpl; repeat comp.
 
+    compile_match.
+    simpl; autorewrite with compile.
+    compile_match.
+    simpl; repeat comp.
+    simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_indrec_get.
+
+    destruct v0 as [ [|] ];
+      simpl; repeat comp.
+
+    equiv_t exec_monad_simpl.
     compile_match.
     compile_match.
     simpl; repeat comp.
-    simpl; repeat comp; autorewrite with compile.
-    skip.
-    destruct v1 as [ [|] ];
-      simpl; repeat comp.
+    simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_indrec_get.
 
-    eapply compile_equiv;
-      [ exec_monad_simpl; reflexivity | ];
-      repeat comp.
-    compile_match.
-    compile_match.
-    simpl; repeat comp; autorewrite with compile.
-    simpl; repeat comp; autorewrite with compile.
-    skip.
-
-    destruct v1 as [ [|] ];
+    destruct v0 as [ [|] ];
       simpl; repeat comp.
-    eapply compile_equiv;
-      [ exec_monad_simpl; reflexivity | ];
-      repeat comp.
     unfold pair_args_helper; simpl.
-    eapply compile_equiv.
-    rewrite ?translate'_match_sumbool;
-      autorewrite with compile.
-    reflexivity.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
     compile_match.
     simpl; repeat comp; autorewrite with compile.
     repeat comp.
-    simpl; repeat comp; autorewrite with compile.
-    skip.
+    repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_indrec_get.
 
-    destruct v5 as [ [|] ];
-      simpl; repeat comp.
-    eapply compile_equiv;
-      [ exec_monad_simpl; reflexivity | ];
-      repeat comp.
-    eapply compile_equiv;
-      [ exec_monad_simpl; reflexivity | ];
-      repeat comp.
-    compile_match.
-    simpl; repeat comp; autorewrite with compile.
-    simpl; repeat comp; autorewrite with compile.
-    skip.
     destruct v1 as [ [|] ];
       simpl; repeat comp.
-    eapply compile_equiv;
-      [ exec_monad_simpl; reflexivity | ];
-      repeat comp.
-    unfold pair_args_helper; simpl.
-    skip.
-    destruct v4; repeat comp.
-    compile_match;
-      repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+
+    compile_match.
+    simpl; repeat comp.
+    simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_indrec_get.
+
+    destruct v0 as [ [|] ];
+      simpl; repeat comp.
+    equiv_t exec_monad_simpl.
+    unfold pair_args_helper.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match.
+    simpl; repeat comp; autorewrite with compile.
+    repeat comp.
+    repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_indrec_get.
+
+    destruct v1 as [ [|] ];
+      simpl; repeat comp.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match.
+    simpl; repeat comp.
+    equiv_t exec_monad_simpl.
+    simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_indrec_get.
+
+    destruct v2 as [ [|] ];
+      simpl; repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite ?modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
   Defined.
 
   Opaque INODE.Ind.get.
@@ -1029,7 +1062,7 @@ Section ConcurCompile.
     destruct v0 as [ [|] ];
       simpl; repeat comp.
     apply compile_bind; intros.
-    apply Compiled_inode_ind_get'.
+    apply Compiled_inode_ind_get.
     destruct v1 as [ [|] ];
       simpl; repeat comp.
   Defined.
