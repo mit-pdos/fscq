@@ -44,11 +44,15 @@ The impact of translation is still unclear, since it seemingly impacts overall e
 
 Executing debug instructions (which writes to stdout) is extremely slow and skews measurements if timings are nested.
 
-Solved by buffering debug info, with the additional precaution of only recording aggregate statistics. The main cost is constructing the debug strings (which we do as a `String`).
+Partly solved by buffering debug info, with the additional precaution of only recording aggregate statistics. The main cost is constructing the debug strings (which we do as a `String`).
 
 ## Reading data was generally slow in CFSCQ
 
 Profiles showed `i2buf` in CFSCQ but not in FSCQ - turns out FSCQ now uses `w2bs` for some word/buffer manipulation, which hadn't been ported to the `read_piece` implementation in `CfscqFs.hs`.
+
+## Adding timing slows things down
+
+Merely adding the usual `t0 <- Rdtsc; t1 <- Rdtsc; Debug (t1-t0)` to a function slows it down, even if `Debug` tracking is disabled at compile time. This disproportionately affects CFSCQ, and seems to make compilation less effective.
 
 # Mysteries
 
@@ -61,7 +65,12 @@ What is the impact of compiling away translation?
 
 Why is reading files so much slower than FSCQ for warm workloads?
 - at least in part due to a missing FSCQ optimization
+- translation was quite significant, can be compiled away to a large extent
 
 Where exactly does CFSCQ's sequential overhead come from?
+- for cold workloads repeated execution is significant
+- sometimes translation is significant, but depends on specific method
 
 Why does traversing a directory not parallelize beyond 2x?
+- generates a lot of garbage due to use of `Word`, and collection is single-threaded
+- situation is quite different with parallel GC (though that hurts FSCQ)
