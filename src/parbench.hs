@@ -255,7 +255,7 @@ instance Options ParOptions where
     <*> simpleOption "n" 1
          "number of parallel threads to issue stats from"
     <*> simpleOption "warmup" True
-         "warmup by running 10 untimed iterations"
+         "warmup by running untimed iterations"
 
 -- fill in some dimensions based on global options
 optsData :: ParOptions -> IO DataPoint
