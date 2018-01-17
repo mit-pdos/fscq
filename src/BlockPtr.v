@@ -3407,8 +3407,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   (************* program *)
 
   Definition get lxp (ir : irec) off ms :=
-    t0 <- Rdtsc;
-    r <- (If (lt_dec off NDirect) {
+    If (lt_dec off NDirect) {
       Ret ^(ms, selN (IRBlocks ir) off $0)
     } else {
       let off := off - NDirect in
@@ -3423,10 +3422,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
           indget 2 lxp (IRTindPtr ir) off ms
         }
       }
-        });
-    t1 <- Rdtsc;
-    _ <- Debug "Ind.get" (t1-t0);
-  Ret r.
+    }.
 
   Definition read lxp (ir : irec) ms :=
     If (le_dec (IRLen ir) NDirect) {

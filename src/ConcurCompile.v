@@ -877,15 +877,15 @@ Section ConcurCompile.
   Proof.
     unfold INODE.Ind.IndRec.get; simpl.
     repeat comp.
+    unfold LOG.read.
     equiv_t ltac:(rewrite translate'_match_opt).
     compile_match;
       simpl; repeat comp.
     apply compile_bind; intros.
     apply Compiled_glog_read.
 
-    destruct v0 as [ [|] ];
+    destruct v as [ [|] ];
       simpl; repeat comp.
-    equiv_t exec_monad_simpl.
     equiv_t exec_monad_simpl.
   Defined.
 
@@ -913,7 +913,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v0 as [ [|] ];
+    destruct v as [ [|] ];
       simpl; repeat comp.
 
     equiv_t exec_monad_simpl.
@@ -924,7 +924,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v0 as [ [|] ];
+    destruct v as [ [|] ];
       simpl; repeat comp.
     unfold pair_args_helper; simpl.
     equiv_t ltac:(rewrite translate'_match_sumbool).
@@ -935,7 +935,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v1 as [ [|] ];
+    destruct v0 as [ [|] ];
       simpl; repeat comp.
     equiv_t exec_monad_simpl.
     equiv_t exec_monad_simpl.
@@ -946,7 +946,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v0 as [ [|] ];
+    destruct v as [ [|] ];
       simpl; repeat comp.
     equiv_t exec_monad_simpl.
     unfold pair_args_helper.
@@ -958,7 +958,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v1 as [ [|] ];
+    destruct v0 as [ [|] ];
       simpl; repeat comp.
     equiv_t ltac:(rewrite translate'_match_sumbool).
     compile_match.
@@ -968,12 +968,8 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v2 as [ [|] ];
+    destruct v1 as [ [|] ];
       simpl; repeat comp.
-    equiv_t exec_monad_simpl.
-    equiv_t ltac:(rewrite ?modified_or_success).
-    equiv_t exec_monad_simpl.
-    equiv_t exec_monad_simpl.
   Defined.
 
   Opaque INODE.Ind.get.
@@ -994,12 +990,8 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_glog_read.
 
-    destruct v0 as [ [|] ];
+    destruct v as [ [|] ];
       simpl; repeat comp.
-    eapply compile_equiv.
-    exec_monad_simpl.
-    reflexivity.
-    repeat comp.
   Defined.
 
   Opaque LOG.read.
@@ -1053,17 +1045,17 @@ Section ConcurCompile.
 
     eapply compile_equiv.
     apply exec_equiv_bind1.
-    instantiate (1 := Ret v0).
-    destruct v0 as [ [|] ]; simpl.
+    instantiate (1 := Ret v).
+    destruct v as [ [|] ]; simpl.
     exec_monad_simpl.
     reflexivity.
 
     repeat comp.
-    destruct v0 as [ [|] ];
+    destruct v as [ [|] ];
       simpl; repeat comp.
     apply compile_bind; intros.
     apply Compiled_inode_ind_get.
-    destruct v1 as [ [|] ];
+    destruct v0 as [ [|] ];
       simpl; repeat comp.
   Defined.
 
@@ -1145,7 +1137,7 @@ Section ConcurCompile.
     repeat comp.
     apply compile_bind; intros.
     apply Compiled_inode_irec_get.
-    destruct v0 as [ [|] ];
+    destruct v as [ [|] ];
       simpl; repeat comp.
     equiv_t exec_monad_simpl.
   Defined.
