@@ -1138,12 +1138,45 @@ Section ConcurCompile.
       apply compile_refl.
   Defined.
 
+  Definition Compiled_get_attr fsxp inum ams ls c :
+    Compiled (translate' (AsyncFS.AFS.file_get_attr fsxp inum ams) ls c).
+  Proof.
+    unfold AsyncFS.AFS.file_get_attr; simpl.
+    repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+    destruct v0 as [ [|] ];
+      simpl; repeat comp.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque AsyncFS.AFS.file_get_attr.
+
   Definition CompiledGetAttr fsxp inum ams ls c :
     Compiled (OptFS.file_get_attr fsxp inum ams ls c).
   Proof.
-    unfold OptFS.file_get_attr, translate; simpl.
-    repeat compile;
-      apply compile_refl.
+    unfold OptFS.file_get_attr, translate.
+    skip.
+    apply compile_bind; intros.
+    apply Compiled_get_attr.
+    apply compile_refl.
+  Defined.
+
+  Definition CompiledGetSz fsxp inum ams ls c :
+    Compiled (OptFS.file_get_sz fsxp inum ams ls c).
+  Proof.
+    unfold OptFS.file_get_sz, translate; simpl.
+    skip.
+    simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_get_attr.
+    destruct v0 as [ [|] ];
+      simpl; repeat comp.
+    equiv_t exec_monad_simpl.
+    skip.
+    comp.
+    skip.
+    comp.
   Defined.
 
 End ConcurCompile.
@@ -1162,3 +1195,6 @@ Definition lookup G fsxp dnum names ams ls c :=
 
 Definition file_get_attr G fsxp inum ams ls c :=
   compiled_prog (CompiledGetAttr G fsxp inum ams ls c).
+
+Definition file_get_sz G fsxp inum ams ls c :=
+  compiled_prog (CompiledGetSz G fsxp inum ams ls c).
