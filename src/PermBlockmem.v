@@ -105,6 +105,45 @@ Fixpoint extract_blocks (bm: block_mem) hl :=
            end
   end.
 
+Definition handle_valid (bm: block_mem) h := exists tb, bm h = Some tb.
+Definition handles_valid bm hl:= Forall (handle_valid bm) hl.
+
+Lemma handles_valid_length_eq:
+  forall bm l,
+    handles_valid bm l ->
+    length l = length (extract_blocks bm l).
+Proof.
+  unfold handles_valid, handle_valid; induction l; simpl; intros; auto.
+  destruct (bm a) eqn:D; simpl;
+  inversion H; subst; auto.
+  destruct H2; congruence.
+Qed.
+
+Lemma handles_valid_subset_trans:
+  forall bm bm' l,
+    handles_valid bm l ->
+    bm c= bm' ->
+    handles_valid bm' l.
+Proof.
+  unfold handles_valid, handle_valid; induction l; simpl; intros; auto.
+  inversion H; subst.
+  destruct H3.
+  constructor; eauto.
+Qed.
+
+Lemma handles_valid_upd:
+  forall bm l a v,
+    handles_valid bm l ->
+    handles_valid (upd bm a v) l.
+Proof.
+  unfold handles_valid, handle_valid; intros.
+  apply Forall_forall; intros.
+  eapply Forall_forall in H; eauto.
+  destruct H.
+  destruct (addr_eq_dec a x).
+  eexists; apply upd_eq; eauto.
+  eexists; rewrite upd_ne; eauto.
+Qed. 
 
 Lemma extract_blocks_app:
   forall l1 l2 bm,
@@ -158,58 +197,76 @@ Proof.
   rewrite IHl; eauto.
 Qed.
 
+
+
 Lemma extract_blocks_selN:
   forall bm l a def deftb,
-    length l = length (extract_blocks bm l) ->
+    handles_valid bm l ->
     a < length l ->
     bm (selN l a def) = Some (selN (extract_blocks bm l) a deftb).
 Proof.
+  unfold handles_valid, handle_valid;
   induction l; simpl; intros; try omega.
   destruct a0;
-  destruct (bm a); simpl; auto.
-  pose proof (extract_blocks_length_le bm l); omega.
-  simpl in *.
-  apply IHl; omega.
-  pose proof (extract_blocks_length_le bm l); omega.
+  destruct (bm a) eqn:D; simpl;
+  inversion H; subst; auto;
+  destruct H3; try congruence.
+  apply IHl; auto; omega.
 Qed.
 
 
 Lemma extract_blocks_subset:
   forall bm bm' hl,
-    length (extract_blocks bm hl) = length hl ->
+    handles_valid bm hl ->
     bm c= bm' ->
     extract_blocks bm hl = extract_blocks bm' hl.
 Proof.
-  unfold block_mem_subset; induction hl; intros; simpl in *; auto.
-  destruct (bm a) eqn:D;
+  unfold block_mem_subset, handles_valid, handle_valid;
+  induction hl; intros; simpl in *; auto.
+  destruct (bm a) eqn:D; simpl;
+  inversion H; subst; auto;
+  destruct H3; try congruence.
   specialize (H0 a) as Hx; destruct Hx.
-  erewrite H2; eauto.
+  erewrite H3; eauto.
   rewrite IHhl; eauto.
-  pose proof (extract_blocks_length_le bm hl).
-  omega.
+  congruence.
 Qed.
 
 Lemma extract_blocks_selN_inside:
   forall bm l a def deftb,
-    length l = length (extract_blocks bm l) ->
+    handles_valid bm l ->
     a < length l ->
     selN (extract_blocks bm l) a deftb::nil = extract_blocks bm (selN l a def :: nil).
 Proof.
   induction l; simpl; intros; try omega.
-  destruct a0; destruct (bm a); simpl in *; auto.
-  pose proof (extract_blocks_length_le bm l); omega.
-  erewrite IHl; try omega; auto.
-  pose proof (extract_blocks_length_le bm l); omega.
+  destruct a0;
+  destruct (bm a) eqn:D; simpl;
+  inversion H; subst; auto;
+  destruct H3; try congruence.
+  erewrite IHl; try omega; simpl; auto.
 Qed.
 
 Lemma extract_blocks_firstn_length:
   forall bm l n,
-    length l = length (extract_blocks bm l) ->
+    handles_valid bm l ->
     length (firstn n l) = length (extract_blocks bm (firstn n l)).
 Proof.
   induction l; simpl; intros; try omega.
   rewrite firstn_nil; auto.
   destruct n; simpl; auto.
-  destruct (bm a); simpl in *; auto.
-  pose proof (extract_blocks_length_le bm l); omega.
+  destruct (bm a) eqn:D; simpl;
+  inversion H; subst; auto;
+  destruct H2; try congruence.
+Qed.
+
+
+Lemma handles_valid_rev_eq:
+  forall bm l,
+    handles_valid bm l ->
+    handles_valid bm (rev l).
+Proof.
+  unfold handles_valid, handle_valid; intros.
+  apply Forall_forall; intros.
+  apply In_rev in H0.
+  eapply Forall_forall in H; eauto.
 Qed.

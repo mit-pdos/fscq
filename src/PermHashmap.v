@@ -378,4 +378,3 @@ Ltac solve_hash_list_rep :=
   | [ |- hash_list_rep _ _ _ ]
     => try (repeat eauto; econstructor)
   end.
-

@@ -24,6 +24,24 @@ Module AsyncRecArray (RA : RASig).
   Import RA Defs.
 
 
+  (** read count blocks starting from the beginning *)
+  Definition read_all xp count cs :=
+    let^ (cs, r) <- read_range (RAStart xp) count cs;;
+    Ret ^(cs, r).
+
+       (** write items from a given block index, 
+      slots following the items will be cleared *)
+  Definition write_aligned xp start handles cs :=
+    cs <- PermCacheDef.write_range ((RAStart xp) + start) handles cs;;
+    Ret cs.
+  
+  (** sync count blocks starting from start *)
+  Definition sync_aligned xp start count cs :=
+    cs <- PermCacheDef.sync_range ((RAStart xp) + start) count cs;;
+    Ret cs.
+
+
+  
   Definition items_valid xp start (items : itemlist) :=
     xparams_ok xp /\  start <= (RALen xp) /\
     Forall Rec.well_formed items /\
@@ -478,11 +496,8 @@ Module AsyncRecArray (RA : RASig).
     rewrite H0 in H1. apply plus_reg_l in H1; auto.
   Qed.
 
-  (** read count blocks starting from the beginning *)
-  Definition read_all xp count cs :=
-    let^ (cs, r) <- read_range (RAStart xp) count cs;;
-    Ret ^(cs, r).
-
+  
+       
     Theorem read_all_ok :
     forall xp count cs pr,
     {< F d tags items,
@@ -498,7 +513,7 @@ Module AsyncRecArray (RA : RASig).
           PermCacheDef.rep cs d bm' *
           [[ (F * array_rep xp 0 (Synced tags items))%pred d ]] *
           [[ extract_blocks bm' r = combine tags (ipack items) ]] *
-          [[ length r = length (combine tags (ipack items)) ]]
+          [[ handles_valid bm' r ]]
     CRASH:bm'', hm'',
       exists cs', PermCacheDef.rep cs' d bm''
     >} read_all xp count cs.
@@ -520,47 +535,59 @@ Module AsyncRecArray (RA : RASig).
     rewrite firstn_oob; auto.
     repeat setoid_rewrite combine_length_eq; auto.
     rewrite nils_length; setoid_rewrite combine_length_eq; auto.
-    rewrite H13; setoid_rewrite combine_length_eq; auto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    solve_hashmap_subset.
   Qed.
 
-Hint Extern 1 ({{_|_}} Bind (read_all _ _ _) _) => apply read_all_ok : prog.
-
-(*
-  Lemma vsupd_range_unsync_array : forall xp start items old_vs,
+  Lemma vsupd_range_unsync_array : forall xp start tags items old_vs,
     items_valid xp start items ->
     eqlen old_vs (ipack items) ->
-    arrayS (RAStart xp + start) (vsupd_range old_vs (ipack items))
-      =p=> unsync_array xp start items.
+    eqlen tags (ipack items) ->
+    arrayS (RAStart xp + start) (vsupd_range old_vs (combine tags (ipack items)))
+      =p=> unsync_array xp start tags items.
   Proof.
     intros.
-    unfold vsupd_range, unsync_array, rep_common, ipack.
+    unfold vsupd_range, unsync_array, rep_common.
     cancel.
     apply arrayN_unify.
     rewrite skipn_oob.
     rewrite app_nil_r.
     f_equal.
-    simplen.
-    simplen.
+    unfold eqlen in *;
+    setoid_rewrite combine_length_eq; auto; omega.
+
+    unfold eqlen in *;
+    setoid_rewrite combine_length_eq; auto.
+    rewrite H1; rewrite <- H0; rewrite firstn_exact.
+    rewrite map_length; auto.
   Qed.
 
-  Lemma vsupd_range_nopad_unsync_array : forall xp start (items : itemlist) old_vs,
+  Lemma vsupd_range_nopad_unsync_array : forall xp start tags (items : itemlist) old_vs,
     items_valid xp start items ->
     length old_vs = divup (length items) items_per_val ->
-    arrayS (RAStart xp + start) (vsupd_range old_vs (nopad_ipack items))
-      =p=> unsync_array xp start items.
+    eqlen tags (nopad_ipack items) ->
+    arrayS (RAStart xp + start) (vsupd_range old_vs (combine tags (nopad_ipack items)))
+      =p=> unsync_array xp start tags items.
   Proof.
     unfold vsupd_range, unsync_array, rep_common, eqlen.
     intros.
     rewrite nopad_ipack_length in *.
-    rewrite firstn_oob by omega.
-    rewrite skipn_oob by omega.
+    rewrite firstn_oob.
+    rewrite skipn_oob.
     cancel.
     apply arrayN_unify.
     rewrite app_nil_r.
     f_equal.
-    auto using ipack_nopad_ipack_eq.
-    autorewrite with core list. auto.
+    rewrite  ipack_nopad_ipack_eq; auto.
+    simplen.
+    setoid_rewrite combine_length_eq; auto.
+    rewrite map_length; omega.
+    simplen.
+    setoid_rewrite combine_length_eq; auto.
+    omega.
+    rewrite <- ipack_nopad_ipack_eq; auto; simplen.
+    setoid_rewrite combine_length_eq; auto.
+    omega.
+    rewrite <- ipack_nopad_ipack_eq; auto; simplen.
   Qed.
 
   Lemma write_aligned_length_helper : forall n l,
@@ -572,53 +599,64 @@ Hint Extern 1 ({{_|_}} Bind (read_all _ _ _) _) => apply read_all_ok : prog.
   Qed.
   Local Hint Resolve write_aligned_length_helper.
 
-  (** write items from a given block index, 
-      slots following the items will be cleared *)
-  Definition write_aligned xp start (items: itemlist) cs :=
-    let chunks := nopad_list_chunk items items_per_val in
-    cs <- BUFCACHE.write_range ((RAStart xp) + start) (map block2val chunks) cs;
-    Ret cs.
 
-  Theorem write_aligned_ok : forall xp start new cs,
-    {< F d,
-    PRE:hm         BUFCACHE.rep cs d *
-                   [[ items_valid xp start new ]] *
-                   [[ (F * avail_rep xp start (divup (length new) items_per_val))%pred d ]]
-    POST:hm' RET: cs
-                   exists d', BUFCACHE.rep cs d' *
-                   [[ (F * array_rep xp start (Unsync new))%pred d' ]]
-    XCRASH:hm'  exists cs' d',
-                   BUFCACHE.rep cs' d' *
-                   [[ (F * avail_rep xp start (divup (length new) items_per_val)) % pred d' ]]
-    >} write_aligned xp start new cs.
+  Theorem write_aligned_ok :
+    forall xp start hl cs pr,
+    {< F d tags new,
+    PERM:pr   
+    PRE:bm, hm,
+      PermCacheDef.rep cs d bm *
+      [[ items_valid xp start new ]] *
+      [[ handles_valid bm hl ]] *
+      [[ length tags = length (ipack new) ]] *
+      [[ extract_blocks bm hl = combine tags (ipack new) ]] *
+      [[ (F * avail_rep xp start (divup (length new) items_per_val))%pred d ]]
+    POST:bm', hm', RET: cs
+      exists d', PermCacheDef.rep cs d' bm' *
+      [[ (F * array_rep xp start (Unsync tags new))%pred d' ]]
+    XCRASH:bm'', hm'',  exists cs' d',
+      PermCacheDef.rep cs' d' bm'' *
+      [[ (F * avail_rep xp start (divup (length new) items_per_val)) % pred d' ]]
+    >} write_aligned xp start hl cs.
   Proof.
     unfold write_aligned, avail_rep.
     step.
+    all: apply handles_valid_length_eq in H8 as Hx.
+    cleanup.
     cbn. simplen.
+    setoid_rewrite combine_length_eq; auto.
+    simplen.
     step.
-    apply vsupd_range_nopad_unsync_array; auto.
+    step.
+    rewrite H6; apply vsupd_range_unsync_array; auto.
+    simplen.
+    solve_hashmap_subset.
+    rewrite <- H1; cancel; eauto.
     xcrash.
     rewrite vsupd_range_length; auto.
     simplen.
-    setoid_rewrite nopad_list_chunk_length; auto.
+    setoid_rewrite combine_length_eq; auto.
+    simplen.
   Qed.
 
-
-  Lemma vssync_range_sync_array : forall xp start items count vsl,
+  Lemma vssync_range_sync_array : forall xp start tags items count vsl,
     items_valid xp start items ->
     length items = (count * items_per_val)%nat ->
     length vsl = count ->
-    arrayS (RAStart xp + start) (vssync_range (combine (ipack items) vsl) count)
-      =p=> synced_array xp start items.
+    length tags = length (ipack items) ->
+    arrayS (RAStart xp + start) (vssync_range (combine (combine tags (ipack items)) vsl) count)
+      =p=> synced_array xp start tags items.
   Proof.
     unfold synced_array, rep_common; cancel; simplen.
     unfold vssync_range.
-    rewrite skipn_oob by simplen.
+    rewrite skipn_oob.
     rewrite app_nil_r.
     apply arrayN_unify.
-    rewrite firstn_oob by simplen.
-    rewrite map_fst_combine by simplen.
-    auto.
+    rewrite firstn_oob.
+    rewrite map_fst_combine.
+    unfold nils.
+    all: repeat setoid_rewrite combine_length_eq; auto; simplen.
+    rewrite nils_length; simplen.
   Qed.
 
   Lemma helper_ipack_length_eq: forall (vsl : list (list valu)) count items,
@@ -642,58 +680,67 @@ Hint Extern 1 ({{_|_}} Bind (read_all _ _ _) _) => apply read_all_ok : prog.
   Local Hint Resolve helper_ipack_length_eq helper_ipack_length_eq'.
   Hint Rewrite ipack_length.
 
-  Lemma vssync_range_pimpl : forall xp start items vsl m,
+  Lemma vssync_range_pimpl : forall xp start tags items vsl m,
     length items = (length vsl) * items_per_val ->
     m <= (length vsl) ->
-    arrayS (RAStart xp + start) (vssync_range (combine (ipack items) vsl) m) =p=>
-    arrayS (RAStart xp + start) (combine (ipack items) (repeat nil m ++ skipn m vsl)).
+    length tags = length (ipack items) ->
+    arrayS (RAStart xp + start) (vssync_range (combine (combine tags (ipack items)) vsl) m) =p=>
+    arrayS (RAStart xp + start) (combine (combine tags (ipack items)) (repeat nil m ++ skipn m vsl)).
   Proof.
     intros.
     unfold vssync_range, ipack.
     apply arrayN_unify.
-    rewrite skipn_combine by simplen.
+    setoid_rewrite skipn_combine.
     rewrite <- combine_app.
     f_equal.
     rewrite <- firstn_map_comm.
-    rewrite map_fst_combine by simplen.
+    setoid_rewrite map_fst_combine.
     rewrite firstn_skipn; auto.
-    simplen.
-    lia.
+    all: repeat setoid_rewrite combine_length_eq; auto; simplen.
+    apply min_l.
+    repeat setoid_rewrite combine_length_eq; auto; simplen.
   Qed.
 
 
-  (** sync count blocks starting from start *)
-  Definition sync_aligned xp start count cs :=
-    cs <- BUFCACHE.sync_range ((RAStart xp) + start) count cs;
-    Ret cs.
-
-  Theorem sync_aligned_ok : forall xp start count cs,
-    {< F d0 d items,
-    PRE:hm         BUFCACHE.synrep cs d0 d * 
-                   [[ (F * array_rep xp start (Unsync items))%pred d ]] *
-                   [[ length items = (count * items_per_val)%nat ]] *
-                   [[ items_valid xp start items /\ sync_invariant F ]]
-    POST:hm' RET: cs
-                   exists d', BUFCACHE.synrep cs d0 d' *
-                   [[ (F * array_rep xp start (Synced items))%pred d' ]]
-    CRASH:hm'  exists cs', BUFCACHE.rep cs' d0
+  Theorem sync_aligned_ok :
+    forall xp start count cs pr,
+    {< F d0 d tags items,
+    PERM:pr
+    PRE:bm, hm,
+      PermCacheDef.synrep cs d0 d bm * 
+      [[ (F * array_rep xp start (Unsync tags items))%pred d ]] *
+      [[ length items = (count * items_per_val)%nat ]] *
+      [[ items_valid xp start items /\ sync_invariant F ]]
+    POST:bm', hm', RET: cs
+      exists d', PermCacheDef.synrep cs d0 d' bm' *
+      [[ (F * array_rep xp start (Synced tags items))%pred d' ]]
+    CRASH:bm'', hm'',  exists cs', PermCacheDef.rep cs' d0 bm''
     >} sync_aligned xp start count cs.
   Proof.
     unfold sync_aligned.
     prestep. norml.
     unfold unsync_array, rep_common in *; destruct_lifts.
 
-    cancel.
-    rewrite combine_length_eq by simplen.
-    rewrite ipack_length; simplen.
+    safecancel.
+    eassign F_; cancel; eauto.
+    eauto.
+    unfold eqlen in *; setoid_rewrite combine_length_eq; simplen.
+    rewrite <- H12.
+    setoid_rewrite combine_length_eq; simplen.
+    auto.
+    auto.
 
     step.
+    step.
     apply vssync_range_sync_array; eauto.
+    unfold eqlen in *; rewrite <- H12.
+    setoid_rewrite combine_length_eq; simplen.
+    solve_hashmap_subset.
+    rewrite <- H1; cancel; eauto.
   Qed.
 
-  
-  Hint Extern 1 ({{_}} Bind (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
-  Hint Extern 1 ({{_}} Bind (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
-*)
+  Hint Extern 1 ({{_|_}} Bind (read_all _ _ _) _) => apply read_all_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
 End AsyncRecArray.
 

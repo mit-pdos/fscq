@@ -3,7 +3,6 @@ Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
 Require Import PermHashmap.
-Require Import HashmapProg.
 Require Import Pred PermPredCrash.
 Require Import Omega.
 Require Import Word.
@@ -148,6 +147,29 @@ Definition init xp cs :=
 
 Local Hint Unfold rep state_goodSize : hoare_unfold.
 
+Definition xform_rep_synced :
+  forall xp n,
+    crash_xform (rep xp (Synced n)) =p=> rep xp (Synced n).
+Proof.
+  unfold rep; intros; simpl.
+  xform; auto.
+  rewrite crash_xform_ptsto_subset'.
+  cancel.
+  rewrite H1; auto.
+Qed.
+
+Definition xform_rep_unsync :
+  forall xp n o,
+    crash_xform (rep xp (Unsync n o)) =p=> rep xp (Synced n) \/ rep xp (Synced o).
+Proof.
+  unfold rep; intros; simpl.
+  xform.
+  rewrite crash_xform_ptsto_subset; unfold ptsto_subset.
+  cancel.
+  or_l; cancel.
+  cancel.
+Qed.
+
 Lemma can_access_public_all:
   forall pr, can_access pr Public.
 Proof.
@@ -254,16 +276,16 @@ Qed.
 
 Theorem sync_now_ok :
   forall xp cs pr,
-        {< F d n old,
-         PERM:pr
-         PRE:bm, hm,
-                   PermCacheDef.rep cs d bm *
-                   [[ (F * rep xp (Unsync n old))%pred d ]] *
-                   [[ sync_invariant F ]]
-    POST:bm', hm', RET: cs
-                   exists d', PermCacheDef.rep cs d' bm' *
-                   [[ (F * rep xp (Synced n))%pred d' ]]
-    CRASH:bm'', hm'',  exists cs', PermCacheDef.rep cs' d bm''
+  {< F d n old,
+  PERM:pr
+  PRE:bm, hm,
+      PermCacheDef.rep cs d bm *
+      [[ (F * rep xp (Unsync n old))%pred d ]] *
+      [[ sync_invariant F ]]
+  POST:bm', hm', RET: cs
+      exists d', PermCacheDef.rep cs d' bm' *
+      [[ (F * rep xp (Synced n))%pred d' ]]
+  CRASH:bm'', hm'',  exists cs', PermCacheDef.rep cs' d bm''
     >} sync_now xp cs.
 Proof.
   unfold sync_now; intros.

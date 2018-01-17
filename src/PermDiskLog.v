@@ -2,8 +2,6 @@ Require Import Arith.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
-Require Import PermHashmap.
-Require Import HashmapProg.
 Require Import Pred PermPredCrash.
 Require Import Omega.
 Require Import Word.
@@ -63,8 +61,28 @@ Module Data := AsyncRecArray DataSig.
 Module DescDefs := Desc.Defs.
 Module DataDefs := Data.Defs.
 
-Definition entry := (addr * tagged_block)%type.
-Definition contents := list entry.
+Definition generic_entry {B} := (addr * B)%type.
+Definition generic_contents {B} := list (@generic_entry B).
+Definition entry := @generic_entry tagged_block.
+Definition contents := @generic_contents tagged_block.
+Definition input_entry := @generic_entry handle.
+Definition input_contents := @generic_contents handle.
+
+
+Definition avail xp cs :=
+  let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
+  let '(_, (ndesc, _), _) := nr in
+  Ret ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
+
+Definition read xp cs :=
+  let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
+  let '(_, (ndesc, ndata), _) := nr in
+  let^ (cs, ahl) <- Desc.read_all xp ndesc cs;;
+  abl <- unseal_all ahl;;
+  let wal := fold_left DescDefs.iunpack abl nil in               
+  let al := map (@wordToNat addrlen) wal in
+  let^ (cs, vl) <- Data.read_all xp ndata cs;;
+  Ret ^(cs, (al, vl)).
 
 Inductive state :=
 (* The log is synced on disk *)
@@ -92,15 +110,16 @@ Inductive state :=
 | RollbackUnsync (old: contents)
 .
 
-Definition ent_addr (e : entry) := addr2w (fst e).
-Definition ent_block (e : entry) := snd e.
-Definition ent_tag (e : entry) := fst (snd e).
-Definition ent_valu (e : entry) := snd (snd e).
+Definition ent_addr {B} (e : @generic_entry B) := addr2w (fst e).
+Definition ent_handle {A} (e : A * handle) := snd e.
+Definition ent_block {A} (e : A * tagged_block) := snd e.
+Definition ent_tag {A C} (e : A * (tag * C)) := fst (snd e).
+Definition ent_valu {A B} (e : A * (B * valu)) := snd (snd e).
 
-Definition ndesc_log (log : contents) := (divup (length log) DescSig.items_per_val).
-Definition ndesc_list T (l : list T) := (divup (length l) DescSig.items_per_val).
+Definition ndesc_log {T} (log : @generic_contents T) := (divup (length log) DescSig.items_per_val).
+Definition ndesc_list {T} (l : list T) := (divup (length l) DescSig.items_per_val).
 
-Fixpoint log_nonzero (log : contents) : contents :=
+Fixpoint log_nonzero {T} (log : @generic_contents T) :=
   match log with
   | (0, _) :: rest => log_nonzero rest
   | e :: rest => e :: log_nonzero rest
@@ -108,6 +127,7 @@ Fixpoint log_nonzero (log : contents) : contents :=
   end.
 
 Definition blocks_nonzero (log : contents) := map ent_block (log_nonzero log).
+Definition handles_nonzero (log : input_contents) := map ent_handle (log_nonzero log).
 Definition vals_nonzero (log : contents) := map ent_valu (log_nonzero log).
 Definition tags_nonzero (log : contents) := map ent_tag (log_nonzero log).
 
@@ -118,25 +138,18 @@ Fixpoint nonzero_addrs (al : list addr) : nat :=
   | nil => 0
   end.
 
-Fixpoint combine_nonzero (al : list addr) (vl : list tagged_block) : contents :=
+Fixpoint combine_nonzero {B} (al : list addr) (vl : list B) : @generic_contents B :=
   match al, vl with
   | 0 :: al', v :: vl' => combine_nonzero al' vl
   | a :: al', v :: vl' => (a, v) :: (combine_nonzero al' vl')
   | _, _ => nil
   end.
 
-Fixpoint combine_nonzero_gen (al : list addr) (vl : list handle) :=
-  match al, vl with
-  | 0 :: al', v :: vl' => combine_nonzero_gen al' vl
-  | a :: al', v :: vl' => (a, v) :: (combine_nonzero_gen al' vl')
-  | _, _ => nil
-  end.
+Definition ndata_log {B} (log : @generic_contents B) := nonzero_addrs (map fst log) .
 
-Definition ndata_log (log : contents) := nonzero_addrs (map fst log) .
+Definition addr_valid {B} (e : @generic_entry B) := goodSize addrlen (fst e).
 
-Definition addr_valid (e : entry) := goodSize addrlen (fst e).
-
-Definition entry_valid (ent : entry) := fst ent <> 0 /\ addr_valid ent.
+Definition entry_valid {B} (ent : @generic_entry B) := fst ent <> 0 /\ addr_valid ent.
 
 Definition addr_tags n := repeat Public n.
 
@@ -151,8 +164,10 @@ Definition rep_contents xp (log : contents) : rawpred :=
 Definition padded_addr (al : list addr) :=
   setlen al (roundup (length al) DescSig.items_per_val) 0.
 
-Definition padded_log (log : contents) :=
-  setlen log (roundup (length log) DescSig.items_per_val) (0, tagged_block0).
+Definition padded_log_gen {T} def (log : @generic_contents T) :=
+  setlen log (roundup (length log) DescSig.items_per_val) (0, def).
+
+Definition padded_log (log : contents) := padded_log_gen tagged_block0 log.
 
 Definition rep_contents_unmatched xp (old : contents) new_addr new_tag new_valu : rawpred :=
   ( [[ Forall addr_valid old ]] *
@@ -243,8 +258,8 @@ Definition rep_inner xp (st : state) hm : rawpred :=
      [[ length synced_addr = ((ndesc_log new) * DescSig.items_per_val)%nat ]] *
      [[ length synced_valu = ndata_log new ]] *
      [[ checksums_match (padded_log old ++ new) h hm ]] *
-     [[ hide_or (DescDefs.ipack (map ent_addr (padded_log new)) <> DescDefs.ipack synced_addr \/
-                 vals_nonzero new <> synced_valu) ]] *
+     [[ hide_or (blocks_nonzero new <> combine synced_tag synced_valu \/
+                 DescDefs.ipack (map ent_addr (padded_log new)) <> DescDefs.ipack synced_addr) ]] *
      [[ Forall entry_valid new ]]
        
   | RollbackUnsync old =>
@@ -261,8 +276,8 @@ Definition rep_inner xp (st : state) hm : rawpred :=
     [[ length synced_valu = ndata_log new ]] *
     [[ checksums_match old h' hm ]] *
     [[ checksums_match (padded_log old ++ new) h hm ]] *
-    [[ hide_or (DescDefs.ipack (map ent_addr (padded_log new)) <> DescDefs.ipack synced_addr \/
-                vals_nonzero new <> synced_valu) ]] *
+    [[ hide_or (blocks_nonzero new <> combine synced_tag synced_valu \/
+                DescDefs.ipack (map ent_addr (padded_log new)) <> DescDefs.ipack synced_addr) ]] *
     [[ Forall entry_valid new ]]
       
    end)%pred.
@@ -313,39 +328,6 @@ Hint Resolve sync_invariant_would_recover sync_invariant_would_recover'.
 Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
 
-
-
-Definition unseal_all (hl: list handle) :=
-  let^ (bl) <- ForN i < length hl
-        Blockmem bm
-        Ghost [ crash ]
-        Loopvar [ tbl ]
-        Invariant
-           [[ rev (tbl) = map snd (extract_blocks bm (firstn i hl)) ]]
-        OnCrash
-           crash
-        Begin
-           tb <- Unseal (selN hl i 0);;
-           Ret ^(tb::tbl)
-       Rof ^((nil: list block));;
-  Ret (rev bl).
-
-Definition avail xp cs :=
-  let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
-    let '(_, (ndesc, _), _) := nr in
-    Ret ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
-
-     
-  Definition read xp cs :=
-    let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
-    let '(_, (ndesc, ndata), _) := nr in
-    let^ (cs, ahl) <- Desc.read_all xp ndesc cs;;
-    abl <- unseal_all ahl;;
-    let wal := fold_left DescDefs.iunpack abl nil in               
-    let al := map (@wordToNat addrlen) wal in
-    let^ (cs, vl) <- Data.read_all xp ndata cs;;
-    Ret ^(cs, (al, vl)).
-
   (* this is an evil hint *)
   Remove Hints Forall_nil.
 
@@ -368,15 +350,15 @@ Definition avail xp cs :=
     rewrite IHl; auto.
   Qed.
 
-  Lemma combine_nonzero_nil : forall a,
-    combine_nonzero a nil = nil.
+  Lemma combine_nonzero_nil : forall a T,
+    combine_nonzero a (nil: list T) = nil.
   Proof.
     induction a; intros; simpl; auto.
     destruct a; simpl; auto.
   Qed.
   Local Hint Resolve combine_nonzero_nil.
 
-  Lemma combine_nonzero_app_zero : forall a b,
+  Lemma combine_nonzero_app_zero : forall T a (b: list T),
     combine_nonzero (a ++ [0]) b = combine_nonzero a b.
   Proof.
     induction a; intros; simpl; auto.
@@ -385,7 +367,7 @@ Definition avail xp cs :=
     rewrite IHa; auto.
   Qed.
 
-  Lemma combine_nonzero_app_zeros : forall n a b,
+  Lemma combine_nonzero_app_zeros : forall T n a (b: list T),
     combine_nonzero (a ++ repeat 0 n) b = combine_nonzero a b.
   Proof.
     induction n; intros; simpl.
@@ -397,7 +379,7 @@ Definition avail xp cs :=
 
   Local Hint Resolve roundup_ge DescDefs.items_per_val_gt_0.
 
-  Lemma combine_nonzero_padded_addr : forall a b,
+  Lemma combine_nonzero_padded_addr : forall T a (b: list T),
     combine_nonzero (padded_addr a) b = combine_nonzero a b.
   Proof.
     unfold padded_addr, vals_nonzero.
@@ -418,17 +400,17 @@ Definition avail xp cs :=
     rewrite IHn; auto.
   Qed.
 
-  Lemma map_entaddr_repeat_0 : forall n b,
+  Lemma map_entaddr_repeat_0 : forall T n (b: T),
     map ent_addr (repeat (0, b) n) = repeat $0 n.
   Proof.
     induction n; intros; simpl; auto.
     rewrite IHn; auto.
   Qed.
 
-  Lemma combine_nonzero_padded_log : forall l b,
-    combine_nonzero (map fst (padded_log l)) b = combine_nonzero (map fst l) b.
+  Lemma combine_nonzero_padded_log : forall T A (l: @generic_contents A) (def: A) (b: list T),
+    combine_nonzero (map fst (padded_log_gen def l)) b = combine_nonzero (map fst l) b.
   Proof.
-    unfold padded_log, setlen, roundup; intros.
+    unfold padded_log_gen, setlen, roundup; intros.
     induction l; simpl.
     rewrite divup_0; simpl; auto.
     
@@ -440,10 +422,10 @@ Definition avail xp cs :=
     repeat rewrite combine_nonzero_app_zeros; auto.
   Qed.
 
-  Lemma addr_valid_padded : forall l,
-    Forall addr_valid l -> Forall addr_valid (padded_log l).
+  Lemma addr_valid_padded : forall T (l: @generic_contents T) def,
+    Forall addr_valid l -> Forall addr_valid (padded_log_gen def l).
   Proof.
-    unfold padded_log, setlen, roundup; intros.
+    unfold padded_log_gen, setlen, roundup; intros.
     rewrite firstn_oob; simpl; auto.
     apply Forall_append; auto.
     rewrite Forall_forall; intros.
@@ -452,18 +434,18 @@ Definition avail xp cs :=
     apply zero_lt_pow2.
   Qed.
 
-  Lemma padded_addr_valid : forall l,
-    Forall addr_valid (padded_log l) ->
+  Lemma padded_addr_valid : forall T (l: @generic_contents T) def,
+    Forall addr_valid (padded_log_gen def l) ->
     Forall addr_valid l.
   Proof.
-    unfold padded_log, setlen; intros.
+    unfold padded_log_gen, setlen; intros.
     rewrite firstn_oob in H; auto.
     eapply forall_app_r; eauto.
   Qed.
 
   Local Hint Resolve addr_valid_padded padded_addr_valid.
 
-  Lemma map_wordToNat_ent_addr : forall l,
+  Lemma map_wordToNat_ent_addr : forall T (l: @generic_contents T),
     Forall addr_valid l ->
     (map (@wordToNat _) (map ent_addr l)) = map fst l.
   Proof.
@@ -481,9 +463,9 @@ Definition avail xp cs :=
   Proof.
     intros; unfold ent_addr, addr2w.
     rewrite <- combine_nonzero_ok.
-    rewrite <- combine_nonzero_padded_log.
+    erewrite <- combine_nonzero_padded_log.
     f_equal.
-    rewrite map_wordToNat_ent_addr; auto.
+    unfold padded_log; rewrite map_wordToNat_ent_addr; eauto.
   Qed.
 
   Lemma vals_nonzero_addrs : forall l,
@@ -500,37 +482,38 @@ Definition avail xp cs :=
     destruct a, n; simpl; auto.
   Qed.
 
-  Lemma log_nonzero_addrs : forall l,
+  Lemma log_nonzero_addrs : forall T (l: @generic_contents T),
     length (log_nonzero l) = nonzero_addrs (map fst l).
   Proof.
     induction l; intros; simpl; auto.
     destruct a, n; simpl; auto.
   Qed.
 
-  Lemma desc_ipack_padded : forall l,
-    DescDefs.ipack (map ent_addr l) = DescDefs.ipack (map ent_addr (padded_log l)).
+  Lemma desc_ipack_padded : forall T (l: @generic_contents T) def,
+    DescDefs.ipack (map ent_addr l) = DescDefs.ipack (map ent_addr (padded_log_gen def l)).
   Proof.
-    unfold padded_log, setlen; intros.
+    unfold padded_log_gen, setlen; intros.
     rewrite firstn_oob, map_app, map_entaddr_repeat_0 by auto.
     rewrite DescDefs.ipack_app_item0; auto.
     rewrite map_length; auto.
   Qed.
 
+
   Local Hint Resolve combine_nonzero_padded_wordToNat.
   
-Lemma desc_padding_synced_piff : forall xp a l,
-    Desc.array_rep xp a (Desc.Synced (addr_tags (ndesc_log l)) (map ent_addr (padded_log l)))
+Lemma desc_padding_synced_piff : forall xp a T (l: @generic_contents T) def,
+    Desc.array_rep xp a (Desc.Synced (addr_tags (ndesc_log l)) (map ent_addr (padded_log_gen def l)))
     <=p=> Desc.array_rep xp a (Desc.Synced (addr_tags (ndesc_log l)) (map ent_addr l)).
   Proof.
      unfold Desc.array_rep, Desc.synced_array, Desc.rep_common; intros.
      split; cancel; subst.
-     unfold padded_log, setlen, roundup in H0.
+     unfold padded_log_gen, setlen, roundup in H0.
      rewrite firstn_oob, map_app in H0 by auto.
      apply Desc.items_valid_app in H0; intuition.
      apply eq_sym.
-     rewrite  desc_ipack_padded; auto.
+     erewrite  desc_ipack_padded; eauto.
      rewrite  <- desc_ipack_padded; auto.
-     unfold padded_log, setlen, roundup.
+     unfold padded_log_gen, setlen, roundup.
      rewrite firstn_oob, map_app by auto.
      apply Desc.items_valid_app2; auto.
      autorewrite with lists; auto.
@@ -538,18 +521,18 @@ Lemma desc_padding_synced_piff : forall xp a l,
      rewrite <- desc_ipack_padded; auto.
   Qed.
 
-  Lemma desc_padding_unsync_piff : forall xp a l,
-    Desc.array_rep xp a (Desc.Unsync (addr_tags (ndesc_log l)) (map ent_addr (padded_log l)))
+  Lemma desc_padding_unsync_piff : forall xp a T (l: @generic_contents T) def,
+    Desc.array_rep xp a (Desc.Unsync (addr_tags (ndesc_log l)) (map ent_addr (padded_log_gen def l)))
     <=p=> Desc.array_rep xp a (Desc.Unsync (addr_tags (ndesc_log l)) (map ent_addr l)).
   Proof.
      unfold Desc.array_rep, Desc.unsync_array, Desc.rep_common; intros.
      split; cancel; subst.
-     unfold padded_log, setlen, roundup in H.
+     unfold padded_log_gen, setlen, roundup in H.
      rewrite firstn_oob, map_app in H by auto.
      apply Desc.items_valid_app in H; intuition.
-     rewrite desc_ipack_padded; auto.
+     erewrite desc_ipack_padded; eauto.
      rewrite <- desc_ipack_padded; auto.
-     unfold padded_log, setlen, roundup.
+     unfold padded_log_gen, setlen, roundup.
      rewrite firstn_oob, map_app by auto.
      apply Desc.items_valid_app2; auto.
      autorewrite with lists; auto.
@@ -557,7 +540,7 @@ Lemma desc_padding_synced_piff : forall xp a l,
      rewrite <- desc_ipack_padded; auto.
   Qed.
 
-  Lemma goodSize_ndesc : forall l,
+  Lemma goodSize_ndesc : forall T (l: @generic_contents T),
     goodSize addrlen (length l) -> goodSize addrlen (ndesc_log l).
   Proof.
     intros; unfold ndesc_log.
@@ -567,10 +550,10 @@ Lemma desc_padding_synced_piff : forall xp a l,
   Qed.
   Local Hint Resolve goodSize_ndesc.
 
-  Lemma padded_log_length: forall l,
-    length (padded_log l) = roundup (length l) DescSig.items_per_val.
+  Lemma padded_log_length: forall T (l: @generic_contents T) def,
+    length (padded_log_gen def l) = roundup (length l) DescSig.items_per_val.
   Proof.
-    unfold padded_log, roundup; intros.
+    unfold padded_log_gen, roundup; intros.
     rewrite setlen_length; auto.
   Qed.
 
@@ -591,19 +574,21 @@ Lemma desc_padding_synced_piff : forall xp a l,
     apply nonzero_addrs_app_zero.
   Qed.
 
-  Lemma nonzero_addrs_padded_log : forall l,
-    nonzero_addrs (map fst (padded_log l)) = nonzero_addrs (map fst l).
+  Lemma nonzero_addrs_padded_log : forall T (l: @generic_contents T) def,
+    nonzero_addrs (map fst (padded_log_gen def l)) = nonzero_addrs (map fst l).
   Proof.
-    unfold padded_log; induction l; simpl; auto.
+    unfold padded_log_gen; induction l; simpl; intros; auto.
     rewrite setlen_nil, repeat_is_nil; simpl; auto.
     unfold roundup; rewrite divup_0; omega.
     
     destruct a, n; simpl;
-    rewrite <- IHl;
+    erewrite <- IHl;
     unfold setlen, roundup;
     repeat rewrite firstn_oob, map_app by auto;
     setoid_rewrite map_fst_repeat;
     repeat rewrite nonzero_addrs_app_zeros; simpl; auto.
+    Unshelve.
+    all: auto.
   Qed.
 
   Lemma vals_nonzero_length : forall l,
@@ -636,7 +621,7 @@ Lemma desc_padding_synced_piff : forall xp a l,
     induction n; simpl; auto.
   Qed.
 
-  Lemma log_nonzero_app : forall a b,
+  Lemma log_nonzero_app : forall T (a b: @generic_contents T),
     log_nonzero (a ++ b) = log_nonzero a ++ log_nonzero b.
   Proof.
     induction a; simpl; intros; auto.
@@ -647,7 +632,7 @@ Lemma desc_padding_synced_piff : forall xp a l,
   Lemma vals_nonzero_padded_log : forall l,
     vals_nonzero (padded_log l) = vals_nonzero l.
   Proof.
-    unfold vals_nonzero, padded_log, setlen, roundup; simpl.
+    unfold vals_nonzero, padded_log, padded_log_gen, setlen, roundup; simpl.
     induction l; intros; simpl; auto.
     rewrite firstn_oob; simpl; auto.
     rewrite log_nonzero_repeat_0; auto.
@@ -668,7 +653,7 @@ Lemma desc_padding_synced_piff : forall xp a l,
   Lemma tags_nonzero_padded_log : forall l,
     tags_nonzero (padded_log l) = tags_nonzero l.
   Proof.
-    unfold tags_nonzero, padded_log, setlen, roundup; simpl.
+    unfold tags_nonzero, padded_log, padded_log_gen, setlen, roundup; simpl.
     induction l; intros; simpl; auto.
     rewrite firstn_oob; simpl; auto.
     rewrite log_nonzero_repeat_0; auto.
@@ -686,33 +671,47 @@ Lemma desc_padding_synced_piff : forall xp a l,
     simpl; rewrite app_nil_r; auto.
   Qed.
 
-  Lemma ndata_log_goodSize : forall l,
+  Lemma nonzero_addrs_length : forall l,
+    nonzero_addrs l <= length l.
+  Proof.
+    induction l; intros; simpl; auto.
+    destruct a; simpl; auto; omega.
+  Qed.
+
+  Lemma ndata_log_goodSize : forall T (l: @generic_contents T),
     goodSize addrlen (length l) -> goodSize addrlen (ndata_log l).
   Proof.
-    unfold ndata_log; intros.
-    rewrite <- vals_nonzero_addrs.
+    unfold ndata_log; induction l; intros; simpl; auto.
+    destruct a, n; simpl; auto.
+    apply IHl.
+    simpl in *; eapply goodSize_trans.
+    2: eauto.
+    omega.
+    simpl in *.
     eapply goodSize_trans.
-    apply vals_nonzero_length; auto.
-    auto.
+    2: eauto.
+    pose proof nonzero_addrs_length (map fst l);
+    repeat rewrite map_length in *.
+    apply le_n_S; auto.
   Qed.
   Local Hint Resolve ndata_log_goodSize.
 
-  Lemma padded_log_idem : forall l,
-    padded_log (padded_log l) = padded_log l.
+  Lemma padded_log_idem : forall T (l: @generic_contents T) def1 def2,
+    padded_log_gen def2 (padded_log_gen def1 l) = padded_log_gen def1 l.
   Proof.
     intros.
-    unfold padded_log.
+    unfold padded_log_gen.
     rewrite setlen_length.
     rewrite roundup_roundup; auto.
     rewrite setlen_exact; auto.
     rewrite setlen_length; auto.
   Qed.
 
-  Lemma padded_log_app : forall l1 l2,
-    padded_log (padded_log l1 ++ l2) = padded_log l1 ++ padded_log l2.
+  Lemma padded_log_app : forall T (l1 l2: @generic_contents T) def1 def2,
+    padded_log_gen def2 (padded_log_gen def1 l1 ++ l2) = padded_log_gen def1 l1 ++ padded_log_gen def2 l2.
   Proof.
     intros.
-    unfold padded_log.
+    unfold padded_log_gen.
     rewrite setlen_app_r.
     f_equal.
     rewrite app_length, setlen_length.
@@ -779,6 +778,7 @@ Lemma desc_padding_synced_piff : forall xp a l,
     safestep.
     safestep.
     solve_checksums.
+    eauto.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
     cancel; eauto.
     rewrite <- H1; cancel.
@@ -786,76 +786,34 @@ Lemma desc_padding_synced_piff : forall xp a l,
     eauto.
   Qed.
 
-
-Theorem unseal_all_ok :
-    forall hl pr,
-    {!< F tbl,
-    PERM: pr                      
-    PRE:bm, hm,
-        F * [[ tbl = extract_blocks bm hl ]] *
-        [[ length tbl = length hl ]] *
-        [[ forall t, In t (map fst tbl) -> can_access pr t ]]
-    POST:bm', hm', RET: r
-        F * [[ r = map snd tbl ]]
-    CRASH:bm'', hm_crash,
-        false_pred (* Can't crash *)              
-    >!} unseal_all hl.
-  Proof.
-    unfold unseal_all; step.
-    safestep.
-    apply H3.
-    apply in_selN with (n:= m).
-    rewrite map_length.
-    setoid_rewrite H4; auto.
-    eassign (selN (map snd (extract_blocks bm hl)) m ($0)).
-    erewrite extract_blocks_selN.
-    repeat erewrite selN_map.
-    rewrite <- surjective_pairing; auto.
-    unfold block_mem_subset in *.
-
-    erewrite extract_blocks_subset with (bm:= bm); eauto.
-    setoid_rewrite H4; omega.
-    setoid_rewrite H4; omega.
-    erewrite <- extract_blocks_subset with (bm:= bm); eauto.
-    auto.
-
-    step.
-    step.
-    rewrite H11.
-    replace ([(map snd (extract_blocks bm hl)) ⟦ m ⟧]) with
-        (map snd [selN (extract_blocks bm hl) m tagged_block0]).
-    rewrite <- map_app.
-    erewrite <- extract_blocks_subset with (bm:= bm); eauto.
-    erewrite extract_blocks_selN_inside; auto.
-    rewrite <- extract_blocks_app.
-    rewrite <- firstn_S_selN; auto.
-    erewrite extract_blocks_subset with (bm:= bm); eauto.
-
-    erewrite extract_blocks_firstn_length; auto.
-    erewrite extract_blocks_firstn_length; auto.
-    simpl; erewrite selN_map; auto.
-    setoid_rewrite H4; omega.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
-    cancel; eauto.
-
-    step.
-    step.
-    rewrite H9, firstn_exact.
-    erewrite extract_blocks_subset with (bm:= bm); eauto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
-    eassign (lift_empty(False) (AT:= addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred; cancel.
-    Unshelve.
-    all: eauto.
-    exact tt.
-    exact Public.
-    exact tagged_block0.
+  Lemma block2val_noop:
+    forall a,
+      Data.Defs.block2val [a] = a.
+  Proof.  
+    intros.
+    unfold Data.Defs.block2val, Rec.to_word; simpl.
+    unfold Word.combine.
+    rewrite combine_n_0.
+    unfold Data.Defs.word2val, eq_rec_r, DataSig.itemtype; simpl.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    erewrite <- Eqdep.EqdepTheory.eq_rect_eq; auto.
   Qed.
-
-
-  Hint Extern 1 ({{_|_}} Bind (unseal_all _) _) => apply unseal_all_ok : prog.
-
-
-
+  
+  Lemma ipack_noop:
+    forall l,
+      Data.Defs.ipack l = l.
+  Proof.
+    induction l; simpl; intros; auto.
+    unfold Data.Defs.ipack, Data.Defs.list_chunk,
+    DataSig.items_per_val in *.
+    rewrite divup_1 in *; simpl.
+    rewrite setlen_inbound; try (simpl; omega).
+    simpl.
+    setoid_rewrite IHl.
+    rewrite block2val_noop; auto.
+  Qed.
+  
   Lemma combine_tags_vals:
     forall l,
       combine (tags_nonzero l) (Data.Defs.ipack (vals_nonzero l)) = blocks_nonzero l.
@@ -870,11 +828,11 @@ Theorem unseal_all_ok :
     unfold tags_nonzero, blocks_nonzero, vals_nonzero in *; simpl.
     setoid_rewrite IHl.
     unfold ent_tag, ent_valu; simpl.
-    admit.
+    rewrite block2val_noop; auto.
     omega.
-  Admitted.
+ Qed.
 
-  
+Hint Unfold padded_log.
 
   Definition read_ok :
     forall xp cs pr,
@@ -886,7 +844,8 @@ Theorem unseal_all_ok :
     POST:bm', hm', RET: ^(cs, r)
           PermCacheDef.rep cs d bm' *
           [[ (F * rep xp (Synced l) hm')%pred d ]] *
-          [[ combine_nonzero (fst r) (extract_blocks bm' (snd r)) = log_nonzero l ]]
+          [[ combine_nonzero (fst r) (extract_blocks bm' (snd r)) = log_nonzero l ]] *
+          [[ handles_valid bm' (snd r) ]]
     CRASH:bm'', hm_crash, exists cs',
           PermCacheDef.rep cs' d bm'' *
           [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
@@ -897,17 +856,16 @@ Theorem unseal_all_ok :
 
     prestep. norm. cancel. intuition simpl.
     eassign (map ent_addr (padded_log l)).
-    rewrite map_length, padded_log_length.
+    rewrite map_length; unfold padded_log; rewrite padded_log_length.
     auto.
     eassign (addr_tags (ndesc_log l)).
     unfold addr_tags; apply repeat_length.
     auto.
     pred_apply.
-    rewrite desc_padding_synced_piff; cancel.
+    unfold padded_log; rewrite desc_padding_synced_piff; cancel.
     subst.
 
     step.
-    rewrite H18, H19; auto.
     rewrite H19 in H8.
     apply in_map_fst_exists_snd in H8; cleanup.
     apply in_combine_l in H8.
@@ -927,7 +885,7 @@ Theorem unseal_all_ok :
     
     safestep.
     safestep.
-    rewrite desc_padding_synced_piff; cancel.
+    unfold padded_log; rewrite desc_padding_synced_piff; cancel.
     solve_checksums.
 
     subst.
@@ -938,13 +896,13 @@ Theorem unseal_all_ok :
     rewrite combine_tags_vals.
     apply combine_nonzero_padded_wordToNat; auto.
     rewrite map_length.
-    rewrite padded_log_length.
+    unfold padded_log; rewrite padded_log_length.
     unfold roundup; eauto.
     unfold addr_tags; rewrite repeat_length.
     unfold ndesc_log.
     rewrite Desc.Defs.ipack_length.
     rewrite map_length.
-    rewrite padded_log_length.
+    unfold padded_log; rewrite padded_log_length.
     unfold roundup; rewrite divup_mul; auto.
     unfold DescSig.items_per_val.
     rewrite valulen_is. cbv; omega.
@@ -953,7 +911,7 @@ Theorem unseal_all_ok :
 
     cancel; eauto.
     rewrite <- H1; cancel.
-    rewrite desc_padding_synced_piff; cancel.
+    unfold padded_log; rewrite desc_padding_synced_piff; cancel.
     solve_checksums.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
     unfold pimpl; intros; eapply block_mem_subset_trans; eauto.
@@ -979,13 +937,13 @@ Theorem unseal_all_ok :
     apply zero_lt_pow2.
   Qed.
 
-  Lemma ndesc_log_nil : ndesc_log nil = 0.
+  Lemma ndesc_log_nil : forall T, ndesc_log (nil: @generic_contents T) = 0.
   Proof.
     unfold ndesc_log; simpl.
     rewrite divup_0; auto.
   Qed.
 
-  Lemma ndata_log_nil : ndata_log nil = 0.
+  Lemma ndata_log_nil : forall T, ndata_log (nil: @generic_contents T) = 0.
   Proof.
     unfold ndata_log; simpl; auto.
   Qed.
@@ -1095,18 +1053,18 @@ Theorem unseal_all_ok :
     intros; omega.
   Qed.
 
-  Lemma helper_trunc_ok : forall xp l prev_len h,
+  Lemma helper_trunc_ok : forall T xp l prev_len h,
     Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log l)) (map ent_addr l)) *
     Data.array_rep xp 0 (Data.Synced (tags_nonzero l) (vals_nonzero l)) *
     Desc.avail_rep xp (ndesc_log l) (LogDescLen xp - ndesc_log l) *
     Data.avail_rep xp (ndata_log l) (LogLen xp - ndata_log l) *
     PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced (prev_len, (0, 0), h))
     =p=>
-    PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced (prev_len, (ndesc_log [], ndata_log []), h)) *
-    Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log [])) []) *
+    PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced (prev_len, (@ndesc_log T [], @ndata_log T []), h)) *
+    Desc.array_rep xp 0 (Desc.Synced (addr_tags (@ndesc_log T [])) []) *
     Data.array_rep xp 0 (Data.Synced (tags_nonzero []) (vals_nonzero [])) *
-    Desc.avail_rep xp (ndesc_log []) (LogDescLen xp - ndesc_log []) *
-    Data.avail_rep xp (ndata_log []) (LogLen xp - ndata_log []).
+    Desc.avail_rep xp (@ndesc_log T []) (LogDescLen xp - @ndesc_log T []) *
+    Data.avail_rep xp (@ndata_log T []) (LogLen xp - @ndata_log T []).
   Proof.
     intros.
     unfold ndesc_log, tags_nonzero, vals_nonzero; simpl; rewrite divup_0.
@@ -1223,7 +1181,7 @@ Theorem unseal_all_ok :
 
   Remove Hints goodSize_0.
 
-  Definition entry_valid_ndata : forall l,
+  Definition entry_valid_ndata : forall T (l: @generic_contents T),
     Forall entry_valid l -> ndata_log l = length l.
   Proof.
     unfold ndata_log; induction l; rewrite Forall_forall; intuition.
@@ -1235,7 +1193,7 @@ Theorem unseal_all_ok :
     apply H; simpl; intuition.
   Qed.
 
-  Lemma loglen_valid_desc_valid : forall xp old new,
+  Lemma loglen_valid_desc_valid : forall TO TN xp (old: @ generic_contents TO) (new: @generic_contents TN),
     DescSig.xparams_ok xp ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     Desc.items_valid xp (ndesc_log old) (map ent_addr new).
@@ -1250,7 +1208,7 @@ Theorem unseal_all_ok :
   Local Hint Resolve loglen_valid_desc_valid.
 
 
-  Lemma loglen_valid_data_valid : forall xp old new,
+  Lemma loglen_valid_data_valid :forall T TB xp (old: @generic_contents T) (new: @generic_contents (TB * valu)),
     DataSig.xparams_ok xp ->
     Forall entry_valid new ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
@@ -1266,7 +1224,7 @@ Theorem unseal_all_ok :
   Qed.
   Local Hint Resolve loglen_valid_data_valid.
 
-  Lemma helper_loglen_desc_valid_extend : forall xp new old,
+  Lemma helper_loglen_desc_valid_extend : forall TO TN xp (old: @ generic_contents TO) (new: @generic_contents TN),
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     ndesc_log new + (LogDescLen xp - ndesc_log old - ndesc_log new) 
       = LogDescLen xp - ndesc_log old.
@@ -1275,7 +1233,7 @@ Theorem unseal_all_ok :
     omega.
   Qed.
 
-  Lemma helper_loglen_data_valid_extend : forall xp new old,
+  Lemma helper_loglen_data_valid_extend : forall TO TN xp (old: @ generic_contents TO) (new: @generic_contents TN),
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     ndata_log new + (LogLen xp - ndata_log old - ndata_log new) 
       = LogLen xp - ndata_log old.
@@ -1284,7 +1242,7 @@ Theorem unseal_all_ok :
     omega.
   Qed.
 
-  Lemma helper_loglen_data_valid_extend_entry_valid : forall xp new old,
+  Lemma helper_loglen_data_valid_extend_entry_valid : forall TO TN xp (old: @ generic_contents TO) (new: @generic_contents TN),
     Forall entry_valid new ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     length new + (LogLen xp - ndata_log old - ndata_log new) 
@@ -1295,9 +1253,9 @@ Theorem unseal_all_ok :
     apply helper_loglen_data_valid_extend; auto.
   Qed.
 
-  Lemma padded_desc_valid : forall xp st l,
+  Lemma padded_desc_valid : forall xp st T (l: @generic_contents T) def,
     Desc.items_valid xp st (map ent_addr l)
-    -> Desc.items_valid xp st (map ent_addr (padded_log l)).
+    -> Desc.items_valid xp st (map ent_addr (padded_log_gen def l)).
   Proof.
     unfold Desc.items_valid; intuition.
     autorewrite with lists in *.
@@ -1334,7 +1292,7 @@ Theorem unseal_all_ok :
     apply le_plus_r. eauto.
   Qed.
 
-  Lemma ent_valid_addr_valid : forall l,
+  Lemma ent_valid_addr_valid : forall T (l: @generic_contents T),
     Forall entry_valid l -> Forall addr_valid l.
   Proof.
     intros; rewrite Forall_forall in *; intros.
@@ -1358,7 +1316,7 @@ Theorem unseal_all_ok :
     rewrite IHa; omega.
   Qed.
 
-  Lemma ndata_log_app : forall a b,
+  Lemma ndata_log_app : forall T (a b: @generic_contents T),
     ndata_log (a ++ b) = ndata_log a + ndata_log b.
   Proof.
     unfold ndata_log;  intros.
@@ -1366,15 +1324,15 @@ Theorem unseal_all_ok :
     rewrite nonzero_addrs_app; auto.
   Qed.
 
-  Lemma ndesc_log_padded_log : forall l,
-    ndesc_log (padded_log l) = ndesc_log l.
+  Lemma ndesc_log_padded_log : forall T (l: @generic_contents T) def,
+    ndesc_log (padded_log_gen def l) = ndesc_log l.
   Proof.
     unfold ndesc_log; intros.
     rewrite padded_log_length.
     unfold roundup; rewrite divup_divup; auto.
   Qed.
 
-  Lemma ndesc_log_app : forall a b,
+  Lemma ndesc_log_app : forall T (a b: @generic_contents T),
     length a = roundup (length a) DescSig.items_per_val ->
     ndesc_log (a ++ b) = ndesc_log a + ndesc_log b.
   Proof.
@@ -1386,8 +1344,8 @@ Theorem unseal_all_ok :
     omega.
   Qed.
 
-  Lemma ndesc_log_padded_app : forall a b,
-    ndesc_log (padded_log a ++ b) = ndesc_log a + ndesc_log b.
+  Lemma ndesc_log_padded_app : forall T (a b: @generic_contents T) def,
+    ndesc_log (padded_log_gen def a ++ b) = ndesc_log a + ndesc_log b.
   Proof.
     intros.
     rewrite ndesc_log_app.
@@ -1396,10 +1354,10 @@ Theorem unseal_all_ok :
     rewrite roundup_roundup; auto.
   Qed.
 
-  Lemma ndata_log_padded_log : forall a,
-    ndata_log (padded_log a) = ndata_log a.
+  Lemma ndata_log_padded_log : forall T (a: @generic_contents T) def,
+    ndata_log (padded_log_gen def a) = ndata_log a.
   Proof.
-    unfold ndata_log, padded_log, setlen, roundup; intros.
+    unfold ndata_log, padded_log_gen, setlen, roundup; intros.
     rewrite firstn_oob by auto.
     repeat rewrite map_app.
     rewrite repeat_map; simpl.
@@ -1409,15 +1367,15 @@ Theorem unseal_all_ok :
   Qed.
 
 
-  Lemma ndata_log_padded_app : forall a b,
-    ndata_log (padded_log a ++ b) = ndata_log a + ndata_log b.
+  Lemma ndata_log_padded_app : forall T (a b: @generic_contents T) def,
+    ndata_log (padded_log_gen def a ++ b) = ndata_log a + ndata_log b.
   Proof.
     intros.
     rewrite ndata_log_app.
     rewrite ndata_log_padded_log; auto.
   Qed.
 
-  Lemma log_nonzero_rev_comm : forall l,
+  Lemma log_nonzero_rev_comm : forall T (l: @generic_contents T),
     log_nonzero (rev l) = rev (log_nonzero l).
   Proof.
     induction l; simpl; intros; auto.
@@ -1427,7 +1385,7 @@ Theorem unseal_all_ok :
     congruence.
   Qed.
 
-  Lemma entry_valid_vals_nonzero : forall l,
+  Lemma entry_valid_vals_nonzero : forall T (l: @generic_contents T),
     Forall entry_valid l ->
     log_nonzero l = l.
   Proof.
@@ -1440,7 +1398,7 @@ Theorem unseal_all_ok :
     eapply Forall_cons2; eauto.
   Qed.
 
-  Lemma nonzero_addrs_entry_valid : forall l,
+  Lemma nonzero_addrs_entry_valid : forall T (l: @generic_contents T),
     Forall entry_valid l ->
     nonzero_addrs (map fst l) = length l.
   Proof.
@@ -1465,8 +1423,8 @@ Theorem unseal_all_ok :
     congruence.
   Qed.
 
-  Lemma ndesc_log_ndesc_list : forall l,
-    ndesc_log l = ndesc_list (map ent_addr (padded_log l)).
+  Lemma ndesc_log_ndesc_list : forall T (l: @generic_contents T) def,
+    ndesc_log l = ndesc_list (map ent_addr (padded_log_gen def l)).
   Proof.
     unfold ndesc_log, ndesc_list.
     intros.
@@ -1503,7 +1461,7 @@ Theorem unseal_all_ok :
     Data.avail_rep xp (ndata_log (padded_log old ++ new))
                       (LogLen xp - ndata_log (padded_log old ++ new)) * F.
   Proof.
-    intros.
+    intros. unfold padded_log.
     repeat rewrite ndesc_log_padded_app, ndata_log_padded_app.
     setoid_rewrite Nat.sub_add_distr.
     (* unfold ndesc_log. *)
@@ -1521,9 +1479,10 @@ Theorem unseal_all_ok :
     repeat rewrite vals_nonzero_padded_log, tags_nonzero_padded_log.
     repeat rewrite divup_1, padded_log_length.
     unfold roundup; rewrite divup_mul; auto.
-    unfold ndata_log; rewrite vals_nonzero_addrs.
-    unfold tags_nonzero, vals_nonzero; rewrite entry_valid_vals_nonzero with (l := new); auto.
-    cancel.
+    unfold ndata_log; repeat rewrite vals_nonzero_addrs.
+    unfold tags_nonzero, vals_nonzero;
+    repeat setoid_rewrite entry_valid_vals_nonzero with (l:= new); auto.
+    repeat setoid_rewrite nonzero_addrs_entry_valid with (l:= new); auto; cancel.
 
     rewrite Nat.mul_1_r; auto.
     rewrite map_length, padded_log_length.
@@ -1537,15 +1496,15 @@ Theorem unseal_all_ok :
     destruct a; omega.
   Qed.
 
-  Lemma extend_ok_synced_hdr_helper : forall xp prev_len old new h,
+  Lemma extend_ok_synced_hdr_helper : forall xp prev_len T (old new: @generic_contents T) def h,
     PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced (prev_len,
                             (ndesc_log old + ndesc_log new,
                              ndata_log old + ndata_log new),
                             h))
     =p=>
     PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced (prev_len,
-                            (ndesc_log (padded_log old ++ new),
-                             ndata_log (padded_log old ++ new)),
+                            (ndesc_log (padded_log_gen def old ++ new),
+                             ndata_log (padded_log_gen def old ++ new)),
                             h)).
   Proof.
     intros.
@@ -1565,10 +1524,10 @@ Theorem unseal_all_ok :
     apply roundup_ge; auto.
   Qed.
 
-  Lemma loglen_invalid_overflow : forall xp old new,
+  Lemma loglen_invalid_overflow : forall xp T (old new: @generic_contents T) def,
     LogLen xp = DescSig.items_per_val * LogDescLen xp ->
     loglen_invalid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
-    length (padded_log old ++ new) > LogLen xp.
+    length (padded_log_gen def old ++ new) > LogLen xp.
   Proof.
     unfold loglen_invalid, ndesc_log, ndata_log; intros.
     rewrite app_length; repeat rewrite padded_log_length.
@@ -1600,7 +1559,7 @@ Theorem unseal_all_ok :
   Lemma log_nonzero_padded_log : forall l,
     log_nonzero (padded_log l) = log_nonzero l.
   Proof.
-    unfold padded_log, setlen, roundup; intros.
+    unfold padded_log, padded_log_gen, setlen, roundup; intros.
     rewrite firstn_oob by auto.
     rewrite log_nonzero_app.
     rewrite log_nonzero_repeat_0, app_nil_r; auto.
@@ -1628,31 +1587,32 @@ Theorem unseal_all_ok :
   Qed.
 
 
-
-
-(* Need to add If statement and alighned functions *)
-
-  
-
-  Definition extend xp log cs :=
+(* I am doing something ugly in here. Type of the input 'log' has type list (addr * handle)
+   and blocks of the "real log" is sitting in the block memory *)
+Definition extend xp (log: input_contents) cs :=
     (* Synced *)
     let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
     let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
-    let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
+    let '(nndesc, nndata) := ((ndesc_list log), (ndata_log log)) in
     If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
-      h_addr <- hash_list h_addr (DescDefs.nopad_ipack (map ent_addr log));
-      h_valu <- hash_list h_valu (vals_nonzero log);
-      cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
-      cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
-      cs <- Hdr.write xp ((ndesc, ndata),
+       (* I need to seal addr blocks to write them back *)
+      ahl <- seal_all (addr_tags nndesc)
+             (DescDefs.ipack (map ent_addr log));;
+      h_addr <- hash_list_handle h_addr ahl;;
+      (* Need a special hash instruction to hash from handle *)
+      h_valu <- hash_list_handle h_valu (map ent_handle log);;
+      cs <- Desc.write_aligned xp ndesc ahl cs;;
+      (* I need handles to be supplied to me to write data blocks back *) 
+      cs <- Data.write_aligned xp ndata (map ent_handle log) cs;;
+      cs <- PermDiskLogHdr.write xp ((ndesc, ndata),
                           (ndesc + nndesc, ndata + nndata),
-                          (h_addr, h_valu)) cs;
+                          (h_addr, h_valu)) cs;;
       (* Extended *)
-      cs <- BUFCACHE.begin_sync cs;
-      cs <- Desc.sync_aligned xp ndesc nndesc cs;
-      cs <- Data.sync_aligned xp ndata nndata cs;
-      cs <- Hdr.sync xp cs;
-      cs <- BUFCACHE.end_sync cs;
+      cs <- PermCacheDef.begin_sync cs;;
+      cs <- Desc.sync_aligned xp ndesc nndesc cs;;
+      cs <- Data.sync_aligned xp ndata nndata cs;;
+      cs <- PermDiskLogHdr.sync xp cs;;
+      cs <- PermCacheDef.end_sync cs;;
       (* Synced *)
       Ret ^(cs, true)
     } else {
@@ -1665,7 +1625,8 @@ Theorem unseal_all_ok :
         =p=> rep xp st hm'.
   Proof.
     intros.
-    destruct st; unfold rep, rep_inner; cancel; solve_checksums.
+    destruct st; unfold rep, rep_inner;
+    cancel; solve_checksums.
     auto.
   Qed.
 
@@ -1677,24 +1638,275 @@ Theorem unseal_all_ok :
     unfold would_recover'.
     intros.
     cancel;
-    rewrite rep_hashmap_subset; auto; cancel.
+    rewrite rep_hashmap_subset; auto; try solve_hashmap_subset; cancel.
   Qed.
 
-  Definition extend_ok : forall xp new cs,
-    {< F old d,
-    PRE:hm   BUFCACHE.rep cs d *
+  Lemma length_map_fst_extract_blocks_eq:
+    forall A bm (new: list (A * handle)),
+      handles_valid bm (map ent_handle new) ->
+      length (map fst new) = length (extract_blocks bm (map ent_handle new)).
+  Proof.
+    intros.      
+    rewrite <- handles_valid_length_eq; auto.
+    repeat rewrite map_length; auto.
+  Qed.
+
+  Lemma ndesc_log_combine_eq:
+    forall bm new,
+      handles_valid bm (map ent_handle new) ->
+      ndesc_log (combine (map fst new)
+                         (extract_blocks bm (map ent_handle new))) =
+      ndesc_list new.
+  Proof.
+    intros.
+    unfold ndesc_log, ndesc_list.
+    setoid_rewrite combine_length_eq; rewrite map_length; auto.
+    rewrite <- handles_valid_length_eq; auto.
+    rewrite map_length; auto.
+  Qed.
+      
+  Lemma ndata_log_combine_eq:
+    forall bm new,
+      handles_valid bm (map ent_handle new) ->
+      ndata_log (combine (map fst new)
+                         (extract_blocks bm (map ent_handle new))) =
+      ndata_log new.
+  Proof.
+    unfold ndata_log; intros.
+    rewrite map_fst_combine; auto.
+    rewrite <- handles_valid_length_eq; auto.
+    repeat rewrite map_length; auto.
+  Qed.
+
+
+  Hint Extern 1 ({{_|_}} Bind (avail _ _) _) => apply avail_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
+
+
+Lemma map_ent_addr_combine_eq:
+  forall bm new,
+    handles_valid bm (map ent_handle new) ->
+    map ent_addr (combine (map fst new) (extract_blocks bm (map ent_handle new))) = map ent_addr new.
+Proof.
+  unfold ent_addr; intros.
+  rewrite <- map_map at 1.
+  setoid_rewrite map_fst_combine.
+  apply map_map.
+  apply length_map_fst_extract_blocks_eq; auto.
+Qed.
+
+Lemma Forall_entry_valid_combine:
+  forall bm new,
+    Forall entry_valid new ->
+    Forall entry_valid (combine (map fst new) (extract_blocks bm (map ent_handle new))).
+Proof.
+  intros;
+  unfold entry_valid, addr_valid in *; apply Forall_forall; intros.
+  destruct x; simpl.
+  apply in_combine_l in H0; simpl.
+  eapply in_map_fst_exists_snd in H0; cleanup.
+  eapply Forall_forall in H; simpl in *; eauto.
+  simpl in *; auto.
+Qed.
+
+Lemma tags_nonzero_combine_entry_valid:
+  forall bm new,
+    Forall entry_valid new ->
+    handles_valid bm (map ent_handle new) ->
+    tags_nonzero (combine (map fst new) (extract_blocks bm (map ent_handle new)))
+    = map fst (extract_blocks bm (map ent_handle new)).
+Proof.
+  induction new; simpl; intros; auto.
+  unfold handles_valid, handle_valid in *.
+  inversion H0; subst.
+  cleanup.
+  unfold tags_nonzero in *; simpl.
+  unfold entry_valid in *; inversion H; subst.
+  destruct (fst a); intuition; simpl.
+  unfold ent_tag in *; simpl.
+  rewrite H7; auto.
+Qed.
+
+Lemma vals_nonzero_combine_entry_valid:
+  forall bm new,
+    Forall entry_valid new ->
+    handles_valid bm (map ent_handle new) ->
+    vals_nonzero (combine (map fst new) (extract_blocks bm (map ent_handle new)))
+    = map ent_valu (combine (map fst new) (extract_blocks bm (map ent_handle new))).
+Proof.
+  induction new; simpl; intros; auto.
+  unfold handles_valid, handle_valid in *.
+  inversion H0; subst.
+  cleanup.
+  unfold vals_nonzero in *; simpl.
+  unfold entry_valid in *; inversion H; subst.
+  destruct (fst a); intuition; simpl.
+  rewrite H7; auto.
+Qed.
+
+Lemma new_hashlist_rep_match_1:
+  forall bm hm hm' old new h,
+    handles_valid bm (map ent_handle new) ->
+    (exists l, hashmap_subset l hm hm') ->
+    hash_list_rep
+      (rev (combine (addr_tags (ndesc_list new)) (DescDefs.ipack (map ent_addr new))) ++
+           rev (combine (addr_tags (ndesc_log old)) (DescDefs.ipack (map ent_addr old)))) h hm ->
+    hash_list_rep
+      (rev (combine (addr_tags (ndesc_log (padded_log old ++
+            combine (map fst new) (extract_blocks bm (map ent_handle new)))))
+      (DescDefs.ipack (map ent_addr (padded_log old ++
+         combine (map fst new) (extract_blocks bm (map ent_handle new))))))) h hm'.
+Proof.
+  intros.
+  rewrite map_app.
+  erewrite DescDefs.ipack_app.
+  unfold ent_addr in *.
+  setoid_rewrite <- map_map with (f:= fst).
+  rewrite map_fst_combine; auto.
+  unfold padded_log in *; rewrite ndesc_log_padded_app.
+  repeat rewrite map_map.
+  rewrite addr_tags_app.
+  rewrite combine_app.
+  rewrite rev_app_distr.
+  rewrite ndesc_log_combine_eq; auto.
+  rewrite <- desc_ipack_padded.
+  destruct H0.
+  simpl; solve_hash_list_rep.
+  rewrite DescDefs.ipack_length.
+  rewrite map_length.
+  unfold addr_tags; rewrite repeat_length.
+  rewrite padded_log_length; unfold roundup; rewrite divup_mul.
+  unfold ndesc_log; auto.
+  
+  unfold DescSig.items_per_val.
+  rewrite valulen_is; unfold addrlen.
+  simpl. omega.
+  apply length_map_fst_extract_blocks_eq; auto.
+  unfold padded_log; rewrite map_length,
+                     padded_log_length; unfold roundup; eauto.
+Qed.
+
+Lemma new_hashlist_rep_match_2:
+  forall bm hm hm' old new h,
+    Forall entry_valid new ->
+    handles_valid bm (map ent_handle new) ->
+    (exists l, hashmap_subset l hm hm') ->
+    hash_list_rep (rev (extract_blocks bm (map ent_handle new)) ++ rev (blocks_nonzero old)) h hm ->
+    hash_list_rep (rev (blocks_nonzero (padded_log old ++ combine (map fst new) (extract_blocks bm (map ent_handle new))))) h hm'.
+Proof.
+  intros.
+  destruct H1.
+  unfold blocks_nonzero in *.
+  rewrite log_nonzero_app.
+  rewrite log_nonzero_padded_log.
+  rewrite map_app.
+  setoid_rewrite entry_valid_vals_nonzero at 2.
+  unfold ent_block.
+  setoid_rewrite map_snd_combine; auto.
+  simpl.
+  
+  rewrite rev_app_distr; solve_hash_list_rep.
+  apply length_map_fst_extract_blocks_eq; auto.
+  apply Forall_entry_valid_combine; auto.
+Qed.
+
+Lemma extend_crash_helper:
+  forall xp bm (old: contents) new,
+    Forall entry_valid new ->
+    handles_valid bm (map ent_handle new) ->
+    loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
+    ((Data.array_rep xp (ndata_log old)
+                     (Data.Unsync (map fst (extract_blocks bm (map ent_handle new)))
+                                  (map ent_valu (combine (map fst new) (extract_blocks bm (map ent_handle new))))) *
+      Desc.array_rep xp (ndesc_log old) (Desc.Unsync (addr_tags (ndesc_list new)) (map ent_addr new))) *
+     Data.avail_rep xp
+        (ndata_log old + divup (length (map ent_valu (combine (map fst new)
+           (extract_blocks bm (map ent_handle new))))) DataSig.items_per_val)
+        (LogLen xp - ndata_log old - ndata_log new)) *
+    Desc.avail_rep xp (ndesc_log old + divup (length (map ent_addr new)) DescSig.items_per_val)
+                   (LogDescLen xp - ndesc_log old - ndesc_log new)
+    =p=> Desc.avail_rep xp (ndesc_log old) (LogDescLen xp - ndesc_log old) *
+        Data.avail_rep xp (ndata_log old) (LogLen xp - ndata_log old).
+Proof.
+  intros.
+  rewrite Desc.array_rep_avail, Data.array_rep_avail.
+  unfold Data.nr_blocks, Desc.nr_blocks.
+  rewrite helper_sep_star_reorder.
+  rewrite  Desc.avail_rep_merge, Data.avail_rep_merge.
+  cancel.
+  
+  rewrite divup_1.
+  rewrite map_length.
+  rewrite combine_length_eq by
+      (apply length_map_fst_extract_blocks_eq; eauto).
+  rewrite map_length.
+  apply helper_loglen_data_valid_extend_entry_valid; auto.
+  rewrite map_length.
+  apply helper_loglen_desc_valid_extend; auto.
+Qed.
+
+
+Lemma extend_crash_helper_synced:
+  forall xp bm (old: contents) new,
+    Forall entry_valid new ->
+    handles_valid bm (map ent_handle new) ->
+    loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
+    ((Data.avail_rep xp (ndata_log old)
+      (divup  (length  (map ent_valu
+               (combine (map fst new)
+                  (extract_blocks bm (map ent_handle new)))))
+         DataSig.items_per_val) *
+      Desc.array_rep xp (ndesc_log old) (Desc.Unsync (addr_tags (ndesc_list new)) (map ent_addr new))) *
+     Data.avail_rep xp
+        (ndata_log old + divup (length (map ent_valu (combine (map fst new)
+           (extract_blocks bm (map ent_handle new))))) DataSig.items_per_val)
+        (LogLen xp - ndata_log old - ndata_log new)) *
+    Desc.avail_rep xp (ndesc_log old + divup (length (map ent_addr new)) DescSig.items_per_val)
+                   (LogDescLen xp - ndesc_log old - ndesc_log new)
+    =p=> Desc.avail_rep xp (ndesc_log old) (LogDescLen xp - ndesc_log old) *
+        Data.avail_rep xp (ndata_log old) (LogLen xp - ndata_log old).
+Proof.
+  intros.
+  rewrite Desc.array_rep_avail.
+  unfold Data.nr_blocks, Desc.nr_blocks.
+  rewrite helper_sep_star_reorder.
+  rewrite  Desc.avail_rep_merge, Data.avail_rep_merge.
+  cancel.
+  
+  rewrite divup_1.
+  rewrite map_length.
+  rewrite combine_length_eq by
+      (apply length_map_fst_extract_blocks_eq; eauto).
+  rewrite map_length.
+  apply helper_loglen_data_valid_extend_entry_valid; auto.
+  rewrite map_length.
+  apply helper_loglen_desc_valid_extend; auto.
+Qed.
+
+
+ Definition extend_ok :
+    forall xp (new: input_contents) cs pr,
+    {< F old d blocks,
+    PERM:pr   
+    PRE:bm, hm,
+          PermCacheDef.rep cs d bm *
           [[ (F * rep xp (Synced old) hm)%pred d ]] *
+          [[ handles_valid bm (map ent_handle new) ]] *
+          [[ blocks = extract_blocks bm (map ent_handle new) ]] *
           [[ Forall entry_valid new /\ sync_invariant F ]]
-    POST:hm' RET: ^(cs, r) exists d',
-          BUFCACHE.rep cs d' * (
-          [[ r = true /\
-             (F * rep xp (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
-          [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
+    POST:bm', hm', RET: ^(cs, r) exists d',
+          PermCacheDef.rep cs d' bm' * 
+          ([[ r = true /\
+              (F * rep xp (Synced ((padded_log old) ++
+                                   (combine (map fst new) blocks))) hm')%pred d' ]] \/
+           [[ r = false /\ length ((padded_log old) ++
+                                   (combine (map fst new) blocks)) > LogLen xp /\
              (F * rep xp (Synced old) hm')%pred d' ]])
-    XCRASH:hm_crash exists cs' d',
-          BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
-          [[ (F * rep xp (Extended old new) hm_crash)%pred d' ]])
+    XCRASH:bm'', hm_crash, exists cs' d',
+          PermCacheDef.rep cs' d' bm'' *
+          ([[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (Extended old (combine (map fst new) blocks)) hm_crash)%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -1703,143 +1915,1563 @@ Theorem unseal_all_ok :
 
     (* true case *)
     - (* write content *)
-      rewrite <- DescDefs.ipack_nopad_ipack_eq.
+      (* rewrite <- DescDefs.ipack_nopad_ipack_eq. *)
+      step.
+      unfold addr_tags, ndesc_list;
+      rewrite repeat_length, DescDefs.ipack_length, map_length; auto.
+      unfold addr_tags in *; apply repeat_spec in H5; subst; auto.
+      
       step.
       unfold checksums_match in *; intuition.
       solve_hash_list_rep.
       step.
       unfold checksums_match in *; intuition.
       solve_hash_list_rep.
+      repeat (eapply handles_valid_subset_trans; eauto).
 
-      safestep.
+      safestep; eauto.
+      erewrite block_mem_subset_rep.
+      cancel.
+      repeat (eapply block_mem_subset_trans; eauto).
+      apply loglen_valid_desc_valid; eauto.
+      repeat (eapply handles_valid_subset_trans; eauto).
+      unfold addr_tags, ndesc_list;
+      rewrite repeat_length, DescDefs.ipack_length, map_length; auto.
+      erewrite <- extract_blocks_subset; eauto.
+      pred_apply.
       rewrite Desc.avail_rep_split. cancel.
       autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
 
-      safestep.
+      safestep; eauto.
+      eassign (map ent_valu (combine (map fst new)
+                                     (extract_blocks bm (map ent_handle new)))).
+      
+      pose proof (length_map_fst_extract_blocks_eq new H7) as A.
+      eapply loglen_valid_data_valid; auto.
+      
+      
+      apply Forall_entry_valid_combine; auto.
+      rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
+      repeat (eapply handles_valid_subset_trans; eauto).
+
+      pose proof (length_map_fst_extract_blocks_eq new H7) as A.
+      eassign (map fst (extract_blocks bm (map ent_handle new))).
+      rewrite Data.Defs.ipack_length.
+      repeat rewrite map_length.
+      rewrite divup_1.
+      repeat setoid_rewrite combine_length_eq; auto.
+
+      pose proof (length_map_fst_extract_blocks_eq new H7) as A.
+      repeat (erewrite <- extract_blocks_subset; eauto). 
+      unfold ent_valu; rewrite <- map_map with (f:= snd).
+      rewrite map_snd_combine; auto.
+      rewrite ipack_noop.
+      rewrite combine_map_fst_snd; auto.
+      
       rewrite Data.avail_rep_split. cancel.
       autorewrite with lists.
       rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      repeat (erewrite <- extract_blocks_subset; eauto).      
+      rewrite <- handles_valid_length_eq; auto.
+      rewrite map_length, min_l.
       apply helper_loglen_data_valid_extend; auto.
-
+      unfold ndata_log.
+      eapply le_trans.
+      apply nonzero_addrs_bound.
+      autorewrite with lists; auto.
+      
       (* write header *)
       safestep.
-      denote Hdr.rep as Hx; unfold Hdr.rep in Hx.
+      denote PermDiskLogHdr.rep as Hx; unfold PermDiskLogHdr.rep in Hx.
       destruct_lift Hx.
-      unfold Hdr.hdr_goodSize in *; intuition.
+      unfold PermDiskLogHdr.hdr_goodSize in *; intuition.
       eapply loglen_valid_goodSize_l; eauto.
       eapply loglen_valid_goodSize_r; eauto.
 
       (* sync content *)
       step.
       eauto 10.
-      prestep. norm. cancel. intuition simpl.
-      instantiate ( 1 := map ent_addr (padded_log new) ).
-      rewrite desc_padding_unsync_piff.
+      prestep. norm. eassign F_; cancel. intuition simpl.
+      
+      eassign (map ent_addr (padded_log_gen 0 new)).
+      rewrite desc_padding_unsync_piff.       
       pred_apply; cancel.
-      rewrite map_length, padded_log_length; auto.
+      rewrite map_length; auto.
+      rewrite padded_log_length.
+      unfold ndesc_list, roundup; auto.
       apply padded_desc_valid.
       apply loglen_valid_desc_valid; auto.
       eauto 10.
 
+      pose proof (length_map_fst_extract_blocks_eq new H7) as A.
       safestep.
+      eassign F_; cancel.
+      pred_apply; cancel.
       autorewrite with lists.
       rewrite entry_valid_ndata, Nat.mul_1_r; auto.
+       repeat (erewrite <- extract_blocks_subset; eauto).      
+      rewrite <- handles_valid_length_eq; auto.
+      rewrite map_length, min_l; auto.
+      eapply loglen_valid_data_valid; auto.
+      apply Forall_entry_valid_combine; auto.
+      rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       eauto 10.
+      auto.
 
       (* sync header *)
       safestep.
+      eassign F_; cancel.
+      pred_apply; cancel.
       eauto 10.
-      step.
+      auto.
+      
+      safestep.
+      eassign F_; cancel.
+      auto.
 
       (* post condition *)
       safestep.
-      or_l; cancel.
-      cancel_by extend_ok_helper; auto.
-      solve_checksums.
+      safestep.
+      or_l.
+      repeat rewrite ndesc_log_app.
+      repeat rewrite ndata_log_app.      
+      cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
+      
+      unfold padded_log;
+      repeat rewrite ndesc_log_padded_log, ndata_log_padded_log.
+      repeat rewrite tags_nonzero_app, vals_nonzero_app,
+      map_app, addr_tags_app; auto.
+      rewrite <- Desc.array_rep_synced_app; simpl; auto.
+      repeat (erewrite <- extract_blocks_subset; eauto).
+      repeat rewrite map_length.
+      repeat setoid_rewrite combine_length_eq; auto.
+      repeat rewrite vals_nonzero_padded_log.
+      repeat rewrite tags_nonzero_padded_log.
+      repeat rewrite padded_log_length.
+      unfold roundup; repeat rewrite divup_mul.
+      repeat rewrite map_length.
+      cancel.
+      repeat rewrite desc_padding_synced_piff.
+      cancel.
+      rewrite <- Data.array_rep_synced_app; simpl.
+      repeat rewrite Nat.sub_add_distr.
+      repeat rewrite map_ent_addr_combine_eq.
+      rewrite (entry_valid_ndata (l:=new)); auto.
+      rewrite divup_1.
+      unfold ndesc_log; cancel.
+      
+      rewrite tags_nonzero_combine_entry_valid,
+      vals_nonzero_combine_entry_valid; auto.
+      rewrite vals_nonzero_addrs, divup_1.
+      unfold ndata_log; auto.
+      auto.
+      symmetry; apply Nat.mul_1_r.
 
+      unfold DescSig.items_per_val.
+      rewrite valulen_is; unfold addrlen.
+      simpl. omega.
+      rewrite map_length, padded_log_length; unfold roundup; eauto.
+      
+      apply Forall_append; auto.
+      apply addr_valid_padded; auto.
+      apply ent_valid_addr_valid.
+      apply Forall_entry_valid_combine; auto.
+
+      solve_checksums; simpl.
+      eapply new_hashlist_rep_match_1;
+      [eauto | | setoid_rewrite <- H23; eauto].
+      solve_hashmap_subset.
+      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
+      eapply handles_valid_subset_trans; eauto.
+      solve_hashmap_subset.
+      
+      unfold padded_log; rewrite padded_log_length;
+      unfold roundup; rewrite divup_mul; auto.
+      
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+      
       (* crash conditons *)
       (* after sync data : Extended *)
+      (* Crash 1 *)
+      solve [unfold false_pred; cancel].
+
+      (* Crash 2 *)
+      rewrite <- H1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       cancel.
-      repeat xcrash_rewrite.
-      xform_norm. cancel. xform_normr. cancel.
-      or_r. cancel.
-      extend_crash.
-      solve_checksums.
-      solve_checksums.
+      or_r; cancel.
+      cancel.     
 
+      apply extend_crash_helper; auto.
+      solve_checksums.
+      solve_checksums; simpl.
+      eapply new_hashlist_rep_match_1;
+      [eauto | | setoid_rewrite <- H23; eauto].
+      solve_hashmap_subset.
+      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
+      eapply handles_valid_subset_trans; eauto.
+      solve_hashmap_subset.
+      apply Forall_entry_valid_combine; auto.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+
+      (* Crash 3 *)
+      rewrite <- H1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       cancel.
-      repeat xcrash_rewrite.
-      xform_norm; cancel. xform_normr; cancel.
-      or_r. cancel. extend_crash.
-      solve_checksums.
-      solve_checksums.
-
+      or_r; cancel.
       cancel.
-      repeat xcrash_rewrite.
-      xform_norm; cancel. xform_normr; cancel.
-      or_r. cancel. extend_crash.
+      
+      apply extend_crash_helper; auto.
       solve_checksums.
-      solve_checksums.
+      solve_checksums; simpl.
+      eapply new_hashlist_rep_match_1;
+      [eauto | | setoid_rewrite <- H23; eauto].
+      solve_hashmap_subset.
+      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
+      eapply handles_valid_subset_trans; eauto.
+      solve_hashmap_subset.
+      apply Forall_entry_valid_combine; auto.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
 
+
+      (* Crash 4 *)
+      rewrite <- H1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       cancel.
-      repeat xcrash_rewrite.
-      xform_norm; cancel. xform_normr; cancel.
-      or_r. cancel. extend_crash.
-      solve_checksums.
-      solve_checksums.
-
-      repeat xcrash_rewrite.
-      xform_norm; cancel. xform_normr; cancel.
-      or_r. cancel. extend_crash.
-      solve_checksums.
-      solve_checksums.
-
+      or_r; cancel.
       cancel.
-      repeat xcrash_rewrite.
-      xform_norm; cancel. xform_normr; cancel.
-      or_r. cancel. extend_crash.
+      
+      apply extend_crash_helper; auto.
       solve_checksums.
-      solve_checksums.
+      solve_checksums; simpl.
+      eapply new_hashlist_rep_match_1;
+      [eauto | | setoid_rewrite <- H23; eauto].
+      solve_hashmap_subset.
+      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
+      eapply handles_valid_subset_trans; eauto.
+      solve_hashmap_subset.
+      apply Forall_entry_valid_combine; auto.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
 
+      
+      (* Crash 5 *)
+      rewrite <- H1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
+      cancel.
+      or_r; cancel.
+      cancel.
+      
+      apply extend_crash_helper; auto.
+      solve_checksums.
+      solve_checksums; simpl.
+      eapply new_hashlist_rep_match_1;
+      [eauto | | setoid_rewrite <- H23; eauto].
+      solve_hashmap_subset.
+      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
+      eapply handles_valid_subset_trans; eauto.
+      solve_hashmap_subset.
+      apply Forall_entry_valid_combine; auto.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+
+
+      (* Crash 6 *)
+      rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign cs'; eassign d'1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
+      or_r; cancel.
+      cancel.
+      
+      apply extend_crash_helper; auto.
+      solve_checksums.
+      solve_checksums; simpl.
+      eapply new_hashlist_rep_match_1;
+      [eauto | | setoid_rewrite <- H23; eauto].
+      solve_hashmap_subset.
+      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
+      eapply handles_valid_subset_trans; eauto.
+      solve_hashmap_subset.
+      apply Forall_entry_valid_combine; auto.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+
+
+      (* Crash 7 *)
+      destruct_lift H24; cleanup.
+      pred_apply; rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign x0; eassign x1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
+      or_r; cancel.
+      cancel.
+      
+      apply extend_crash_helper; auto.
+      solve_checksums.
+      solve_checksums; simpl.
+      eapply new_hashlist_rep_match_1;
+      [eauto | | setoid_rewrite <- H23; eauto].
+      solve_hashmap_subset.
+      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
+      eapply handles_valid_subset_trans; eauto.
+      solve_hashmap_subset.
+      apply Forall_entry_valid_combine; auto.
+      
 
       (* before writes *)
-      cancel.
-      repeat xcrash_rewrite.
-      xform_norm; cancel. xform_normr; cancel.
-      or_l; cancel. extend_crash.
+      (* Crash 8 *)
+      unfold pimpl; intros mx Hx;
+      destruct_lift Hx; cleanup.
+      pred_apply; rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign x0; eassign x1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
+      or_l; cancel.
+      
+      apply extend_crash_helper_synced; auto.
       solve_checksums.
 
-      cancel.
-      repeat xcrash_rewrite.
-      xform_norm; cancel. xform_normr; cancel.
+      (* Crash 9 *)
+      unfold pimpl; intros mx Hx;
+      destruct_lift Hx; cleanup.
+      pred_apply; rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign x0; eassign x1; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       or_l; cancel.
-      rewrite Desc.avail_rep_merge. cancel.
+
+      rewrite  Desc.avail_rep_merge.
+      cancel.
       rewrite map_length.
       apply helper_loglen_desc_valid_extend; auto.
       solve_checksums.
 
-      xcrash.
-      or_l; cancel.
-      solve_checksums.
-
-      xcrash.
-      or_l; cancel.
-      solve_checksums.
-
     (* false case *)
     - safestep.
+      safestep.
       or_r; cancel.
       apply loglen_invalid_overflow; auto.
+      rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       solve_checksums.
+      solve_hashmap_subset.
 
+      solve [unfold false_pred; cancel].
     (* crash for the false case *)
-    - xcrash.
+    - rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      xcrash.
+      eassign cs'; eassign d; cancel.
+      repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       or_l; cancel.
       solve_checksums.
+      Unshelve.
+      all: unfold EqDec; apply handle_eq_dec.
+  Qed.
+
+  Hint Extern 1 ({{_|_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
+
+
+  
+Theorem entry_valid_dec : forall B (ent: addr * B),
+                            {entry_valid ent} + {~ entry_valid ent}.
+Proof.
+  unfold entry_valid, addr_valid, goodSize; intuition.
+  destruct (addr_eq_dec (fst (a,b)) 0); destruct (lt_dec (fst (a,b)) (pow2 addrlen)).
+  right; tauto.
+  right; tauto.
+  left; tauto.
+  right; tauto.
+Defined.
+
+Theorem rep_synced_length_ok : forall F xp l d hm,
+                                 (F * rep xp (Synced l) hm)%pred d -> length l <= LogLen xp.
+Proof.
+  unfold rep, rep_inner, rep_contents, xparams_ok.
+  unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
+  intros; destruct_lifts.
+  rewrite map_length, Nat.sub_0_r in H17.
+  rewrite H5, Nat.mul_comm; auto.
+Qed.
+
+Lemma xform_rep_synced : forall xp l hm,
+                           crash_xform (rep xp (Synced l) hm) =p=> rep xp (Synced l) hm.
+Proof.
+  unfold rep; simpl; unfold rep_contents; intros.
+  xform.
+  norm'l. unfold stars; cbn.
+  xform.
+  norm'l. unfold stars; cbn.
+  xform.
+  rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+  rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+  rewrite PermDiskLogHdr.xform_rep_synced.
+  cancel.
+Qed.
+
+Lemma xform_rep_truncated : forall xp l hm,
+                              crash_xform (rep xp (Truncated l) hm) =p=>
+rep xp (Synced l) hm \/ rep xp (Synced nil) hm.
+Proof.
+  unfold rep; simpl; unfold rep_contents; intros.
+  xform; cancel.
+  xform; cancel.
+  rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+  rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+  rewrite PermDiskLogHdr.xform_rep_unsync.
+  norm; auto.
+
+  or_r; cancel.
+  cancel_by helper_trunc_ok.
+  apply Forall_nil.
+  auto.
+  or_l; cancel.
+Qed.
+
+Lemma xform_rep_extendedcrashed :
+  forall xp old new hm,
+    crash_xform (rep xp (ExtendedCrashed old new) hm) =p=> rep xp (ExtendedCrashed old new) hm.
+Proof.
+  unfold rep; simpl; unfold rep_contents_unmatched; intros.
+  do 6 (xform;
+        norm'l; unfold stars; cbn).
+  xform.
+  rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+  rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+  rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+  rewrite PermDiskLogHdr.xform_rep_synced.
+  cancel.
+  congruence.
+Qed.
+
+Theorem rep_extended_facts' :
+  forall xp d old new hm,
+    (rep xp (Extended old new) hm)%pred d ->
+    Forall entry_valid new /\
+    LogLen xp >= ndata_log old + ndata_log new /\
+    LogDescLen xp >= ndesc_log old + ndesc_log new.
+Proof.
+  unfold rep, rep_inner, rep_contents, xparams_ok.
+  unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
+  intros; destruct_lifts.
+  intuition.
+  unfold loglen_valid in *; intuition.
+  unfold loglen_valid in *; intuition.
+Qed.
+
+Theorem rep_extended_facts :
+  forall xp old new hm,
+    rep xp (Extended old new) hm =p=>
+(rep xp (Extended old new) hm *
+ [[ LogLen xp >= ndata_log old + ndata_log new ]] *
+ [[ LogDescLen xp >= ndesc_log old + ndesc_log new ]] *
+ [[ Forall entry_valid new ]] )%pred.
+Proof.
+  unfold pimpl; intros.
+  pose proof rep_extended_facts' H.
+  pred_apply; cancel.
+Qed.
+
+Lemma helper_sep_star_distr:
+  forall AT AEQ V (a b c d : @pred AT AEQ V),
+    a * b * c * d =p=> (c * a) * (d * b).
+Proof.
+  intros; cancel.
+Qed.
+
+Lemma helper_add_sub_add :
+  forall a b c,
+    b >= c + a -> a + (b - (c + a)) = b - c.
+Proof.
+  intros; omega.
+Qed.
+
+(*  
+  Lemma xform_rep_extended_helper :
+    forall B xp old (new: @generic_contents B),
+    xparams_ok xp
+    -> LogLen xp >= ndata_log old + ndata_log new
+    -> LogDescLen xp >= ndesc_log old + ndesc_log new
+    -> Forall addr_valid old
+    -> Forall entry_valid new
+    -> crash_xform (Data.avail_rep xp (ndata_log old) (LogLen xp - ndata_log old)) *
+        crash_xform (Desc.avail_rep xp (ndesc_log old) (LogDescLen xp - ndesc_log old)) *
+        crash_xform (Data.array_rep xp 0 (Data.Synced (tags_nonzero old) (vals_nonzero old))) *
+        crash_xform (Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log old))(map ent_addr old)))
+      =p=> exists synced_addr synced_tag synced_valu ndesc,
+        rep_contents_unmatched xp old synced_addr synced_tag synced_valu *
+        [[ length synced_addr = (ndesc * DescSig.items_per_val)%nat ]] *
+        [[ ndesc = ndesc_log new ]] *
+        [[ length synced_valu = ndata_log new ]].
+  Proof.
+    intros.
+    rewrite Data.avail_rep_split with (n1:=ndata_log new).
+    rewrite Desc.avail_rep_split with (n1:=ndesc_log new).
+    xform.
+    erewrite Data.xform_avail_rep_array_rep, Desc.xform_avail_rep_array_rep.
+    norml. unfold stars; simpl.
+    norm.
+    unfold stars; simpl.
+    cancel.
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    unfold rep_contents_unmatched, padded_log.
+    rewrite vals_nonzero_padded_log, tags_nonzero_padded_log. (* desc_padding_synced_piff. *)
+    cancel.
+    replace (ndesc_list _) with (ndesc_log new).
+    replace (length l) with (ndata_log new).
+    cancel.
+    rewrite 
+
+    replace DataSig.items_per_val with 1 in * by (cbv; auto); try omega.
+    unfold ndesc_list.
+    substl (length l0).
+    unfold ndesc_log.
+    rewrite divup_divup; auto.
+
+    replace DataSig.items_per_val with 1 in * by (cbv; auto); try omega.
+    intuition; auto.
+    all: unfold DescSig.RALen, DataSig.RALen, xparams_ok in *;
+          try omega; auto; intuition.
+
+    apply mult_le_compat_r; omega.
+
+    replace DataSig.items_per_val with 1 in * by (cbv; auto); try omega.
+  Qed.
+ *)
+
+Lemma sep_star_pimpl_trans :
+  forall AT AEQ V (F p q r: @pred AT AEQ V),
+    p =p=> q ->
+    F * q =p=> r ->
+    F * p =p=> r.
+Proof.
+  intros.
+  cancel; auto.
+Qed.
+
+(*
+  Lemma xform_rep_extended' : forall xp old new hm,
+    crash_xform (rep xp (Extended old new) hm) =p=>
+       rep xp (Synced old) hm \/
+       rep xp (ExtendedCrashed old new) hm.
+  Proof.
+    intros; rewrite rep_extended_facts.
+    unfold rep; simpl; unfold rep_contents; intros.
+    xform; cancel.
+    xform; cancel.
+    rewrite Hdr.xform_rep_unsync; cancel.
+
+    - or_r.
+      repeat rewrite sep_star_assoc.
+      eapply sep_star_pimpl_trans.
+      eapply pimpl_trans.
+      2: apply xform_rep_extended_helper; try eassumption.
+      cancel.
+      cancel.
+      subst; auto.
+
+    - or_l.
+      cancel.
+      rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+      rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+      cancel.
+  Qed.
+
+  
+  Lemma rep_synced_app_pimpl : forall xp old new hm,
+    rep xp (Synced (padded_log old ++ new)) hm =p=>
+    rep xp (Synced (padded_log old ++ padded_log new)) hm.
+  Proof.
+    unfold rep; simpl; intros; unfold rep_contents; cancel.
+    setoid_rewrite ndesc_log_padded_app.
+    setoid_rewrite ndata_log_padded_app.
+    rewrite ndesc_log_padded_log, ndata_log_padded_log.
+    setoid_rewrite map_app.
+    setoid_rewrite vals_nonzero_app.
+    setoid_rewrite vals_nonzero_padded_log.
+    cancel.
+
+    rewrite Desc.array_rep_synced_app_rev.
+    setoid_rewrite <- desc_padding_synced_piff at 2.
+    eapply pimpl_trans2.
+    eapply Desc.array_rep_synced_app.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    cancel.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    apply Forall_append.
+    eapply forall_app_r; eauto.
+    apply addr_valid_padded; auto.
+    eapply forall_app_l; eauto.
+    solve_checksums.
+    rewrite <- rev_app_distr.
+    erewrite <- DescDefs.ipack_app.
+    rewrite <- map_app.
+    solve_hash_list_rep.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    rewrite <- rev_app_distr.
+    rewrite vals_nonzero_padded_log.
+    rewrite <- vals_nonzero_padded_log.
+    rewrite <- vals_nonzero_app.
+    solve_hash_list_rep.
+  Qed.
+ *)
+
+Lemma combine_eq:
+  forall A B (l l': list A) (x x': list B),
+    length l = length l' ->
+    length x = length x' ->
+    length l = length x ->
+    combine l x = combine l' x' ->
+    l = l' /\ x = x'.
+Proof.
+  induction l; simpl; intros.
+  symmetry in H; apply length_zero_iff_nil in H;
+  symmetry in H1; apply length_zero_iff_nil in H1;
+  subst; symmetry in H0; apply length_zero_iff_nil in H0;
+  subst; auto.
+  destruct l', x , x'; simpl in *; auto; try congruence.
+  inversion H2; subst.
+  edestruct IHl; [| | | eauto |].
+  all: eauto.
+  subst; eauto.
+Qed.
+
+  
+  Lemma rep_extendedcrashed_pimpl : forall xp old new hm,
+    rep xp (ExtendedCrashed old new) hm
+    =p=> rep xp (Synced ((padded_log old) ++ new)) hm \/
+          rep xp (Rollback old) hm.
+  Proof.
+    intros.
+    unfold rep at 1, rep_inner; simpl.
+    norm'l. unfold stars; simpl.
+    destruct (list_eq_dec (@weq valulen) (DescDefs.ipack (map ent_addr (padded_log new))) (DescDefs.ipack synced_addr)).
+    destruct (list_eq_dec (@weq valulen) (vals_nonzero new) synced_valu).   destruct (list_eq_dec (tag_dec) (tags_nonzero new) synced_tag).
+
+    - eapply desc_ipack_injective in e.
+      unfold rep, rep_inner, rep_contents_unmatched, rep_contents.
+      or_l; cancel.
+      rewrite map_app.
+      rewrite vals_nonzero_app, tags_nonzero_app.
+      rewrite vals_nonzero_padded_log, tags_nonzero_padded_log.
+      rewrite <- Data.array_rep_synced_app.
+      replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+      rewrite divup_1; simpl.
+      repeat rewrite vals_nonzero_addrs.
+      unfold padded_log.
+      rewrite ndata_log_app, ndata_log_padded_log.
+      rewrite Nat.sub_add_distr.
+      cancel.
+
+      rewrite ndesc_log_app, addr_tags_app,
+      <- Desc.array_rep_synced_app.
+      simpl.
+      replace (divup _ _) with (ndesc_log old).
+      rewrite ndesc_log_padded_log.
+      rewrite Nat.sub_add_distr.
+      replace (ndesc_list _) with (ndesc_log new).
+      cancel.
+      rewrite desc_padding_synced_piff.
+      cancel.
+
+      erewrite ndesc_log_ndesc_list; auto.
+      rewrite map_length, padded_log_length.
+      unfold roundup.
+      rewrite divup_divup; auto.
+      autorewrite with lists.
+      unfold DescSig.items_per_val.
+      rewrite valulen_is; simpl. omega.
+      rewrite map_length, padded_log_length.
+      unfold roundup.
+      eauto.
+      rewrite padded_log_length.
+      unfold roundup.
+      rewrite divup_divup; auto.
+      unfold DescSig.items_per_val.
+      rewrite valulen_is; simpl. omega.
+      replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+      rewrite Nat.mul_1_r; eauto.
+      unfold padded_log.
+      apply Forall_append; auto.
+      apply addr_valid_padded; auto.
+      auto.
+      
+      autorewrite with lists.
+      unfold padded_log; rewrite padded_log_length.
+      unfold roundup; eauto.
+      eauto.
+
+    - unfold rep, rep_inner.
+      unfold pimpl; intros m Hm;
+      pose proof Hm as Hx;
+      pred_apply.
+      or_r; cancel.
+      eauto.
+      left; auto.
+      unfold rep_contents_unmatched, Data.array_rep,
+      Data.synced_array, Data.rep_common, eqlen in *.
+      destruct_lifts.
+      rewrite <- combine_tags_vals.
+      rewrite ipack_noop in *.
+      repeat rewrite tags_nonzero_padded_log,
+      vals_nonzero_padded_log in *.
+      intros Hy; apply combine_eq in Hy.
+      cleanup; eauto.
+      cleanup.
+      all: auto; rewrite tags_nonzero_addrs, vals_nonzero_addrs; auto.
+
+    - unfold rep, rep_inner.
+      unfold pimpl; intros m Hm;
+      pose proof Hm as Hx;
+      pred_apply.
+      or_r; cancel.
+      eauto.
+      left; auto.
+      unfold rep_contents_unmatched, Data.array_rep,
+      Data.synced_array, Data.rep_common, eqlen in *.
+      destruct_lifts.
+      rewrite <- combine_tags_vals.
+      rewrite ipack_noop in *.
+      repeat rewrite tags_nonzero_padded_log,
+      vals_nonzero_padded_log in *.
+      intros Hy; apply combine_eq in Hy; cleanup; eauto.
+      setoid_rewrite H4.
+      rewrite tags_nonzero_addrs.
+      unfold ndata_log; auto.
+      rewrite vals_nonzero_addrs.
+      unfold ndata_log; auto.
+      rewrite tags_nonzero_addrs, vals_nonzero_addrs; auto.
+      
+    - unfold rep, rep_inner.
+      or_r; cancel.
+      eauto.
+      right; eauto.
+  Qed.
+
+  (*
+  Lemma xform_rep_extended : forall xp old new hm,
+    crash_xform (rep xp (Extended old new) hm) =p=>
+       rep xp (Synced old) hm \/
+       rep xp (Synced (padded_log old ++ new)) hm \/
+       rep xp (Rollback old) hm.
+  Proof.
+    intros.
+    rewrite xform_rep_extended'.
+    rewrite rep_extendedcrashed_pimpl.
+    auto.
+  Qed.
+   *)
+  
+  Lemma xform_rep_rollback : forall xp old hm,
+    crash_xform (rep xp (Rollback old) hm) =p=>
+      rep xp (Rollback old) hm.
+  Proof.
+    unfold rep; simpl; unfold rep_contents_unmatched; intros.
+    do 6 (xform; norm'l; unfold stars; simpl).
+    xform.
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    repeat rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite PermDiskLogHdr.xform_rep_synced.
+    cancel.
+  Qed.
+
+  Lemma recover_desc_avail_helper : forall B T xp (old: @generic_contents B) (new : list T) ndata,
+    loglen_valid xp (ndesc_log old + ndesc_list new) ndata ->
+    (Desc.avail_rep xp (ndesc_log old) (ndesc_list new)
+     * Desc.avail_rep xp (ndesc_log old + ndesc_list new)
+         (LogDescLen xp - ndesc_log old - ndesc_list new))
+    =p=> Desc.avail_rep xp (ndesc_log old) (LogDescLen xp - ndesc_log old).
+  Proof.
+    intros.
+    rewrite Desc.avail_rep_merge;
+    eauto.
+    rewrite le_plus_minus_r;
+    auto.
+    unfold loglen_valid in *;
+    omega.
+  Qed.
+
+  Lemma recover_data_avail_helper : forall B T xp (old: @generic_contents B) (new : list T) ndesc,
+    loglen_valid xp ndesc (ndata_log old + length new) ->
+    Data.avail_rep xp (ndata_log old)
+          (divup (length new) DataSig.items_per_val)
+    * Data.avail_rep xp (ndata_log old + length new)
+        (LogLen xp - ndata_log old - length new)
+    =p=> Data.avail_rep xp (nonzero_addrs (map fst old))
+           (LogLen xp - nonzero_addrs (map fst old)).
+  Proof.
+    intros.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    rewrite divup_1, Data.avail_rep_merge;
+    eauto.
+    rewrite le_plus_minus_r;
+    auto.
+    unfold loglen_valid in *;
+    omega.
+  Qed.
+
+  Lemma xform_rep_rollbackunsync : forall xp l hm,
+    crash_xform (rep xp (RollbackUnsync l) hm) =p=>
+      rep xp (Rollback l) hm \/
+      rep xp (Synced l) hm.
+  Proof.
+    unfold rep; simpl; unfold rep_contents_unmatched; intros.
+    do 8 (xform; norm'l; unfold stars; simpl).
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    repeat rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite PermDiskLogHdr.xform_rep_unsync.
+    cancel.
+
+    unfold rep_contents.
+    or_r.
+    unfold padded_log.
+    rewrite ndesc_log_padded_log.
+    rewrite desc_padding_synced_piff,
+    tags_nonzero_padded_log, vals_nonzero_padded_log.
+    cancel.
+    rewrite Desc.array_rep_avail_synced, Data.array_rep_avail_synced.
+    rewrite <- recover_desc_avail_helper.
+    setoid_rewrite <- recover_data_avail_helper.
+    cancel.
+    denote (length _ = ndata_log _) as Hndata.
+    rewrite Hndata; eauto.
+    denote (length _ = _ * _) as Hndesc.
+    unfold ndesc_list.
+    rewrite Hndesc, divup_mul; eauto.
+
+    Unshelve.
+    all: eauto.
   Qed.
 
 
-  Hint Extern 1 ({{_}} Bind (avail _ _) _) => apply avail_ok : prog.
-  Hint Extern 1 ({{_}} Bind (read _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
-  Hint Extern 1 ({{_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
+  Lemma xform_would_recover' : forall xp l hm,
+    crash_xform (would_recover' xp l hm) =p=>
+      rep xp (Synced l) hm \/
+      rep xp (Rollback l) hm.
+  Proof.
+    unfold would_recover'.
+    intros.
+    xform.
+    cancel; (rewrite xform_rep_synced ||
+              rewrite xform_rep_rollback ||
+              rewrite xform_rep_rollbackunsync); cancel.
+  Qed.
+
+  Lemma weq2 : forall sz (x y : word sz) (a b : word sz),
+    {x = y /\ a = b} + {(x = y /\ a <> b) \/
+                        (x <> y /\ a = b) \/
+                        (x <> y /\ a <> b)}.
+  Proof.
+    intros.
+    destruct (weq x y); destruct (weq a b); intuition.
+  Defined.
+
+  Definition recover xp cs :=
+    let^ (cs, header) <- PermDiskLogHdr.read xp cs;;
+    let '((prev_ndesc, prev_ndata),
+          (ndesc, ndata),
+          (addr_checksum, valu_checksum)) := header in
+    let^ (cs, wal) <- Desc.read_all xp ndesc cs;;
+    let^ (cs, vl) <- Data.read_all xp ndata cs;;
+    default_hash <- Hash default_encoding;;
+    h_addr <- hash_list_handle default_hash wal;;
+    h_valu <- hash_list_handle default_hash vl;;
+    If (weq2 addr_checksum h_addr valu_checksum h_valu) {
+      Ret cs
+    } else {
+      let^ (cs, wal) <- Desc.read_all xp prev_ndesc cs;;
+      let^ (cs, vl) <- Data.read_all xp prev_ndata cs;;
+      addr_checksum <- hash_list_handle default_hash wal;;
+      valu_checksum <- hash_list_handle default_hash vl;;
+      cs <- PermDiskLogHdr.write xp ((prev_ndesc, prev_ndata),
+                          (prev_ndesc, prev_ndata),
+                          (addr_checksum, valu_checksum)) cs;;
+      cs <- PermDiskLogHdr.sync_now xp cs;;
+      Ret cs
+    }.
+
+(*
+  Lemma recover_read_ok_helper : forall xp old new,
+     Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ new))) =p=>
+      Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ padded_log new))).
+  Proof.
+    intros.
+    repeat rewrite map_app.
+    rewrite Desc.array_rep_synced_app_rev.
+    rewrite <- Desc.array_rep_synced_app.
+    cancel.
+    rewrite desc_padding_synced_piff.
+    cancel.
+    rewrite map_length, padded_log_length. unfold roundup; eauto.
+    rewrite map_length, padded_log_length. unfold roundup; eauto.
+  Qed.
+
+  Lemma recover_ok_addr_helper : forall xp old new,
+    Desc.array_rep xp 0
+        (Desc.Synced
+          (map ent_addr (padded_log old) ++ map ent_addr (padded_log new))) =p=>
+    Desc.array_rep xp 0
+      (Desc.Synced (map ent_addr (padded_log old ++ new))).
+  Proof.
+    intros.
+    rewrite map_app.
+    eapply pimpl_trans; [ | eapply Desc.array_rep_synced_app ].
+    rewrite Desc.array_rep_synced_app_rev.
+    cancel.
+    apply desc_padding_synced_piff.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+  Qed.
+ *)
+
+Definition recover_ok_Synced :
+  forall xp cs pr,
+    {< F l d,
+     PERM:pr
+     PRE:bm, hm,
+          PermCacheDef.rep cs d bm *
+          [[ (F * rep xp (Synced l) hm)%pred d ]]
+    POST:bm', hm', RET:cs'
+          PermCacheDef.rep cs' d bm' *
+          [[ (F * rep xp (Synced l) hm')%pred d ]]
+    CRASH:bm'', hm_crash, exists cs',
+          PermCacheDef.rep cs' d bm'' *
+          [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
+    >} recover xp cs.
+  Proof.
+    unfold recover.
+    step.
+    prestep. norm. cancel. intuition simpl.
+    eassign (map ent_addr (padded_log l)).
+    unfold padded_log.
+    rewrite map_length, padded_log_length.
+    all: eauto.
+    eassign (addr_tags (ndesc_log l)).
+    unfold addr_tags; rewrite repeat_length; auto.
+    unfold padded_log; rewrite desc_padding_synced_piff.
+    pred_apply; cancel.
+
+    safestep.
+    rewrite vals_nonzero_addrs.
+    replace DataSig.items_per_val with 1 by (cbv; auto).
+    unfold ndata_log; omega.
+    rewrite tags_nonzero_addrs.
+    replace DataSig.items_per_val with 1 by (cbv; auto).
+    unfold ndata_log; omega.
+    step.
+    step.
+
+    solve_hash_list_rep; auto.
+    eapply handles_valid_subset_trans; eauto.
+    step.
+    solve_hash_list_rep; auto.
+    eapply handles_valid_subset_trans; eauto.
+    
+    step.
+
+    {
+      step.
+      step.
+      apply desc_padding_synced_piff.
+      solve_checksums.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl;
+      repeat (eapply block_mem_subset_trans; eauto).      
+    }
+    {
+      eapply pimpl_ok2; monad_simpl; eauto with prog.
+      intros.
+      unfold pimpl; intros.
+      unfold checksums_match in *; intuition.
+      unfold padded_log in *.
+      rewrite app_nil_r, <- desc_ipack_padded in *.
+      denote (_ m) as Hx; destruct_lift Hx; intuition.
+      all: denote (_ -> False) as Hx; contradict Hx;
+      eapply hash_list_injective2; solve_hash_list_rep.
+      Search blocks_nonzero.
+      rewrite combine_tags_vals in *.
+      denote (_ = blocks_nonzero _) as Hx; rewrite <- Hx.
+      erewrite extract_blocks_subset; eauto.
+      denote (extract_blocks _ a1 = _) as Hx; setoid_rewrite <- Hx.
+      erewrite extract_blocks_subset; eauto; solve_hash_list_rep.
+      rewrite combine_tags_vals in *.
+      denote (_ = blocks_nonzero _) as Hx; rewrite <- Hx.
+      erewrite extract_blocks_subset; eauto.
+    }
+
+    all: rewrite <- H1; try cancel; unfold padded_log;
+    solve [ apply desc_padding_synced_piff |
+            solve_checksums |
+            solve_hashmap_subset |
+            unfold pimpl; intros; simpl;
+            repeat (eapply block_mem_subset_trans; eauto)].
+
+    Unshelve.
+    all: eauto; try easy; try solve [constructor].
+    all: unfold EqDec; apply handle_eq_dec.
+  Qed.
+
+  Lemma blocks_nonzero_app:
+    forall l1 l2,
+      blocks_nonzero (l1++l2) = blocks_nonzero l1 ++ blocks_nonzero l2.
+  Proof.
+    induction l1; simpl; intros; auto.
+    unfold blocks_nonzero in *;
+    destruct a, n; simpl; auto.
+    rewrite IHl1; auto.
+  Qed.
+
+  Lemma combine_eq_r:
+    forall A B (l: list A) (l1 l2: list B),
+      combine l l1 = combine l l2 ->
+      length l = length l2 ->
+      length l1 = length l2 ->
+      l1 = l2.
+  Proof.
+    induction l; simpl; intros;
+    destruct l1, l2; simpl in *; try congruence.
+    inversion H; subst; erewrite (IHl l1 l2); eauto.
+  Qed.
+  
+
+  
+  Definition recover_ok_Rollback :
+    forall xp cs pr,
+    {< F old d,
+    PERM:pr   
+    PRE:bm, hm,
+        PermCacheDef.rep cs d bm *
+        [[ (F * rep xp (Rollback old) hm)%pred d ]] *
+        [[ sync_invariant F ]]
+    POST:bm', hm', RET:cs' exists d',
+          PermCacheDef.rep cs' d' bm' *
+          [[ (F * rep xp (Synced old) hm')%pred d' ]]
+    XCRASH:bm'', hm_crash, exists cs' d',
+          PermCacheDef.rep cs' d' bm'' * (
+          [[ (F * rep xp (Rollback old) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (RollbackUnsync old) hm_crash)%pred d' ]])
+    >} recover xp cs.
+  Proof.
+    unfold recover.
+    step.
+    step.
+
+    instantiate (1:=(map ent_addr (padded_log old) ++ dummy)).
+    autorewrite with lists.
+    rewrite Nat.mul_add_distr_r.
+    unfold padded_log; rewrite padded_log_length.
+    all: auto.
+    eassign (addr_tags (ndesc_log old + ndesc_log dummy3)).
+    unfold addr_tags; rewrite repeat_length; auto.
+
+    unfold rep_contents_unmatched.
+    rewrite addr_tags_app, <- Desc.array_rep_synced_app.
+    unfold padded_log; repeat rewrite desc_padding_synced_piff.
+    autorewrite with lists.
+    erewrite <- ndesc_log_padded_log.
+    simpl.
+    autorewrite with lists.
+    repeat rewrite ndesc_log_padded_log.
+    cancel.
+    
+    rewrite desc_padding_synced_piff.
+    replace (ndesc_list dummy) with (ndesc_log dummy3) at 3.
+    unfold ndesc_log, roundup;
+    repeat rewrite padded_log_length; unfold roundup;
+    repeat rewrite divup_divup.
+    cancel.
+    unfold DescSig.items_per_val; rewrite valulen_is; simpl; omega.
+    unfold ndesc_list; rewrite H16.
+    rewrite divup_mul; auto.
+    unfold padded_log; rewrite map_length, padded_log_length;
+    unfold roundup; eauto.
+
+    prestep. norm. cancel. intuition simpl.
+    eassign (vals_nonzero (padded_log old) ++ dummy1).
+    autorewrite with lists.
+    unfold padded_log.
+    rewrite vals_nonzero_addrs, nonzero_addrs_padded_log,
+    Nat.mul_add_distr_r.
+    unfold ndata_log.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    repeat rewrite Nat.mul_1_r.
+    all: auto.
+    eassign (tags_nonzero (padded_log old) ++ dummy0).
+    autorewrite with lists.
+    unfold padded_log.
+    unfold Data.array_rep, Data.synced_array,
+    Data.rep_common, eqlen in *.
+    destruct_lifts.
+    denote (length dummy0 = _) as Hx.
+    rewrite Hx, <- H15,
+    tags_nonzero_addrs, nonzero_addrs_padded_log,
+    Data.Defs.ipack_length, divup_1.
+    unfold ndata_log; auto.
+    
+    rewrite <- Data.array_rep_synced_app.
+    pred_apply.
+    unfold padded_log.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    rewrite vals_nonzero_addrs, nonzero_addrs_padded_log, divup_1.
+    cancel.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    rewrite Nat.mul_1_r; eauto.
+
+    step.
+    step.
+    solve_hash_list_rep; auto.
+    eapply handles_valid_subset_trans; eauto.
+    step.
+    solve_hash_list_rep; auto.
+    eapply handles_valid_subset_trans; eauto.
+    step.
+
+    (* Impossible case: the hash could not have matched what was on disk. *)
+    {
+      prestep. norm'l.
+      Transparent hide_or.
+      unfold hide_or in *.
+      intuition; exfalso;
+      denote (False) as Hcontra; apply Hcontra.
+      
+      rewrite app_nil_r in *.
+      unfold checksums_match in *; intuition.
+      apply rev_injective.
+      eapply app_inv_tail.
+
+      simpl in *.
+      denote (hash_list_rep (rev (extract_blocks bm3 a3)) _ _) as Hhlr.
+      denote (extract_blocks bm2 a3 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb, Data.Defs.ipack_app,
+      combine_app, combine_tags_vals,
+      ipack_noop, rev_app_distr in Hhlr.
+
+    
+      rewrite blocks_nonzero_app, rev_app_distr in *; simpl in *.
+      eapply hash_list_injective; [ | solve_hash_list_rep].
+      solve_hash_list_rep.
+      rewrite ipack_noop, vals_nonzero_addrs, tags_nonzero_addrs; auto.
+      symmetry; eapply Nat.mul_1_r.
+
+      rewrite app_nil_r in *.
+      unfold checksums_match in *; intuition; simpl in *.
+      denote (hash_list_rep (rev (extract_blocks bm2 a1)) _ _) as Hhlr.
+      denote (extract_blocks bm1 a1 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb in Hhlr.
+      rewrite ndesc_log_app in *.
+      unfold padded_log in *. rewrite ndesc_log_padded_log in *.
+
+      unfold padded_log; simpl in *.
+      rewrite <- desc_ipack_padded.
+      eapply app_inv_head.
+      repeat erewrite <- DescDefs.ipack_app.
+      erewrite <- map_app.
+       
+      eapply (combine_eq_r
+                (addr_tags (ndesc_log old + ndesc_log dummy3))).
+      eapply rev_injective.
+      eapply hash_list_injective; [ | solve_hash_list_rep ].
+      solve_hash_list_rep.
+      
+      unfold addr_tags; erewrite repeat_length, DescDefs.ipack_app.
+      rewrite app_length;
+      repeat rewrite DescDefs.ipack_length, map_length.
+      rewrite padded_log_length.
+      unfold roundup; rewrite divup_divup.
+      rewrite DescDefs.ipack_length.
+      unfold ndesc_log; setoid_rewrite H16.
+      rewrite divup_mul; auto.
+      all: try solve [rewrite map_length, padded_log_length;
+                      unfold roundup; eauto].
+      unfold DescSig.items_per_val; rewrite valulen_is; simpl; omega.
+
+      repeat (try rewrite map_app; erewrite DescDefs.ipack_app).
+      repeat rewrite app_length.
+      apply Nat.add_cancel_l.
+      repeat rewrite DescDefs.ipack_length.
+      rewrite map_length.
+      setoid_rewrite H16.
+      rewrite divup_mul; unfold ndesc_log; auto.
+      
+      autorewrite with lists.
+      rewrite padded_log_length.
+      unfold roundup; eauto.
+      autorewrite with lists.
+      rewrite padded_log_length.
+      unfold roundup; eauto.
+
+      unfold padded_log, roundup.
+      rewrite padded_log_length.
+      unfold roundup; rewrite divup_divup; eauto.
+      unfold DescSig.items_per_val; rewrite valulen_is; simpl; omega.
+    }
+
+    (* False case: the hash did not match what was on disk and we need to recover. *)
+    {
+      prestep. norm;
+      match goal with
+      | [ Hor: (_ \/ _ \/ _) |- _ ] => clear Hor
+      end.
+      cancel.
+      rewrite block_mem_subset_rep.
+      cancel.
+      repeat (eapply block_mem_subset_trans; eauto).
+      intuition simpl.
+      instantiate (1:= map ent_addr (padded_log old)).
+      unfold padded_log;
+      rewrite map_length, padded_log_length.
+      all: auto.
+      eassign (addr_tags (ndesc_log old));
+      unfold addr_tags; apply repeat_length.
+      denote (Data.avail_rep) as Hx; clear Hx.
+      denote (Data.avail_rep) as Hx; clear Hx.
+      denote (Data.avail_rep) as Hx; clear Hx.
+      pred_apply.
+      unfold rep_contents_unmatched, padded_log;
+      rewrite ndesc_log_padded_log. 
+      cancel.
+
+      safestep.
+      rewrite vals_nonzero_padded_log, vals_nonzero_addrs.
+      unfold ndata_log.
+      replace DataSig.items_per_val with 1 by (cbv; auto); omega.
+      rewrite tags_nonzero_padded_log, tags_nonzero_addrs.
+      unfold ndata_log; auto.
+
+      step.
+      solve_hash_list_rep; eauto.
+      eapply handles_valid_subset_trans; eauto.
+      eapply pimpl_ok2; monad_simpl; try apply hash_list_handle_ok.
+      cancel.
+      solve_hash_list_rep; eauto.
+      eapply handles_valid_subset_trans; eauto.
+
+      safestep.
+      rewrite block_mem_subset_rep.
+      cancel.
+      repeat (eapply block_mem_subset_trans; eauto). 
+      match goal with
+      | [ H: ( _ )%pred d |- _ ]
+        => unfold PermDiskLogHdr.rep in H; destruct_lift H
+      end.
+      unfold PermDiskLogHdr.hdr_goodSize in *; intuition.
+      2: pred_apply; cancel.
+      unfold previous_length, current_length; simpl.
+      all: auto.
+      
+      denote (Data.avail_rep) as Hx; clear Hx.
+      denote (Data.avail_rep) as Hx; clear Hx.
+      denote (Data.avail_rep) as Hx; clear Hx.
+      denote (Data.avail_rep) as Hx; clear Hx.
+      step.
+      eauto 10.
+      step.
+      step.
+
+
+      (* post condition: Synced old *)
+      unfold padded_log.
+      rewrite desc_padding_synced_piff, vals_nonzero_padded_log,
+      tags_nonzero_padded_log.
+      cancel.
+      rewrite Desc.array_rep_avail_synced, Data.array_rep_avail_synced.
+      rewrite <- recover_desc_avail_helper.
+      setoid_rewrite <- recover_data_avail_helper.
+      cancel.
+      rewrite H15; eauto.
+      unfold ndesc_list.
+      rewrite H16, divup_mul; eauto.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+      rewrite vals_nonzero_padded_log in *.
+      solve_checksums.
+      denote (hash_list_rep (rev (extract_blocks bm6 a5)) _ _) as Hhlr.
+      denote (extract_blocks bm5 a5 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb in Hhlr.
+      unfold padded_log in *. erewrite <- desc_ipack_padded in *.
+      simpl; solve_hash_list_rep.
+      
+      denote (hash_list_rep (rev (extract_blocks bm7 a7)) _ _) as Hhlr.
+      denote (extract_blocks bm6 a7 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb in Hhlr.
+      rewrite tags_nonzero_padded_log, combine_tags_vals in Hhlr.
+      simpl; solve_hash_list_rep.
+
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl; 
+      repeat (eapply block_mem_subset_trans; eauto).
+      
+      (* Crash conditions. *)
+      (* After header write, before header sync: RollbackUnsync *)
+      rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl; 
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign cs'; eassign d'; cancel.
+      or_r.
+      safecancel.
+      unfold rep_contents_unmatched, padded_log.
+      rewrite ndesc_log_padded_log, desc_padding_synced_piff,
+      vals_nonzero_padded_log, tags_nonzero_padded_log.
+      cancel.
+      rewrite desc_padding_synced_piff; cancel.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+      all: auto.
+
+      (* Make below a lemma *)
+      solve_checksums.
+      denote (hash_list_rep (rev (extract_blocks bm6 a5)) _ _) as Hhlr.
+      denote (extract_blocks bm5 a5 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb in Hhlr.
+      unfold padded_log in *. erewrite <- desc_ipack_padded in *.
+      simpl; solve_hash_list_rep.
+      
+      denote (hash_list_rep (rev (extract_blocks bm7 a7)) _ _) as Hhlr.
+      denote (extract_blocks bm6 a7 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb in Hhlr.
+      rewrite vals_nonzero_padded_log, tags_nonzero_padded_log,
+      combine_tags_vals in Hhlr.
+      simpl; solve_hash_list_rep.
+      
+      solve_checksums.
+
+      (* Crash 2 *)
+      unfold pimpl; intros m Hm; destruct_lift Hm; cleanup.
+      pred_apply; rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl; 
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign x0; eassign x1; cancel.
+      or_r.
+      safecancel.
+      unfold rep_contents_unmatched, padded_log.
+      rewrite ndesc_log_padded_log, desc_padding_synced_piff,
+      vals_nonzero_padded_log, tags_nonzero_padded_log.
+      cancel.
+      rewrite desc_padding_synced_piff; cancel.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+      all: auto.
+
+      (* Make below a lemma *)
+      solve_checksums.
+      denote (hash_list_rep (rev (extract_blocks bm6 a5)) _ _) as Hhlr.
+      denote (extract_blocks bm5 a5 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb in Hhlr.
+      unfold padded_log in *. erewrite <- desc_ipack_padded in *.
+      simpl; solve_hash_list_rep.
+      
+      denote (hash_list_rep (rev (extract_blocks bm7 a7)) _ _) as Hhlr.
+      denote (extract_blocks bm6 a7 = _) as Heb.
+      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite Heb in Hhlr.
+      rewrite vals_nonzero_padded_log, tags_nonzero_padded_log,
+      combine_tags_vals in Hhlr.
+      simpl; solve_hash_list_rep.
+      
+      solve_checksums.
+
+      (* Crash 3 *)
+      solve [unfold false_pred; cancel].
+
+      (* Crash 4 *)
+     unfold pimpl; intros m Hm; destruct_lift Hm; cleanup.
+      pred_apply; rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl; 
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign dummy2; eassign d; cancel.
+      or_l.
+      safecancel.
+      unfold rep_contents_unmatched, padded_log.
+      rewrite ndesc_log_padded_log, desc_padding_synced_piff,
+      vals_nonzero_padded_log, tags_nonzero_padded_log,
+      desc_padding_synced_piff; cancel.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+      all: auto.
+
+      solve_checksums.
+
+      (* Crash 5 *)
+      unfold pimpl; intros m Hm; destruct_lift Hm; cleanup.
+      pred_apply; rewrite <- H1; cancel.
+      solve_hashmap_subset.
+      unfold pimpl; intros; simpl; 
+      repeat (eapply block_mem_subset_trans; eauto).
+      xcrash.
+      eassign dummy2; eassign d; cancel.
+      or_l.
+      safecancel.
+      unfold rep_contents_unmatched, padded_log.
+      rewrite ndesc_log_padded_log, desc_padding_synced_piff,
+      vals_nonzero_padded_log, tags_nonzero_padded_log; cancel.
+      rewrite addr_tags_app, Data.array_rep_synced_app_rev,
+      Desc.array_rep_synced_app_rev; simpl.
+
+        
+      rewrite map_length, padded_log_length,
+      vals_nonzero_addrs.
+      unfold roundup; rewrite divup_divup, desc_padding_synced_piff.
+      cancel.
+      unfold ndesc_log at 2, ndata_log.
+      rewrite divup_1.
+      replace (ndesc_log dummy3) with (ndesc_list dummy).
+      cancel.
+      denote (length dummy = _) as Hl.
+      unfold ndesc_list; rewrite Hl, divup_mul; auto.
+      all: eauto.
+      unfold DescSig.items_per_val; rewrite valulen_is; simpl; omega.
+      rewrite map_length, padded_log_length;
+      unfold roundup; eauto.
+      unfold addr_tags; rewrite repeat_length, Desc.Defs.ipack_length.
+      rewrite map_length, padded_log_length;
+      unfold roundup; rewrite divup_divup; eauto.
+      unfold DescSig.items_per_val; rewrite valulen_is; simpl; omega.
+      symmetry; apply Nat.mul_1_r.
+      rewrite ipack_noop, tags_nonzero_addrs, vals_nonzero_addrs; auto.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+      solve_checksums.
+    }
+
+    (* Rest of the crash conditions. All before header write: Rollback. *)
+    (* Crash 6 *)
+    unfold pimpl; intros m Hm; destruct_lift Hm; cleanup.
+    pred_apply; rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    unfold pimpl; intros; simpl; 
+    repeat (eapply block_mem_subset_trans; eauto).
+    xcrash.
+    eassign dummy2; eassign d; cancel.
+    or_l.
+    denote (Data.avail_rep) as Hx; clear Hx.
+    denote (Data.avail_rep) as Hx; clear Hx.
+    safecancel.
+    solve_checksums.
+
+    (* Crash 7 *)
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    unfold pimpl; intros; simpl; 
+    repeat (eapply block_mem_subset_trans; eauto).
+    xcrash.
+    eassign cs'; eassign d; cancel.
+    or_l.
+    denote (Data.avail_rep) as Hx; clear Hx.
+    safecancel.
+    solve_checksums.
+
+    (* Crash 8 *)
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    xcrash.
+    eassign cs'; eassign d; cancel.
+    or_l.
+    denote (Data.avail_rep) as Hx; clear Hx.
+    safecancel.
+    solve_checksums.
+
+    Unshelve.
+    all: try solve [eauto; econstructor].
+    apply tagged_block0.
+    all: unfold EqDec; apply handle_eq_dec.
+  Qed.
+  
+  Definition recover_ok :
+    forall xp cs pr,
+    {< F st l,
+    PERM:pr   
+    PRE:bm, hm,
+      exists d, PermCacheDef.rep cs d bm *
+          [[ (F * rep xp st hm)%pred d ]] *
+          [[ st = Synced l \/ st = Rollback l ]] *
+          [[ sync_invariant F ]]
+    POST:bm', hm', RET:cs' exists d',
+          PermCacheDef.rep cs' d' bm' *
+          [[ (F * rep xp (Synced l) hm')%pred d' ]]
+    XCRASH:bm', hm',
+          would_recover xp F l hm'
+    >} recover xp cs.
+  Proof.
+    unfold would_recover, would_recover';
+    intros; eapply corr2_or_helper.
+    apply recover_ok_Synced.
+    apply recover_ok_Rollback.
+    intros; simpl; cancel; subst.
+    or_l; cancel.
+    eassign l; cancel.
+    step.
+    rewrite <- H1; cancel.
+    cancel.
+    or_l; eauto.
+    eauto.
+
+    or_r; safecancel.
+    eassign l; cancel.
+    auto.
+    step.
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    xcrash.
+    or_r; or_l; eauto.
+    or_r; or_r; eauto.
+  Qed.
+ 
+  Hint Extern 1 ({{_ | _}} Bind (recover _ _) _) => apply recover_ok : prog.

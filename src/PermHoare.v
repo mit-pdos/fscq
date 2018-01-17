@@ -155,7 +155,7 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
 
 
 Theorem pimpl_ok2:
-  forall T pr  (pre pre':donecond T -> crashcond -> block_mem ->  hashmap -> @pred _ _ valuset) (p: prog T),
+  forall T pr (pre pre':donecond T -> crashcond -> block_mem ->  hashmap -> @pred _ _ valuset) (p: prog T),
   corr2 pr pre' p ->
   (forall done crash bm hm, pre done crash bm hm =p=>  pre' done crash bm hm) ->
   corr2 pr pre p.
@@ -235,6 +235,23 @@ Proof.
   cleanup.
   eapply security_equivalence; eauto.
 Qed.
+
+Lemma corr2_or_helper:
+  forall T (p: prog T) P Q R pr,
+    corr2 pr P p ->
+    corr2 pr Q p ->
+    (forall done crash bm hm,
+       R done crash bm hm =p=>
+     (P done crash bm hm) \/ (Q done crash bm hm)) ->
+    corr2 pr R p.
+Proof.
+  intros.
+  eapply pimpl_ok2; [| apply H1].
+  unfold corr2 in *.
+  intros.
+  destruct H2; eauto.
+Qed.
+
 
 Ltac monad_simpl_one :=
   match goal with

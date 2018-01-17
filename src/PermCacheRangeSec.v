@@ -36,57 +36,44 @@ Set Implicit Arguments.
       RET:^(cs, r)
        rep cs d bm' *
       [[ extract_blocks bm' r = firstn nr (List.map fst vs)]] *
-      [[ length r = nr ]]
+      [[ handles_valid bm' r ]]
     CRASH:bm'', hm'',
       exists cs', rep cs' d bm''
     >} read_range a nr cs.
   Proof.
     unfold read_range; intros.
     step.
+    unfold handles_valid; auto.
     step.
 
     step.
     step.
-
+    constructor; unfold handle_valid; eauto.
+    eapply handles_valid_subset_trans; eauto.
     erewrite firstn_S_selN_expand.
     erewrite selN_map; auto.
     rewrite extract_blocks_app; simpl.
-    rewrite H17.
-    destruct (find (a + length a1) (CSMap a0)); try logic_clean; subst.
+    rewrite H18.
+    clear H17; erewrite <- extract_blocks_subset; eauto.
     rewrite H13; auto.
-
-    destruct (in_dec handle_eq_dec a3 a1).
-    pose proof (extract_blocks_length_lt _ _ _ i e0).
-    assert (A: length(extract_blocks bm0 (rev a1)) =
-               length (firstn (length a1) (List.map fst vs))).
-    rewrite H13; auto.
-    rewrite firstn_length_l in A.
-    rewrite extract_blocks_rev_length_eq, A in H9; omega.
+    apply handles_valid_rev_eq; auto.
+    eapply le_trans; [| eauto].
+    omega.
     rewrite map_length.
     eapply le_trans; [| eauto].
     omega.
+    solve_hashmap_subset.
 
-    rewrite extract_blocks_upd_not_in; eauto.
-    rewrite H13; auto.
-    unfold not; intros Hx;
-    apply in_rev in Hx; auto.
-    eapply le_trans; [| eauto]; omega.
-    rewrite map_length.
-    eapply le_trans; [| eauto].
-    omega.
-
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
     rewrite <- H1; cancel; eauto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    solve_hashmap_subset.
 
     step.
     step.
-    apply rev_length.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
-    rewrite <- H1; cancel.
-    eauto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    apply handles_valid_rev_eq; auto.
+    solve_hashmap_subset.
 
+    rewrite <- H1; cancel; eauto.
+    
     Unshelve.
     all: eauto.
     exact tt.
@@ -105,7 +92,7 @@ Set Implicit Arguments.
       [[ (F * arrayS a vs)%pred d ]] *
       [[ length l <= length vs ]] *
       [[ vsl = extract_blocks bm l ]] *
-      [[ length l = length vsl ]]
+      [[ handles_valid bm l ]]
     POST:bm', hm', RET:cs
       exists d', rep cs d' bm' *
       [[ (F * arrayS a (vsupd_range vs vsl))%pred d' ]]
@@ -121,14 +108,15 @@ Set Implicit Arguments.
 
     erewrite extract_blocks_selN.
     rewrite <- H15; eauto.
-    rewrite <- H15; auto.
+    eapply handles_valid_subset_trans; eauto.
     auto.
-    
+
     rewrite vsupd_range_length; try omega.
     eapply lt_le_trans; eauto.
     rewrite firstn_length_l; try omega.
     eapply le_trans; [|eauto].
     apply Nat.lt_le_incl; auto.
+    apply handles_valid_length_eq in H5;
     rewrite <- H5; apply Nat.lt_le_incl; auto.
 
     step.
@@ -136,8 +124,9 @@ Set Implicit Arguments.
     erewrite firstn_S_selN_expand.
     setoid_rewrite <- vsupd_range_progress; auto.
 
+    
     cancel.
-    all: try rewrite <- H5; auto.
+    all: apply handles_valid_length_eq in H5; try rewrite <- H5; auto.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
     
     rewrite <- H1; cancel; eauto.
@@ -154,9 +143,7 @@ Set Implicit Arguments.
     rewrite <- H5; auto.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
     eassign (false_pred (AT:= addr)(AEQ:= addr_eq_dec)(V:= valuset))%pred.
-    rewrite <- H1; cancel; eauto.
-    unfold false_pred, crash_xform.
-    unfold pimpl; intros; simpl in *; cleanup; intuition.
+    unfold false_pred; cancel.
     Unshelve.
     exact tt.
     unfold EqDec; apply handle_eq_dec.
@@ -197,7 +184,7 @@ Set Implicit Arguments.
     rewrite <- H1; cancel; eauto.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
     
-    step.step.
+    step. step.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
     rewrite <- H1; cancel; eauto.
     

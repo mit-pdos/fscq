@@ -14,7 +14,7 @@ Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
 Require Import ADestructPair DestructVarname.
-Require Export PermProgLoop.
+Require Export PermProgList.
 
 Import AddrMap.
 Import Map MapFacts.
@@ -184,9 +184,9 @@ Definition read_range a nr cs :=
     Loopvar [ cs (pf: list handle) ]
     Invariant
     rep cs d bm *
-    [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
-    [[ length pf = i ]] *
-    [[ extract_blocks bm (rev pf) = firstn i (List.map fst vs) ]]
+      [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
+      [[ handles_valid bm pf ]] *
+      [[ extract_blocks bm (rev pf) = firstn i (List.map fst vs) ]]
     OnCrash crash
     Begin
       let^ (cs, v) <- read_array a i cs;;

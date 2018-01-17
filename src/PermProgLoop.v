@@ -1,9 +1,50 @@
 Require Import Pred Mem Word Arith.
-Require Import Nomega NArith Omega List.
+Require Import Nomega NArith Omega List ListUtils.
 Require Import Morphisms FunctionalExtensionality ProofIrrelevance.
 Require Export PermInstr.
 
 Set Implicit Arguments.
+
+
+Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
+  if b then p1 else p2.
+
+Theorem if_ok:
+  forall T T' P Q (b : {P}+{Q}) (p1 p2 : prog T) (p': T -> prog T') pr,
+  (corr2 pr (fun bm hm done crash => exists pre, pre
+   * [[ corr2 pr (fun bm' hm' done' crash' => pre * [[P]] * [[ hm = hm' ]] * [[ bm = bm' ]] * [[ done' = done ]] * [[ crash' = crash ]]) (Bind p1 p') ]]
+   * [[ corr2 pr (fun bm' hm' done' crash' => pre * [[Q]] * [[ hm = hm' ]] * [[ bm = bm' ]] * [[ done' = done ]] * [[ crash' = crash ]]) (Bind p2 p') ]]
+  ))%pred (Bind (If_ b p1 p2) p').
+Proof.
+  unfold corr2, corr2, exis; intros; repeat deex.
+  repeat ( apply sep_star_lift2and in H; destruct H ).
+  destruct b.
+  - eapply H2; eauto.
+    eapply pimpl_apply; [|apply H].
+    cancel.
+  - eapply H1; eauto.
+    eapply pimpl_apply; [|apply H].
+    cancel.
+  - unfold If_ in *.
+    repeat ( apply sep_star_lift2and in H; destruct H ).
+    destruct b.
+    + eapply H2; eauto.
+      eapply pimpl_apply; [|apply H].
+      cancel.
+    + eapply H1; eauto.
+      eapply pimpl_apply; [|apply H].
+      cancel.
+Qed.
+
+(* helper to use If with an option *)
+Definition is_some A (a: option A) : {a <> None} + {a = None}.
+Proof.
+  destruct a; left + right; congruence.
+Defined.
+
+Hint Extern 1 ({{_|_}} Bind (If_ _ _ _) _) => apply if_ok : prog.
+Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
+
 
 Record For_args (L : Type) := {
   For_args_i : waddr;
@@ -680,6 +721,18 @@ Notation "'ForEach' elem rest lst 'Blockmem' bm 'Ghost' [ g1 .. g2 ] 'Loopvar' [
    l1 closed binder, l2 closed binder,
    body at level 9).
 
+Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
+        lst
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+         fun bm hm => (nocrash)%pred)) ..))  )) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun bm hm => crashed%pred)) .. )))
+  (at level 9, elem at level 0, rest at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
 
 Notation "'ForEach' elem rest lst 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
@@ -693,3 +746,4 @@ Notation "'ForEach' elem rest lst 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 
    g1 closed binder, g2 closed binder,
    l1 closed binder, l2 closed binder,
    body at level 9).
+

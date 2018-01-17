@@ -45,6 +45,8 @@ Inductive prog : Type -> Type :=
 | Sync : prog unit
 | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
 | Hash2 (sz1 sz2: nat) (buf1 : word sz1) (buf2 : word sz2) : prog (word hashlen)
+| HashHandle : handle -> prog (word hashlen)
+| HashHandle2 (h:handle) (sz: nat) (buf: word sz) : prog (word hashlen)
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
 
@@ -75,15 +77,29 @@ Inductive exec:
 | StepHash : forall pr d bm hm tr sz (buf : word sz) h,
                hash_safe hm h buf ->
                hash_fwd buf = h ->
-               exec pr tr d bm hm (Hash buf) (Finished d bm (upd_hashmap' hm h buf) tt) tr
+               exec pr tr d bm hm (Hash buf) (Finished d bm (upd_hashmap' hm h buf) h) tr
          
 | StepHash2 : forall pr d bm hm tr sz1 sz2 (buf1 : word sz1)
                 (buf2 : word sz2) (buf : word (sz1 + sz2)) h,
                 buf = Word.combine buf1 buf2 ->
                 hash_safe hm h buf ->
                 hash_fwd buf = h ->
-                exec pr tr d bm hm (Hash2 buf1 buf2) (Finished d bm (upd_hashmap' hm h buf) tt) tr
+                exec pr tr d bm hm (Hash2 buf1 buf2) (Finished d bm (upd_hashmap' hm h buf) h) tr
                      
+| StepHashHandle : forall pr d bm hm tr tb i h,
+               bm i = Some tb ->
+               hash_safe hm h (encode tb) ->
+               hash_fwd (encode tb) = h ->
+               exec pr tr d bm hm (HashHandle i) (Finished d bm (upd_hashmap' hm h (encode tb)) h) tr
+
+| StepHashHandle2 : forall pr d bm hm tr sz i tb
+                      (buf2 : word sz) (buf : word (encoding_length + sz)) h,
+                bm i = Some tb ->
+                buf = Word.combine (encode tb) buf2 ->
+                hash_safe hm h buf ->
+                hash_fwd buf = h ->
+                exec pr tr d bm hm (HashHandle2 i buf2) (Finished d bm (upd_hashmap' hm h buf) h) tr
+                    
 | ExecRet : forall T pr d bm hm (r: T) tr,
               exec pr tr d bm hm (Ret r) (Finished d bm hm r) tr
                    
@@ -105,9 +121,6 @@ Inductive exec:
                 exec pr tr d bm hm p1 r tr' ->
                 r = (Crashed d' bm' hm') ->
                 exec pr tr d bm hm (Bind p1 p2) r tr'.
-
-
-
 
 Notation "p1 :; p2" := (Bind p1 (fun _: unit => p2))
                               (at level 60, right associativity).
