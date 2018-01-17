@@ -20,7 +20,7 @@ type Flags = Word8
 newtype Path = Path FilePath
   deriving (Eq, Show)
 newtype Handle = Handle Int
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 instance IsString Path where
   fromString = Path
