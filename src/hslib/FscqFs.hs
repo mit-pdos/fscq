@@ -39,7 +39,6 @@ import ShowErrno
 import qualified BFile
 import System.Clock
 import GenericFs
-import Timings
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer

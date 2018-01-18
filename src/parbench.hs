@@ -9,7 +9,7 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad (void)
 import Data.IORef
-import Data.List (intercalate, dropWhileEnd)
+import Data.List (intercalate)
 import Options
 import System.Clock
 import System.Exit
@@ -41,33 +41,6 @@ instance Options ScanDirOptions where
   defineOptions = pure ScanDirOptions <*>
     simpleOption "dir" "/"
       "root directory to scan from"
-
-getResult :: String -> Either Errno a -> IO a
-getResult fname (Left e) = ioError (errnoToIOError "" e Nothing (Just fname))
-getResult _ (Right a) = return a
-
-isDot :: FilePath -> Bool
-isDot p = p == "." || p == ".."
-
-filterDots :: [(FilePath, a)] -> [(FilePath, a)]
-filterDots = filter (not . isDot . fst)
-
-isFile :: FileStat -> Bool
-isFile s =
-  case statEntryType s of
-  RegularFile -> True
-  _ -> False
-
-isDirectory :: FileStat -> Bool
-isDirectory s = case statEntryType s of
-  Directory -> True
-  _ -> False
-
-onlyDirectories :: [(FilePath, FileStat)] -> [FilePath]
-onlyDirectories = map fst . filter (isDirectory . snd)
-
-pathJoin :: FilePath -> FilePath -> FilePath
-pathJoin p1 p2 = dropWhileEnd (== '/') p1 ++ "/" ++ p2
 
 traverseDirectory :: Filesystem -> FilePath -> IO [(FilePath, FileStat)]
 traverseDirectory fs@Filesystem{fuseOps} p = do
@@ -329,17 +302,17 @@ parallelBench opts@ParOptions{..} act prepare = do
   return $ map (\t -> p{ pIters=length micros
                        , pElapsedMicros=t }) micros
 
-withFs :: ParOptions -> (Filesystem -> IO a) -> IO a
-withFs ParOptions{..} act =
-  if optFscq then
-    initFscq optDiskImg True getProcessIds >>= act
-  else
-    initCfscq optDiskImg True getProcessIds >>= act
-
 reportTimings :: ParOptions -> Filesystem -> IO ()
 reportTimings ParOptions{..} fs = when optShowDebug $ do
   tm <- readIORef (timings fs)
   printTimings tm
+
+withFs :: ParOptions -> (Filesystem -> IO a) -> IO a
+withFs opts@ParOptions{..} act =
+  let initFs = if optFscq then initFscq else initCfscq in
+    do
+      fs <- initFs optDiskImg True getProcessIds
+      act fs <* reportTimings opts fs
 
 clearTimings :: Filesystem -> IO ()
 clearTimings fs = writeIORef (timings fs) emptyTimings
@@ -352,7 +325,6 @@ simpleBenchmark :: Options subcmdOpts =>
                    Parcommand ()
 simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
   ps <- withFs opts $ \fs -> parallelBench opts (\_ -> act cmdOpts fs) (clearTimings fs)
-    <* reportTimings opts fs
   reportData $ map (\p -> p{pBenchName=name}) ps
 
 data IOConcurOptions =
@@ -401,7 +373,6 @@ runIOConcur opts@ParOptions{..} ioOpts fs = do
 ioConcurCommand :: Parcommand ()
 ioConcurCommand = parcommand "io-concur" $ \opts cmdOpts -> do
   ps <- withFs opts $ \fs -> runIOConcur opts cmdOpts fs
-    <* reportTimings opts fs
   reportData ps
 
 headerCommand :: Parcommand ()
