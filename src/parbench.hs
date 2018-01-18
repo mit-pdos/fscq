@@ -1,32 +1,32 @@
-{-# LANGUAGE RankNTypes, ForeignFunctionInterface #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
-import Control.Concurrent
-import Control.Monad
-import Control.Monad (void)
-import Data.IORef
-import Data.List (intercalate)
-import Options
-import System.Clock
-import System.Exit
-import System.IO (hPutStrLn, stderr)
-import System.Random (getStdGen, setStdGen, mkStdGen)
-import System.Random.Shuffle (shuffle')
+import           Control.Concurrent
+import           Control.Monad
+import           Control.Monad (void)
+import qualified Data.ByteString.Char8 as BSC8
+import           Data.IORef
+import           Data.List (intercalate)
+import           Options
+import           System.Clock
+import           System.Exit
+import           System.IO (hPutStrLn, stderr)
+import           System.Random (getStdGen, setStdGen, mkStdGen)
+import           System.Random.Shuffle (shuffle')
 
-import CfscqFs
-import FscqFs
-import Fuse
-import GenericFs
-import System.Posix.IO (defaultFileFlags)
-import System.Posix.Types (FileOffset)
-import Timings
+import           CfscqFs
+import           FscqFs
+import           Fuse
+import           GenericFs
+import           ParallelSearch
+import           System.Posix.IO (defaultFileFlags)
+import           System.Posix.Types (FileOffset)
+import           Timings
 
-import GHC.RTS.Flags
-import System.Mem (performMajorGC)
+import           GHC.RTS.Flags
+import           System.Mem (performMajorGC)
 
 data NoOptions = NoOptions {}
 instance Options NoOptions where
@@ -375,6 +375,41 @@ ioConcurCommand = parcommand "io-concur" $ \opts cmdOpts -> do
   ps <- withFs opts $ \fs -> runIOConcur opts cmdOpts fs
   reportData ps
 
+data ParallelSearchOptions =
+  ParallelSearchOptions { searchDir :: FilePath
+                        , searchString :: String }
+
+instance Options ParallelSearchOptions where
+  defineOptions = pure ParallelSearchOptions
+    <*> simpleOption "dir" "/linux"
+        "directory to search under"
+    <*> simpleOption "query" "Linux"
+        "string to search for"
+
+runParallelSearch :: ParOptions -> ParallelSearchOptions -> Filesystem -> IO [DataPoint]
+runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fuseOps} = do
+  let benchmark = parallelSearch fuseOps (BSC8.pack searchString) searchDir
+  when optWarmup $ do
+    _ <- benchmark
+    clearTimings fs
+  setNumCapabilities optN
+  performMajorGC
+  totalMicros <- timeIt $ do
+    results <- benchmark
+    when optVerbose $ forM_ results $ \(p, count) ->
+      logVerbose opts $ p ++ ": " ++ show count
+    return ()
+  p <- optsData opts
+  return $ [ p{ pBenchName="par-search"
+              , pIters=1
+              , pReps=1
+              , pElapsedMicros=totalMicros } ]
+
+parSearchCommand :: Parcommand ()
+parSearchCommand = parcommand "par-search" $ \opts cmdOpts -> do
+  ps <- withFs opts $ \fs -> runIOConcur opts cmdOpts fs
+  reportData ps
+
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
   putStrLn . valueHeader . dataValues $ emptyData
@@ -388,4 +423,5 @@ main = do
                 , simpleBenchmark "cat-file" catFileOp
                 , simpleBenchmark "traverse-dir" traverseDirOp
                 , ioConcurCommand
+                , parSearchCommand
                 , headerCommand ]
