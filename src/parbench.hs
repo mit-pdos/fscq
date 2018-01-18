@@ -100,6 +100,11 @@ catFileOp FileOpOptions{..} fs = do
     _ <- readEntireFile fs Nothing optFile
     return ()
 
+openOp :: FileOpOptions -> Filesystem -> IO ()
+openOp FileOpOptions{..} Filesystem{fuseOps=fs} = do
+    _ <- fuseOpen fs optFile ReadOnly defaultFileFlags
+    return ()
+
 -- mini benchmarking library
 
 elapsedMicros :: TimeSpec -> IO Float
@@ -418,6 +423,7 @@ main :: IO ()
 main = do
   setStdGen (mkStdGen 0)
   runSubcommand [ simpleBenchmark "stat" statOp
+                , simpleBenchmark "open" openOp
                 , simpleBenchmark "statfs" statfsOp
                 , simpleBenchmark "cat-dir" catDirOp
                 , simpleBenchmark "cat-file" catFileOp

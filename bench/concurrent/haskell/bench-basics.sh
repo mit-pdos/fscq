@@ -21,6 +21,10 @@ info "stat"
 bench --target-ms=1000 --reps=1000 stat "$@"
 sep
 
+info "open"
+bench --target-ms=1000 --reps=1000 open "$@"
+sep
+
 info "traverse large file directory"
 bench --target-ms=1000 --reps=5 traverse-dir --dir '/large-dir' "$@"
 sep
