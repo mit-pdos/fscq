@@ -397,7 +397,7 @@ runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fu
   totalMicros <- timeIt $ do
     results <- benchmark
     when optVerbose $ forM_ results $ \(p, count) ->
-      logVerbose opts $ p ++ ": " ++ show count
+      when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count
     return ()
   p <- optsData opts
   return $ [ p{ pBenchName="par-search"
