@@ -41,8 +41,9 @@ searchString needle = go
         go s = if BS.null s
                 then 0
                 else let (_, tl) = breakAt s
+                         matches = if BS.take skip tl == needle then 1 else 0
                          remaining = BS.drop skip tl in
-                         1+go remaining
+                         matches+go remaining
 
 searchFile :: BS.ByteString -> FuseOperations fh -> FilePath -> IO Int
 searchFile needle fs p = searchString needle <$> readEntireFile fs p
