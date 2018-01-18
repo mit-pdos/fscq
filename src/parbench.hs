@@ -381,7 +381,7 @@ data ParallelSearchOptions =
 
 instance Options ParallelSearchOptions where
   defineOptions = pure ParallelSearchOptions
-    <*> simpleOption "dir" "/linux"
+    <*> simpleOption "dir" "/search-benchmarks/linux"
         "directory to search under"
     <*> simpleOption "query" "Linux"
         "string to search for"
@@ -407,7 +407,7 @@ runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fu
 
 parSearchCommand :: Parcommand ()
 parSearchCommand = parcommand "par-search" $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> runIOConcur opts cmdOpts fs
+  ps <- withFs opts $ \fs -> runParallelSearch opts cmdOpts fs
   reportData ps
 
 headerCommand :: Parcommand ()
