@@ -21,8 +21,8 @@ sleep 1
 mkdir -p "$mnt/large-dir/dir1"
 mkdir -p "$mnt/large-dir/dir2"
 for num in $(seq 1 100); do
-  dd if=/dev/urandom of="$mnt/large-dir/dir1/file$num" bs=4k count=10
-  dd if=/dev/urandom of="$mnt/large-dir/dir2/file$num" bs=4k count=10
+  dd if=/dev/urandom of="$mnt/large-dir/dir1/file$num" bs=4k count=10 2>/dev/null
+  dd if=/dev/urandom of="$mnt/large-dir/dir2/file$num" bs=4k count=10 2>/dev/null
 done
 
 mkdir -p "$mnt/large-dir-small-files/dir1"
@@ -48,15 +48,23 @@ mkdir -p "$mnt/$path2"
 touch "$mnt/$path1/file"
 touch "$mnt/$path2/file"
 
+echo "copying linux.tar.xz"
 mkdir "$mnt/linux-source"
 cp $HOME/linux.tar.xz "$mnt/linux-source/"
 
+echo "copying search benchmarks"
 mkdir "$mnt/search-benchmarks"
 cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/"
 cp -r $HOME/search-benchmarks/coq-source "$mnt/search-benchmarks/coq/"
 
+echo "syncing"
 for file in $mnt/**; do
   sync $file
 done
 
+echo "unmounting"
 fusermount -u "$mnt"
+
+while pgrep "^fscq$" >/dev/null; do
+  :
+done
