@@ -51,8 +51,9 @@ touch "$mnt/$path2/file"
 mkdir "$mnt/linux-source"
 cp $HOME/linux.tar.xz "$mnt/linux-source/"
 
-#cd "$mnt"
-#tar -xf $HOME/linux.tar.xz
+mkdir "$mnt/search-benchmarks"
+cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/"
+cp -r $HOME/search-benchmarks/coq-source "$mnt/search-benchmarks/coq/"
 
 for file in $mnt/**; do
   sync $file
