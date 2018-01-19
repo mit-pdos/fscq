@@ -152,7 +152,9 @@ Section ConcurrentFS.
                                     | CacheMiss a => Some a
                                     | _ => None
                                     end) p (fun _ tree => tree)
-      | SyscallFailed => Ret SyscallFailed
+      | SyscallFailed => end_t <- Rdtsc;
+                          _ <- Debug "read-only fail" (end_t - start);
+                          Ret SyscallFailed
       end.
 
   Definition precondition_stable A T (fsspec: FsSpec A T) homes tid :=
@@ -1085,8 +1087,12 @@ Section ConcurrentFS.
     erewrite find_subtree_update_subtree_child; eauto.
   Qed.
 
+  Definition proj_comp G T {p: LocalLock -> Cache -> cprog T}
+             (cp: forall ls c, Compiled G (p ls c)) :
+    LocalLock -> Cache -> cprog T := fun ls c => compiled_prog (cp ls c).
+
   Definition lookup names :=
-    retry_readonly_syscall (fun mscs => lookup G (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs).
+    retry_readonly_syscall (fun mscs => proj_comp (CompiledLookup G (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs)).
 
   Theorem lookup_ok : forall tid pathname,
       cprog_spec G tid
@@ -1136,10 +1142,6 @@ Section ConcurrentFS.
 
     step; finish.
   Qed.
-
-  Definition proj_comp G T {p: LocalLock -> Cache -> cprog T}
-             (cp: forall ls c, Compiled G (p ls c)) :
-    LocalLock -> Cache -> cprog T := fun ls c => compiled_prog (cp ls c).
 
   Definition read_fblock inum off :=
     retry_readonly_syscall (fun mscs => proj_comp (CompiledReadBlock G (fsxp P) inum off mscs)).

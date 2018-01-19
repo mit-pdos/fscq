@@ -813,6 +813,18 @@ Section ConcurCompile.
 
   Ltac compile_match :=
     match goal with
+    | [ |- Compiled (Bind (match ?v with | _ => _ end) _) ] =>
+      lazymatch type of v with
+      | (Result _ * _)%type =>
+        destruct v as [ [|] ];
+        simpl; repeat comp
+      end
+    | [ |- Compiled (match ?v with | _ => _ end) ] =>
+      lazymatch type of v with
+      | (Result _ * _)%type =>
+        destruct v as [ [|] ];
+        simpl; repeat comp
+      end
     | |- Compiled ((match ?d with | _ => _ end) _ _) =>
       destruct d
     | |- Compiled (Bind (match ?d with | _ => _ end) _) =>
@@ -822,6 +834,11 @@ Section ConcurCompile.
       | match ?d with | _ => _ end => destruct d
       end
     end.
+
+  Ltac equiv_t t :=
+    eapply compile_equiv;
+    [ t; reflexivity | ];
+    simpl; repeat comp.
 
   Definition Compiled_mlog_read xp a ms ls c :
     Compiled (translate' (MemLog.MLog.read xp a ms) ls c).
@@ -833,20 +850,10 @@ Section ConcurCompile.
     compile_match;
       simpl; repeat comp.
     skip.
-    destruct v as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
     skip.
-    eapply compile_equiv.
-    eapply exec_equiv_bind; intros.
-    instantiate (1 := Ret (let '(r, cs) := v0 in _)).
-    destruct v0; simpl; reflexivity.
-    instantiate (1 := fun v1 => Ret (match v1 with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
-    destruct v1 as [ [|] ].
-    exec_monad_simpl.
-    reflexivity.
-    exec_monad_simpl.
-    reflexivity.
-    repeat comp.
+    compile_match;
+      equiv_t exec_monad_simpl.
   Defined.
 
   Definition Compiled_glog_read xp a ms ls c :
@@ -862,15 +869,10 @@ Section ConcurCompile.
 
     apply compile_bind; intros.
     apply Compiled_mlog_read.
-    destruct v as [ [|] ]; repeat comp.
+    compile_match.
   Defined.
 
   Opaque GLog.read.
-
-  Ltac equiv_t t :=
-    eapply compile_equiv;
-    [ t; reflexivity | ];
-    simpl; repeat comp.
 
   Definition Compiled_inode_ind_indrec_get lxp xp ix ms ls c :
     Compiled (translate' (INODE.Ind.IndRec.get lxp xp ix ms) ls c).
@@ -884,8 +886,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_glog_read.
 
-    destruct v as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
     equiv_t exec_monad_simpl.
   Defined.
 
@@ -913,8 +914,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
 
     equiv_t exec_monad_simpl.
     compile_match.
@@ -924,8 +924,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
     unfold pair_args_helper; simpl.
     equiv_t ltac:(rewrite translate'_match_sumbool).
     compile_match.
@@ -935,8 +934,7 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v0 as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
     equiv_t exec_monad_simpl.
     equiv_t exec_monad_simpl.
 
@@ -946,30 +944,23 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v as [ [|] ];
-      simpl; repeat comp.
-    equiv_t exec_monad_simpl.
+    compile_match.
     unfold pair_args_helper.
     equiv_t ltac:(rewrite translate'_match_sumbool).
     compile_match.
     simpl; repeat comp; autorewrite with compile.
     repeat comp.
-    repeat comp.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v0 as [ [|] ];
-      simpl; repeat comp.
-    equiv_t ltac:(rewrite translate'_match_sumbool).
     compile_match.
-    simpl; repeat comp.
-    equiv_t exec_monad_simpl.
-    simpl; repeat comp.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match;
+      simpl; repeat comp.
     apply compile_bind; intros.
     apply Compiled_inode_ind_indrec_get.
 
-    destruct v1 as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
   Defined.
 
   Opaque INODE.Ind.get.
@@ -990,11 +981,96 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_glog_read.
 
-    destruct v as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
   Defined.
 
   Opaque LOG.read.
+
+  Definition Compiled_sdir_lookup lxp ixp dnum name ms ls c :
+    Compiled (translate' (SDIR.lookup lxp ixp dnum name ms) ls c).
+  Proof.
+    unfold SDIR.lookup; simpl.
+    repeat comp.
+    unfold pair_args_helper.
+    equiv_t ltac:(rewrite translate'_match_opt).
+    compile_match;
+      simpl; repeat comp.
+    skip.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    unfold pair_args_helper; simpl.
+    equiv_t ltac:(rewrite translate'_ForN).
+    apply compile_bind; intros.
+    apply compile_forN; intros.
+    repeat comp.
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_get.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    apply compile_bind; intros.
+    apply Compiled_log_read.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque SDIR.lookup.
+
+  Definition CompiledLookup fsxp dnum names ams ls c :
+    Compiled (OptFS.lookup fsxp dnum names ams ls c).
+  Proof.
+    unfold OptFS.lookup, translate; simpl.
+    skip.
+    repeat comp.
+
+    equiv_t ltac:(rewrite translate'_ForEach).
+    apply compile_bind; intros.
+    apply compile_forEach; intros.
+    unfold pair_args_helper; simpl.
+    equiv_t ltac:(rewrite translate'_match_res).
+    compile_match;
+      simpl; repeat comp.
+    unfold If_.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match;
+      simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_sdir_lookup.
+
+    compile_match.
+    equiv_t ltac:(rewrite translate'_match_opt).
+    compile_match;
+      simpl; repeat comp.
+    destruct p; simpl; repeat comp.
+
+    compile_match.
+    unfold pair_args_helper; simpl.
+    equiv_t ltac:(rewrite translate'_match_res).
+    compile_match;
+      simpl; repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    skip.
+    repeat comp.
+
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    skip.
+    repeat comp.
+
+    skip.
+    repeat comp.
+  Defined.
 
   Definition Compiled_inode_irec_get lxp xp ix cache ms ls c :
     Compiled (translate' (INODE.IRec.get lxp xp ix cache ms) ls c).
@@ -1051,12 +1127,10 @@ Section ConcurCompile.
     reflexivity.
 
     repeat comp.
-    destruct v as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
     apply compile_bind; intros.
     apply Compiled_inode_ind_get.
-    destruct v0 as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
   Defined.
 
   Opaque INODE.getbnum.
@@ -1071,12 +1145,10 @@ Section ConcurCompile.
     apply compile_bind; intros.
     apply Compiled_inode_getbnum.
 
-    destruct v0 as [ [|] ].
-    repeat comp.
+    compile_match.
     skip.
 
-    destruct v1 as [ [|] ].
-    repeat comp.
+    compile_match.
 
     eapply compile_equiv;
       [ exec_monad_simpl;
@@ -1087,7 +1159,6 @@ Section ConcurCompile.
       [ exec_monad_simpl;
         reflexivity | ];
       repeat comp.
-    repeat comp.
   Defined.
 
   Definition CompiledReadBlock fsxp inum off ams ls c :
@@ -1121,15 +1192,6 @@ Section ConcurCompile.
     apply compile_refl.
   Defined.
 
-  Definition CompiledLookup fsxp dnum names ams ls c :
-    Compiled (OptFS.lookup fsxp dnum names ams ls c).
-  Proof.
-    unfold OptFS.lookup, translate.
-
-    repeat compile;
-      apply compile_refl.
-  Defined.
-
   Definition Compiled_get_attr fsxp inum ams ls c :
     Compiled (translate' (AsyncFS.AFS.file_get_attr fsxp inum ams) ls c).
   Proof.
@@ -1137,9 +1199,11 @@ Section ConcurCompile.
     repeat comp.
     apply compile_bind; intros.
     apply Compiled_inode_irec_get.
-    destruct v as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
+    compile_match.
+    repeat comp.
     equiv_t exec_monad_simpl.
+    repeat comp.
   Defined.
 
   Opaque AsyncFS.AFS.file_get_attr.
@@ -1162,8 +1226,7 @@ Section ConcurCompile.
     simpl; repeat comp.
     apply compile_bind; intros.
     apply Compiled_get_attr.
-    destruct v0 as [ [|] ];
-      simpl; repeat comp.
+    compile_match.
     equiv_t exec_monad_simpl.
     skip.
     comp.

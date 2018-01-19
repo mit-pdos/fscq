@@ -331,10 +331,13 @@ Module AFS.
     }.
 
   Definition file_get_attr fsxp inum ams :=
+    t0 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), attr);
+    t1 <- Rdtsc;
+    _ <- Debug "file_get_attr" (t1-t0);
     Ret r.
 
   Definition file_get_sz fsxp inum ams :=
@@ -424,9 +427,12 @@ Module AFS.
     Ret r.
 
   Definition readdir fsxp dnum ams :=
+    t0 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
+    t1 <- Rdtsc;
+    _ <- Debug "readdir" (t1-t0);
     Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), files).
 
   Definition create fsxp dnum name ams :=
@@ -499,10 +505,13 @@ Module AFS.
     Ret res.
 
   Definition lookup fsxp dnum names ams :=
+    t0 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), r);
+    t1 <- Rdtsc;
+    _ <- Debug "lookup" (t1-t0);
     Ret r.
 
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
