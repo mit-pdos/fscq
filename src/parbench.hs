@@ -394,21 +394,22 @@ instance Options ParallelSearchOptions where
 runParallelSearch :: ParOptions -> ParallelSearchOptions -> Filesystem -> IO [DataPoint]
 runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fuseOps} = do
   let benchmark = parallelSearch fuseOps (BSC8.pack searchString) searchDir
+  let printSearchResults results =
+        forM_ results $ \(p, count) -> do
+          when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count
   when optWarmup $ do
     _ <- benchmark
     clearTimings fs
+    logVerbose opts "===> warmup done <==="
   setNumCapabilities optN
   performMajorGC
-  totalMicros <- timeIt $ do
-    results <- benchmark
-    when optVerbose $ forM_ results $ \(p, count) ->
-      when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count
-    return ()
+  micros <- pickAndRunIters opts $ \iters ->
+    replicateM iters . timeIt $ replicateM_ optReps $ do
+      results <- benchmark
+      when optVerbose $ printSearchResults results
   p <- optsData opts
-  return $ [ p{ pBenchName="par-search"
-              , pIters=1
-              , pReps=1
-              , pElapsedMicros=totalMicros } ]
+  return $ map (\t -> p{ pBenchName="par-search"
+                       , pElapsedMicros=t }) micros
 
 parSearchCommand :: Parcommand ()
 parSearchCommand = parcommand "par-search" $ \opts cmdOpts -> do
