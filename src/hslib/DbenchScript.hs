@@ -34,7 +34,7 @@ newtype CreateDisposition = CreateDisposition Flags
   deriving (Eq, Show)
 
 hasFileDirectoryFile :: CreateOptions -> Bool
-hasFileDirectoryFile (CreateOptions f) = testBit f 1
+hasFileDirectoryFile (CreateOptions f) = testBit f 0
 
 newtype Pattern = Pattern FilePath
   deriving (Eq, Show)
