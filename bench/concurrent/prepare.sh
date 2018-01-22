@@ -58,6 +58,9 @@ cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/"
 cp -r $HOME/search-benchmarks/coq-source "$mnt/search-benchmarks/coq/"
 
 mkdir "$mnt/dbench"
+for core in $(seq 0 11); do
+  mkdir "$mnt/dbench/core$core"
+done
 
 echo "syncing"
 for file in $mnt/**; do

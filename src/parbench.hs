@@ -429,7 +429,7 @@ instance Options DbenchOptions where
     <*> simpleOption "script" "client.txt"
         "path to dbench fileio script to run (client.txt)"
 
-runDbenchScript :: ParOptions -> DbenchOptions -> Filesystem -> IO DataPoint
+runDbenchScript :: ParOptions -> DbenchOptions -> Filesystem -> IO [DataPoint]
 runDbenchScript opts@ParOptions{..} DbenchOptions{..} Filesystem{fuseOps} = do
   parse <- parseScriptFile scriptFile
   case parse of
@@ -438,18 +438,19 @@ runDbenchScript opts@ParOptions{..} DbenchOptions{..} Filesystem{fuseOps} = do
     -- TODO: potentially need to force script
     logVerbose opts $ intercalate "\n" (map show script)
     performMajorGC
-    micros <- timeIt $ runScript fuseOps . prefixScript rootDir $ script
+    let threadRoot tid = rootDir ++ "/core" ++ show tid
+        run tid = runScript fuseOps . prefixScript (threadRoot tid) $ script in do
+    micros <- parallelTimeForIters optN run optIters
     p <- optsData opts
-    return $ p { pBenchName="dbench"
+    return $ map (\t -> p { pBenchName="dbench"
               , pWarmup=False
-              , pIters=1
               , pReps=1
-              , pElapsedMicros=micros }
+              , pElapsedMicros=t }) micros
 
 dbenchCommand :: Parcommand ()
 dbenchCommand = parcommand "dbench" $ \opts cmdOpts -> do
-  p <- withFs opts $ \fs -> runDbenchScript opts cmdOpts fs
-  reportData [p]
+  ps <- withFs opts $ \fs -> runDbenchScript opts cmdOpts fs
+  reportData ps
 
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
