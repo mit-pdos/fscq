@@ -49,3 +49,17 @@ onlyDirectories = map fst . filter (isDirectory . snd)
 
 pathJoin :: FilePath -> FilePath -> FilePath
 pathJoin p1 p2 = dropWhileEnd (== '/') p1 ++ "/" ++ p2
+
+delTree :: FuseOperations fh -> FilePath -> IO ()
+delTree fs = go
+  where go p = do
+          dnum <- getResult p =<< fuseOpenDirectory fs p
+          allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+          let entries = filterDots allEntries
+              files = onlyFiles paths
+              paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
+              directories = onlyDirectories paths
+          mapM_ (fuseRemoveLink fs) files
+          mapM_ go directories
+          _ <- fuseRemoveDirectory fs p
+          return ()

@@ -2,6 +2,7 @@
 module DbenchScript where
 
 import           Control.Monad (void)
+import           Data.Bits (testBit)
 import           Data.Maybe (catMaybes)
 import           Data.String (IsString(..))
 import qualified Data.Text as T
@@ -27,8 +28,12 @@ instance IsString Path where
 
 newtype CreateOptions = CreateOptions Flags
   deriving (Eq, Show)
+
 newtype CreateDisposition = CreateDisposition Flags
   deriving (Eq, Show)
+
+hasFileDirectoryFile :: CreateOptions -> Bool
+hasFileDirectoryFile (CreateOptions f) = testBit f 1
 
 newtype Pattern = Pattern FilePath
   deriving (Eq, Show)
@@ -70,8 +75,11 @@ constant s x = string s >> return x
 inQuotes :: ParserT String
 inQuotes = between (char '"') (char '"') (many (noneOf "\""))
 
+replaceBackslashes :: String -> String
+replaceBackslashes = map (\c -> if c == '\\' then '/' else c)
+
 path :: ParserT Path
-path = Path <$> inQuotes
+path = Path . replaceBackslashes <$> inQuotes
 
 patternP :: ParserT Pattern
 patternP = Pattern <$> inQuotes
