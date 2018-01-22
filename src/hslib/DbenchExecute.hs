@@ -76,6 +76,19 @@ prefixPaths prefix c = addPrefix c where
   addPrefix (Deltree p s) = Deltree (pre p) s
   addPrefix c = c
 
+largeBytestring :: BS.ByteString
+largeBytestring = BS.pack (replicate 65536 0)
+
+smallBytestring :: BS.ByteString
+smallBytestring = BS.singleton 1
+
+zeroBytestring :: Int -> BS.ByteString
+zeroBytestring len
+  | len == 65526 = largeBytestring
+  | len == 1 = smallBytestring
+  | len <= 65536 = BS.take len largeBytestring
+  | otherwise = BS.pack (replicate len 0)
+
 runCommand :: FuseOperations Integer -> Command -> StateT DbenchState IO ()
 runCommand fs c = run c
   where run :: Command -> StateT DbenchState IO ()
@@ -94,7 +107,7 @@ runCommand fs c = run c
         run (WriteX h off len _expectedLen _s) = {-# SCC "writex" #-} do
           (p, inum) <- getFile fs h
           -- TODO: check written bytes
-          _ <- liftIO $ fuseWrite fs p inum (BS.pack (replicate len 0)) (fromIntegral off)
+          _ <- liftIO $ fuseWrite fs p inum (zeroBytestring len) (fromIntegral off)
           return ()
         run (Close _h _s) = return ()
         run (QueryPath (Path p) _ _s) = {-# SCC "querypath" #-} do
