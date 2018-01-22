@@ -24,6 +24,13 @@ getResult :: String -> Either Errno a -> IO a
 getResult fname (Left e) = ioError (errnoToIOError "" e Nothing (Just fname))
 getResult _ (Right a) = return a
 
+checkError :: String -> IO Errno -> IO ()
+checkError fname act = do
+  e <- act
+  if e == eOK
+    then return ()
+    else ioError (errnoToIOError "" e Nothing (Just fname))
+
 isDot :: FilePath -> Bool
 isDot p = p == "." || p == ".."
 
@@ -53,13 +60,16 @@ pathJoin p1 p2 = dropWhileEnd (== '/') p1 ++ "/" ++ p2
 delTree :: FuseOperations fh -> FilePath -> IO ()
 delTree fs = go
   where go p = do
-          dnum <- getResult p =<< fuseOpenDirectory fs p
-          allEntries <- getResult p =<< fuseReadDirectory fs p dnum
-          let entries = filterDots allEntries
-              files = onlyFiles paths
-              paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
-              directories = onlyDirectories paths
-          mapM_ (fuseRemoveLink fs) files
-          mapM_ go directories
-          _ <- fuseRemoveDirectory fs p
-          return ()
+          mdnum <- fuseOpenDirectory fs p
+          case mdnum of
+            Left _ -> return ()
+            Right dnum -> do
+              allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+              let entries = filterDots allEntries
+                  files = onlyFiles paths
+                  paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
+                  directories = onlyDirectories paths
+              mapM_ (fuseRemoveLink fs) files
+              mapM_ go directories
+              _ <- checkError p $ fuseRemoveDirectory fs p
+              return ()
