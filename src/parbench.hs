@@ -436,8 +436,9 @@ runDbenchScript opts@ParOptions{..} DbenchOptions{..} Filesystem{fuseOps} = do
     Left e -> error e
     Right script -> do
     -- TODO: potentially need to force script
+    logVerbose opts $ intercalate "\n" (map show script)
     performMajorGC
-    micros <- timeIt $ runScriptWithRoot fuseOps rootDir script
+    micros <- timeIt $ runScript fuseOps . prefixScript rootDir $ script
     p <- optsData opts
     return $ p { pBenchName="dbench"
               , pWarmup=False

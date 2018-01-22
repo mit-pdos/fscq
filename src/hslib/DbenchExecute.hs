@@ -8,7 +8,8 @@ import           DbenchScript
 import           Foreign.C.Error
 import           Fuse
 import           GenericFs
-import           System.Posix.Files (stdFileMode)
+import           System.Posix.Files (unionFileModes, stdFileMode, ownerExecuteMode)
+import           System.Posix.Types (CDev(..))
 import           System.Posix.IO
 import           System.Posix.Time
 
@@ -41,7 +42,7 @@ getFile fs h = do
     Nothing -> do
       r <- liftIO $ fuseOpen fs p ReadOnly defaultFileFlags
       case r of
-        Left e -> liftIO $ ioError (errnoToIOError "" e Nothing Nothing)
+        Left e -> liftIO $ ioError (errnoToIOError p e Nothing Nothing)
         Right inum -> do
           addInum h inum
           return (p, inum)
@@ -53,7 +54,7 @@ expectStatus StatusNameNotFound (Left _) = return ()
 expectStatus StatusPathNotFound (Left _) = return ()
 expectStatus StatusNoSuchFile   (Left _) = return ()
 expectStatus StatusOk           (Left e) = liftIO $ ioError (errnoToIOError "" e Nothing Nothing)
-expectStatus s                  (Right _) = liftIO $ ioError (userError $ "expected failure " ++ show s)
+expectStatus s                  (Right _) = error $ "expected failure " ++ show s
 
 removeLastComponent :: Pattern -> String
 removeLastComponent (Pattern p) =
@@ -78,28 +79,28 @@ prefixPaths prefix c = addPrefix c where
 runCommand :: FuseOperations Integer -> Command -> StateT DbenchState IO ()
 runCommand fs c = run c
   where run :: Command -> StateT DbenchState IO ()
-        run (CreateX (Path p) createOptions _createDisposition h _s) = do
+        run (CreateX (Path p) createOptions _createDisposition h _s) = {-# SCC "createx" #-} do
           addHandle h p
           liftIO $ if hasFileDirectoryFile createOptions then
-            void $ fuseCreateDirectory fs p stdFileMode
+            void $ fuseCreateDirectory fs p (unionFileModes stdFileMode ownerExecuteMode)
           else
-            void $ fuseCreateFile fs p stdFileMode ReadWrite defaultFileFlags
+            void $ fuseCreateDevice fs p RegularFile stdFileMode (CDev 0)
           return ()
-        run (ReadX h off len _expectedLen _s) = do
+        run (ReadX h off len _expectedLen _s) = {-# SCC "readx" #-}do
           (p, inum) <- getFile fs h
           -- TODO: check read size
           _ <- liftIO $ fuseRead fs p inum (fromIntegral len) (fromIntegral off)
           return ()
-        run (WriteX h off len _expectedLen _s) = do
+        run (WriteX h off len _expectedLen _s) = {-# SCC "writex" #-} do
           (p, inum) <- getFile fs h
           -- TODO: check written bytes
           _ <- liftIO $ fuseWrite fs p inum (BS.pack (replicate len 0)) (fromIntegral off)
           return ()
         run (Close _h _s) = return ()
-        run (QueryPath (Path p) _ _s) = do
+        run (QueryPath (Path p) _ _s) = {-# SCC "querypath" #-} do
           _ <- liftIO $ fuseOpen fs p ReadOnly defaultFileFlags
           return ()
-        run (QueryFile h _level _s) = do
+        run (QueryFile h _level _s) = {-# SCC "queryfile" #-} do
           p <- getFilePath h
           _ <- liftIO $ fuseGetFileStat fs p
           return ()
@@ -107,7 +108,7 @@ runCommand fs c = run c
           _ <- liftIO $ fuseRemoveLink fs p
           return ()
         run (FindFirst p0 _level _maxcount _count _s) =
-          let p = removeLastComponent p0 in liftIO $ do
+          let p = removeLastComponent p0 in liftIO $ {-# SCC "findfirst" #-} do
           r <- fuseOpenDirectory fs p
           case r of
             Left _ -> return ()
@@ -120,7 +121,7 @@ runCommand fs c = run c
             t <- epochTime
             _ <- fuseSetFileTimes fs p t t
             return ()
-        run (Flush h _s) = do
+        run (Flush h _s) = {-# SCC "flush" #-} do
           (p, inum) <- getFile fs h
           _ <- liftIO $ fuseSynchronizeFile fs p inum FullSync
           return ()
@@ -142,8 +143,5 @@ runCommand fs c = run c
 runScript :: FuseOperations Integer -> Script -> IO ()
 runScript fs s = evalStateT (mapM_ (runCommand fs) s) (DbenchState Map.empty Map.empty)
 
-runScriptWithRoot :: FuseOperations Integer -> String -> Script -> IO ()
-runScriptWithRoot fs root s =
-  evalStateT
-  (mapM_ (runCommand fs . prefixPaths root) s)
-  (DbenchState Map.empty Map.empty)
+prefixScript :: String -> Script -> Script
+prefixScript root = map (prefixPaths root)
