@@ -2744,7 +2744,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
         let ms := BALLOCC.upd_memstate lms ms in
         let^ (ms, indbns') <- match indlvl with
         | 0 =>
-           Ret ^(ms, upd_range indbns start len $0)
+           Ret ^(ms, upd_range_fast indbns start len $0)
         | S indlvl' =>
           If (le_lt_dec len (N - start mod N)) {
             let^ (ms, v) <- indclear indlvl' lxp bxp #(selN indbns (start / N) $0) (start mod N) len ms;
