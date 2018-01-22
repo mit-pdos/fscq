@@ -57,6 +57,8 @@ mkdir "$mnt/search-benchmarks"
 cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/"
 cp -r $HOME/search-benchmarks/coq-source "$mnt/search-benchmarks/coq/"
 
+mkdir "$mnt/dbench"
+
 echo "syncing"
 for file in $mnt/**; do
   sync $file
