@@ -5,7 +5,7 @@ summary() {
 }
 
 dbench() {
-    parbench +RTS -qg -RTS dbench --script client.txt --img=/tmp/disk.img "$@" | summary
+    parbench +RTS -qg -RTS dbench --script $HOME/dbench/loadfiles/client.txt --img=/tmp/disk.img "$@" | summary
 }
 
 info() {
@@ -19,6 +19,7 @@ sep() {
 info "dbench (fscq)"
 dbench --fscq=true --n=1 "$@"
 dbench --fscq=true --n=2 +RTS -N2 -RTS "$@"
+cp $HOME/fscq/bench/concurrent/disk.img /tmp/disk.img
 sep
 
 info "dbench (cfscq)"
