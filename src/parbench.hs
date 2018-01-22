@@ -17,6 +17,8 @@ import           System.Random (getStdGen, setStdGen, mkStdGen)
 import           System.Random.Shuffle (shuffle')
 
 import           CfscqFs
+import           DbenchExecute
+import           DbenchScript (parseScriptFile)
 import           FscqFs
 import           Fuse
 import           GenericFs
@@ -416,6 +418,38 @@ parSearchCommand = parcommand "par-search" $ \opts cmdOpts -> do
   ps <- withFs opts $ \fs -> runParallelSearch opts cmdOpts fs
   reportData ps
 
+data DbenchOptions =
+  DbenchOptions { rootDir :: FilePath
+                , scriptFile :: FilePath }
+
+instance Options DbenchOptions where
+  defineOptions = pure DbenchOptions
+    <*> simpleOption "dir" "/dbench"
+        "directory to run dbench script under"
+    <*> simpleOption "script" "client.txt"
+        "path to dbench fileio script to run (client.txt)"
+
+runDbenchScript :: ParOptions -> DbenchOptions -> Filesystem -> IO DataPoint
+runDbenchScript opts@ParOptions{..} DbenchOptions{..} Filesystem{fuseOps} = do
+  parse <- parseScriptFile scriptFile
+  case parse of
+    Left e -> error e
+    Right script -> do
+    -- TODO: potentially need to force script
+    performMajorGC
+    micros <- timeIt $ runScriptWithRoot fuseOps rootDir script
+    p <- optsData opts
+    return $ p { pBenchName="dbench"
+              , pWarmup=False
+              , pIters=1
+              , pReps=1
+              , pElapsedMicros=micros }
+
+dbenchCommand :: Parcommand ()
+dbenchCommand = parcommand "dbench" $ \opts cmdOpts -> do
+  p <- withFs opts $ \fs -> runDbenchScript opts cmdOpts fs
+  reportData [p]
+
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
   putStrLn . valueHeader . dataValues $ emptyData
@@ -431,4 +465,5 @@ main = do
                 , simpleBenchmark "traverse-dir" traverseDirOp
                 , ioConcurCommand
                 , parSearchCommand
+                , dbenchCommand
                 , headerCommand ]

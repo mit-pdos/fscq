@@ -6,6 +6,7 @@ import           Data.Bits (testBit)
 import           Data.Maybe (catMaybes)
 import           Data.String (IsString(..))
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import           Data.Text.Read (hexadecimal)
 import           Data.Word (Word8)
 import           Text.Parsec
@@ -189,3 +190,10 @@ script = catMaybes <$>
 
 parseScript :: String -> T.Text -> Either ParseError Script
 parseScript = runParser script ()
+
+parseScriptFile :: String -> IO (Either String Script)
+parseScriptFile p = do
+  t <- T.readFile p
+  case parseScript p t of
+    Left e -> return $ Left (show e)
+    Right s -> return $ Right s
