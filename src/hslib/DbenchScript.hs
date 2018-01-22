@@ -74,7 +74,7 @@ constant :: String -> a -> ParserT a
 constant s x = string s >> return x
 
 inQuotes :: ParserT String
-inQuotes = between (char '"') (char '"') (many (noneOf "\""))
+inQuotes = between (char '"') (char '"') (many (satisfy (/= '"')))
 
 replaceBackslashes :: String -> String
 replaceBackslashes = map (\c -> if c == '\\' then '/' else c)
@@ -121,7 +121,7 @@ expectedStatus = choice . map try $
    , constant "NT_STATUS_NO_SUCH_FILE" StatusNoSuchFile ]
 
 whitespace :: ParserT ()
-whitespace = void $ many (oneOf " \t")
+whitespace = void $ many (satisfy (\c -> c == ' ' || c == '\t'))
 
 lexeme :: ParserT a -> ParserT a
 lexeme p = p <* whitespace
