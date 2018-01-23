@@ -18,6 +18,7 @@ _build
 /translate
 /dbench
 /diskread
+/hslib/dbench_spec
 /mlfuse
 /mlmkfs
 /coqbuild

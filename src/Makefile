@@ -73,7 +73,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: vio proof clean
 
-all: cfscq fscq mkfs parbench diskread translate
+all: cfscq fscq mkfs parbench diskread translate hslib/dbench_spec
 
 -include $(OCAMLFUSE_DEP)
 
@@ -116,9 +116,10 @@ hscgen/%.hs: hslib/%.hsc
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen -ihscgen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -lopfuse -Lhslib -o $@
+
+hslib/dbench_spec: hslib/dbench_spec.hs $(VS_HS) $(HSLIB_PRE) $(HSLIB_POST) $(HSLIB_FUSE)
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -o $@
 
 $(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )
