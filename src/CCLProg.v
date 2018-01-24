@@ -117,6 +117,7 @@ Section CCL.
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
   | Hash sz (buf: word sz) : cprog (word hashlen)
+  | Hash2 sz1 sz2 (buf1: word sz1) (buf2: word sz2) : cprog (word hashlen)
   | SetLock (l:LocalLock) (l':LocalLock) : cprog unit
   (* no-op to indicate interest in reading a *)
   | YieldTillReady (a:addr) : cprog unit
@@ -341,6 +342,9 @@ Section CCL.
       let h := hash_fwd buf in
       hash_safe (Sigma.hm sigma) h buf ->
       exec tid sigma (@Hash sz buf) (Finished (Sigma.upd_hm sigma buf) h)
+  | ExecHash2 : forall sigma sz1 sz2 buf1 buf2,
+      hash_safe (Sigma.hm sigma) (hash_fwd (Word.combine buf1 buf2)) (Word.combine buf1 buf2) ->
+      exec tid sigma (@Hash2 sz1 sz2 buf1 buf2) (Finished (Sigma.upd_hm sigma (Word.combine buf1 buf2)) (hash_fwd (Word.combine buf1 buf2)))
   | ExecBindFinish : forall T T' (p: cprog T') (p': T' -> cprog T)
                        st st' v out,
       exec tid st p (Finished st' v) ->

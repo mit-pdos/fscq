@@ -466,6 +466,27 @@ Section Primitives.
     prim.
   Qed.
 
+  Theorem Hash2_ok : forall tid sz1 sz2 (buf1: word sz1) (buf2: word sz2),
+      cprog_spec G tid
+                 (fun F sigma =>
+                    {| precondition :=
+                         F (Sigma.mem sigma);
+                       postcondition :=
+                         fun sigma' r =>
+                           F (Sigma.mem sigma') /\
+                           let buf := Word.combine buf1 buf2 in
+                           r = hash_fwd buf /\
+                           hash_safe (Sigma.hm sigma) (hash_fwd buf) buf /\
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.hm sigma' = upd_hashmap' (Sigma.hm sigma) (hash_fwd buf) buf /\
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
+                 (Hash2 buf1 buf2).
+  Proof.
+    simpl.
+    prim.
+  Qed.
+
   Theorem Ret_ok : forall tid T (v:T),
       cprog_spec G tid
                  (fun (_:unit) sigma =>

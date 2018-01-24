@@ -130,10 +130,15 @@ run_dcode s (Write a v) = do
   debugmsg $ "Write " ++ show a ++ " " ++ show v
   Disk.write_disk (disk s) a v
   return $ unsafeCoerce ()
-run_dcode _ (Hash sz w) = do
+run_dcode _ (Hash sz w) = {-# SCC "dcode-hash" #-} do
   debugmsg $ "Hash " ++ (show sz)
   c <- crc32_word_update 0 sz w
   return $ unsafeCoerce $ W $ fromIntegral c
+run_dcode _ (Hash2 sz1 sz2 w1 w2) = {-# SCC "dcode-hash2" #-} do
+  debugmsg $ "Hash2 " ++ (show sz1) ++ " " ++ (show sz2)
+  c1 <- crc32_word_update 0 sz1 w1
+  c2 <- crc32_word_update c1 sz2 w2
+  return $ unsafeCoerce $ W $ fromIntegral c2
 run_dcode s (SetLock l l') = {-# SCC "dcode-setlock" #-} do
   debugmsg $ "SetLock " ++ show l ++ " " ++ show l'
   case (l, l') of

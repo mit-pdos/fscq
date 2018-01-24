@@ -53,7 +53,7 @@ Section OptimisticTranslator.
            | Prog.Sync => Ret (Success NoChange tt, cs)
            | Prog.Hash buf => v <- Hash buf;
                                Ret (Success NoChange v, cs)
-           | Prog.Hash2 buf1 buf2 => v <- Hash (Word.combine buf1 buf2);
+           | Prog.Hash2 buf1 buf2 => v <- Hash2 buf1 buf2;
                                       Ret (Success NoChange v, cs)
            | Prog.Bind p1 p2 => do '(r, cs) <- translate' p1 l cs;
                                  match r with
@@ -357,8 +357,8 @@ Section OptimisticTranslator.
       replace (Sigma.hm sigma'); eauto.
     - CCLTactics.inv_bind;
         match goal with
-        | [ H: exec _ _ _ (Hash _) _ |- _ ] =>
-          apply_spec H Hash_ok
+        | [ H: exec _ _ _ (Hash2 _ _) _ |- _ ] =>
+          apply_spec H Hash2_ok
         end; simpl in *; intuition eauto.
       intuition (subst; eauto).
       left.
