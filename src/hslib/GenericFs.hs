@@ -73,3 +73,13 @@ delTree fs = go
               mapM_ go directories
               _ <- checkError p $ fuseRemoveDirectory fs p
               return ()
+
+traverseDirectory :: FuseOperations fh -> FilePath -> IO [(FilePath, FileStat)]
+traverseDirectory fs p = do
+  dnum <- getResult p =<< fuseOpenDirectory fs p
+  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  let entries = filterDots allEntries
+      paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
+      directories = onlyDirectories paths
+  recursive <- concat <$> mapM (traverseDirectory fs) directories
+  return $ paths ++ recursive

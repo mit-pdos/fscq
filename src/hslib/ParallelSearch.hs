@@ -2,6 +2,7 @@ module ParallelSearch
   ( parallelSearch
   ) where
 
+import           Control.Concurrent (setNumCapabilities)
 import           Control.Concurrent.Async
 import qualified Data.ByteString as BS
 import           Fuse
@@ -48,8 +49,40 @@ searchString needle = go
 searchFile :: BS.ByteString -> FuseOperations fh -> FilePath -> IO Int
 searchFile needle fs p = searchString needle <$> readEntireFile fs p
 
-parallelSearch :: FuseOperations fh -> BS.ByteString -> FilePath -> IO [(FilePath, Int)]
-parallelSearch fs needle = parForFiles fs search
+parallelSearch :: FuseOperations fh -> Int -> BS.ByteString -> FilePath -> IO [(FilePath, Int)]
+parallelSearch fs par needle = parAtRoot fs par search
   where search p = do
           count <- searchFile needle fs p
           return (p, count)
+
+parAtRoot :: FuseOperations fh -> Int -> (FilePath -> IO a) -> FilePath -> IO [a]
+parAtRoot fs par act p = setNumCapabilities par >> do
+  dnum <- getResult p =<< fuseOpenDirectory fs p
+  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  let entries = filterDots allEntries
+      paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
+      files = onlyFiles paths
+      directories = onlyDirectories paths
+  fileAsync <- mapM (async . act) files
+  recursiveAsync <- async $ concat <$> mapM (parForFiles fs act) directories
+  fileResults <- mapM wait fileAsync
+  dirResults <- wait recursiveAsync
+  return $ fileResults ++ dirResults
+
+runAtRoot :: FuseOperations fh -> (FilePath -> IO a) -> FilePath -> IO [a]
+runAtRoot fs act p = do
+  files <- traverseDirectory fs p
+  mapM (act . fst) files
+
+parallelSearchAtRoot :: FuseOperations fh -> Int -> BS.ByteString -> FilePath -> IO [(FilePath, Int)]
+parallelSearchAtRoot fs par needle p = do
+  dnum <- getResult p =<< fuseOpenDirectory fs p
+  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  let entries = filterDots allEntries
+      paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
+      directories = take par (onlyDirectories paths)
+      search p = do
+        count <- searchFile needle fs p
+        return (p, count)
+  dirAsync <- mapM (async . runAtRoot fs search) directories
+  concat <$> mapM wait dirAsync

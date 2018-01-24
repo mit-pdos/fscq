@@ -44,16 +44,6 @@ instance Options ScanDirOptions where
     simpleOption "dir" "/"
       "root directory to scan from"
 
-traverseDirectory :: Filesystem -> FilePath -> IO [(FilePath, FileStat)]
-traverseDirectory fs@Filesystem{fuseOps} p = do
-  dnum <- getResult p =<< fuseOpenDirectory fuseOps p
-  allEntries <- getResult p =<< fuseReadDirectory fuseOps p dnum
-  let entries = filterDots allEntries
-      paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
-      directories = onlyDirectories paths
-  recursive <- concat <$> mapM (traverseDirectory fs) directories
-  return $ paths ++ recursive
-
 getFileSize :: FuseOperations Integer -> FilePath -> IO FileOffset
 getFileSize fs p = do
   s <- getResult p =<< fuseGetFileStat fs p
@@ -77,13 +67,13 @@ catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
   readEntireFile fs (Just $ statFileSize s) p
 
 catDirOp :: ScanDirOptions -> Filesystem -> IO ()
-catDirOp ScanDirOptions{..} fs = do
-  entries <- traverseDirectory fs optScanRoot
+catDirOp ScanDirOptions{..} fs@Filesystem{fuseOps} = do
+  entries <- traverseDirectory fuseOps optScanRoot
   catFiles fs entries
 
 traverseDirOp :: ScanDirOptions -> Filesystem -> IO ()
-traverseDirOp ScanDirOptions{..} fs =
-  void $ traverseDirectory fs optScanRoot
+traverseDirOp ScanDirOptions{..} Filesystem{fuseOps} =
+  void $ traverseDirectory fuseOps optScanRoot
 
 data FileOpOptions =
   FileOpOptions { optFile :: String }
@@ -395,19 +385,18 @@ instance Options ParallelSearchOptions where
 
 runParallelSearch :: ParOptions -> ParallelSearchOptions -> Filesystem -> IO [DataPoint]
 runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fuseOps} = do
-  let benchmark = parallelSearch fuseOps (BSC8.pack searchString) searchDir
+  let benchmark par = parallelSearch fuseOps par (BSC8.pack searchString) searchDir
   let printSearchResults results =
         forM_ results $ \(p, count) -> do
           when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count
   when optWarmup $ do
-    _ <- benchmark
+    _ <- benchmark 1
     clearTimings fs
     logVerbose opts "===> warmup done <==="
-  setNumCapabilities optN
   performMajorGC
   micros <- pickAndRunIters opts $ \iters ->
     replicateM iters . timeIt $ replicateM_ optReps $ do
-      results <- benchmark
+      results <- benchmark optN
       when optVerbose $ printSearchResults results
   p <- optsData opts
   return $ map (\t -> p{ pBenchName="par-search"
