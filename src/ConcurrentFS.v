@@ -949,9 +949,13 @@ Section ConcurrentFS.
     erewrite find_subtree_update_subtree_child; eauto.
   Qed.
 
+  Definition proj_comp G T {p: LocalLock -> Cache -> cprog T}
+             (cp: forall ls c, Compiled G (p ls c)) :
+    LocalLock -> Cache -> cprog T := fun ls c => compiled_prog (cp ls c).
+
   Definition create dnum name :=
     write_syscall None
-                  (fun mscs => OptFS.create (fsxp P) dnum name mscs)
+                  (fun mscs => proj_comp (CompiledCreate G (fsxp P) dnum name mscs))
                   (fun '(r, _) tree =>
                      match r with
                      | OK inum =>
@@ -1021,7 +1025,7 @@ Section ConcurrentFS.
 
   Definition file_truncate inum sz :=
     write_syscall None
-                  (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
+                  (fun mscs => proj_comp (CompiledFileTruncate G (fsxp P) inum sz mscs))
                   (fun '(r, _) tree =>
                      match r with
                      | OK _ => dirtree_alter_file
@@ -1086,10 +1090,6 @@ Section ConcurrentFS.
     destruct_goal_matches.
     erewrite find_subtree_update_subtree_child; eauto.
   Qed.
-
-  Definition proj_comp G T {p: LocalLock -> Cache -> cprog T}
-             (cp: forall ls c, Compiled G (p ls c)) :
-    LocalLock -> Cache -> cprog T := fun ls c => compiled_prog (cp ls c).
 
   Definition lookup names :=
     retry_readonly_syscall (fun mscs => proj_comp (CompiledLookup G (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs)).
@@ -1251,7 +1251,7 @@ Section ConcurrentFS.
 
   Definition delete dnum name :=
     write_syscall None
-                  (fun mscs => OptFS.delete (fsxp P) dnum name mscs)
+                  (fun mscs => proj_comp (CompiledDelete G (fsxp P) dnum name mscs))
                   (fun '(r, _) tree =>
                      match r with
                      | OK _ => alter_inum
@@ -1433,7 +1433,7 @@ Section ConcurrentFS.
 
   Definition tree_sync :=
     write_syscall None
-                  (fun mscs => OptFS.tree_sync (fsxp P) mscs)
+                  (fun mscs => proj_comp (CompiledTreeSync G (fsxp P) mscs))
                   (fun _ tree => tree).
 
   Definition file_sync inum :=

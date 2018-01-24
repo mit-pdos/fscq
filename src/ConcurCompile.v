@@ -265,6 +265,20 @@ Section ConcurCompile.
     destruct r; eauto.
   Qed.
 
+  Lemma translate'_match_list : forall T T' (p1: prog T') (p2: T -> list T -> prog T') r,
+      translate' (match r with
+                  | [] => p1
+                  | x::xs => p2 x xs
+                  end) =
+      match r with
+      | [] => translate' p1
+      | x::xs => translate' (p2 x xs)
+      end.
+  Proof.
+    intros.
+    destruct r; eauto.
+  Qed.
+
   Lemma translate'_match_sumbool : forall P Q T' (p1: prog T') (p2: prog T') (r:{P}+{Q}),
       translate' (match r with
                          | left _ => p1
@@ -749,6 +763,12 @@ Section ConcurCompile.
       skip
     | [ |- Compiled (Bind (Debug _ _) _) ] =>
       skip
+    | [ |- Compiled (Bind (CacheInit _) _) ] =>
+      skip
+    | [ |- Compiled (Bind (CacheCommit _) _) ] =>
+      skip
+    | [ |- Compiled (Bind (CacheAbort _) _) ] =>
+      skip
 
     (* terminating programs that cannot be improved *)
     | [ |- Compiled (Ret _)] =>
@@ -986,6 +1006,83 @@ Section ConcurCompile.
 
   Opaque LOG.read.
 
+  Definition Compiled_inode_irec_get lxp xp ix cache ms ls c :
+    Compiled (translate' (INODE.IRec.get lxp xp ix cache ms) ls c).
+  Proof.
+    unfold INODE.IRec.get; simpl.
+    match goal with
+    | |- context[match ?d with | _ => _ end] =>
+      destruct d
+    end; simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_log_read.
+    eapply compile_equiv.
+    apply exec_equiv_bind1.
+    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v as [ [|] ]; simpl.
+    exec_monad_simpl.
+    reflexivity.
+    reflexivity.
+
+    repeat comp.
+    eapply compile_equiv.
+    eapply exec_equiv_bind1.
+    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v; simpl.
+    destruct r; simpl.
+    exec_monad_simpl.
+    reflexivity.
+    reflexivity.
+    repeat comp.
+    eapply compile_equiv.
+    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
+    destruct v as [ [|] ]; simpl;
+      exec_monad_simpl.
+    reflexivity.
+    reflexivity.
+    comp.
+  Defined.
+
+  Definition Compiled_sdir_readdir lxp ixp dnum ms ls c :
+    Compiled (translate' (SDIR.readdir lxp ixp dnum ms) ls c).
+  Proof.
+    simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+
+    apply compile_bind; intros.
+    equiv_t ltac:(rewrite translate'_ForN).
+    apply compile_forN; intros;
+      repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+    compile_match;
+      repeat comp.
+    equiv_t exec_monad_simpl.
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_get.
+
+    compile_match;
+      repeat comp.
+    equiv_t exec_monad_simpl.
+    apply compile_bind; intros.
+    apply Compiled_log_read.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+
+    compile_match;
+      equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque SDIR.readdir.
+
   Definition Compiled_sdir_lookup lxp ixp dnum name ms ls c :
     Compiled (translate' (SDIR.lookup lxp ixp dnum name ms) ls c).
   Proof.
@@ -1026,11 +1123,99 @@ Section ConcurCompile.
 
   Opaque SDIR.lookup.
 
+  Definition Compiled_sdir_link' lxp bxp ixp dnum name inum isdir ms ls c :
+    Compiled (translate' (SDIR.link' lxp bxp ixp dnum name inum isdir ms) ls c).
+  Proof.
+    apply compile_refl.
+  Defined.
+
+  Opaque SDIR.link'.
+
+  Definition CompiledCreate fsxp dnum name ams ls c:
+    Compiled (OptFS.create fsxp dnum name ams ls c).
+  Proof.
+    unfold OptFS.create, translate; simpl.
+    repeat comp.
+
+    (* IAlloc.Alloc.get_free_blocks *)
+    skip.
+    compile_match.
+    unfold pair_args_helper; simpl.
+
+    (* match with IAlloc.Alloc.Alloc.steal *)
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite translate'_match_opt).
+
+    compile_match;
+      repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_sdir_lookup.
+
+    compile_match;
+      repeat comp.
+    unfold pair_args_helper; simpl.
+
+    equiv_t ltac:(rewrite translate'_match_opt).
+    compile_match;
+      repeat comp.
+    equiv_t exec_monad_simpl.
+    (* LOG.abort *)
+    skip.
+
+    compile_match;
+      equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success); simpl.
+
+    apply compile_bind; intros.
+    apply Compiled_sdir_link'.
+
+    compile_match;
+      repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite translate'_match_res).
+    compile_match;
+      repeat comp;
+      equiv_t exec_monad_simpl.
+    skip.
+
+    compile_match.
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success); simpl.
+
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success); simpl.
+
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success); simpl.
+
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+  Defined.
+
   Definition CompiledLookup fsxp dnum names ams ls c :
     Compiled (OptFS.lookup fsxp dnum names ams ls c).
   Proof.
     unfold OptFS.lookup, translate; simpl.
-    skip.
     repeat comp.
 
     equiv_t ltac:(rewrite translate'_ForEach).
@@ -1060,53 +1245,405 @@ Section ConcurCompile.
       simpl; repeat comp.
     equiv_t exec_monad_simpl.
     equiv_t exec_monad_simpl.
-    skip.
-    repeat comp.
 
     equiv_t exec_monad_simpl.
     equiv_t exec_monad_simpl.
-    skip.
-    repeat comp.
-
-    skip.
-    repeat comp.
   Defined.
 
-  Definition Compiled_inode_irec_get lxp xp ix cache ms ls c :
-    Compiled (translate' (INODE.IRec.get lxp xp ix cache ms) ls c).
+  (* file_truncate 9.1 *)
+  (* tree_sync 9.1 *)
+  (* delete 6.9 *)
+
+  Definition Compiled_bfile_grow lxp bxps ixp inum v fms ls c :
+    Compiled (translate' (BFILE.grow lxp bxps ixp inum v fms) ls c).
   Proof.
-    unfold INODE.IRec.get; simpl.
-    match goal with
-    | |- context[match ?d with | _ => _ end] =>
-      destruct d
-    end; simpl; repeat comp.
+    simpl; repeat comp.
     apply compile_bind; intros.
-    apply Compiled_log_read.
-    eapply compile_equiv.
-    apply exec_equiv_bind1.
-    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
-    destruct v as [ [|] ]; simpl.
-    exec_monad_simpl.
-    reflexivity.
-    reflexivity.
+    apply Compiled_inode_irec_get.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    unfold pair_args_helper, If_; simpl.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match;
+      repeat comp.
+    (* BALLOCC.Alloc.get_free_blocks *)
+    skip.
+
+    compile_match.
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite translate'_match_opt).
+    compile_match;
+      repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    (* INODE.Ind.grow *)
+    skip.
+
+    compile_match.
+    skip.
+    compile_match.
+    equiv_t ltac:(rewrite !modified_or_success).
+    equiv_t ltac:(rewrite translate'_match_res).
+    compile_match.
+    (* LOG.write *)
+    skip.
+
+    compile_match.
+    repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque BFILE.grow.
+  Opaque BFILE.shrink.
+
+  Definition CompiledFileTruncate fsxp inum sz ams ls c :
+    Compiled (OptFS.file_truncate fsxp inum sz ams ls c).
+  Proof.
+    unfold OptFS.file_truncate, translate; simpl.
+    repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+
+    unfold pair_args_helper, If_; simpl.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match;
+      repeat comp.
+
+    (* BFILE.shrink *)
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    (* LOG.commit *)
+    skip.
+    compile_match.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match;
+      repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+
+    equiv_t ltac:(rewrite translate'_ForN).
+    apply compile_bind; intros.
+    apply compile_forN; intros; simpl.
+    unfold pair_args_helper; simpl.
+    equiv_t ltac:(rewrite translate'_match_res).
+    compile_match.
+    apply compile_bind; intros.
+    apply Compiled_bfile_grow.
+    compile_match.
+    comp.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite translate'_match_res).
+    compile_match.
+    repeat comp.
+    (* LOG.commit *)
+    skip.
+    compile_match.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match;
+      repeat comp.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success).
+    equiv_t exec_monad_simpl.
 
     repeat comp.
-    eapply compile_equiv.
-    eapply exec_equiv_bind1.
-    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
-    destruct v; simpl.
-    destruct r; simpl.
-    exec_monad_simpl.
-    reflexivity.
-    reflexivity.
+    (* LOG.abort *)
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque MemLog.MLog.flush_noapply.
+  Opaque BUFCACHE.read.
+
+  Opaque PaddedLog.Hdr.val2hdr.
+
+  Theorem Compiled_dlog_avail xp cs ls c :
+    Compiled (translate' (DLog.avail xp cs) ls c).
+  Proof.
+    unfold DLog.avail.
+    simpl; repeat comp.
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque DLog.avail.
+
+  Definition Compiled_bufcache_write_vecs a l cs ls c :
+    Compiled (translate' (BUFCACHE.write_vecs a l cs) ls c).
+  Proof.
+    apply compile_refl.
+  Defined.
+
+  Opaque BUFCACHE.write_vecs.
+
+  Definition Compiled_bufcache_sync_vecs a l cs ls c :
+    Compiled (translate' (BUFCACHE.sync_vecs a l cs ) ls c).
+  Proof.
+    apply compile_refl.
+  Defined.
+
+  Opaque BUFCACHE.sync_vecs.
+
+  Definition Compiled_memlog_mlog_apply xp ms ls c :
+    Compiled (translate' (MemLog.MLog.apply xp ms) ls c).
+  Proof.
+    simpl.
+    apply compile_bind; intros.
+    apply Compiled_bufcache_write_vecs.
+    compile_match;
+      repeat comp.
+    (* BUFCACHE.begin_sync *)
+    skip.
+
+    compile_match.
+    apply compile_bind; intros.
+    apply Compiled_bufcache_sync_vecs.
+
+    compile_match.
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success).
+    equiv_t ltac:(rewrite modified_or_success).
+
+    (* BUFCACHE.read *)
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+
+    skip.
     repeat comp.
-    eapply compile_equiv.
-    instantiate (1 := Ret (match v with | (Success f v, cs) => _ | (Failure e, cs) => _ end)).
-    destruct v as [ [|] ]; simpl;
-      exec_monad_simpl.
-    reflexivity.
-    reflexivity.
-    comp.
+
+    (* BUFCACHE.write *)
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    skip.
+    compile_match.
+    (* BUFCACHE.sync *)
+    skip.
+    compile_match.
+    skip.
+    compile_match.
+    equiv_t ltac:(rewrite !modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite !modified_or_success).
+    equiv_t ltac:(rewrite !modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque MemLog.MLog.apply.
+
+  Definition Compiled_memlog_mlog_flush xp ents ms ls c :
+    Compiled (translate' (MemLog.MLog.flush xp ents ms) ls c).
+  Proof.
+    unfold MemLog.MLog.flush.
+
+    unfold If_.
+    equiv_t ltac:(rewrite translate'_match_sumbool);
+      compile_match;
+      simpl;
+      repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_dlog_avail.
+    compile_match.
+
+    equiv_t ltac:(rewrite translate'_match_sumbool);
+      compile_match;
+      simpl;
+      repeat comp.
+    (* MLog.apply *)
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    skip.
+    compile_match.
+
+    skip.
+    compile_match.
+  Defined.
+
+  Opaque MemLog.MLog.flush.
+
+  Definition Compiled_glog_flushall xp ms ls c :
+    Compiled (translate' (GLog.flushall xp ms) ls c).
+  Proof.
+    unfold GLog.flushall.
+
+    unfold If_.
+    equiv_t ltac:(rewrite translate'_match_sumbool);
+      compile_match;
+      simpl;
+      repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_memlog_mlog_flush.
+    compile_match.
+
+    equiv_t ltac:(rewrite translate'_ForN).
+    apply compile_bind; intros.
+    apply compile_forN; intros.
+    apply compile_bind; intros.
+    apply Compiled_memlog_mlog_flush.
+    compile_match.
+    compile_match.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque GLog.flushall.
+
+  Definition CompiledTreeSync fsxp ams ls c :
+    Compiled (OptFS.tree_sync fsxp ams ls c).
+  Proof.
+    unfold OptFS.tree_sync, translate; simpl.
+    repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_glog_flushall.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+  Defined.
+
+  Opaque BFILE.reset.
+  Opaque IAlloc.free.
+
+  Definition CompiledDelete fsxp dnum name ams ls c :
+    Compiled (OptFS.delete fsxp dnum name ams ls c).
+  Proof.
+    unfold OptFS.delete, translate; simpl.
+    repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_sdir_lookup.
+
+    compile_match.
+    unfold pair_args_helper.
+    apply compile_bind; intros.
+    equiv_t ltac:(rewrite translate'_match_opt);
+      compile_match;
+      repeat comp.
+    equiv_t ltac:(rewrite translate'_destruct_prod);
+      compile_match.
+
+    apply compile_bind; intros.
+    unfold If_.
+    equiv_t ltac:(rewrite translate'_match_sumbool);
+      compile_match;
+      repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_sdir_readdir.
+
+    compile_match.
+    equiv_t ltac:(rewrite translate'_match_list);
+      compile_match;
+      repeat comp.
+
+    compile_match.
+    unfold If_.
+    equiv_t ltac:(rewrite translate'_match_sumbool).
+    compile_match;
+      repeat comp.
+    apply compile_bind; intros.
+    unfold pair_args_helper; simpl.
+    equiv_t ltac:(rewrite translate'_match_opt);
+      compile_match;
+      repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+    compile_match.
+    equiv_t exec_monad_simpl.
+
+    apply compile_bind; intros.
+    equiv_t ltac:(rewrite translate'_ForN).
+    apply compile_forN; intros.
+    simpl; repeat comp.
+    apply compile_bind; intros.
+    apply Compiled_inode_irec_get.
+    compile_match.
+    equiv_t exec_monad_simpl.
+
+    apply compile_bind; intros.
+    apply Compiled_inode_ind_get.
+    compile_match;
+      equiv_t exec_monad_simpl.
+    apply compile_bind; intros.
+    apply Compiled_log_read.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
+    compile_match.
+
+    apply compile_bind; intros.
+    unfold pair_args_helper; simpl.
+    equiv_t ltac:(rewrite translate'_match_opt);
+      compile_match;
+      repeat comp.
+
+    (* DirName.SDIR.unlink *)
+    skip.
+    compile_match.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite translate'_match_res).
+    compile_match;
+      repeat comp.
+    skip.
+    compile_match;
+      repeat comp.
+    skip.
+    compile_match;
+      repeat comp.
+
+    equiv_t exec_monad_simpl.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    skip.
+    compile_match.
+    equiv_t exec_monad_simpl.
+    equiv_t ltac:(rewrite modified_or_success).
+    equiv_t exec_monad_simpl.
+    equiv_t exec_monad_simpl.
   Defined.
 
   Definition Compiled_inode_getbnum lxp xp inum off cache ms ls c :
@@ -1171,10 +1708,9 @@ Section ConcurCompile.
     matching on success results) *)
 
     repeat comp.
-    skip.
     apply compile_bind; intros.
     apply Compiled_read_fblock.
-    apply compile_refl.
+    compile_match.
   Defined.
 
   Definition CompiledReadBlock_full fsxp inum off ams ls c :
@@ -1212,7 +1748,7 @@ Section ConcurCompile.
     Compiled (OptFS.file_get_attr fsxp inum ams ls c).
   Proof.
     unfold OptFS.file_get_attr, translate.
-    skip.
+    repeat comp.
     apply compile_bind; intros.
     apply Compiled_get_attr.
     apply compile_refl.
@@ -1222,16 +1758,11 @@ Section ConcurCompile.
     Compiled (OptFS.file_get_sz fsxp inum ams ls c).
   Proof.
     unfold OptFS.file_get_sz, translate; simpl.
-    skip.
     simpl; repeat comp.
     apply compile_bind; intros.
     apply Compiled_get_attr.
     compile_match.
     equiv_t exec_monad_simpl.
-    skip.
-    comp.
-    skip.
-    comp.
   Defined.
 
 End ConcurCompile.
