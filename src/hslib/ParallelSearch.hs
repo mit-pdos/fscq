@@ -72,8 +72,8 @@ parAtRoot fs par act p = setNumCapabilities par >> do
 
 runAtRoot :: FuseOperations fh -> (FilePath -> IO a) -> FilePath -> IO [a]
 runAtRoot fs act p = do
-  files <- traverseDirectory fs p
-  mapM (act . fst) files
+  files <- findFiles fs p
+  mapM act files
 
 parallelSearchAtRoot :: FuseOperations fh -> Int -> BS.ByteString -> FilePath -> IO [(FilePath, Int)]
 parallelSearchAtRoot fs par needle p = do

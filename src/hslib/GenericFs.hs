@@ -83,3 +83,14 @@ traverseDirectory fs p = do
       directories = onlyDirectories paths
   recursive <- concat <$> mapM (traverseDirectory fs) directories
   return $ paths ++ recursive
+
+findFiles :: FuseOperations fh -> FilePath -> IO [FilePath]
+findFiles fs p = do
+  dnum <- getResult p =<< fuseOpenDirectory fs p
+  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  let entries = filterDots allEntries
+      paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
+      files = onlyFiles paths
+      directories = onlyDirectories paths
+  recursive <- concat <$> mapM (findFiles fs) directories
+  return $ files ++ recursive
