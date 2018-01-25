@@ -14,7 +14,7 @@ fi
 
 SRC_DIR="$SCRIPT_DIR/../../src"
 
-"$SRC_DIR/mkfs" --data-bitmaps 16 --inode-bitmaps 16 "$img"
+"$SRC_DIR/mkfs" --data-bitmaps 24 --inode-bitmaps 16 "$img"
 "$SRC_DIR/fscq" --use-downcalls=false $img "$mnt" -- -f &
 sleep 1
 
@@ -53,10 +53,10 @@ mkdir "$mnt/linux-source"
 cp $HOME/linux.tar.xz "$mnt/linux-source/"
 
 echo "copying search benchmarks"
-mkdir -p "$mnt/search-benchmarks/linux"
+#mkdir -p "$mnt/search-benchmarks/linux"
 mkdir -p "$mnt/search-benchmarks/coq"
 for core in $(seq 0 11); do
-  cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/core$core"
+  #cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/core$core"
   cp -r $HOME/search-benchmarks/coq-source "$mnt/search-benchmarks/coq/core$core"
 done
 
