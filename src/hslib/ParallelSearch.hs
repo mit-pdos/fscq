@@ -1,5 +1,6 @@
 module ParallelSearch
   ( parallelSearch
+  , parallelSearchAtRoot
   ) where
 
 import           Control.Concurrent (setNumCapabilities)
