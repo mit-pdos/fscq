@@ -385,7 +385,7 @@ instance Options ParallelSearchOptions where
 
 runParallelSearch :: ParOptions -> ParallelSearchOptions -> Filesystem -> IO [DataPoint]
 runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fuseOps} = do
-  let benchmark par = parallelSearch fuseOps par (BSC8.pack searchString) searchDir
+  let benchmark par = parallelSearchAtRoot fuseOps par (BSC8.pack searchString) searchDir
   let printSearchResults results =
         forM_ results $ \(p, count) -> do
           when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count

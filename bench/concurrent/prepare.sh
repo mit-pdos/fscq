@@ -53,9 +53,12 @@ mkdir "$mnt/linux-source"
 cp $HOME/linux.tar.xz "$mnt/linux-source/"
 
 echo "copying search benchmarks"
-mkdir "$mnt/search-benchmarks"
-cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/"
-cp -r $HOME/search-benchmarks/coq-source "$mnt/search-benchmarks/coq/"
+mkdir -p "$mnt/search-benchmarks/linux"
+mkdir -p "$mnt/search-benchmarks/coq"
+for core in $(seq 0 11); do
+  cp -r $HOME/search-benchmarks/linux-source "$mnt/search-benchmarks/linux/core$core"
+  cp -r $HOME/search-benchmarks/coq-source "$mnt/search-benchmarks/coq/core$core"
+done
 
 mkdir "$mnt/dbench"
 for core in $(seq 0 11); do
