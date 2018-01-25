@@ -383,6 +383,14 @@ instance Options ParallelSearchOptions where
     <*> simpleOption "query" "propositional equality"
         "string to search for"
 
+withCapabilities :: Int -> IO a -> IO a
+withCapabilities n act = do
+  n' <- getNumCapabilities
+  setNumCapabilities n
+  r <- act
+  setNumCapabilities n'
+  return r
+
 runParallelSearch :: ParOptions -> ParallelSearchOptions -> Filesystem -> IO [DataPoint]
 runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fuseOps} = do
   let benchmark par = parallelSearchAtRoot fuseOps par (BSC8.pack searchString) searchDir
@@ -390,7 +398,7 @@ runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fu
         forM_ results $ \(p, count) -> do
           when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count
   when optWarmup $ do
-    _ <- benchmark 1
+    _ <- withCapabilities 1 $ benchmark optN
     clearTimings fs
     logVerbose opts "===> warmup done <==="
   performMajorGC
