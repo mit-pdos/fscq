@@ -378,9 +378,9 @@ data ParallelSearchOptions =
 
 instance Options ParallelSearchOptions where
   defineOptions = pure ParallelSearchOptions
-    <*> simpleOption "dir" "/search-benchmarks/linux"
+    <*> simpleOption "dir" "/search-benchmarks/coq"
         "directory to search under"
-    <*> simpleOption "query" "I/O ports"
+    <*> simpleOption "query" "propositional equality"
         "string to search for"
 
 runParallelSearch :: ParOptions -> ParallelSearchOptions -> Filesystem -> IO [DataPoint]
