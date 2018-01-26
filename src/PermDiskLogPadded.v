@@ -68,22 +68,6 @@ Definition contents := @generic_contents tagged_block.
 Definition input_entry := @generic_entry handle.
 Definition input_contents := @generic_contents handle.
 
-
-Definition avail xp cs :=
-  let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
-  let '(_, (ndesc, _), _) := nr in
-  Ret ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
-
-Definition read xp cs :=
-  let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
-  let '(_, (ndesc, ndata), _) := nr in
-  let^ (cs, ahl) <- Desc.read_all xp ndesc cs;;
-  abl <- unseal_all ahl;;
-  let wal := fold_left DescDefs.iunpack abl nil in               
-  let al := map (@wordToNat addrlen) wal in
-  let^ (cs, vl) <- Data.read_all xp ndata cs;;
-  Ret ^(cs, (al, vl)).
-
 Inductive state :=
 (* The log is synced on disk *)
 | Synced (l: contents)
@@ -298,6 +282,22 @@ Definition would_recover xp F l bm hm :=
   (exists cs d,
      PermCacheDef.rep cs d bm *
      [[ (F * would_recover' xp l hm)%pred d ]])%pred.
+
+
+Definition avail xp cs :=
+  let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
+  let '(_, (ndesc, _), _) := nr in
+  Ret ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
+
+Definition read xp cs :=
+  let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
+  let '(_, (ndesc, ndata), _) := nr in
+  let^ (cs, ahl) <- Desc.read_all xp ndesc cs;;
+  abl <- unseal_all ahl;;
+  let wal := fold_left DescDefs.iunpack abl nil in               
+  let al := map (@wordToNat addrlen) wal in
+  let^ (cs, vl) <- Data.read_all xp ndata cs;;
+  Ret ^(cs, (combine_nonzero al vl)).
 
 
 Theorem sync_invariant_rep :
@@ -834,6 +834,234 @@ Lemma desc_padding_synced_piff : forall xp a T (l: @generic_contents T) def,
 
 Hint Unfold padded_log.
 
+
+Lemma map_snd_combine_le:
+  forall A B (lb: list B) (la: list A),
+    length la >= length lb ->
+    map snd (combine la lb) = lb.
+Proof.
+  induction lb; simpl; intros; auto.
+  rewrite combine_l_nil; simpl; auto.
+  destruct la; simpl in *; try omega.
+  rewrite IHlb; eauto; omega.
+Qed.
+
+Lemma map_fst_combine_le:
+  forall A B (la: list A) (lb: list B),
+    length lb >= length la ->
+    map fst (combine la lb) = la.
+Proof.
+  induction la; simpl; intros; auto.
+  destruct lb; simpl in *; try omega.
+  rewrite IHla; eauto; omega.
+Qed.
+
+Lemma map_fst_combine_le_firstn:
+  forall A B (la: list A) (lb: list B),
+    length la >= length lb ->
+    map fst (combine la lb) = firstn (length lb) la.
+Proof.
+  induction la; simpl; intros; auto.
+  rewrite firstn_nil; auto.
+  destruct lb; simpl in *; try omega; auto.
+  rewrite IHla; eauto; omega.
+Qed.
+
+
+Lemma map_snd_combine_nonzero:
+  forall A al (l: list A),
+    nonzero_addrs al >= length l ->
+    map snd (combine_nonzero al l) = l.
+Proof.
+  induction al; simpl; intros; auto.
+  destruct l; simpl in *; auto; omega.
+  destruct a;
+  destruct l; simpl in *; auto.
+  rewrite IHal; auto; omega.
+Qed.
+
+Lemma nonzero_addrs_maps:
+  forall l,
+    Forall addr_valid l ->
+    nonzero_addrs
+      (map (wordToNat (sz:=addrlen))
+           (map ent_addr (padded_log l))) =
+    nonzero_addrs (map fst l).
+Proof.
+  induction l; simpl; intros; auto;
+  unfold padded_log, padded_log_gen in *; simpl.
+  rewrite setlen_nil, map_entaddr_repeat_0, repeat_map;
+  simpl; rewrite roundup_0; simpl; auto.
+
+  inversion H; subst.
+  rewrite setlen_oob, map_app, map_app in *.
+  rewrite map_entaddr_repeat_0, repeat_map in *; simpl repeat in *.
+  rewrite nonzero_addrs_app_zeros in *.
+  destruct a, n; simpl; auto.
+  unfold ent_addr at 1; simpl.
+  unfold addr2w; simpl.
+  
+  rewrite wordToNat_natToWord_idempotent'.
+  rewrite IHl; auto.
+  unfold addr_valid in *; auto.
+  
+  unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+  
+  simpl; unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+
+  unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+Qed.
+
+
+Lemma combine_nonzero_extract_blocks_comm:
+  forall al hl bm,
+    handles_valid bm hl ->
+    nonzero_addrs al >= length hl ->
+    extract_blocks bm (map snd (combine_nonzero al hl)) =
+    map snd (combine_nonzero al (extract_blocks bm hl)).
+Proof.
+  induction al; simpl; intros; auto.
+  destruct hl; try destruct n; auto.
+  destruct a; simpl in *; auto.
+  destruct a; simpl in *; auto.
+  {
+    inversion H; subst.
+    unfold handle_valid in *; cleanup.
+    rewrite IHal; simpl; auto.
+    cleanup; auto.
+  }
+  {
+    inversion H; subst.
+    unfold handle_valid in *; cleanup; simpl in *.
+    rewrite IHal; simpl; auto; omega.
+  }
+Qed.
+
+
+Lemma combine_nonzero_log_nonzero:
+  forall A l (hl: list A),
+    Forall addr_valid l ->
+    length (log_nonzero l) = length hl ->
+    combine (map fst (combine_nonzero
+            (map (wordToNat (sz:=addrlen))
+                 (map ent_addr (padded_log l))) hl))
+            (blocks_nonzero l) = log_nonzero l.
+Proof.
+  induction l; simpl; intros; auto.
+  unfold blocks_nonzero; simpl;
+  apply combine_l_nil.
+
+  destruct a, n; simpl in *.
+  unfold blocks_nonzero in *; simpl in *.
+  unfold padded_log, padded_log_gen in *; simpl.
+
+  inversion H; subst.
+  rewrite setlen_oob, map_app, map_app in *.
+  rewrite map_entaddr_repeat_0, repeat_map in *; simpl repeat in *.
+  erewrite <- IHl at 2; eauto.
+  repeat rewrite combine_nonzero_app_zeros in *; simpl.
+  destruct hl; simpl.
+  rewrite combine_nonzero_nil; simpl; auto.
+  auto.
+  
+  unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+
+  simpl; unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+  
+  unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+
+  unfold blocks_nonzero in *; simpl in *.
+  unfold padded_log, padded_log_gen in *; simpl.
+
+  inversion H; subst.
+  rewrite setlen_oob, map_app, map_app in *.
+  rewrite map_entaddr_repeat_0, repeat_map in *; simpl repeat in *.
+  simpl (map _ (_::_)); unfold ent_addr in *; simpl fst.
+  destruct hl; simpl in *.
+  omega.
+
+  unfold addr2w; simpl.
+  rewrite wordToNat_natToWord_idempotent'.
+  simpl.
+  erewrite <- IHl at 2; auto.
+  repeat rewrite combine_nonzero_app_zeros in *; eauto.
+  omega.
+  unfold addr_valid in *; auto.
+
+  unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+
+  simpl; unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+  
+  unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+Qed.
+
+
+Lemma in_combine_nonzero:
+  forall A al (l: list A) x,
+    In x (combine_nonzero al l) ->
+    fst x <> 0.
+Proof.
+  induction al; simpl; intros; auto.
+  destruct a;
+  destruct l; eauto.
+  inversion H; subst; simpl; eauto.
+Qed.
+
+Lemma in_combine_nonzero_not_0:
+  forall A al (l: list A) x,
+    In x (combine_nonzero al l) ->
+    In (fst x) al.
+Proof.
+  induction al; simpl; intros; auto.
+  destruct a, l; intuition.
+  right; eauto.
+  inversion H; subst; simpl; eauto.
+Qed.
+
+Lemma entry_valid_combine_nonzero:
+  forall A l (hl: list A),
+    Forall addr_valid l ->
+    Forall entry_valid (combine_nonzero
+                          (map (wordToNat (sz:=addrlen)) (map ent_addr (padded_log l))) hl).
+Proof.
+  intros; rewrite Forall_forall; intros.
+  unfold entry_valid; split.
+  eapply in_combine_nonzero; eauto.
+
+  unfold padded_log, padded_log_gen in *; simpl. 
+  rewrite setlen_oob, map_app, map_app in *.
+  rewrite map_entaddr_repeat_0, repeat_map in *; simpl repeat in *.
+  repeat rewrite combine_nonzero_app_zeros in *; simpl.
+  rewrite map_wordToNat_ent_addr in *; auto.
+
+  apply in_combine_nonzero_not_0 in H0.
+  unfold addr_valid in *.
+  apply Forall_map in H.
+  rewrite Forall_forall in H; apply H; auto.
+
+  unfold roundup; apply divup_n_mul_n_le.
+  unfold DescSig.items_per_val.
+  rewrite valulen_is. cbv; omega.
+Qed.
+
   Definition read_ok :
     forall xp cs pr,
     {< F l d,
@@ -844,8 +1072,10 @@ Hint Unfold padded_log.
     POST:bm', hm', RET: ^(cs, r)
           PermCacheDef.rep cs d bm' *
           [[ (F * rep xp (Synced l) hm')%pred d ]] *
-          [[ combine_nonzero (fst r) (extract_blocks bm' (snd r)) = log_nonzero l ]] *
-          [[ handles_valid bm' (snd r) ]]
+          [[ combine (map fst r)
+              (extract_blocks bm' (map snd r)) = log_nonzero l ]] *
+          [[ handles_valid bm' (map snd r) ]] *
+          [[ Forall entry_valid r ]]
     CRASH:bm'', hm_crash, exists cs',
           PermCacheDef.rep cs' d bm'' *
           [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
@@ -889,15 +1119,29 @@ Hint Unfold padded_log.
     solve_checksums.
 
     subst.
-    rewrite H19, H26.
-    rewrite map_snd_combine.
+    setoid_rewrite H19.
+    repeat rewrite map_snd_combine_le.
     erewrite DescDefs.iunpack_ipack; eauto.
+    rewrite map_snd_combine_nonzero.
 
-    rewrite combine_tags_vals.
-    apply combine_nonzero_padded_wordToNat; auto.
-    rewrite map_length.
-    unfold padded_log; rewrite padded_log_length.
+    rewrite H26, combine_tags_vals.
+    apply combine_nonzero_log_nonzero; auto.
+    apply handles_valid_length_eq in H25; rewrite H25, H26.
+    setoid_rewrite combine_length_eq.
+    rewrite tags_nonzero_addrs, log_nonzero_addrs; auto.
+    rewrite ipack_noop;
+    rewrite tags_nonzero_addrs, vals_nonzero_addrs; auto.
+
+    rewrite nonzero_addrs_maps; auto.
+    apply handles_valid_length_eq in H25; rewrite H25, H26.
+    setoid_rewrite combine_length_eq.
+    rewrite tags_nonzero_addrs; auto.
+    rewrite ipack_noop;
+    rewrite tags_nonzero_addrs, vals_nonzero_addrs; auto.
+
+    unfold padded_log; rewrite map_length, padded_log_length.
     unfold roundup; eauto.
+
     unfold addr_tags; rewrite repeat_length.
     unfold ndesc_log.
     rewrite Desc.Defs.ipack_length.
@@ -906,9 +1150,47 @@ Hint Unfold padded_log.
     unfold roundup; rewrite divup_mul; auto.
     unfold DescSig.items_per_val.
     rewrite valulen_is. cbv; omega.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
-    unfold pimpl; intros; eapply block_mem_subset_trans; eauto.
 
+    setoid_rewrite H19.
+    repeat rewrite map_snd_combine_le.
+    erewrite DescDefs.iunpack_ipack; eauto.
+    rewrite map_snd_combine_nonzero; auto.
+
+    rewrite nonzero_addrs_maps; auto.
+    apply handles_valid_length_eq in H25; rewrite H25, H26.
+    setoid_rewrite combine_length_eq.
+    rewrite tags_nonzero_addrs; auto.
+    rewrite ipack_noop;
+    rewrite tags_nonzero_addrs, vals_nonzero_addrs; auto.
+    unfold padded_log; rewrite map_length, padded_log_length.
+    unfold roundup; eauto.
+    
+    unfold addr_tags; rewrite repeat_length.
+    unfold ndesc_log.
+    rewrite Desc.Defs.ipack_length.
+    rewrite map_length.
+    unfold padded_log; rewrite padded_log_length.
+    unfold roundup; rewrite divup_mul; auto.
+    unfold DescSig.items_per_val.
+    rewrite valulen_is. cbv; omega.
+
+    setoid_rewrite H19.
+    repeat rewrite map_snd_combine_le.
+    erewrite DescDefs.iunpack_ipack; eauto.
+
+    apply entry_valid_combine_nonzero; auto.
+    
+    rewrite map_length.
+    unfold padded_log; rewrite padded_log_length.
+    unfold roundup; eauto.
+    
+    unfold padded_log, addr_tags, ndesc_log;
+    rewrite repeat_length, DescDefs.ipack_length,
+    map_length, padded_log_length.
+    unfold roundup; rewrite divup_divup; auto.
+    solve_hashmap_subset.
+    unfold pimpl; intros; eapply block_mem_subset_trans; eauto.
+    
     cancel; eauto.
     rewrite <- H1; cancel.
     unfold padded_log; rewrite desc_padding_synced_piff; cancel.
@@ -1053,6 +1335,7 @@ Hint Unfold padded_log.
     intros; omega.
   Qed.
 
+  
   Lemma helper_trunc_ok : forall T xp l prev_len h,
     Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log l)) (map ent_addr l)) *
     Data.array_rep xp 0 (Data.Synced (tags_nonzero l) (vals_nonzero l)) *
@@ -1115,6 +1398,7 @@ Hint Unfold padded_log.
     unfold PermDiskLogHdr.rep in H0.
     destruct_lift H0.
     unfold hdr_goodSize in *; intuition.
+    eauto.
 
     step.
     step.
@@ -1167,6 +1451,7 @@ Hint Unfold padded_log.
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
+
 
 
 
@@ -1443,6 +1728,7 @@ Hint Unfold padded_log.
     rewrite IHn; auto.
   Qed.
   
+
   Lemma extend_ok_helper : forall F xp old new,
     Forall entry_valid new ->
     Data.array_rep xp (ndata_log old) (Data.Synced (map ent_tag new) (map ent_valu new)) *

@@ -808,13 +808,15 @@ Ltac cancel_by H :=
   eapply pimpl_ext; [ eapply H | cancel | cancel ].
 
 
-
 Theorem nop_ok :
   forall T A pr v (rx : A -> prog T),
-  corr2 pr (fun done_ crash_ bm' hm' => exists F, F * [[ forall r_,
+  corr2 pr (fun done_ crash_ bm hm => exists F, F * [[ forall r_,
     corr2 pr (fun done' crash' bm' hm' => (fun r => F * [[ r = v ]]) r_ *
-                           [[ done' = done_ ]] * [[ crash' = crash_ ]])
-     (rx r_) ]] * [[ F =p=> crash_ bm' hm']])%pred (rx v).
+                                       [[ hm = hm' ]] *
+                                       [[ bm = bm' ]] *
+                                       [[ done' = done_ ]] *
+                                       [[ crash' = crash_ ]])
+     (rx r_) ]] * [[ F =p=> crash_ bm hm]])%pred (rx v).
 Proof.
   unfold corr2, pimpl.
   intros.
@@ -857,7 +859,7 @@ Ltac prestep :=
    || (eapply pimpl_ok2; [
         match goal with
         | [ |- corr2 _ _ (?rx _) ] => is_var rx
-        end; solve [ eapply nop_ok ] | ]));
+        end; solve [eapply nop_ok] | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try autounfold with hoare_unfold in *; eauto.

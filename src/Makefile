@@ -23,6 +23,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ADestructPair DestructVarname\
 	      DirSep DirSepCrash ProgMetatheory TreeSeq \
 	      AtomicCp BACHelper BytefileSpecs \
+		  \
 	      PermAsyncDisk PermPredCrash \
 	      PermArray PermRecArrayUtils PermAsyncRecArray\
 	      PermProg PermHashmap PermBlockmem \
@@ -30,7 +31,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermProgMonad PermHoare PermSepAuto \
 	      PermInstr PermProgLoop PermProgList \
           PermCacheDef PermCacheLemmas PermCacheSec PermCacheRangeSec \
-	      PermDiskLogHdr PermDiskLogPadded PermDiskLog
+	      PermDiskLogHdr PermDiskLogPadded PermDiskLog \
+		  PermGenSepN PermLogReplay
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

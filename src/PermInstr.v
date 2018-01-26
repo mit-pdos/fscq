@@ -61,7 +61,7 @@ Proof.
   unfold false_pred; intros; cancel.
 Qed.
 
-Hint Resolve false_pred_all.
+Hint Unfold false_pred: hoare_unfold.
 
 
 Lemma read_secure:

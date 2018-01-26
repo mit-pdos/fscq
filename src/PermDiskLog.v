@@ -83,12 +83,12 @@ Definition rep xp st hm :=
          PermCacheDef.rep cs d bm * 
          [[ (F * rep xp (Synced nr l) hm)%pred d ]]
     POST:bm', hm',   RET: ^(cs, r)
-              PermCacheDef.rep cs d bm' *
-              [[ combine_nonzero (fst r) (extract_blocks bm' (snd r)) = l /\
-              (F * rep xp (Synced nr l) hm')%pred d ]]
+         PermCacheDef.rep cs d bm' *
+         [[ combine (map fst r) (extract_blocks bm' (map snd r)) = l /\
+         (F * rep xp (Synced nr l) hm')%pred d ]]
     CRASH:bm'', hm'', exists cs',
-              PermCacheDef.rep cs' d bm''*
-              [[ (F * rep xp (Synced nr l) hm'')%pred d ]]
+         PermCacheDef.rep cs' d bm''*
+         [[ (F * rep xp (Synced nr l) hm'')%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.
