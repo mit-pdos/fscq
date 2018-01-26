@@ -1,24 +1,22 @@
-Require Import PermHashmap.
 Require Import Arith.
 Require Import Bool.
 Require Import List.
 Require Import Classes.SetoidTactics.
-Require Import Pred PermPredCrash.
+Require Import Pred.
 Require Import FunctionalExtensionality.
 Require Import Omega.
 Require Import Word.
 Require Import Rec.
-Require Import PermArray.
 Require Import Eqdep_dec.
 Require Import WordAuto.
 Require Import Idempotent.
 Require Import ListUtils.
 Require Import FSLayout.
-Require Import PermDiskLog.
-Require Import PermGenSepN.
 Require Import MapUtils.
 Require Import FMapFacts.
 Require Import Lock.
+
+Require Export PermHashmap.
 Require Export PermLogReplay.
 
 Import ListNotations.
@@ -1102,16 +1100,21 @@ Qed.
                      replay_disk_vssync_vsupd_vecs replay_disk_vssync_vsupd_vecs_twice
                      replay_disk_vsupd_vecs.
 
-  Theorem apply_ok: forall xp ms,
+
+LeftHere.
+  
+  Theorem apply_ok:
+    forall xp ms pr,
     {< F d na,
-    PRE:hm
-      << F, rep: xp (Synced na d) ms hm >> *
+    PERM:pr   
+    PRE:bm, hm,
+      << F, rep: xp (Synced na d) ms bm hm >> *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms'
-      << F, rep: xp (Synced (LogLen xp) d) ms' hm' >> *
+    POST:bm', hm', RET:ms'
+      << F, rep: xp (Synced (LogLen xp) d) ms' bm' hm' >> *
       [[ Map.Empty (MSInLog ms') ]]
-    XCRASH:hm'
-      << F, would_recover_before: xp d hm' -- >>
+    XCRASH:bm'', hm'',
+      << F, would_recover_before: xp d bm'' hm'' -- >>
     >} apply xp ms.
   Proof.
     unfold apply; intros.

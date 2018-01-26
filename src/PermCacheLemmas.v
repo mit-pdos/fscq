@@ -1,19 +1,17 @@
-Require Import List.
+Require Import Mem List.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
-Require Import PermArray.
+Require Import Pred.
 Require Import WordAuto.
 Require Import Omega.
 Require Import ListUtils.
 Require Import OrderedTypeEx.
 Require Import Arith.
 Require Import MapUtils.
-Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
 Require Import ADestructPair DestructVarname.
-Require Import Pred PermPredCrash.
 Require Export PermCacheDef.
 
 Import AddrMap.

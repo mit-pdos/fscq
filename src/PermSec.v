@@ -1,9 +1,9 @@
-Require Export PermProgAuto.
-Require Export List.
-Require Export Mem Pred.
+Require Import List.
+Require Import Mem Pred.
 Require Import Omega.
 Require Import PeanoNat.
 Require Import Nat.
+Require Export PermProgAuto.
 
 Set Implicit Arguments.
 

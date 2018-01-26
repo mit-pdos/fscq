@@ -1,8 +1,7 @@
-Require Import List.
+Require Import Mem List.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
-Require Import PermArray.
 Require Import Pred.
 Require Import WordAuto.
 Require Import Omega.
@@ -10,7 +9,6 @@ Require Import ListUtils.
 Require Import OrderedTypeEx.
 Require Import Arith.
 Require Import MapUtils.
-Require Import MemPred.
 Require Import ListPred. 
 Require Import FunctionalExtensionality.
 Require Import ADestructPair DestructVarname.
@@ -128,7 +126,6 @@ Proof.
       rewrite MapFacts.add_neq_o; eauto.
       unfold vsmerge; simpl.
       eapply incl_cons; eauto.
-      apply incl_refl.
 
       unfold size_valid in *; simpl; auto.
       repeat rewrite map_add_dup_cardinal; auto.      
@@ -802,8 +799,8 @@ Theorem init_load_ok :
     eauto.
     eauto.
     eapply ptsto_subset_upd; eauto.
-    2: eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
-    2: apply incl_tl; apply incl_refl.
+    eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
+    apply incl_tl.
     apply incl_cons2; auto.
 
     rewrite <- crash_xform_rep_r.
@@ -813,8 +810,8 @@ Theorem init_load_ok :
     eapply mem_pred_absorb_nop with (a := a).
     eauto.
     eapply ptsto_subset_upd; eauto.
-    2: eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
-    2: apply incl_tl; apply incl_refl.
+    eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
+    apply incl_tl.
     apply incl_cons2; auto.
   Qed.
 
@@ -932,4 +929,3 @@ Theorem init_load_ok :
   Hint Extern 1 ({{_ | _}} Bind (read_array _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_ | _}} Bind (write_array _ _ _ _) _) => apply write_array_ok : prog.
   Hint Extern 1 ({{_ | _}} Bind (sync_array _ _ _) _) => apply sync_array_ok : prog.
-

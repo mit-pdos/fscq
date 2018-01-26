@@ -6,15 +6,14 @@ Require Import FunctionalExtensionality.
 Require Import Omega.
 Require Import Eqdep_dec.
 Require Import ListUtils.
-Require Import Pred PermPredCrash.
-Require Import PermGenSepN.
+Require Import Pred.
 Require Import MapUtils.
 Require Import FMapFacts.
 Require Import RelationClasses.
 Require Import Morphisms.
-Require Import PermArray.
-Require Export PermDiskLog.
 Require Import Word.
+
+Require Export PermGenSepN PermDiskLog.
 
 Import AddrMap.
 Import ListNotations.

@@ -2,7 +2,7 @@ Require Import Arith.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
-Require Import Pred PermPredCrash.
+Require Import Pred.
 Require Import Omega.
 Require Import Word.
 Require Import Rec.

@@ -3,8 +3,8 @@ Require Import List.
 Require Import Morphisms.
 Require Import Word.
 Require Import Arith FunctionalExtensionality ProofIrrelevance.
-Require Export PermProgMonad PermPredCrash.
-Require Export PermBlockmem PermHashmap.
+
+Require Export PermPredCrash PermProgMonad PermBlockmem PermHashmap.
 
 Set Implicit Arguments.
 

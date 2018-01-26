@@ -1,4 +1,4 @@
-Require Import Pred Mem Word Arith.
+Require Import Pred Mem Word Arith List.
 Require Import FunctionalExtensionality.
 Require Export PermSepAuto.
 

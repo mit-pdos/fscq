@@ -4,7 +4,7 @@ Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
 Require Import Arith.
-Require Import ListPred MemPred.
+Require Import ListPred.
 Require Export PermAsyncDisk.
 
 Set Implicit Arguments.
@@ -1339,7 +1339,7 @@ Proof.
 Qed.
 
 Hint Resolve sync_invariant_listpred.
-
+(*
 Theorem sync_invariant_mem_pred :
   forall A B AEQ (f: A -> B -> pred) (m: @Mem.mem A AEQ B),
     (forall a b, sync_invariant (f a b)) ->
@@ -1349,7 +1349,7 @@ Proof.
 Qed.
 
 Hint Resolve sync_invariant_mem_pred.
-
+*)
 Theorem upd_sync_invariant : forall (p : @pred _ _ _) m a v l l',
   sync_invariant p ->
   p m ->

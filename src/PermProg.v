@@ -1,11 +1,11 @@
 Require Import Mem.
-Require Export PermAsyncDisk.
 Require Import EquivDec.
 Require Import List.
 Require Import PeanoNat.
 Require Import Nat.
 Require Import Omega.
 Require Import Word.
+Require Export PermAsyncDisk.
 
 Set Implicit Arguments.
 

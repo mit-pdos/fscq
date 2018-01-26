@@ -3,7 +3,7 @@ Require Import EqdepFacts.
 Require Import Arith.
 Require Import ListUtils.
 Require Import List.
-Require Import PermProg.
+Require Export PermProg.
 
 Set Implicit Arguments.
 

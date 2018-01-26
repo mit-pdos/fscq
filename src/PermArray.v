@@ -3,7 +3,7 @@ Require Import ListUtils.
 Require Import List Omega Ring Word Pred.
 Require Import FunctionalExtensionality.
 Require Import WordAuto.
-Require Export PermPredCrash.
+Require Export PermSepAuto.
 
 Import ListNotations.
 
@@ -833,7 +833,8 @@ Proof.
   destruct (lt_dec a (length l)).
   apply vsupd_vecs_selN_vsmerge_in'; auto.
   rewrite selN_oob in *; auto; try omega.
-  rewrite vsupd_vecs_length; omega.
+  rewrite vsupd_vecs_length.
+  apply not_gt; auto.
 Qed.
 
 Lemma vsupd_vecs_incl : forall l vs,

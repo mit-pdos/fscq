@@ -1,17 +1,15 @@
 Require Import Mem.
-Require Import PermProg.
 Require Import List.
-Require Import PermArray.
 Require Import Pred.
 Require Import FunctionalExtensionality.
 Require Import Word.
 Require Import WordAuto.
 Require Import Omega.
 Require Import Ring.
-Require Import PermSepAuto.
 Require Import ListUtils.
 Require Import ListPred.
 
+Require Export PermSepAuto.
 Set Implicit Arguments.
 
 (**

@@ -29,6 +29,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermProg PermHashmap PermBlockmem \
 	      PermProgAuto PermSec \
 	      PermProgMonad PermHoare PermSepAuto \
+		  PermMemPred \
 	      PermInstr PermProgLoop PermProgList \
           PermCacheDef PermCacheLemmas PermCacheSec PermCacheRangeSec \
 	      PermDiskLogHdr PermDiskLogPadded PermDiskLog \

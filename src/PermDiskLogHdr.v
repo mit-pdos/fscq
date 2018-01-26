@@ -3,7 +3,7 @@ Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
 Require Import PermHashmap.
-Require Import Pred PermPredCrash.
+Require Import Pred.
 Require Import Omega.
 Require Import Word.
 Require Import Rec.
@@ -12,8 +12,8 @@ Require Import FSLayout.
 Require Import Rounding.
 Require Import List ListUtils.
 Require Import Psatz.
-Require Import PermAsyncRecArray.
-Require Export PermCacheRangeSec.
+
+Require Export PermAsyncRecArray.
 
 Import ListNotations.
 
