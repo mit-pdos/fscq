@@ -1,4 +1,4 @@
-Require Import List.
+Require Import Mem List.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
@@ -203,11 +203,6 @@ Set Implicit Arguments.
   Local Hint Resolve vsupd_vecs_length_ok.
   Local Hint Resolve vssync_vecs_length_ok.
 
-Print mem_incl.
-
-LeftHere.
-
-
   Lemma vsupd_vecs_mem_exis : forall F a l vs d,
     (F * arrayN ptsto_subset a vs)%pred d ->
     Forall (fun e => fst e < length vs) l ->
@@ -223,7 +218,6 @@ LeftHere.
     edestruct IHl; eauto; intuition.
     eexists; split; simpl in *.
     apply arrayN_subset_memupd; eauto.
-    apply incl_refl.
     rewrite vsupd_vecs_length; auto.
     edestruct arrayN_selN_subset with (m := d) (a := a + k); eauto; try omega.
     intuition; replace (a + k - a) with k in * by omega.
@@ -231,10 +225,10 @@ LeftHere.
     apply mem_incl_upd; auto.
 
     destruct x0; simpl in *; subst.
-    apply incl_cons; simpl.
+    apply incl_cons.
     - apply in_cons.
       apply vsupd_vecs_selN_vsmerge_in.
-      constructor; auto.
+      constructor; simpl; auto.
     - eapply incl_tran; eauto.
       apply vsupd_vecs_incl in H0.
       eapply forall2_selN in H0; eauto.
@@ -242,15 +236,15 @@ LeftHere.
       rewrite selN_updN_eq in H0 by (rewrite vsupd_vecs_length; auto).
       eapply incl_tran; try eassumption.
       apply incl_tl; apply incl_refl.
-    Unshelve. eauto.
+    Unshelve. exact valuset0.
   Qed.
 
 
-  Lemma vsupd_vecs_xcrash_firstn' : forall F a l n vs cs' d',
+  Lemma vsupd_vecs_xcrash_firstn' : forall F a l n vs cs' d' bm',
     (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn n l)))%pred d' ->
     Forall (fun e => fst e < length vs) l ->
-    crash_xform (rep cs' d') =p=>
-    crash_xform (exists cs d, rep cs d * 
+    crash_xform (rep cs' d' bm') =p=>
+    crash_xform (exists cs d, rep cs d bm'* 
       [[ (F * arrayN ptsto_subset a (vsupd_vecs vs l))%pred d ]]).
   Proof.
     induction l; simpl; intros.
@@ -267,6 +261,7 @@ LeftHere.
       rewrite mem_pred_extract with (a := a + a0_1) by eauto.
       rewrite <- vsupd_vecs_cons.
       edestruct vsupd_vecs_mem_exis with (l := (a0_1, a0_2) :: l); eauto; intuition.
+      clear H11.
       cancel; xform_normr.
       rewrite <- crash_xform_rep_r.
       unfold rep; cancel.
@@ -281,14 +276,14 @@ LeftHere.
     - rewrite IHl; eauto.
       inversion H0; subst.
       rewrite vsupd_length; auto.
-    Unshelve. exact ($0, nil).
+    Unshelve. exact valuset0.
   Qed.
 
-  Lemma vsupd_vecs_xcrash_firstn : forall F a n l vs,
+  Lemma vsupd_vecs_xcrash_firstn : forall F a n l vs bm,
     Forall (fun e => fst e < length vs) l ->
-    crash_xform (exists cs' d', rep cs' d' *
+    crash_xform (exists cs' d', rep cs' d' bm *
       [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn n l)))%pred d' ]]) =p=>
-    crash_xform (exists cs d, rep cs d * 
+    crash_xform (exists cs d, rep cs d bm * 
       [[ (F * arrayN ptsto_subset a (vsupd_vecs vs l))%pred d ]]).
   Proof.
     intros.
@@ -298,88 +293,209 @@ LeftHere.
     do 2 (xform_normr; cancel).
   Qed.
 
+  Lemma extract_blocks_selN:
+    forall l bm n v def1 def2,
+      n < length l ->
+      handles_valid bm l ->
+      bm (selN l n def1) = Some v ->
+      selN (extract_blocks bm l) n def2 = v.
+  Proof.
+    induction l; simpl; intros; auto; try congruence.
+    inversion H.
+    inversion H0; subst.
+    unfold handle_valid in *;
+    cleanup; simpl; auto.
+    eapply IHl; eauto; omega.
+  Qed.
 
-  Theorem write_vecs_ok : forall a l cs,
+  
+  Theorem write_vecs_ok :
+    forall a l cs pr,
     {< d F vs,
-    PRE:hm
-      rep cs d * [[ (F * arrayS a vs)%pred d ]] *
+    PERM:pr                         
+    PRE:bm, hm,
+      rep cs d bm * [[ (F * arrayS a vs)%pred d ]] *
+      [[ handles_valid bm (List.map snd l) ]] *
       [[ Forall (fun e => fst e < length vs) l ]]
-    POST:hm' RET:cs
-      exists d', rep cs d' *
-      [[ (F * arrayS a (vsupd_vecs vs l))%pred d' ]]
-    XCRASH:hm'
-      exists cs' d', rep cs' d' *
-      [[ (F * arrayS a (vsupd_vecs vs l))%pred d' ]]
+    POST:bm', hm', RET:cs
+      let blocks := extract_blocks bm' (List.map snd l) in                     
+      exists d', rep cs d' bm' *
+      [[ (F * arrayS a (vsupd_vecs vs (List.combine (List.map fst l) blocks)))%pred d' ]]
+    XCRASH:bm'', hm'',
+      let blocks := extract_blocks bm'' (List.map snd l) in   
+      exists cs' d' n, rep cs' d' bm'' *
+      [[ (F * arrayS a (vsupd_vecs vs (firstn n (List.combine (List.map fst l) blocks))))%pred d' ]]
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
-    safestep. auto. auto.
+    safestep. auto. eauto.
+    eauto.
+    
+    unfold handles_valid in *;
+    pose proof H6 as Hy.
+    rewrite Forall_forall in Hy.
+    edestruct Hy.
+    apply in_map.
+    apply in_selN; eauto.
+    safestep.
+    eapply block_mem_subset_extract_some; eauto.
+    rewrite vsupd_vecs_length.
+    pose proof H5 as Hx.
+    rewrite Forall_forall in Hx; apply Hx.
+    apply in_selN; eauto.
     step.
     prestep; unfold rep; cancel.
 
-    erewrite firstn_S_selN_expand by auto.
+    erewrite firstn_S_selN_expand.
     setoid_rewrite vsupd_vecs_app; simpl.
-    cancel.
+    rewrite selN_combine; simpl; auto.
+    erewrite selN_map; auto.
+    
+    erewrite extract_blocks_selN; eauto.
+    rewrite map_length; auto.
+    erewrite selN_map; eauto.
+    erewrite <- handles_valid_length_eq; auto.
+    repeat rewrite map_length; auto.
+    rewrite combine_length_eq.
+    rewrite map_length; auto.
+    erewrite <- handles_valid_length_eq; auto.
+    repeat rewrite map_length; auto.
+    solve_hashmap_subset.
 
-    repeat xcrash_rewrite.
-    setoid_rewrite vsupd_vecs_progress; auto.
-    apply vsupd_vecs_xcrash_firstn; auto.
+    cancel; rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    unfold pimpl; intros;
+    repeat (eapply block_mem_subset_trans; eauto).
+
+    xcrash.
+    eassign (S m); simpl.
+    
+    erewrite firstn_S_selN_expand.
+    setoid_rewrite vsupd_vecs_app; simpl.
+    rewrite selN_combine; simpl; auto.
+    erewrite selN_map; auto.
+
+    erewrite extract_blocks_subset.
+    erewrite extract_blocks_selN; eauto.
+    rewrite map_length; auto.
+    eapply handles_valid_subset_trans; eauto.
+    erewrite selN_map; eauto.
+    eauto.
+    repeat (eapply block_mem_subset_trans; eauto).
+    erewrite <- handles_valid_length_eq; auto.
+    repeat rewrite map_length; auto.
+    eapply handles_valid_subset_trans; eauto.
+    rewrite combine_length_eq.
+    rewrite map_length; auto.
+    erewrite <- handles_valid_length_eq; auto.
+    repeat rewrite map_length; auto.
+    eapply handles_valid_subset_trans; eauto.
 
     step.
-    rewrite firstn_oob; auto.
-    xcrash.
-    Unshelve. exact tt.
+    step.
+    rewrite firstn_oob.
+    erewrite extract_blocks_subset; eauto.
+    rewrite combine_length_eq, map_length; auto.
+    erewrite <- handles_valid_length_eq; auto.
+    repeat rewrite map_length; auto.
+    solve_hashmap_subset.
+    eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
+    unfold false_pred; cancel.
+
+    Unshelve.
+    all: auto.
+    exact tt.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
 
-
-  Theorem sync_vecs_ok : forall a l cs,
+  Print vssync.
+  Print vssync_vecs.
+  
+  Theorem sync_vecs_ok :
+    forall a l cs pr,
     {< d d0 F vs,
-    PRE:hm
-      synrep cs d0 d *
+    PERM:pr   
+    PRE:bm, hm,
+      synrep cs d0 d bm *
       [[ (F * arrayS a vs)%pred d ]] *
       [[ Forall (fun e => e < length vs) l /\ sync_invariant F ]]
-    POST:hm' RET:cs
-      exists d', synrep cs d0 d' *
+    POST:bm', hm', RET:cs
+      exists d', synrep cs d0 d' bm' *
       [[ (F * arrayS a (vssync_vecs vs l))%pred d' ]]
-    CRASH:hm'
-      exists cs', rep cs' d0
+    CRASH:bm'', hm'',
+      exists cs', rep cs' d0 bm''
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs; intros.
     step.
     apply app_nil_l.
-    cancel.
-    step.
+    pred_apply; cancel.
+    safestep.
+    eassign F_; cancel.
+    eauto.
     rewrite vssync_vecs_length.
     eapply Forall_inv with (P := fun x => x < length vs).
     eauto using forall_app_l.
+    auto.
+    auto.
+    step.
     step.
     apply cons_nil_app.
     rewrite vssync_vecs_app; cancel.
+    solve_hashmap_subset.
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    unfold pimpl; intros;
+    repeat (eapply block_mem_subset_trans; eauto).
+    step.
     step.
     rewrite app_nil_r. cancel.
-    Unshelve. all: eauto; constructor.
+    solve_hashmap_subset.
+    eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
+    unfold false_pred; cancel.
+    Unshelve.
+    exact tt.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
 
 
-  Theorem sync_vecs_now_ok : forall a l cs,
+  Theorem sync_vecs_now_ok :
+    forall a l cs pr,
     {< d F vs,
-    PRE:hm
-      rep cs d *
+    PERM:pr   
+    PRE:bm, hm,
+      rep cs d bm *
       [[ (F * arrayS a vs)%pred d ]] *
       [[ Forall (fun e => e < length vs) l /\ sync_invariant F ]]
-    POST:hm' RET:cs
-      exists d', rep cs d' *
+    POST:bm', hm', RET:cs
+      exists d', rep cs d' bm' *
       [[ (F * arrayS a (vssync_vecs vs l))%pred d' ]]
-    CRASH:hm'
-      exists cs', rep cs' d
+    CRASH:bm'', hm'',
+      exists cs', rep cs' d bm''
     >} sync_vecs_now a l cs.
   Proof.
     unfold sync_vecs_now; intros.
     step.
     eapply pimpl_ok2; monad_simpl. apply sync_vecs_ok.
-    cancel.
+    safecancel.
+    eassign F_; cancel.
+    all: eauto.
+    safestep.
+    eassign F_; cancel.
+    all: eauto.
     step.
     step.
-    cancel.
+    solve_hashmap_subset.
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    unfold pimpl; intros;
+    repeat (eapply block_mem_subset_trans; eauto).
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    Unshelve.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
+
+    Hint Extern 1 ({{_|_}} Bind (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (sync_vecs_now _ _ _) _) => apply sync_vecs_now_ok : prog.

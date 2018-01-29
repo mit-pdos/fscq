@@ -2,7 +2,7 @@ Require Import Arith.
 Require Import Bool.
 Require Import List.
 Require Import Classes.SetoidTactics.
-Require Import Pred.
+Require Import Mem Pred.
 Require Import FunctionalExtensionality.
 Require Import Omega.
 Require Import Word.
@@ -16,7 +16,6 @@ Require Import MapUtils.
 Require Import FMapFacts.
 Require Import Lock.
 
-Require Export PermHashmap.
 Require Export PermLogReplay.
 
 Import ListNotations.
@@ -1101,7 +1100,162 @@ Qed.
                      replay_disk_vsupd_vecs.
 
 
-LeftHere.
+  Lemma in_fst_snd_map_split:
+    forall A B (l: list (A * B)) x y,
+      In (x,y) l ->
+      In x (map fst l) /\ In y (map snd l).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a; intuition; simpl in *.
+    inversion H0; subst; auto.
+    inversion H0; subst; auto.
+    right; specialize (IHl x y H0); intuition.
+    right; specialize (IHl x y H0); intuition.
+  Qed.
+  
+  Lemma in_fst:
+    forall A B (l: list (A * B)) x y,
+      In (x,y) l -> In x (map fst l).
+  Proof.
+    intros; apply in_fst_snd_map_split in H; intuition.
+  Qed.
+
+  Lemma in_fst_exists_snd:
+    forall A B (l: list (A * B)) x,
+      In x (map fst l) ->
+      exists y, In (x, y) l.
+  Proof.
+    induction l; simpl; intros; intuition.
+    destruct a; simpl in *; subst; eexists; eauto.
+    specialize (IHl x H0); destruct IHl; eauto.
+  Qed.
+
+  Lemma in_extract_blocks_map:
+    forall hmap bm x y b,
+      In (x,y) (Map.elements hmap) ->
+      bm y = Some b ->
+      In (x,b) (Map.elements (extract_blocks_map bm hmap)).
+  Proof.
+    intro hmap; destruct hmap.
+    generalize dependent this;
+    induction this;
+    simpl in *; intros; auto; try congruence.
+    unfold Map.elements,
+    AddrMap_AVL.Raw.elements in *; simpl in *;
+    unfold extract_block; cleanup; eauto.
+    rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
+    apply in_app_iff.
+    apply in_app_iff in H.
+    inversion is_bst; subst.
+    intuition.
+    left; eapply H; eauto.
+    inversion H1.
+    inversion H3; subst; cleanup.
+    right; left; auto.
+    right; right; eapply H2; eauto.
+  Qed.
+
+  Lemma Forall_extract_blocks_mem_addr_in_len:
+    forall A hmap bm (l: list A),
+      handles_valid bm (map snd (Map.elements hmap)) ->
+      Forall (fun e : addr * tagged_block => fst e < length l)
+             (Map.elements (extract_blocks_map bm hmap)) ->
+      Forall (fun e : addr * handle => fst e < length l)
+             (Map.elements hmap).
+  Proof.
+    unfold handles_valid, handle_valid; intros;
+    rewrite Forall_forall in *; intros.
+    destruct x ; simpl in *.
+    apply in_fst_snd_map_split in H1 as Hx; intuition.
+    specialize (H h H3); cleanup.
+    eapply in_extract_blocks_map in H1; eauto.
+    specialize (H0 _ H1); simpl in *; auto.
+  Qed.
+
+  Lemma Forall_map_keys:
+    forall A hmap (l: list A),
+      Forall (fun e : addr * handle => fst e < length l)
+             (Map.elements hmap) ->
+      Forall (fun e : addr => e < length l)
+             (map_keys hmap).
+  Proof.
+    unfold handles_valid, handle_valid, map_keys; intros;
+    rewrite Forall_forall in *; intros.
+    apply in_fst_exists_snd in H0; cleanup.
+    specialize (H _ H0); simpl in *; auto.
+  Qed.
+
+  Lemma extract_blocks_map_empty:
+    forall bm,
+      Map.Equal (extract_blocks_map bm hmap0) bmap0.
+  Proof.
+    unfold Map.Equal; intros;    
+    unfold extract_blocks_map, bmap0, hmap0, gmap0, map0; simpl.
+    rewrite MapFacts.map_o; unfold option_map;
+    repeat rewrite MapFacts.empty_o; auto.
+  Qed.
+
+
+  Lemma map_keys_extract_blocks_map_eq:
+    forall hmap bm,
+      map_keys (extract_blocks_map bm hmap) = map_keys hmap.
+  Proof.
+    intro hmap; destruct hmap.
+    generalize dependent this;
+    induction this;
+    simpl in *; intros; auto; try congruence.
+    unfold map_keys, Map.elements,
+    AddrMap_AVL.Raw.elements in *; simpl in *;
+    unfold extract_block in *; cleanup; eauto.
+    repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
+    repeat rewrite map_app; simpl in *.
+    inversion is_bst; subst.
+    unfold AddrMap_AVL.Raw.elements;
+    erewrite app_nil_r,  IHthis1, IHthis2; auto; simpl.
+    repeat rewrite app_nil_r; auto.
+  Qed.
+
+  Lemma combine_elements_eq:
+    forall hmap bm,
+      handles_valid bm (map snd (Map.elements hmap)) ->
+      List.combine (map fst (Map.elements hmap))
+                   (extract_blocks bm (map snd (Map.elements hmap))) =
+      (Map.elements (extract_blocks_map bm hmap)).
+  Proof.
+    intro hmap; destruct hmap.
+    generalize dependent this;
+    induction this;
+    simpl in *; intros; auto; try congruence.
+    unfold handles_valid, handle_valid, Map.elements,
+    AddrMap_AVL.Raw.elements in *; simpl in *;
+    unfold extract_block in *; cleanup; eauto.
+    repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
+    repeat rewrite map_app in *; simpl in *.
+    inversion is_bst; subst.
+    
+    rewrite extract_blocks_app; simpl.
+    rewrite combine_app.
+    repeat rewrite app_nil_r in *.
+    eapply forall_app_l in H as Hl.
+    apply forall_app_r in H as Hr.
+    inversion Hl; cleanup; simpl.
+    unfold AddrMap_AVL.Raw.elements;
+    erewrite IHthis1, IHthis2; auto; simpl.
+    apply length_map_fst_extract_blocks_eq.
+    unfold handles_valid, handle_valid;
+    apply forall_app_r in H; auto.
+  Qed.
+  
+  Ltac solve_blockmem_subset:=
+    match goal with
+    | [|- block_mem_subset _ =p=> (fun _ : mem => _ c= _)] =>
+      unfold pimpl; intros; solve_blockmem_subset
+    | [|- _ c= _ ] =>
+      auto; eapply block_mem_subset_trans;
+      eauto; solve_blockmem_subset
+    end.
+      
+
   
   Theorem apply_ok:
     forall xp ms pr,
@@ -1120,56 +1274,98 @@ LeftHere.
     unfold apply; intros.
     step.
     unfold synced_rep; cancel.
+    eapply Forall_extract_blocks_mem_addr_in_len; eauto. 
+
     step.
     rewrite vsupd_vecs_length.
-    apply map_valid_Forall_synced_map_fst; auto.
+    apply Forall_map_keys.
+    eapply Forall_extract_blocks_mem_addr_in_len; eauto.
+
     safestep.
-    erewrite DLog.rep_hashmap_subset.
+    erewrite PermDiskLog.rep_hashmap_subset.
     cancel.
-    auto. auto.
+    solve_hashmap_subset.
+    auto.
+
+    step.
     safestep.
     unfold synced_rep; eauto.
+    erewrite PermDiskLog.rep_hashmap_subset; eauto.
+    cancel.
+    simpl.
+    apply extract_blocks_map_empty.
     rewrite vssync_vecs_length, vsupd_vecs_length; eauto.
+    eapply map_valid_equal; eauto.
+    eapply MapFacts.Equal_sym.
+    eapply MapFacts.Equal_trans.
+    apply extract_blocks_map_empty.
+    unfold bmap0; apply MapFacts.Equal_refl.
     rewrite replay_disk_vssync_vsupd_vecs; auto.
+    rewrite map_keys_extract_blocks_map_eq.
+    rewrite combine_elements_eq; auto.
+    erewrite mapeq_elements; eauto.
+    apply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_subset_trans; eauto.
+    apply Forall_nil.
+    solve_hashmap_subset.
+    solve_blockmem_subset.
 
     (* crash conditions *)
-    xcrash.
-    or_r; safecancel; eauto.
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    solve_blockmem_subset.
+    xcrash_rewrite.
+    rewrite combine_elements_eq; auto.
+    erewrite mapeq_elements with (m2:= extract_blocks_map bm ms_1).
+    erewrite <- map_keys_extract_blocks_map_eq with (bm:= bm).
+    setoid_rewrite <- firstn_exact with
+        (l:=  (map_keys (extract_blocks_map bm ms_1))) at 1.
+    setoid_rewrite apply_unsync_syncing_ok.
+    setoid_rewrite apply_synced_data_ok.
+    xcrash; or_l; safecancel; eauto.
+    apply MapFacts.Equal_sym.
+    apply extract_blocks_map_subset_trans; auto.
+    eapply handles_valid_subset_trans; eauto.
 
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    solve_blockmem_subset.
+    xcrash.
+    rewrite <- extract_blocks_subset with (bm:= bm).
+    rewrite combine_elements_eq.
+    rewrite <- firstn_exact with
+        (l:= Map.elements (extract_blocks_map bm ms_1)).
+    rewrite apply_unsync_applying_ok.
+    or_l; safecancel; eauto.
+    erewrite PermDiskLog.rep_hashmap_subset.
+    cancel.
+    solve_hashmap_subset.
+    rewrite firstn_exact; auto.
+    all: auto.
+
+    rewrite <- H1; cancel.
+    solve_hashmap_subset.
+    xcrash_rewrite.
+    rewrite <- extract_blocks_subset with (bm:= bm).
+    rewrite combine_elements_eq.
+    setoid_rewrite apply_unsync_applying_ok.
     xcrash.
     or_l; safecancel; eauto.
-    rewrite replay_disk_vssync_vsupd_vecs.
-    or_r; unfold synced_rep; cancel.
+    erewrite PermDiskLog.rep_hashmap_subset.
+    cancel.
+    solve_hashmap_subset.
+    all: auto.
 
-    xcrash.
-    or_r; safecancel.
-    unfold synced_rep; cancel.
-    rewrite DLog.rep_hashmap_subset; eauto.
-    eauto.
-    rewrite vsupd_vecs_length; eauto.
-    eapply length_eq_map_valid; eauto.
-    rewrite vsupd_vecs_length; auto.
-    erewrite <- LogReplay.replay_disk_vsupd_vecs; eauto.
-
-    xcrash.
-    or_r; safecancel.
-    unfold synced_rep; cancel.
-    rewrite DLog.rep_hashmap_subset; eauto.
-    eauto.
-    rewrite vsupd_vecs_length; eauto.
-    eapply length_eq_map_valid; eauto.
-    rewrite vsupd_vecs_length; auto.
-    erewrite <- LogReplay.replay_disk_vsupd_vecs; eauto.
-
-    Unshelve. all: eauto.
+    Unshelve.
+    all: eauto; unfold EqDec; apply handle_eq_dec.
   Qed.
 
   End UnfoldProof3.
 
 
   Local Hint Unfold map_replay : hoare_unfold.
-  Hint Extern 1 ({{_}} Bind (apply _ _) _) => apply apply_ok : prog.
-  Hint Extern 1 ({{_}} Bind (flush_noapply _ _ _) _) => apply flush_noapply_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (apply _ _) _) => apply apply_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (flush_noapply _ _ _) _) => apply flush_noapply_ok : prog.
   Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 

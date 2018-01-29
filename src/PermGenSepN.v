@@ -9,7 +9,7 @@ Require Import Ring.
 Require Import ListUtils.
 Require Import ListPred.
 
-Require Export PermSepAuto.
+Require Export PermArray.
 Set Implicit Arguments.
 
 (**
