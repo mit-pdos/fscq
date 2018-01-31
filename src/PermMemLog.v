@@ -1739,30 +1739,40 @@ Qed.
   Section UnfoldProof4.
   Local Hint Unfold rep map_replay synced_rep: hoare_unfold.
 
-  Theorem dsync_ok: forall xp a ms,
+  Theorem dsync_ok:
+    forall xp a ms pr,
     {< F Fd d na vs,
-    PRE:hm
-      << F, rep: xp (Synced na d) ms hm >> *
+    PERM:pr   
+    PRE:bm, hm,
+      << F, rep: xp (Synced na d) ms bm hm >> *
       [[[ d ::: (Fd * a |-> vs) ]]] *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms' exists d' na',
-      << F, rep: xp (Synced na' d') ms' hm' >> *
+    POST:bm', hm', RET:ms' exists d' na',
+      << F, rep: xp (Synced na' d') ms' bm' hm' >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync d a ]]
-    CRASH:hm'
+    CRASH:bm'', hm'',
       exists ms' na',
-      << F, rep: xp (Synced na' d) ms' hm' >>
+      << F, rep: xp (Synced na' d) ms' bm'' hm'' >>
     >} dsync xp a ms.
   Proof.
     unfold dsync.
     step.
-    step.
+    safestep.
+    eassign F_; cancel.
+    pred_apply; cancel.
     subst; erewrite <- replay_disk_length.
     eapply list2nmem_inbound; eauto.
-    step.
+    auto.
+    auto.
+    safestep.
+    eassign F_; cancel.
+    auto.
 
     step.
-    rewrite DLog.rep_hashmap_subset; eauto.
+    step.
+    rewrite PermDiskLog.rep_hashmap_subset; eauto.
+    solve_hashmap_subset.
     unfold vssync; autorewrite with lists; auto.
     apply map_valid_updN; auto.
     setoid_rewrite <- replay_disk_vssync_comm.
@@ -1771,9 +1781,50 @@ Qed.
     eapply list2nmem_updN; eauto.
     setoid_rewrite replay_disk_vssync_comm.
     auto.
-
+    solve_hashmap_subset.
+    
     (* crashes *)
-    all: rewrite DLog.rep_hashmap_subset; eauto.
+    rewrite <- H1; cancel.
+    rewrite PermDiskLog.rep_hashmap_subset; eauto.
+    solve_hashmap_subset.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; auto.
+
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; auto.
+    erewrite mapeq_elements; eauto.
+    eapply extract_blocks_map_subset_trans; auto.
+    eapply handles_valid_subset_trans; eauto.
+    solve_hashmap_subset.
+
+    rewrite <- H1; cancel.
+    rewrite PermDiskLog.rep_hashmap_subset; eauto.
+    solve_hashmap_subset.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; auto.
+
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; auto.
+    erewrite mapeq_elements; eauto.
+    eapply extract_blocks_map_subset_trans; auto.
+    eapply handles_valid_subset_trans; eauto.
+    solve_hashmap_subset.
+
+    rewrite <- H1; cancel.
+    rewrite PermDiskLog.rep_hashmap_subset; eauto.
+    solve_hashmap_subset.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; auto.
+
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; auto.
+    erewrite mapeq_elements; eauto.
+    eapply extract_blocks_map_subset_trans; auto.
+    eapply handles_valid_subset_trans; eauto.
+    solve_hashmap_subset.    
   Qed.
 
   End UnfoldProof4.
