@@ -2788,6 +2788,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
         - step.
           rewrite indrep_n_helper_valid by auto; cancel.
           rewrite firstn_oob by indrep_n_tree_bound.
+          rewrite upd_range_fast_eq.
           hoare.
       + cbn [indclear].
         step. step.
