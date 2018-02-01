@@ -6,6 +6,21 @@ Section HashExec.
 
   Hint Resolve hashmap_le_refl.
 
+  Theorem hashmap_le_upd : forall sigma sz (w: Word.word sz),
+      AsyncDisk.hash_safe (Sigma.hm sigma) (AsyncDisk.hash_fwd w) w ->
+      hashmap_le (Sigma.hm sigma) (Sigma.hm (Sigma.upd_hm sigma w)).
+  Proof.
+    destruct sigma; simpl; intros.
+    unfold AsyncDisk.upd_hashmap'.
+    unfold hashmap_le.
+    eexists; eauto.
+    econstructor.
+    constructor.
+    eauto.
+  Qed.
+
+  Hint Resolve hashmap_le_upd.
+
   Theorem exec_hashmap_le : forall T (p: cprog T)
                               G tid sigma out,
       exec G tid sigma p out ->
@@ -36,14 +51,6 @@ Section HashExec.
                | _ => progress simpl in *
                | _ => auto; congruence
                end.
-    - repeat match goal with
-             | [ sigma: Sigma |- _ ] => destruct sigma; simpl in *
-             end;
-        eauto.
-      unfold hashmap_le.
-      eexists.
-      econstructor; eauto.
-      constructor.
     - destruct out; eauto.
       etransitivity; eauto.
     - destruct sigma'; simpl in *.
