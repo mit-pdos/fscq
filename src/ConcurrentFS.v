@@ -562,8 +562,8 @@ Section ConcurrentFS.
       descend; intuition eauto.
       reflexivity.
     - step.
-      step.
       descend; simpl in *; intuition eauto.
+      step.
 
       monad_simpl.
       eapply cprog_ok_weaken;
@@ -720,7 +720,7 @@ Section ConcurrentFS.
                  (write_syscall m_a p update).
   Proof using Type.
     intros.
-    apply write_syscall_ok' with (update:=update) in H.
+    apply write_syscall_ok' with (update:=update) (m_a:=m_a) in H.
     apply retry_upgrade_spec in H.
     unfold cprog_spec; intros.
     eapply cprog_ok_weaken; [ eauto | ].
@@ -767,7 +767,7 @@ Section ConcurrentFS.
       simplify; finish.
 
     destruct r.
-    - step; finish.
+    - repeat (step; finish).
     - repeat (step; finish).
       rename r into end_t.
       eapply cprog_ok_weaken;
@@ -785,7 +785,7 @@ Section ConcurrentFS.
       etransitivity; eauto.
 
       destruct_goal_matches; intuition eauto.
-    - step; finish.
+    - repeat (step; finish).
   Qed.
 
   (* translate all system calls for extraction *)
@@ -952,6 +952,17 @@ Section ConcurrentFS.
   Definition proj_comp G T {p: LocalLock -> Cache -> cprog T}
              (cp: forall ls c, Compiled G (p ls c)) :
     LocalLock -> Cache -> cprog T := fun ls c => compiled_prog (cp ls c).
+
+  Theorem cprog_spec_proj_comp : forall tid A T (spec: Spec A T)
+                                   (p: LocalLock -> Cache -> cprog T)
+                                   (cp: forall ls c, Compiled G (p ls c)) ls c,
+      cprog_spec G tid spec (p ls c) ->
+      cprog_spec G tid spec (proj_comp cp ls c).
+  Proof.
+    unfold proj_comp; eauto.
+  Qed.
+
+  Hint Resolve cprog_spec_proj_comp.
 
   Definition create dnum name :=
     write_syscall None
