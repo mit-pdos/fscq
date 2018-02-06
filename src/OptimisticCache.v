@@ -2,6 +2,7 @@ Require Import CCL.
 
 Require Import Mem AsyncDisk.
 Require Import FunctionalExtensionality.
+Require Import String.
 
 (* re-export MemCache since Cache appears in external type signatures *)
 Require Export MemCache.
@@ -686,6 +687,56 @@ Section OptimisticCache.
                  (CacheInit c).
   Proof.
     unfold CacheInit.
+    hoare finish.
+  Qed.
+
+  Definition EnsureFilled (c:Cache) (a:option nat) : cprog Cache :=
+    match a with
+    | Some a => start <- Rdtsc;
+                 do '(_, cs) <- CacheRead (caches c c) a Locked;
+                 end_t <- Rdtsc;
+                 _ <- Debug "EnsureFilled fill" (end_t - start);
+                 Ret (cache cs)
+    | None => Ret c
+    end.
+
+  Lemma lock_owned : forall st tid,
+      Sigma.l st = Owned tid ->
+      local_l tid (Sigma.l st) = Locked.
+  Proof.
+    intros.
+    rewrite H; simpl.
+    destruct (tid_eq_dec tid tid); congruence.
+  Qed.
+
+  Hint Resolve lock_owned.
+
+  Theorem EnsureFilled_ok : forall tid c ma,
+      cprog_spec G tid
+                 (fun '(F, vd, v0) sigma =>
+                    {| precondition :=
+                         F (Sigma.mem sigma) /\
+                         (* eviction is only supported if the caches are in sync
+                         (the virtual disks are the same) *)
+                         cache_rep (Sigma.disk sigma) c vd /\
+                         (forall a, ma = Some a -> vd a = Some v0) /\
+                         Sigma.l sigma = Owned tid;
+                       postcondition :=
+                         fun sigma' c' =>
+                           F (Sigma.mem sigma') /\
+                           cache_rep (Sigma.disk sigma') c' vd /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
+                 (EnsureFilled c ma).
+  Proof.
+    unfold EnsureFilled.
+    destruct ma; intros;
+      hoare finish.
+    eapply cprog_ok_weaken.
+    monad_simpl.
+    eapply CacheRead_ok.
+    simplify; finish.
     hoare finish.
   Qed.
 

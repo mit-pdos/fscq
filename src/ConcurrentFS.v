@@ -97,16 +97,6 @@ Section ConcurrentFS.
     | _ => Ret tt
     end.
 
-  Definition EnsureFilled (c:Cache) (a:option nat) : cprog Cache :=
-    match a with
-    | Some a => start <- Rdtsc;
-                 do '(_, cs) <- CacheRead (caches c c) a Locked;
-                 end_t <- Rdtsc;
-                 _ <- Debug "EnsureFilled fill" (end_t - start);
-                 Ret (cache cs)
-    | None => Ret c
-    end.
-
   Definition write_syscall T (a:option nat) (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
@@ -525,20 +515,26 @@ Section ConcurrentFS.
 
   Opaque allowed_fs_update.
 
+  Hint Extern 1 {{ EnsureFilled _ _; _ }} => apply EnsureFilled_ok : prog.
+
   Theorem write_syscall_ok' : forall m_a T (p: OptimisticProg T) A
                                 (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
                             (fs_spec P fsspec tid mscs Locked c)
                             (p mscs Locked c)) ->
       cprog_spec G tid
-                 (fun '(tree, homedirs, a) sigma =>
+                 (fun '(tree, homedirs, a, v0) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
                          same_fs_update tid homedirs tree update (fs_dirup (fsspec a)) /\
-                         allowed_fs_update tid homedirs tree (fs_post (fsspec a)) update;
+                         allowed_fs_update tid homedirs tree (fs_post (fsspec a)) update /\
+                         match m_a with
+                         | Some v => v = v0
+                         | None => True
+                         end;
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -564,10 +560,7 @@ Section ConcurrentFS.
     - step.
       descend; simpl in *; intuition eauto.
       step.
-
-      monad_simpl.
-      eapply cprog_ok_weaken;
-        [ eapply H | ]; simplify; finish.
+      descend; simpl in *; intuition eauto.
 
       (* destruct return value of optimistic program *)
       destruct a1.
