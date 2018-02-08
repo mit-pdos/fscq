@@ -1,7 +1,7 @@
 Require Import Word.
 Require Import Arith.
 Require Import Eqdep_dec.
-Require Import AsyncDisk.
+Require Import PermAsyncDisk.
 Require Import List ListUtils.
 Require Import Omega.
 Require Import FunctionalExtensionality.

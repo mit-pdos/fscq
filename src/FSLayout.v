@@ -1,15 +1,11 @@
-Require Import Prog.
 Require Import Word.
 Require Import Rec.
 Require Import List.
-Require Import Pred PredCrash.
+Require Import Pred.
 Require Import Eqdep_dec.
 Require Import Arith.
-Require Import Hoare.
-Require Import SepAuto.
-Require Import Cache.
-Require Import AsyncDisk.
 Require Import Omega.
+Require Import PermCacheRangeSec.
 
 Import ListNotations.
 Set Implicit Arguments.

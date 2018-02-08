@@ -621,10 +621,10 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold write_aligned, avail_rep.
     step.
-    all: apply handles_valid_length_eq in H8 as Hx.
+    all: apply extract_blocks_length in H8 as Hx.
     cleanup.
     cbn. simplen.
-    setoid_rewrite combine_length_eq; auto.
+    setoid_rewrite combine_length_eq in Hx; auto.
     simplen.
     step.
     step.
@@ -635,7 +635,7 @@ Module AsyncRecArray (RA : RASig).
     xcrash.
     rewrite vsupd_range_length; auto.
     simplen.
-    setoid_rewrite combine_length_eq; auto.
+    setoid_rewrite combine_length_eq in Hx; auto.
     simplen.
   Qed.
 

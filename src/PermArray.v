@@ -1151,8 +1151,8 @@ Proof.
   rewrite selN_combine.
   destruct (lt_dec i (length l)).
   rewrite repeat_selN; auto.
-  setoid_rewrite selN_oob; auto.
-  omega. rewrite repeat_length; omega. omega.
+  repeat rewrite selN_oob; auto.
+  rewrite repeat_length; omega. omega.
   rewrite repeat_length; omega.
 Qed.
 
@@ -1473,7 +1473,7 @@ Section SubsetArray.
     eexists; split; try split.
     eapply ptsto_valid.
     pred_apply; replace (st + (a - st)) with a by omega.
-    eassign ((fst (selN l (a - st) def), dummy)).
+    eassign ((fst (selN l (a - st) (def_cur, def_old)), dummy)).
     cancel.
     simpl; auto.
     auto.

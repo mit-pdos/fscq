@@ -158,7 +158,7 @@ Proof.
   {
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x0)) in H.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
@@ -190,7 +190,7 @@ Proof.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x)) in H.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x)) in H.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
@@ -201,7 +201,7 @@ Proof.
     inv_exec_perm.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x0)) in H as Hy.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H as Hy.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
@@ -217,7 +217,7 @@ Proof.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (fst dummy1, x4)) in H.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x4)) in H.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.

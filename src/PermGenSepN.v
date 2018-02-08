@@ -1117,7 +1117,9 @@ Proof.
   specialize (Hx _ H0); unfold vsmerge in Hx.
   rewrite surjective_pairing at 1.
   erewrite <- selN_map with (f := snd) in * by auto.
-  setoid_rewrite <- selN_map with (f := snd); auto.
+  assert (A: forall def1 def2, selN (map snd vsl) pos def1 = snd (selN vsl pos def2)).
+  intros; erewrite selN_map with (f := snd); auto.
+  erewrite <- A.
   rewrite H in *.
   rewrite repeat_selN in * by auto.
   simpl in *; intuition.

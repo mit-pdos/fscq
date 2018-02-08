@@ -4,36 +4,23 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 	      -I codegen -I mllib -X ocamlfuse \
 	      -package extunix -package zarith -package ocamlfuse
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
-	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
-	      OperationalSemantics \
-	      Hashmap HashmapProg \
-	      SepAuto Idempotent Errno \
-	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
-	      MemPred Cache \
-	      FSLayout AsyncRecArray DiskLogHash \
-	      LogReplay MemLog ListPred GenSepN FMapMem \
-	      NEList DiskSet GroupLog Log LogRecArray \
-	      Balloc BlockPtr GenSepAuto Inode BFile BFileCrash \
-	      MemMatch FileRecArray \
-	      Dir DirName DirCache StringUtils TreeUtils \
-	      DirTreePath DirTreeDef DirTreePred DirTreeRep DirTreeSafe \
-	      DirTreeNames DirTreeInodes DirTree \
-	      TreeCrash \
-	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
-	      ADestructPair DestructVarname\
-	      DirSep DirSepCrash ProgMetatheory TreeSeq \
-	      AtomicCp BACHelper BytefileSpecs \
-		  \
+	      Mem Pred DestructVarname ADestructPair \
+	      Errno \
+	      ListUtils MapUtils Rec \
+	      FSLayout \
+	      ListPred FMapMem \
+	      NEList \
+	      \
 	      PermAsyncDisk PermPredCrash \
-	      PermArray PermRecArrayUtils PermAsyncRecArray\
+	      PermArray PermRecArrayUtils PermAsyncRecArray \
 	      PermProg PermHashmap PermBlockmem \
 	      PermProgAuto PermSec \
 	      PermProgMonad PermHoare PermSepAuto \
-		  PermMemPred \
+	      PermMemPred \
 	      PermInstr PermProgLoop PermProgList \
-          PermCacheDef PermCacheLemmas PermCacheSec PermCacheRangeSec \
+              PermCacheDef PermCacheLemmas PermCacheSec PermCacheRangeSec \
 	      PermDiskLogHdr PermDiskLogPadded PermDiskLog \
-		  PermGenSepN PermLogReplay
+	      PermGenSepN PermLogReplay PermMemLog PermDiskSet
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

@@ -4,7 +4,7 @@ Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
 Require Import Arith.
-Require Import ListPred.
+
 Require Export PermAsyncDisk.
 
 Set Implicit Arguments.
@@ -1330,15 +1330,6 @@ Hint Resolve sync_invariant_and.
 Hint Resolve sync_invariant_or.
 Hint Resolve sync_invariant_crash_xform.
 
-Theorem sync_invariant_listpred :
-  forall A (l: list A) f,
-    (forall a, sync_invariant (f a)) ->
-    sync_invariant (listpred f l).
-Proof.
-  induction l; simpl; eauto.
-Qed.
-
-Hint Resolve sync_invariant_listpred.
 (*
 Theorem sync_invariant_mem_pred :
   forall A B AEQ (f: A -> B -> pred) (m: @Mem.mem A AEQ B),
@@ -1407,31 +1398,6 @@ Proof.
   apply sep_star_lift_apply'; eauto.
 Qed.
 
-Hint Resolve sync_invariant_listpred.
-
-Theorem sync_xform_listpred : forall V (l : list V) prd,
-  sync_xform (listpred prd l) <=p=> listpred (fun x => sync_xform (prd x)) l.
-Proof.
-  induction l; simpl; intros; split; auto.
-  apply sync_xform_emp.
-  apply sync_xform_emp.
-  rewrite sync_xform_sep_star_dist.
-  rewrite IHl; auto.
-  rewrite sync_xform_sep_star_dist.
-  rewrite IHl; auto.
-Qed.
-
-
-Lemma sync_xform_listpred' : forall T (l : list T) p q,
-  (forall x, sync_xform (p x) =p=> q x) ->
-  sync_xform (listpred p l) =p=> listpred q l.
-Proof.
-  induction l; simpl; intros; auto.
-  apply sync_xform_emp.
-  repeat rewrite sync_xform_sep_star_dist.
-  rewrite IHl by eauto.
-  rewrite H; auto.
-Qed.
 
 Lemma sync_invariant_sync_mem_apply:
   forall (P: rawpred) m,

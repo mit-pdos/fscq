@@ -212,7 +212,7 @@ Proof.
     step.
     rewrite app_nil_r.
     eapply hash_list_rep_subset; eauto.
-    erewrite extract_blocks_subset; eauto.
+    erewrite extract_blocks_subset_trans; eauto.
     eapply forall_app_r in H3; auto.
     solve_hashmap_subset.
   - eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred.
@@ -241,19 +241,19 @@ Theorem unseal_all_ok :
     apply H3.
     apply in_selN with (n:= m).
     rewrite map_length.
-    apply handles_valid_length_eq in H4;
-    setoid_rewrite <- H4; auto.
+    apply extract_blocks_length in H4;
+    setoid_rewrite H4; auto.
     eassign (selN (map snd (extract_blocks bm hl)) m ($0)).
     erewrite extract_blocks_selN.
     repeat erewrite selN_map.
     rewrite <- surjective_pairing; auto.
     unfold block_mem_subset in *.
 
-    erewrite extract_blocks_subset with (bm:= bm); eauto.
-    apply handles_valid_length_eq in H4;
-    setoid_rewrite <- H4; omega.
-    apply handles_valid_length_eq in H4;
-    setoid_rewrite <- H4; omega.
+    erewrite extract_blocks_subset_trans with (bm:= bm); eauto.
+    apply extract_blocks_length in H4;
+    setoid_rewrite H4; auto.
+    apply extract_blocks_length in H4;
+    setoid_rewrite H4; auto.
     eapply handles_valid_subset_trans; eauto.
     auto.
 
@@ -263,24 +263,24 @@ Theorem unseal_all_ok :
     replace ([selN (map snd (extract_blocks bm hl)) m $0]) with
         (map snd [selN (extract_blocks bm hl) m tagged_block0]).
     rewrite <- map_app.
-    erewrite <- extract_blocks_subset with (bm:= bm); eauto.
+    erewrite extract_blocks_subset_trans with (bm:= bm); eauto.
     erewrite extract_blocks_selN_inside; auto.
     rewrite <- extract_blocks_app.
     rewrite <- firstn_S_selN; auto.
-    erewrite extract_blocks_subset with (bm:= bm); eauto.
+    eapply handles_valid_subset_trans; eauto.
+    erewrite extract_blocks_subset_trans with (bm:= bm); eauto.
 
-    apply forall_firstn; auto.
-    apply forall_firstn; auto.
     simpl; erewrite selN_map; auto.
-    apply handles_valid_length_eq in H4;
-    setoid_rewrite <- H4; omega.
+    erewrite <- extract_blocks_subset_trans with (bm:= bm); eauto.
+    apply extract_blocks_length in H4;
+    setoid_rewrite H4; auto.
     solve_hashmap_subset.
     unfold false_pred; cancel.
 
     step.
     step.
     rewrite H9, firstn_exact.
-    erewrite <- extract_blocks_subset; eauto.
+    erewrite <- extract_blocks_subset_trans; eauto.
     solve_hashmap_subset.
     eassign (false_pred (AT:= addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred;
     unfold false_pred; cancel.

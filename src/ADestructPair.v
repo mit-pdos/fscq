@@ -1,4 +1,4 @@
-Require Import AsyncDisk.
+Require Import PermAsyncDisk.
 
 Set Implicit Arguments.
 

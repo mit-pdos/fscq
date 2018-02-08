@@ -49,7 +49,7 @@ Set Implicit Arguments.
     unfold stars; norm.
     unfold stars; cancel.
     eassign F_.
-    eassign (t0, l).
+    eassign (vs0_cur, vs0_old).
     cancel.
     intuition; eauto.
     hoare.
@@ -286,7 +286,7 @@ Proof.
     specialize (H14 _ Heqo).
     unfold rep in *; erewrite mem_pred_extract with (a := a); eauto; 
     unfold cachepred at 2; rewrite H14.
-    eassign (t0, x).
+    eassign (tbs_cur, x).
     eassign (F_ * [[ size_valid r_ ]] *
              [[ addr_valid d (CSMap r_) ]] *
              mem_pred (HighAEQ:=addr_eq_dec)
@@ -345,7 +345,7 @@ Proof.
       rewrite MapFacts.add_eq_o by reflexivity.
       destruct p_2.
       cancel.
-      eassign (tb, vsmerge(t0, l)).
+      eassign (tb, vsmerge(tb0_cur, tb0_old)).
       erewrite ptsto_subset_pimpl; eauto.
       simpl; apply incl_tl; auto.
       simpl; auto.
@@ -371,7 +371,7 @@ Proof.
       unfold cachepred at 3;
       rewrite MapFacts.add_eq_o by reflexivity.
       cancel.
-      eassign (tb, vsmerge(t0, l)).
+      eassign (tb, vsmerge(tb0_cur, tb0_old)).
       erewrite ptsto_subset_pimpl; eauto.
       simpl; apply incl_tl; auto.
       simpl; auto.
@@ -485,7 +485,7 @@ Theorem end_sync_ok :
       norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       safecancel; simpl in *; cleanup.
-      eassign (t2, l2).
+      eassign (x1_cur, l0).
       unfold ptsto_subset;
       cancel; simpl; eauto.
       auto.
@@ -549,7 +549,7 @@ Theorem end_sync_ok :
       norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       safecancel; simpl in *; cleanup.
-      eassign (t2, l2).
+      eassign (x0_cur, l0).
       unfold ptsto_subset;
       cancel; simpl; eauto.
       auto.
@@ -571,7 +571,7 @@ Theorem end_sync_ok :
         unfold synpred at 3.
         rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
-        eassign (t2, old); cancel.
+        eassign (x0_cur, old); cancel.
         simpl; auto.
         simpl; auto.
         apply addr_valid_upd; auto.
@@ -601,7 +601,7 @@ Theorem end_sync_ok :
       norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       safecancel; simpl in *; cleanup.
-      eassign (t2, l2).
+      eassign (x0_cur, l0).
       unfold ptsto_subset;
       cancel; simpl; eauto.
       auto.
@@ -622,7 +622,7 @@ Theorem end_sync_ok :
         unfold synpred at 3.
         rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
-        eassign (t2, old); cancel.
+        eassign (x0_cur, old); cancel.
         simpl; auto.
         apply addr_valid_upd; auto.
       + eexists; eapply hashmap_subset_trans; eauto.

@@ -9,7 +9,6 @@ Require Import Word.
 Require Import Rec.
 Require Import Eqdep_dec.
 Require Import WordAuto.
-Require Import Idempotent.
 Require Import ListUtils.
 Require Import FSLayout.
 Require Import MapUtils.
@@ -22,25 +21,7 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-  Ltac solve_blockmem_subset:=
-    match goal with
-    | [|- block_mem_subset _ =p=> (fun _ : mem => _ c= _)] =>
-      unfold pimpl; intros; solve_blockmem_subset
-    | [|- _ c= _ ] =>
-      auto; eapply block_mem_subset_trans;
-      eauto; solve_blockmem_subset
-    end.
-
-Definition extract_block (bm: block_mem) h :=
-  match bm h with
-  | None => tagged_block0
-  | Some tb => tb
-  end.
-
 Import AddrMap LogReplay.
-
-Definition extract_blocks_map bm hm :=
-  Map.map (fun x => extract_block bm x) hm.
 
 Module LogNotations.
 
@@ -283,6 +264,28 @@ Module MLog.
     all: erewrite PermDiskLog.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     or_r; cancel.
+    Unshelve. all: easy.
+  Qed.
+
+  Lemma rep_equal_trans : forall xp mm mm' hm,
+   Map.Equal mm mm'
+    -> forall st, rep xp st mm hm
+        =p=> rep xp st mm' hm.
+  Proof.
+    unfold rep, map_replay, unsync_rep, map_keys; intros.
+    erewrite mapeq_elements; eauto.
+    destruct st; cancel.
+    all: try solve [eapply map_valid_equal; eauto].    
+    all: eauto.
+    cancel; or_l; cancel.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym; auto.
+    cancel; or_r; cancel.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym; auto.
+    or_l; cancel.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym; auto.
     Unshelve. all: easy.
   Qed.
 
@@ -552,12 +555,12 @@ Module MLog.
     POST:bm', hm', RET: ms  exists d' nr,
           let bmap := extract_blocks_map bm' (MSInLog ms) in
           PermCacheDef.rep (MSCache ms) d' bm' *
-          [[ handles_valid bm' (map snd (Map.elements (MSInLog ms))) ]] *
+          [[ handles_valid_map bm' (MSInLog ms) ]] *
           [[ (F * rep xp (Synced nr m) bmap hm')%pred d' ]]
     XCRASH:bm'', hm_crash, any
     >} init xp cs.
   Proof.
-    unfold init, rep.
+    unfold init, rep, handles_valid_map, handles_valid_list.
     step.
     step.
     step.
@@ -581,121 +584,6 @@ Module MLog.
     all: eauto.
     apply bmap0.
   Qed.
-
-    Lemma handles_valid_app:
-        forall hl1 hl2 bm,
-          handles_valid bm (hl1++hl2) ->
-          handles_valid bm hl1 /\ handles_valid bm hl2.
-      Proof.
-        unfold handles_valid; intros.
-        split; [eapply forall_app_r; eauto
-               | eapply forall_app_l; eauto ].
-      Qed.
-
-      Lemma handles_valid_cons:
-        forall h hl bm,
-          handles_valid bm (h::hl) ->
-          handle_valid bm h /\ handles_valid bm hl.
-      Proof.
-        unfold handles_valid; intros.
-        inversion H; eauto.
-      Qed.
-
-    Lemma map_find_extract_blocks_mem:
-      forall hmap bm a h,
-        Map.find a hmap = Some h ->
-        handles_valid bm (map snd (Map.elements hmap)) ->
-        Map.find a (extract_blocks_map bm hmap) =
-            Some (extract_block bm h).
-    Proof.
-      intro hmap; destruct hmap.
-      generalize dependent this;
-      induction this; unfold Map.find, Map.elements in *; simpl in *;
-      intros; try congruence.
-      inversion is_bst; subst.
-      unfold AddrMap_AVL.Raw.elements in H0; simpl in H0.
-      repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in H0.
-      rewrite app_nil_r, map_app in H0; simpl in H0.
-      apply handles_valid_app in H0; intuition.
-      apply handles_valid_cons in H2; intuition.
-      cleanup; intuition.
-    Qed.
-
-Lemma extract_blocks_map_extract_blocks_eq:
-      forall hmap bm,
-        handles_valid bm (map snd (Map.elements hmap)) ->
-        map snd (Map.elements (extract_blocks_map bm hmap)) =
-        extract_blocks bm (map snd (Map.elements hmap)).
-    Proof.
-      intro hmap; destruct hmap.
-      generalize dependent this;
-      induction this; simpl; intros; auto.
-      inversion is_bst; subst.
-      unfold Map.elements, AddrMap_AVL.Raw.elements in *; simpl in *.
-      repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
-      repeat rewrite app_nil_r, map_app in *; simpl in *.
-      repeat (simpl; rewrite extract_blocks_app).
-      simpl in *.
-      apply handles_valid_app in H; intuition.
-      apply handles_valid_cons in H1; intuition.
-      unfold extract_block, handle_valid in *; cleanup.
-      unfold AddrMap_AVL.Raw.elements; rewrite H, H2; auto.
-    Qed.      
-
-    Lemma map_find_In_elements:
-        forall hmap a (h: handle),
-          Map.find a hmap = Some h ->
-          In h (map snd (Map.elements hmap)).
-      Proof.
-         intro hmap; destruct hmap.
-         generalize dependent this;
-         induction this; unfold Map.find, Map.elements in *;
-         simpl; intros; auto; try congruence.
-         inversion is_bst; subst.
-         unfold Map.elements, AddrMap_AVL.Raw.elements in *; simpl in *.
-         repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
-         repeat rewrite app_nil_r, map_app in *; simpl in *.
-         simpl in *.
-         apply in_or_app.
-         cleanup; intuition.
-         left; eapply H0; eauto.
-         right; simpl; right; eapply H1; eauto.
-      Qed.
-
-      Lemma map_find_In_elements_none:
-        forall hmap bm a,
-          Map.find a hmap = None ->
-          Map.find a (extract_blocks_map bm hmap) = None.
-      Proof.
-         intro hmap; destruct hmap.
-         generalize dependent this;
-         induction this; unfold Map.find, Map.elements in *;
-         simpl in *; intros; auto; try congruence.
-         inversion is_bst; subst.
-         cleanup; intuition eauto; congruence.
-      Qed.
-    
-    Lemma extract_blocks_map_subset_trans:
-      forall hmap bm bm',
-        handles_valid bm (map snd (Map.elements hmap)) ->
-        bm c= bm' ->
-        Map.Equal (extract_blocks_map bm hmap)
-                  (extract_blocks_map bm' hmap).
-    Proof.
-      intros.
-      unfold Map.Equal; intros.
-      destruct (Map.find y hmap) eqn:D.
-      repeat erewrite map_find_extract_blocks_mem; eauto.
-      unfold extract_block.
-      destruct (bm h) eqn:D0.
-      erewrite block_mem_subset_extract_some; eauto.
-      apply map_find_In_elements in D.
-      unfold handles_valid, handle_valid  in *;
-      rewrite Forall_forall in H.
-      specialize (H _ D); cleanup; congruence.
-      eapply handles_valid_subset_trans; eauto.
-      repeat erewrite map_find_In_elements_none; eauto.
-    Qed.
 
   
   Theorem read_ok:
@@ -749,7 +637,7 @@ Lemma extract_blocks_map_extract_blocks_eq:
     eapply handles_valid_subset_trans; eauto.
     unfold extract_block; rewrite H15.
 
-    assert (selN dummy1 a valuset0 = (t, l)) as Hx.
+    assert (selN dummy1 a valuset0 = (vs_cur, vs_old)) as Hx.
     erewrite replay_disk_none_selN; eauto.
     eassign (extract_blocks_map bm ms_1).
     apply map_find_In_elements_none; auto.
@@ -783,45 +671,14 @@ Lemma extract_blocks_map_extract_blocks_eq:
   Local Hint Unfold rep map_replay synced_rep: hoare_unfold.
 
 
-Lemma map_add_extract_blocks_mem_comm:
-  forall hmap bm a x,
-    bm (snd a) = Some x ->
-    Map.Equal (Map.add (fst a) x (extract_blocks_map bm hmap))
-              (extract_blocks_map bm
-                                  (Map.add (fst a) (snd a) hmap)).
-Proof.
-  intro hmap; destruct hmap.
-  generalize dependent this;
-  induction this;
-  simpl in *; intros; auto; try congruence.
-  unfold Map.Equal, Map.find; simpl; unfold extract_block;
-  cleanup; eauto.
-
-  unfold Map.Equal in *; simpl in *; intros.
-  unfold extract_blocks_map in *.
-  rewrite MapFacts.map_o; unfold option_map.
-  inversion is_bst; subst.
-  destruct (OrderedTypeEx.Nat_as_OT.eq_dec (fst a) y).
-  { (* fst a = y *)
-    repeat rewrite MapFacts.add_eq_o; auto.
-    unfold extract_block; cleanup; auto.
-  }
-  { (* fst a <> y *) 
-    repeat rewrite MapFacts.add_neq_o in *; auto.
-    rewrite MapFacts.map_o; unfold option_map; auto.
-  }
-Qed.
-
-
-
 Lemma extract_blocks_map_replay_mem_comm:
   forall ents bm hmap,
-    handles_valid bm (map ent_handle ents) ->
-    Map.Equal (replay_mem (List.combine (map fst ents)
-                                        (extract_blocks bm (map snd ents)))
+    handles_valid_list bm ents ->
+    Map.Equal (replay_mem (extract_blocks_list bm ents)
                           (extract_blocks_map bm hmap))
               (extract_blocks_map bm (replay_mem ents hmap)).
 Proof.
+  unfold extract_blocks_list, handles_valid_list; 
   induction ents; simpl; intros; auto.
   apply MapFacts.Equal_refl.
   apply handles_valid_cons in H;
@@ -893,11 +750,12 @@ Qed.
 Lemma handles_valid_replay_mem:
   forall ents hmap bm,
     KNoDup ents ->
-    handles_valid bm (map snd ents) ->
-    handles_valid bm (map snd (Map.elements hmap)) ->
-    handles_valid bm (map snd (Map.elements (replay_mem ents hmap))).
+    handles_valid_list bm ents ->
+    handles_valid_map bm hmap ->
+    handles_valid_map bm (replay_mem ents hmap).
 Proof.
-  unfold handles_valid; induction ents; simpl; intros; auto.
+  unfold handles_valid_map, handles_valid_list, handles_valid;
+  induction ents; simpl; intros; auto.
   destruct a; inversion H; subst.
   erewrite mapeq_elements;
   [| apply replay_mem_add; auto].
@@ -926,23 +784,19 @@ Qed.
     PERM:pr   
     PRE:bm, hm,
        << F, rep: xp (Synced na d) ms bm hm >> *
-       [[ handles_valid bm (map snd ents) ]] *            
+       [[ handles_valid_list bm ents ]] *            
        [[ log_valid ents d /\ sync_invariant F ]]
     POST:bm', hm', RET:^(ms',r)
-       let blocks := List.combine (map fst ents)
-                             (extract_blocks bm' (map snd ents)) in
         ([[ r = true ]]  * exists na',                                      
-          << F, rep: xp (Synced na' (replay_disk blocks d))
+          << F, rep: xp (Synced na' (replay_disk (extract_blocks_list bm' ents) d))
                                            ms' bm' hm' >>) \/
         ([[ r = false /\ length ents > na ]] *
           << F, rep: xp (Synced na d) ms' bm' hm' >>)
     XCRASH:bm'', hm'',  exists ms',
-          let blocks := List.combine (map fst ents)
-                             (extract_blocks bm'' (map snd ents)) in
-          << F, rep: xp (Flushing d blocks) ms' bm'' hm'' >>
+          << F, rep: xp (Flushing d (extract_blocks_list bm'' ents)) ms' bm'' hm'' >>
     >} flush_noapply xp ents ms.
   Proof.
-    unfold flush_noapply.
+    unfold flush_noapply, extract_blocks_list, handles_valid_list.
     step.
     eapply log_valid_entries_valid; eauto.
     step.
@@ -956,7 +810,7 @@ Qed.
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans;
     [| apply extract_blocks_map_replay_mem_comm; eauto].
-    erewrite extract_blocks_subset; eauto.
+    erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
     apply extract_blocks_map_subset_trans; auto.
     eapply handles_valid_subset_trans; eauto.    
@@ -973,7 +827,7 @@ Qed.
     erewrite mapeq_elements; eauto.
     eapply MapFacts.Equal_trans;
     [| apply extract_blocks_map_replay_mem_comm; eauto].
-    erewrite extract_blocks_subset; eauto.
+    erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
     apply extract_blocks_map_subset_trans; auto.
     eapply handles_valid_subset_trans; eauto.
@@ -1017,7 +871,7 @@ Qed.
     eapply handles_valid_subset_trans; eauto.
 
     or_r; cancel.
-    erewrite extract_blocks_subset; eauto.
+    erewrite extract_blocks_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_sym;
     apply extract_blocks_map_subset_trans; auto.
@@ -1331,7 +1185,7 @@ Qed.
     solve_hashmap_subset.
     solve_blockmem_subset.
     xcrash.
-    rewrite <- extract_blocks_subset with (bm:= bm).
+    rewrite <- extract_blocks_subset_trans with (bm:= bm).
     rewrite combine_elements_eq.
     rewrite <- firstn_exact with
         (l:= Map.elements (extract_blocks_map bm ms_1)).
@@ -1346,7 +1200,7 @@ Qed.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash_rewrite.
-    rewrite <- extract_blocks_subset with (bm:= bm).
+    rewrite <- extract_blocks_subset_trans with (bm:= bm).
     rewrite combine_elements_eq.
     setoid_rewrite apply_unsync_applying_ok.
     xcrash.
@@ -1375,23 +1229,19 @@ Qed.
      PERM: pr   
      PRE:bm, hm,
          << F, rep: xp (Synced na d) ms bm hm >> *
-         [[ handles_valid bm (map snd ents) ]] * 
+         [[ handles_valid_list bm ents ]] * 
          [[ log_valid ents d /\ sync_invariant F ]]
      POST:bm', hm', RET:^(ms',r)
           exists na',
-          let blocks:= List.combine (map fst ents)
-               (extract_blocks bm' (map snd ents)) in
           ([[ r = true ]] *
-           << F, rep: xp (Synced na' (replay_disk blocks d)) ms' bm' hm' >>) \/
+           << F, rep: xp (Synced na' (replay_disk (extract_blocks_list bm' ents) d)) ms' bm' hm' >>) \/
           ([[ r = false /\ length ents > (LogLen xp) ]] *
            << F, rep: xp (Synced na' d) ms' bm' hm' >>)
      XCRASH:bm'', hm'',
-       let blocks:= List.combine (map fst ents)
-            (extract_blocks bm'' (map snd ents)) in  
-          << F, would_recover_either: xp d blocks bm'' hm'' -- >>
+          << F, would_recover_either: xp d (extract_blocks_list bm'' ents) bm'' hm'' -- >>
     >} flush xp ents ms.
   Proof.
-    unfold flush; intros.
+    unfold flush, handles_valid_list, extract_blocks_list; intros.
 
     (* Be careful: only unfold rep in the preconditon,
        otherwise the goal will get messy as there are too many
@@ -1526,22 +1376,6 @@ Qed.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
-  Lemma empty_extract_blocks_map:
-    forall hmap bm,
-      Map.Empty hmap ->
-      Map.Empty (extract_blocks_map bm hmap).
-  Proof.
-    unfold Map.Empty, not; intros.
-    apply MapFacts.map_mapsto_iff in H0; cleanup; eauto.
-  Qed.
-
-  Lemma map_in_extract_blocks_map:
-    forall hmap a bm,
-      Map.In a (extract_blocks_map bm hmap) ->
-      Map.In a hmap.
-  Proof.
-    unfold extract_blocks_map; intros; eapply Map.map_2; eauto.
-  Qed.
 
   Theorem dwrite_ok:
     forall xp a h ms pr,
@@ -1598,7 +1432,7 @@ Qed.
     rewrite Hreplay.
     f_equal. f_equal. f_equal.
     erewrite <- replay_disk_selN_other at 1.
-    erewrite list2nmem_sel with (x := (t, l)).
+    erewrite list2nmem_sel with (x := (vs_cur, vs_old)).
     erewrite <- Hreplay; eauto.
     eauto.
     intuition. denote In as HIn.
@@ -1645,7 +1479,7 @@ Qed.
     eapply extract_blocks_map_subset_trans; auto.
 
     erewrite <- replay_disk_selN_other.
-    erewrite list2nmem_sel with (x := (t, l)).
+    erewrite list2nmem_sel with (x := (vs_cur, vs_old)).
     erewrite <- Hreplay; eauto.
     eauto.
     intuition. denote In as HIn.
@@ -2575,19 +2409,17 @@ Qed.
     PERM:pr   
     PRE:bm, hm,
       << F, rep: xp (Synced na d) ms bm hm >> *
-      [[ handles_valid bm (map snd avl) ]] *             
+      [[ handles_valid_list bm avl ]] *             
       [[ Forall (fun e => fst e < length d) avl /\ sync_invariant F ]]
     POST:bm', hm', RET:ms' exists na',
-      let blocks := List.combine (map fst avl) (extract_blocks bm' (map snd avl)) in
-      << F, rep: xp (Synced na' (vsupd_vecs d blocks)) ms' bm' hm' >>
+      << F, rep: xp (Synced na' (vsupd_vecs d (extract_blocks_list bm' avl))) ms' bm' hm' >>
     XCRASH:bm', hm',
       << F, would_recover_before: xp d bm' hm' -- >> \/
       exists na' ms' n,
-      let blocks := firstn n (List.combine (map fst avl) (extract_blocks bm' (map snd avl))) in
-      << F, rep: xp (Synced na' (vsupd_vecs d blocks)) ms' bm' hm' >>
+      << F, rep: xp (Synced na' (vsupd_vecs d (firstn n (extract_blocks_list bm' avl)))) ms' bm' hm' >>
     >} dwrite_vecs xp avl ms.
   Proof.
-    unfold dwrite_vecs, would_recover_before.
+    unfold dwrite_vecs, would_recover_before, handles_valid_list, extract_blocks_list.
     step.
 
     (* case 1: apply happens *)
@@ -2773,4 +2605,3 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
 End MLog.
-

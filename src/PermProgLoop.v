@@ -180,7 +180,7 @@ Proof.
       eapply pimpl_ok2; eauto. intros; simpl. safecancel.
       fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
       eexists; eapply hashmap_subset_trans; eauto.
-      cancel; eauto.
+      unfold false_pred; cancel; eauto.
 
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + assert (wordToNat x <> 0).
@@ -412,7 +412,7 @@ Proof.
       eapply pimpl_ok2; eauto.
       intros; cancel.
       eexists; eapply hashmap_subset_trans; eauto.
-      cancel; auto.
+      unfold false_pred; cancel; auto.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + simpl.
       unfold pimpl, lift; intros.
@@ -665,7 +665,7 @@ Proof.
       eapply pimpl_ok2; eauto.
       cancel; eauto.
       eexists; eapply hashmap_subset_trans; eauto.
-      cancel; eauto.
+      unfold false_pred; cancel; eauto.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + simpl.
       unfold pimpl, lift; intros.

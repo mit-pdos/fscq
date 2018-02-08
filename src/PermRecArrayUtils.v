@@ -295,11 +295,10 @@ Module RADefs (RA : RASig).
     rewrite skipn_skipn; simpl.
     f_equal; f_equal; omega.
 
+    destruct i. small_t.
     erewrite IHnr by small_t.
     rewrite skipn_skipn; simpl.
     f_equal; f_equal; omega.
-    Unshelve.
-    all: auto.
   Qed.
 
   Lemma list_chunk_spec' : forall A l i n (e0 : A) b0,
@@ -434,6 +433,7 @@ Module RADefs (RA : RASig).
   Proof.
     induction m; destruct n; small_t.
     inversion H.
+    rewrite IHm; small_t.
     rewrite IHm; small_t.
   Qed.
 

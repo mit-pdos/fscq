@@ -84,9 +84,9 @@ Definition rep xp st hm :=
          [[ (F * rep xp (Synced nr l) hm)%pred d ]]
     POST:bm', hm',   RET: ^(cs, r)
          PermCacheDef.rep cs d bm' *
-         [[ combine (map fst r) (extract_blocks bm' (map snd r)) = l /\
+         [[ extract_blocks_list bm' r = l /\
             (F * rep xp (Synced nr l) hm')%pred d ]] *
-         [[ handles_valid bm' (map snd r) ]]
+         [[ handles_valid_list bm' r ]]
     CRASH:bm'', hm'', exists cs',
          PermCacheDef.rep cs' d bm''*
          [[ (F * rep xp (Synced nr l) hm'')%pred d ]]

@@ -461,7 +461,7 @@ Hint Resolve in_vsmerge_hd incl_vsmerge_trans incl_vsmerge_in_trans.
     cancel; simpl; auto.
     rewrite cachepred_synpred, IHl.
     safecancel.
-    eassign ((a_1, (t1, l1)) :: l'); simpl.
+    eassign ((a_1, (a_2_cur, vs'_old)) :: l'); simpl.
     cancel.
     constructor; auto.
     unfold avs_match; simpl; intuition.
@@ -684,8 +684,7 @@ Qed.
       specialize (IHl _ bm _ H').
       destruct IHl.
       destruct_lift H0.
-      destruct a.
-      exists ((start, (t0, l0)) :: x).
+      exists ((start, (a_cur, a_old)) :: x).
       simpl.
       unfold mem_pred_one at 1. unfold cachepred at 1.
       rewrite MapFacts.empty_o; simpl.
@@ -716,7 +715,7 @@ Qed.
     rewrite IHl.
     unfold ptsto_subset.
     norml; unfold stars; simpl.
-    exists ((t0, old) :: l'); simpl.
+    exists ((a_cur, old) :: l'); simpl.
     pred_apply; cancel.
   Qed.
 
@@ -1225,9 +1224,9 @@ Qed.
         unfold mem_pred_one, cachepred at 1; simpl.
         unfold ptsto_subset; simpl.
         apply pimpl_exists_r_star.
-        exists (snd x1).
+        exists x1_old.
         apply sep_star_assoc.
-        destruct x1; simpl in *.
+        simpl in *.
         apply mem_except_ptsto; eauto.
         unfold mem_pred_one in H1; simpl in *.
         pred_apply' H1; cancel.

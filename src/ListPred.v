@@ -1,7 +1,8 @@
-Require Import Mem.
-Require Import List Omega Ring Word Pred PredCrash Prog Hoare SepAuto BasicProg Array ListUtils.
+Require Import Mem Pred.
+Require Import List Omega Ring Word ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Permutation.
+Require Import PermArray.
 
 Set Implicit Arguments.
 

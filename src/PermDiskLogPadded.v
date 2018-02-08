@@ -2,7 +2,7 @@ Require Import Arith.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
-Require Import Pred.
+Require Import Mem Pred.
 Require Import Omega.
 Require Import Word.
 Require Import Rec.
@@ -1073,16 +1073,15 @@ Qed.
     POST:bm', hm', RET: ^(cs, r)
           PermCacheDef.rep cs d bm' *
           [[ (F * rep xp (Synced l) hm')%pred d ]] *
-          [[ combine (map fst r)
-              (extract_blocks bm' (map snd r)) = log_nonzero l ]] *
-          [[ handles_valid bm' (map snd r) ]] *
+          [[ extract_blocks_list bm' r = log_nonzero l ]] *
+          [[ handles_valid_list bm' r ]] *
           [[ Forall entry_valid r ]]
     CRASH:bm'', hm_crash, exists cs',
           PermCacheDef.rep cs' d bm'' *
           [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
     >} read xp cs.
   Proof.
-    unfold read.
+    unfold read, extract_blocks_list, handles_valid_list.
     safestep.
 
     prestep. norm. cancel. intuition simpl.
@@ -1127,14 +1126,14 @@ Qed.
 
     rewrite H26, combine_tags_vals.
     apply combine_nonzero_log_nonzero; auto.
-    apply handles_valid_length_eq in H25; rewrite H25, H26.
+    apply extract_blocks_length in H25; rewrite <- H25, H26.
     setoid_rewrite combine_length_eq.
     rewrite tags_nonzero_addrs, log_nonzero_addrs; auto.
     rewrite ipack_noop;
     rewrite tags_nonzero_addrs, vals_nonzero_addrs; auto.
 
     rewrite nonzero_addrs_maps; auto.
-    apply handles_valid_length_eq in H25; rewrite H25, H26.
+    apply extract_blocks_length in H25; rewrite <- H25, H26.
     setoid_rewrite combine_length_eq.
     rewrite tags_nonzero_addrs; auto.
     rewrite ipack_noop;
@@ -1158,7 +1157,7 @@ Qed.
     rewrite map_snd_combine_nonzero; auto.
 
     rewrite nonzero_addrs_maps; auto.
-    apply handles_valid_length_eq in H25; rewrite H25, H26.
+    apply extract_blocks_length in H25; rewrite <- H25, H26.
     setoid_rewrite combine_length_eq.
     rewrite tags_nonzero_addrs; auto.
     rewrite ipack_noop;
@@ -1209,7 +1208,7 @@ Qed.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
 
     Unshelve.
-    all: unfold EqDec; apply handle_eq_dec.
+    all: unfold Mem.EqDec; apply handle_eq_dec.
   Qed.
 
 
@@ -1271,7 +1270,7 @@ Qed.
   Proof.
     unfold init, initrep.
     prestep; unfold rep, PermDiskLogHdr.LAHdr; safecancel.
-    eassign (t,l); cancel.
+    eassign (dummy_cur, dummy_old); cancel.
     auto.
     step.
     step.
@@ -1450,7 +1449,7 @@ Qed.
     solve_checksums.
 
     Unshelve.
-    all: unfold EqDec; apply handle_eq_dec.
+    all: unfold Mem.EqDec; apply handle_eq_dec.
   Qed.
 
 
@@ -1934,7 +1933,7 @@ Definition extend xp (log: input_contents) cs :=
       length (map fst new) = length (extract_blocks bm (map ent_handle new)).
   Proof.
     intros.      
-    rewrite <- handles_valid_length_eq; auto.
+    rewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
   Qed.
 
@@ -1948,7 +1947,7 @@ Definition extend xp (log: input_contents) cs :=
     intros.
     unfold ndesc_log, ndesc_list.
     setoid_rewrite combine_length_eq; rewrite map_length; auto.
-    rewrite <- handles_valid_length_eq; auto.
+    rewrite extract_blocks_length; auto.
     rewrite map_length; auto.
   Qed.
       
@@ -1961,7 +1960,7 @@ Definition extend xp (log: input_contents) cs :=
   Proof.
     unfold ndata_log; intros.
     rewrite map_fst_combine; auto.
-    rewrite <- handles_valid_length_eq; auto.
+    rewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
   Qed.
 
@@ -2224,7 +2223,7 @@ Qed.
       repeat (eapply handles_valid_subset_trans; eauto).
       unfold addr_tags, ndesc_list;
       rewrite repeat_length, DescDefs.ipack_length, map_length; auto.
-      erewrite <- extract_blocks_subset; eauto.
+      erewrite <- extract_blocks_subset_trans; eauto.
       pred_apply.
       rewrite Desc.avail_rep_split. cancel.
       autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
@@ -2249,7 +2248,7 @@ Qed.
       repeat setoid_rewrite combine_length_eq; auto.
 
       pose proof (length_map_fst_extract_blocks_eq new H7) as A.
-      repeat (erewrite <- extract_blocks_subset; eauto). 
+      repeat (erewrite <- extract_blocks_subset_trans; eauto). 
       unfold ent_valu; rewrite <- map_map with (f:= snd).
       rewrite map_snd_combine; auto.
       rewrite ipack_noop.
@@ -2258,8 +2257,8 @@ Qed.
       rewrite Data.avail_rep_split. cancel.
       autorewrite with lists.
       rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      repeat (erewrite <- extract_blocks_subset; eauto).      
-      rewrite <- handles_valid_length_eq; auto.
+      repeat (erewrite <- extract_blocks_subset_trans; eauto).      
+      rewrite extract_blocks_length; auto.
       rewrite map_length, min_l.
       apply helper_loglen_data_valid_extend; auto.
       unfold ndata_log.
@@ -2296,8 +2295,8 @@ Qed.
       pred_apply; cancel.
       autorewrite with lists.
       rewrite entry_valid_ndata, Nat.mul_1_r; auto.
-       repeat (erewrite <- extract_blocks_subset; eauto).      
-      rewrite <- handles_valid_length_eq; auto.
+      repeat (erewrite <- extract_blocks_subset_trans; eauto).      
+      rewrite extract_blocks_length; auto.
       rewrite map_length, min_l; auto.
       eapply loglen_valid_data_valid; auto.
       apply Forall_entry_valid_combine; auto.
@@ -2330,7 +2329,7 @@ Qed.
       repeat rewrite tags_nonzero_app, vals_nonzero_app,
       map_app, addr_tags_app; auto.
       rewrite <- Desc.array_rep_synced_app; simpl; auto.
-      repeat (erewrite <- extract_blocks_subset; eauto).
+      repeat (erewrite <- extract_blocks_subset_trans; eauto).
       repeat rewrite map_length.
       repeat setoid_rewrite combine_length_eq; auto.
       repeat rewrite vals_nonzero_padded_log.
@@ -2369,7 +2368,7 @@ Qed.
       eapply new_hashlist_rep_match_1;
       [eauto | | setoid_rewrite <- H23; eauto].
       solve_hashmap_subset.
-      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      rewrite extract_blocks_subset_trans with (bm':= bm2); eauto.
       eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
       eapply handles_valid_subset_trans; eauto.
       solve_hashmap_subset.
@@ -2399,14 +2398,13 @@ Qed.
       eapply new_hashlist_rep_match_1;
       [eauto | | setoid_rewrite <- H23; eauto].
       solve_hashmap_subset.
-      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      rewrite extract_blocks_subset_trans with (bm':= bm2); eauto.
       eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
       eapply handles_valid_subset_trans; eauto.
       solve_hashmap_subset.
       apply Forall_entry_valid_combine; auto.
       solve_hashmap_subset.
-      unfold pimpl; intros; simpl;
-      repeat (eapply block_mem_subset_trans; eauto).
+      solve_blockmem_subset.
 
       (* Crash 3 *)
       rewrite <- H1; cancel.
@@ -2421,15 +2419,13 @@ Qed.
       eapply new_hashlist_rep_match_1;
       [eauto | | setoid_rewrite <- H23; eauto].
       solve_hashmap_subset.
-      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      rewrite extract_blocks_subset_trans with (bm':= bm2); eauto.
       eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
       eapply handles_valid_subset_trans; eauto.
       solve_hashmap_subset.
       apply Forall_entry_valid_combine; auto.
       solve_hashmap_subset.
-      unfold pimpl; intros; simpl;
-      repeat (eapply block_mem_subset_trans; eauto).
-
+      solve_blockmem_subset.
 
       (* Crash 4 *)
       rewrite <- H1; cancel.
@@ -2444,14 +2440,13 @@ Qed.
       eapply new_hashlist_rep_match_1;
       [eauto | | setoid_rewrite <- H23; eauto].
       solve_hashmap_subset.
-      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      rewrite extract_blocks_subset_trans with (bm':= bm2); eauto.
       eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
       eapply handles_valid_subset_trans; eauto.
       solve_hashmap_subset.
       apply Forall_entry_valid_combine; auto.
       solve_hashmap_subset.
-      unfold pimpl; intros; simpl;
-      repeat (eapply block_mem_subset_trans; eauto).
+      solve_blockmem_subset.
 
       
       (* Crash 5 *)
@@ -2467,7 +2462,7 @@ Qed.
       eapply new_hashlist_rep_match_1;
       [eauto | | setoid_rewrite <- H23; eauto].
       solve_hashmap_subset.
-      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      rewrite extract_blocks_subset_trans with (bm':= bm2); eauto.
       eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
       eapply handles_valid_subset_trans; eauto.
       solve_hashmap_subset.
@@ -2494,7 +2489,7 @@ Qed.
       eapply new_hashlist_rep_match_1;
       [eauto | | setoid_rewrite <- H23; eauto].
       solve_hashmap_subset.
-      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      rewrite extract_blocks_subset_trans with (bm':= bm2); eauto.
       eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
       eapply handles_valid_subset_trans; eauto.
       solve_hashmap_subset.
@@ -2522,7 +2517,7 @@ Qed.
       eapply new_hashlist_rep_match_1;
       [eauto | | setoid_rewrite <- H23; eauto].
       solve_hashmap_subset.
-      rewrite extract_blocks_subset with (bm':= bm2); eauto.
+      rewrite extract_blocks_subset_trans with (bm':= bm2); eauto.
       eapply new_hashlist_rep_match_2; [eauto | eauto | | eauto].
       eapply handles_valid_subset_trans; eauto.
       solve_hashmap_subset.
@@ -3199,15 +3194,14 @@ Definition recover_ok_Synced :
       denote (_ m) as Hx; destruct_lift Hx; intuition.
       all: denote (_ -> False) as Hx; contradict Hx;
       eapply hash_list_injective2; solve_hash_list_rep.
-      Search blocks_nonzero.
       rewrite combine_tags_vals in *.
       denote (_ = blocks_nonzero _) as Hx; rewrite <- Hx.
-      erewrite extract_blocks_subset; eauto.
+      erewrite extract_blocks_subset_trans; eauto.
       denote (extract_blocks _ a1 = _) as Hx; setoid_rewrite <- Hx.
-      erewrite extract_blocks_subset; eauto; solve_hash_list_rep.
+      erewrite extract_blocks_subset_trans; eauto; solve_hash_list_rep.
       rewrite combine_tags_vals in *.
       denote (_ = blocks_nonzero _) as Hx; rewrite <- Hx.
-      erewrite extract_blocks_subset; eauto.
+      erewrite extract_blocks_subset_trans; eauto.
     }
 
     all: rewrite <- H1; try cancel; unfold padded_log;
@@ -3219,7 +3213,7 @@ Definition recover_ok_Synced :
 
     Unshelve.
     all: eauto; try easy; try solve [constructor].
-    all: unfold EqDec; apply handle_eq_dec.
+    all: unfold Mem.EqDec; apply handle_eq_dec.
   Qed.
 
   Lemma blocks_nonzero_app:
@@ -3351,7 +3345,7 @@ Definition recover_ok_Synced :
       simpl in *.
       denote (hash_list_rep (rev (extract_blocks bm3 a3)) _ _) as Hhlr.
       denote (extract_blocks bm2 a3 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb, Data.Defs.ipack_app,
       combine_app, combine_tags_vals,
       ipack_noop, rev_app_distr in Hhlr.
@@ -3367,7 +3361,7 @@ Definition recover_ok_Synced :
       unfold checksums_match in *; intuition; simpl in *.
       denote (hash_list_rep (rev (extract_blocks bm2 a1)) _ _) as Hhlr.
       denote (extract_blocks bm1 a1 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb in Hhlr.
       rewrite ndesc_log_app in *.
       unfold padded_log in *. rewrite ndesc_log_padded_log in *.
@@ -3500,14 +3494,14 @@ Definition recover_ok_Synced :
       solve_checksums.
       denote (hash_list_rep (rev (extract_blocks bm6 a5)) _ _) as Hhlr.
       denote (extract_blocks bm5 a5 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb in Hhlr.
       unfold padded_log in *. erewrite <- desc_ipack_padded in *.
       simpl; solve_hash_list_rep.
       
       denote (hash_list_rep (rev (extract_blocks bm7 a7)) _ _) as Hhlr.
       denote (extract_blocks bm6 a7 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb in Hhlr.
       rewrite tags_nonzero_padded_log, combine_tags_vals in Hhlr.
       simpl; solve_hash_list_rep.
@@ -3542,14 +3536,14 @@ Definition recover_ok_Synced :
       solve_checksums.
       denote (hash_list_rep (rev (extract_blocks bm6 a5)) _ _) as Hhlr.
       denote (extract_blocks bm5 a5 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb in Hhlr.
       unfold padded_log in *. erewrite <- desc_ipack_padded in *.
       simpl; solve_hash_list_rep.
       
       denote (hash_list_rep (rev (extract_blocks bm7 a7)) _ _) as Hhlr.
       denote (extract_blocks bm6 a7 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb in Hhlr.
       rewrite vals_nonzero_padded_log, tags_nonzero_padded_log,
       combine_tags_vals in Hhlr.
@@ -3583,14 +3577,14 @@ Definition recover_ok_Synced :
       solve_checksums.
       denote (hash_list_rep (rev (extract_blocks bm6 a5)) _ _) as Hhlr.
       denote (extract_blocks bm5 a5 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb in Hhlr.
       unfold padded_log in *. erewrite <- desc_ipack_padded in *.
       simpl; solve_hash_list_rep.
       
       denote (hash_list_rep (rev (extract_blocks bm7 a7)) _ _) as Hhlr.
       denote (extract_blocks bm6 a7 = _) as Heb.
-      erewrite <- extract_blocks_subset in Hhlr; eauto.
+      erewrite <- extract_blocks_subset_trans in Hhlr; eauto.
       erewrite Heb in Hhlr.
       rewrite vals_nonzero_padded_log, tags_nonzero_padded_log,
       combine_tags_vals in Hhlr.
@@ -3706,7 +3700,7 @@ Definition recover_ok_Synced :
     Unshelve.
     all: try solve [eauto; econstructor].
     apply tagged_block0.
-    all: unfold EqDec; apply handle_eq_dec.
+    all: unfold Mem.EqDec; apply handle_eq_dec.
   Qed.
   
   Definition recover_ok :

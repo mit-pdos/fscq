@@ -53,7 +53,7 @@ Set Implicit Arguments.
     erewrite selN_map; auto.
     rewrite extract_blocks_app; simpl.
     rewrite H18.
-    clear H17; erewrite <- extract_blocks_subset; eauto.
+    clear H17; erewrite <- extract_blocks_subset_trans; eauto.
     rewrite H13; auto.
     apply handles_valid_rev_eq; auto.
     eapply le_trans; [| eauto].
@@ -115,8 +115,8 @@ Set Implicit Arguments.
     rewrite firstn_length_l; try omega.
     eapply le_trans; [|eauto].
     apply Nat.lt_le_incl; auto.
-    apply handles_valid_length_eq in H5;
-    rewrite <- H5; apply Nat.lt_le_incl; auto.
+    apply extract_blocks_length in H5;
+    rewrite H5; apply Nat.lt_le_incl; auto.
 
     step.
     prestep; unfold rep; cancel.
@@ -125,22 +125,22 @@ Set Implicit Arguments.
 
     
     cancel.
-    all: apply handles_valid_length_eq in H5; try rewrite <- H5; auto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    all: apply extract_blocks_length in H5; try rewrite H5; auto.
+    solve_hashmap_subset.
     
     rewrite <- H1; cancel; eauto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    solve_hashmap_subset.
     repeat xcrash_rewrite.
     setoid_rewrite vsupd_range_progress; auto.
     rewrite <- firstn_plusone_selN.
 
     apply vsupd_range_xcrash_firstn; auto.
-    all: try rewrite <- H5; auto.
+    all: try rewrite H5; auto.
 
     step. step.
     rewrite firstn_oob; auto.
-    rewrite <- H5; auto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    rewrite H5; auto.
+    solve_hashmap_subset.
     eassign (false_pred (AT:= addr)(AEQ:= addr_eq_dec)(V:= valuset))%pred.
     unfold false_pred; cancel.
     Unshelve.
@@ -179,12 +179,12 @@ Set Implicit Arguments.
     step. step.
     apply arrayN_unify.
     apply vssync_range_progress; omega.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    solve_hashmap_subset.
     rewrite <- H1; cancel; eauto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
-    
+    solve_hashmap_subset.
+
     step. step.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    solve_hashmap_subset.
     rewrite <- H1; cancel; eauto.
     
     Unshelve.
@@ -192,13 +192,6 @@ Set Implicit Arguments.
     unfold EqDec; apply handle_eq_dec.
     auto.
   Qed.
-
-
-  Hint Extern 1 ({{_|_}} Bind (read_range _ _ _) _) => apply read_range_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (write_range _ _ _) _) => apply write_range_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (sync_range _ _ _) _) => apply sync_range_ok : prog.
-
-
   
   Local Hint Resolve vsupd_vecs_length_ok.
   Local Hint Resolve vssync_vecs_length_ok.
@@ -292,22 +285,6 @@ Set Implicit Arguments.
     xform_norm.
     do 2 (xform_normr; cancel).
   Qed.
-
-  Lemma extract_blocks_selN:
-    forall l bm n v def1 def2,
-      n < length l ->
-      handles_valid bm l ->
-      bm (selN l n def1) = Some v ->
-      selN (extract_blocks bm l) n def2 = v.
-  Proof.
-    induction l; simpl; intros; auto; try congruence.
-    inversion H.
-    inversion H0; subst.
-    unfold handle_valid in *;
-    cleanup; simpl; auto.
-    eapply IHl; eauto; omega.
-  Qed.
-
   
   Theorem write_vecs_ok :
     forall a l cs pr,
@@ -351,21 +328,20 @@ Set Implicit Arguments.
     rewrite selN_combine; simpl; auto.
     erewrite selN_map; auto.
     
-    erewrite extract_blocks_selN; eauto.
+    erewrite extract_blocks_selN_some; eauto.
     rewrite map_length; auto.
     erewrite selN_map; eauto.
-    erewrite <- handles_valid_length_eq; auto.
+    erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     rewrite combine_length_eq.
     rewrite map_length; auto.
-    erewrite <- handles_valid_length_eq; auto.
+    erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     solve_hashmap_subset.
 
     cancel; rewrite <- H1; cancel.
     solve_hashmap_subset.
-    unfold pimpl; intros;
-    repeat (eapply block_mem_subset_trans; eauto).
+    solve_blockmem_subset.
 
     xcrash.
     eassign (S m); simpl.
@@ -375,28 +351,28 @@ Set Implicit Arguments.
     rewrite selN_combine; simpl; auto.
     erewrite selN_map; auto.
 
-    erewrite extract_blocks_subset.
-    erewrite extract_blocks_selN; eauto.
+    erewrite extract_blocks_subset_trans.
+    erewrite extract_blocks_selN_some; eauto.
     rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
     erewrite selN_map; eauto.
     eauto.
-    repeat (eapply block_mem_subset_trans; eauto).
-    erewrite <- handles_valid_length_eq; auto.
+    solve_blockmem_subset.
+    erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
     rewrite combine_length_eq.
     rewrite map_length; auto.
-    erewrite <- handles_valid_length_eq; auto.
+    erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
 
     step.
     step.
     rewrite firstn_oob.
-    erewrite extract_blocks_subset; eauto.
+    erewrite extract_blocks_subset_trans; eauto.
     rewrite combine_length_eq, map_length; auto.
-    erewrite <- handles_valid_length_eq; auto.
+    erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     solve_hashmap_subset.
     eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
@@ -407,9 +383,6 @@ Set Implicit Arguments.
     exact tt.
     unfold EqDec; apply handle_eq_dec.
   Qed.
-
-  Print vssync.
-  Print vssync_vecs.
   
   Theorem sync_vecs_ok :
     forall a l cs pr,
@@ -445,8 +418,8 @@ Set Implicit Arguments.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
-    unfold pimpl; intros;
-    repeat (eapply block_mem_subset_trans; eauto).
+    solve_blockmem_subset.
+
     step.
     step.
     rewrite app_nil_r. cancel.
@@ -488,14 +461,17 @@ Set Implicit Arguments.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
-    unfold pimpl; intros;
-    repeat (eapply block_mem_subset_trans; eauto).
+    solve_blockmem_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     Unshelve.
     unfold EqDec; apply handle_eq_dec.
   Qed.
 
-    Hint Extern 1 ({{_|_}} Bind (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
+  
+  Hint Extern 1 ({{_|_}} Bind (read_range _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (write_range _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (sync_range _ _ _) _) => apply sync_range_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync_vecs_now _ _ _) _) => apply sync_vecs_now_ok : prog.
