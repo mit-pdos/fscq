@@ -27,24 +27,22 @@ Module LogNotations.
 
   Notation "'<<' F ',' func ':' a1 a2 ms bm hm '>>'" :=
     (exists raw, PermCacheDef.rep (snd ms%pred) raw (bm%pred) *
-     lift_empty ((F * (func a1 a2 (extract_blocks_map bm (fst ms)) hm))%pred raw) *
-     lift_empty (handles_valid (bm%pred) (map snd (Map.elements (fst (ms%pred))))))%pred
+     lift_empty ((F * (func a1 a2 (fst ms) bm hm))%pred raw))%pred
     (at level 100, func, F, a1, a2, ms, bm, hm at level 0, only parsing) : pred_scope.
 
   Notation "'<<' F ',' func ':' a1 a2 a3 ms bm hm '>>'" :=
     (exists raw, PermCacheDef.rep (snd ms%pred) raw (bm%pred) *
-     lift_empty ((F * (func a1 a2 a3 (extract_blocks_map bm (fst ms)) hm))%pred raw) *
-     lift_empty (handles_valid (bm%pred) (map snd (Map.elements (fst (ms%pred))))))%pred
+     lift_empty ((F * (func a1 a2 a3 (fst ms) bm hm))%pred raw))%pred
     (at level 100, func, F, a1, a2, a3, ms, bm, hm at level 0, only parsing) : pred_scope.
 
   Notation "'<<' F ',' func ':' a1 a2 bm hm '--' '>>'" :=
-    (exists raw cs, PermCacheDef.rep cs raw bm *
-     lift_empty ((F * (func a1 a2 hm))%pred raw))%pred
+    (exists raw cs, PermCacheDef.rep cs raw (bm%pred) *
+     lift_empty ((F * (func a1 a2 bm hm))%pred raw))%pred
     (at level 100, func, F, a1, a2, bm, hm at level 0, only parsing) : pred_scope.
 
   Notation "'<<' F ',' func ':' a1 a2 a3 bm hm '--' '>>'" :=
-    (exists raw cs, PermCacheDef.rep cs raw bm *
-     lift_empty ((F * (func a1 a2 a3 hm))%pred raw))%pred
+    (exists raw cs, PermCacheDef.rep cs raw (bm%pred) *
+     lift_empty ((F * (func a1 a2 a3 bm hm))%pred raw))%pred
     (at level 100, func, F, a1, a2, a3, bm, hm at level 0, only parsing) : pred_scope.
 
 End LogNotations.
@@ -98,32 +96,33 @@ Module MLog.
     )%pred.
 
 
-  Definition rep xp st mm hm :=
+  Definition rep xp st mm bm hm :=
     ( exists log d0,
-      [[ Map.Equal mm (replay_mem log bmap0) ]] *
-      [[ goodSize addrlen (length d0) /\ map_valid mm d0 ]] *
+      [[ handles_valid_map bm mm ]] *
+      [[ Map.Equal (extract_blocks_map bm mm) (replay_mem log bmap0) ]] *
+      [[ goodSize addrlen (length d0) /\ map_valid (extract_blocks_map bm mm) d0 ]] *
     match st with
     | Synced na d =>
-        [[ map_replay mm d0 d ]] *
+        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
         synced_rep xp d0 *
         PermDiskLog.rep xp (PermDiskLog.Synced na log) hm
     | Flushing d ents => exists na,
-        [[ log_valid ents d /\ map_replay mm d0 d ]] *
+        [[ log_valid ents d /\ map_replay (extract_blocks_map bm mm) d0 d ]] *
         synced_rep xp d0 *
         (PermDiskLog.rep xp (PermDiskLog.Synced na log) hm
       \/ PermDiskLog.rep xp (PermDiskLog.Extended log ents) hm)
     | Applying d => exists na,
-        [[ map_replay mm d0 d ]] *
+        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
         (((PermDiskLog.rep xp (PermDiskLog.Synced na log) hm) *
-          (unsync_rep xp mm d0))
+          (unsync_rep xp (extract_blocks_map bm mm) d0))
       \/ ((PermDiskLog.rep xp (PermDiskLog.Truncated log) hm) *
           (synced_rep xp d)))
     | Rollback d =>
-        [[ map_replay mm d0 d ]] *
+        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
         synced_rep xp d0 *
         PermDiskLog.rep xp (PermDiskLog.Rollback log) hm
     | Recovering d =>
-        [[ map_replay mm d0 d ]] *
+        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
         synced_rep xp d0 *
         PermDiskLog.rep xp (PermDiskLog.Recovering log) hm
     end)%pred.
@@ -131,34 +130,34 @@ Module MLog.
 
   (* some handy state wrappers used in crash conditons *)
 
-  Definition would_recover_before xp d hm :=
-    (exists mm, rep xp (Applying d) mm hm \/
-     exists mm na', rep xp (Synced na' d) mm hm)%pred.
+  Definition would_recover_before xp d bm hm :=
+    (exists mm, rep xp (Applying d) mm bm hm \/
+     exists mm na', rep xp (Synced na' d) mm bm hm)%pred.
 
-  Definition would_recover_either xp d ents hm :=
+  Definition would_recover_either xp d ents bm hm :=
      (exists mm,
-      (exists na', rep xp (Synced na' d) mm hm) \/
-      (exists na', rep xp (Synced na' (replay_disk ents d)) mm hm) \/
-      rep xp (Flushing d ents) mm hm \/
-      rep xp (Applying d) mm hm \/
-      rep xp (Recovering d) mm hm)%pred.
+      (exists na', rep xp (Synced na' d) mm bm hm) \/
+      (exists na', rep xp (Synced na' (replay_disk ents d)) mm bm hm) \/
+      rep xp (Flushing d ents) mm bm hm \/
+      rep xp (Applying d) mm bm hm \/
+      rep xp (Recovering d) mm bm hm)%pred.
 
-  Theorem sync_invariant_rep : forall xp st mm hm,
-    sync_invariant (rep xp st mm hm).
+  Theorem sync_invariant_rep : forall xp st mm bm hm,
+    sync_invariant (rep xp st mm bm hm).
   Proof.
     unfold rep, synced_rep, unsync_rep; destruct st; intros; eauto 20.
   Qed.
 
   Hint Resolve sync_invariant_rep.
 
-  Theorem sync_invariant_would_recover_before : forall xp d hm,
-    sync_invariant (would_recover_before xp d hm).
+  Theorem sync_invariant_would_recover_before : forall xp d bm hm,
+    sync_invariant (would_recover_before xp d bm hm).
   Proof.
     unfold would_recover_before; eauto.
   Qed.
 
-  Theorem sync_invariant_would_recover_either : forall xp d ents hm,
-    sync_invariant (would_recover_either xp d ents hm).
+  Theorem sync_invariant_would_recover_either : forall xp d ents bm hm,
+    sync_invariant (would_recover_either xp d ents bm hm).
   Proof.
     unfold would_recover_either; eauto 10.
   Qed.
@@ -253,10 +252,10 @@ Module MLog.
 
 
 
-  Lemma rep_hashmap_subset : forall xp mm hm hm',
+  Lemma rep_hashmap_subset : forall xp mm bm hm hm',
     (exists l, hashmap_subset l hm hm')
-    -> forall st, rep xp st mm hm
-        =p=> rep xp st mm hm'.
+    -> forall st, rep xp st mm bm hm
+        =p=> rep xp st mm bm hm'.
   Proof.
     unfold rep; intros.
     destruct st; cancel.
@@ -267,40 +266,64 @@ Module MLog.
     Unshelve. all: easy.
   Qed.
 
-  Lemma rep_equal_trans : forall xp mm mm' hm,
+    
+  Lemma rep_equal_trans : forall xp mm mm' bm hm,
    Map.Equal mm mm'
-    -> forall st, rep xp st mm hm
-        =p=> rep xp st mm' hm.
+    -> forall st, rep xp st mm bm hm
+        =p=> rep xp st mm' bm hm.
   Proof.
     unfold rep, map_replay, unsync_rep, map_keys; intros.
     erewrite mapeq_elements; eauto.
+    2: apply extract_blocks_map_equal; eauto.
     destruct st; cancel.
-    all: try solve [eapply map_valid_equal; eauto].    
+    all: try solve [eapply handles_valid_map_equal; eauto].
+    all: try solve [ eapply MapFacts.Equal_trans; eauto;
+                     apply MapFacts.Equal_sym;
+                     apply extract_blocks_map_equal; eauto].
+    all: try solve [eapply map_valid_equal; eauto;
+                    apply extract_blocks_map_equal; eauto].
     all: eauto.
     cancel; or_l; cancel.
-    eapply MapFacts.Equal_trans; eauto.
-    apply MapFacts.Equal_sym; auto.
     cancel; or_r; cancel.
-    eapply MapFacts.Equal_trans; eauto.
-    apply MapFacts.Equal_sym; auto.
     or_l; cancel.
-    eapply MapFacts.Equal_trans; eauto.
-    apply MapFacts.Equal_sym; auto.
     Unshelve. all: easy.
   Qed.
 
-  Lemma would_recover_either_hashmap_subset : forall xp d ents hm hm',
+  Lemma rep_blockmem_subset : forall xp mm bm bm' hm,
+   bm c= bm'
+    -> forall st, rep xp st mm bm hm
+        =p=> rep xp st mm bm' hm.
+  Proof.
+    unfold rep, map_replay, unsync_rep, map_keys; intros.
+    norml.
+    erewrite mapeq_elements.
+    2: apply extract_blocks_map_subset_trans; eauto.
+    destruct st; cancel.
+    all: try solve [ eapply handles_valid_map_subset_trans; eauto].
+    all: try solve [ eapply MapFacts.Equal_trans; eauto;
+                     apply MapFacts.Equal_sym;
+                     apply extract_blocks_map_subset_trans; eauto].
+    all: try solve [eapply map_valid_equal; eauto;
+                    apply extract_blocks_map_subset_trans; eauto].
+    all: eauto.
+    cancel; or_l; cancel.
+    cancel; or_r; cancel.
+    or_l; cancel.
+    Unshelve. all: easy.
+  Qed.
+
+  Lemma would_recover_either_hashmap_subset : forall xp d ents bm hm hm',
     (exists l, hashmap_subset l hm hm')
-    -> would_recover_either xp d ents hm
-        =p=> would_recover_either xp d ents hm'.
+    -> would_recover_either xp d ents bm hm
+        =p=> would_recover_either xp d ents bm hm'.
   Proof.
     unfold would_recover_either; intros; cancel.
     all: erewrite rep_hashmap_subset; eauto; cancel.
   Qed.
 
-  Lemma synced_applying : forall xp na d ms hm,
-    rep xp (Synced na d) ms hm =p=>
-    exists ms', rep xp (Applying d) ms' hm.
+  Lemma synced_applying : forall xp na d ms bm hm,
+    rep xp (Synced na d) ms bm hm =p=>
+    exists ms', rep xp (Applying d) ms' bm hm.
   Proof.
     unfold rep, map_replay, unsync_rep, synced_rep in *.
     cancel; eauto.
@@ -308,9 +331,9 @@ Module MLog.
     unfold equal_unless_in; intuition.
   Qed.
 
-  Lemma synced_flushing : forall xp na d ms hm,
-    rep xp (Synced na d) ms hm =p=>
-    exists ms' ents, rep xp (Flushing d ents) ms' hm.
+  Lemma synced_flushing : forall xp na d ms bm hm,
+    rep xp (Synced na d) ms bm hm =p=>
+    exists ms' ents, rep xp (Flushing d ents) ms' bm hm.
   Proof.
     unfold rep, map_replay, unsync_rep, synced_rep in *.
     cancel; eauto.
@@ -426,9 +449,9 @@ Module MLog.
   Qed.
 
 
-  Lemma rep_rollback_pimpl : forall xp d ms hm,
-    rep xp (Rollback d) ms hm =p=>
-      rep xp (Recovering d) ms hm.
+  Lemma rep_rollback_pimpl : forall xp d ms bm hm,
+    rep xp (Rollback d) ms bm hm =p=>
+      rep xp (Recovering d) ms bm hm.
   Proof.
     unfold rep; intros.
     cancel; eauto.
@@ -436,9 +459,9 @@ Module MLog.
     cancel.
   Qed.
 
-  Lemma rep_synced_pimpl : forall xp nr d ms hm,
-    rep xp (Synced nr d) ms hm =p=>
-      rep xp (Recovering d) ms hm.
+  Lemma rep_synced_pimpl : forall xp nr d ms bm hm,
+    rep xp (Synced nr d) ms bm hm =p=>
+      rep xp (Recovering d) ms bm hm.
   Proof.
     unfold rep; intros.
     cancel; eauto.
@@ -447,47 +470,47 @@ Module MLog.
   Qed.
 
 
-  Theorem recover_before_either : forall xp d ents hm,
-    would_recover_before xp d hm =p=>
-    would_recover_either xp d ents hm.
+  Theorem recover_before_either : forall xp d ents bm hm,
+    would_recover_before xp d bm hm =p=>
+    would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_before, would_recover_either; cancel.
   Qed.
 
-  Theorem synced_recover_before : forall xp na d ms hm,
-    rep xp (Synced na d) ms hm =p=>
-    would_recover_before xp d hm.
+  Theorem synced_recover_before : forall xp na d ms bm hm,
+    rep xp (Synced na d) ms bm hm =p=>
+    would_recover_before xp d bm hm.
   Proof.
     unfold would_recover_before; cancel.
     Unshelve. eauto.
   Qed.
 
-  Theorem synced_recover_either : forall xp na d ms ents hm,
-    rep xp (Synced na d) ms hm =p=>
-    would_recover_either xp d ents hm.
+  Theorem synced_recover_either : forall xp na d ms ents bm hm,
+    rep xp (Synced na d) ms bm hm =p=>
+    would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_either; cancel.
   Qed.
 
-  Theorem rollback_recover_either : forall xp d ms ents hm,
-    rep xp (Rollback d) ms hm =p=>
-    would_recover_either xp d ents hm.
+  Theorem rollback_recover_either : forall xp d ms ents bm hm,
+    rep xp (Rollback d) ms bm hm =p=>
+    would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_either; cancel.
     rewrite rep_rollback_pimpl.
     or_r; or_r; or_r; cancel.
   Qed.
 
-  Theorem applying_recover_before : forall xp d ms hm,
-    rep xp (Applying d) ms hm =p=>
-    would_recover_before xp d hm.
+  Theorem applying_recover_before : forall xp d ms bm hm,
+    rep xp (Applying d) ms bm hm =p=>
+    would_recover_before xp d bm hm.
   Proof.
     unfold would_recover_before; cancel.
   Qed.
 
-  Theorem synced_recover_after : forall xp na d ms ents hm,
-    rep xp (Synced na (replay_disk ents d)) ms hm =p=>
-    would_recover_either xp d ents hm.
+  Theorem synced_recover_after : forall xp na d ms ents bm hm,
+    rep xp (Synced na (replay_disk ents d)) ms bm hm =p=>
+    would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_either; intros.
     (** FIXME:
@@ -498,16 +521,16 @@ Module MLog.
     or_r; or_l; cancel.
   Qed.
 
-  Theorem applying_recover_after : forall xp d ms ents hm,
-    rep xp (Applying d) ms hm =p=>
-    would_recover_either xp d ents hm.
+  Theorem applying_recover_after : forall xp d ms ents bm hm,
+    rep xp (Applying d) ms bm hm =p=>
+    would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_either; cancel.
   Qed.
 
-  Theorem flushing_recover_after : forall xp d ms ents hm,
-    rep xp (Flushing d ents) ms hm =p=>
-    would_recover_either xp d ents hm.
+  Theorem flushing_recover_after : forall xp d ms ents bm hm,
+    rep xp (Flushing d ents) ms bm hm =p=>
+    would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_either; intros.
     norm; unfold stars; simpl; auto.
@@ -553,10 +576,8 @@ Module MLog.
              goodSize addrlen ((LogHeader xp) + length l) ]] *
           [[ sync_invariant F ]]
     POST:bm', hm', RET: ms  exists d' nr,
-          let bmap := extract_blocks_map bm' (MSInLog ms) in
           PermCacheDef.rep (MSCache ms) d' bm' *
-          [[ handles_valid_map bm' (MSInLog ms) ]] *
-          [[ (F * rep xp (Synced nr m) bmap hm')%pred d' ]]
+          [[ (F * rep xp (Synced nr m) (MSInLog ms) bm' hm')%pred d' ]]
     XCRASH:bm'', hm_crash, any
     >} init xp cs.
   Proof.
@@ -564,8 +585,8 @@ Module MLog.
     step.
     step.
     step.
-    unfold handles_valid; rewrite Forall_forall; intuition.
     rewrite PermDiskLog.rep_hashmap_subset; eauto; cancel.
+    unfold handles_valid; rewrite Forall_forall; intuition.
     simpl.
     unfold bmap0, hmap0, gmap0; simpl.
     apply is_empty_eq_map0.
@@ -625,6 +646,8 @@ Module MLog.
     eapply PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
 
+    clear H14; eapply handles_valid_map_subset_trans; eauto.
+
     eapply MapFacts.Equal_trans.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -634,7 +657,6 @@ Module MLog.
     apply extract_blocks_map_subset_trans; eauto.
     erewrite mapeq_elements; eauto.
     apply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
     unfold extract_block; rewrite H15.
 
     assert (selN dummy1 a valuset0 = (vs_cur, vs_old)) as Hx.
@@ -648,6 +670,7 @@ Module MLog.
 
     rewrite <- H1; cancel; eauto.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -656,8 +679,7 @@ Module MLog.
     eapply map_valid_equal; eauto.
     apply extract_blocks_map_subset_trans; eauto.
     erewrite mapeq_elements; eauto.
-    apply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
+    apply extract_blocks_map_subset_trans; eauto.    
   Qed.
 
   End UnfoldProof1.
@@ -796,7 +818,8 @@ Qed.
           << F, rep: xp (Flushing d (extract_blocks_list bm'' ents)) ms' bm'' hm'' >>
     >} flush_noapply xp ents ms.
   Proof.
-    unfold flush_noapply, extract_blocks_list, handles_valid_list.
+    unfold flush_noapply, extract_blocks_map, handles_valid_map,
+    extract_blocks_list, handles_valid_list.
     step.
     eapply log_valid_entries_valid; eauto.
     step.
@@ -806,6 +829,10 @@ Qed.
     or_l.
     cancel; unfold map_merge.
     eapply PermDiskLog.rep_hashmap_subset; eauto.
+    apply handles_valid_replay_mem; eauto.
+    eapply handles_valid_list_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    
     rewrite replay_mem_app; eauto.
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans;
@@ -813,16 +840,21 @@ Qed.
     erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
     apply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.    
+    eapply handles_valid_list_subset_trans; eauto.
+
 
     eapply map_valid_equal.
-    apply extract_blocks_map_replay_mem_comm; auto.
-    eapply handles_valid_subset_trans; eauto. 
+    Focus 2.
     apply map_valid_replay_mem'; auto.
-    eapply log_valid_replay; eauto.   
-    apply log_valid_combine; auto.
-    eapply map_valid_equal; [| eauto].
-    apply extract_blocks_map_subset_trans; auto.
+    eapply log_valid_replay; eauto.
+    apply log_valid_combine; eauto.
+    eauto.
+    eapply MapFacts.Equal_trans.
+    eapply replay_mem_equal.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply extract_blocks_map_replay_mem_comm; auto.
+    eapply handles_valid_subset_trans; eauto.
+
     rewrite replay_disk_replay_mem; auto.
     erewrite mapeq_elements; eauto.
     eapply MapFacts.Equal_trans;
@@ -833,9 +865,6 @@ Qed.
     eapply handles_valid_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
     apply log_valid_combine; auto.
-    eapply handles_valid_subset_trans.
-    apply handles_valid_replay_mem; eauto.
-    eauto.
     solve_hashmap_subset.
 
     step.
@@ -845,6 +874,7 @@ Qed.
 
     or_r; cancel.
     eapply PermDiskLog.rep_hashmap_subset; eauto.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_sym;
     apply extract_blocks_map_subset_trans; auto.
@@ -852,13 +882,13 @@ Qed.
     eapply map_valid_equal; eauto.
     apply extract_blocks_map_subset_trans; auto.
     erewrite mapeq_elements; eauto.
-    apply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
+    apply extract_blocks_map_subset_trans; auto.    
     solve_hashmap_subset.
 
     rewrite <- H1; cancel; eauto.
     xcrash.
     or_l; cancel.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_sym;
     apply extract_blocks_map_subset_trans; auto.
@@ -868,10 +898,10 @@ Qed.
     apply log_valid_combine; auto.
     erewrite mapeq_elements; eauto.
     apply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
-
+    
     or_r; cancel.
     erewrite extract_blocks_subset_trans; eauto.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_sym;
     apply extract_blocks_map_subset_trans; auto.
@@ -881,8 +911,7 @@ Qed.
     apply log_valid_combine; auto.
     erewrite mapeq_elements; eauto.
     apply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
-
+    
     Unshelve.
     auto.
   Qed.
@@ -1110,6 +1139,29 @@ Qed.
   Qed.
       
 
+Lemma handles_valid_map_hmap0:
+  forall bm, handles_valid_map bm hmap0.
+Proof.      
+  unfold handles_valid_map; intros.
+  pose proof map_empty_hmap0 as Hx.
+  apply MapProperties.elements_Empty in Hx;
+  rewrite Hx; unfold handles_valid_list, handles_valid;
+  simpl; apply Forall_nil.
+Qed.
+
+Hint Resolve handles_valid_map_hmap0.
+
+ Lemma unsync_rep_equal:
+   forall m m' xp d,
+     Map.Equal m m' ->
+     unsync_rep xp m d =p=>
+ unsync_rep xp m' d.
+ Proof.
+   unfold unsync_rep, map_keys; intros.
+   erewrite mapeq_elements; eauto.
+ Qed.
+    
+  
   
   Theorem apply_ok:
     forall xp ms pr,
@@ -1147,6 +1199,7 @@ Qed.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     cancel.
     simpl.
+
     apply extract_blocks_map_empty.
     rewrite vssync_vecs_length, vsupd_vecs_length; eauto.
     eapply map_valid_equal; eauto.
@@ -1160,11 +1213,11 @@ Qed.
     erewrite mapeq_elements; eauto.
     apply extract_blocks_map_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
-    apply Forall_nil.
     solve_hashmap_subset.
     solve_blockmem_subset.
 
     (* crash conditions *)
+    norml.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     solve_blockmem_subset.
@@ -1175,12 +1228,54 @@ Qed.
     setoid_rewrite <- firstn_exact with
         (l:=  (map_keys (extract_blocks_map bm ms_1))) at 1.
     setoid_rewrite apply_unsync_syncing_ok.
-    setoid_rewrite apply_synced_data_ok.
-    xcrash; or_l; safecancel; eauto.
-    apply MapFacts.Equal_sym.
-    apply extract_blocks_map_subset_trans; auto.
+    setoid_rewrite apply_synced_data_ok.   
+    xcrash; or_l; safecancel.
+    or_l; cancel.
+    erewrite unsync_rep_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    
+    eapply handles_valid_subset_trans; eauto.
+    
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym;
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    auto.
+
+    eapply map_valid_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+
+    erewrite mapeq_elements with (m2:= extract_blocks_map bm'' ms_1); eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    
     eapply handles_valid_subset_trans; eauto.
 
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym;
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+
+    eauto.
+
+    eapply map_valid_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+
+    
+    erewrite mapeq_elements with (m2:= extract_blocks_map bm'' ms_1); eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+
+    apply MapFacts.Equal_sym;
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+
+    eapply handles_valid_subset_trans; eauto.
+
+    
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     solve_blockmem_subset.
@@ -1190,12 +1285,33 @@ Qed.
     rewrite <- firstn_exact with
         (l:= Map.elements (extract_blocks_map bm ms_1)).
     rewrite apply_unsync_applying_ok.
-    or_l; safecancel; eauto.
+    or_l; safecancel.
     erewrite PermDiskLog.rep_hashmap_subset.
-    cancel.
+    or_l; cancel.
+    erewrite unsync_rep_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
     solve_hashmap_subset.
-    rewrite firstn_exact; auto.
-    all: auto.
+    
+    eapply handles_valid_subset_trans; eauto.
+    
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym;
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    auto.
+
+    eapply map_valid_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+
+    rewrite firstn_exact;
+    erewrite mapeq_elements with (m2:= extract_blocks_map bm'' ms_1); eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    unfold handles_valid_map, handles_valid_list in *; auto.
+    unfold handles_valid_map, handles_valid_list in *; auto.
+    auto.
 
     rewrite <- H1; cancel.
     solve_hashmap_subset.
@@ -1204,11 +1320,32 @@ Qed.
     rewrite combine_elements_eq.
     setoid_rewrite apply_unsync_applying_ok.
     xcrash.
-    or_l; safecancel; eauto.
+    or_l; safecancel.
     erewrite PermDiskLog.rep_hashmap_subset.
-    cancel.
+    or_l; cancel.
+    erewrite unsync_rep_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
     solve_hashmap_subset.
-    all: auto.
+    
+    eapply handles_valid_subset_trans; eauto.
+    
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym;
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    auto.
+
+    eapply map_valid_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    
+    erewrite mapeq_elements with (m2:= extract_blocks_map bm'' ms_1); eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    unfold handles_valid_map, handles_valid_list in *; auto.
+    unfold handles_valid_map, handles_valid_list in *; auto.
+    solve_blockmem_subset.
 
     Unshelve.
     all: eauto; unfold EqDec; apply handle_eq_dec.
@@ -1221,7 +1358,7 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (apply _ _) _) => apply apply_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (flush_noapply _ _ _) _) => apply flush_noapply_ok : prog.
   Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
   Theorem flush_ok:
     forall xp ents ms pr,
@@ -1265,12 +1402,12 @@ Qed.
     step.
     safestep.
     unfold rep; cancel.
+    eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
     eapply map_valid_equal; [| eauto ].
-    eapply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
+    eapply extract_blocks_map_subset_trans; auto.    
     auto.
 
     safestep.
@@ -1328,6 +1465,7 @@ Qed.
     safecancel.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     cancel.
+    clear H18; eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1339,11 +1477,12 @@ Qed.
     eapply extract_blocks_map_subset_trans; auto.
     eapply handles_valid_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
+    
     erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
     auto.
+    
     step.
     step.
 
@@ -1369,7 +1508,24 @@ Qed.
     cancel.
     unfold would_recover_either, rep.
     eapply pimpl_exists_r; eexists.
+
     or_l; cancel; eauto.
+    eapply handles_valid_subset_trans; eauto.
+    
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym;
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+    auto.
+
+    eapply map_valid_equal; eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
+
+    unfold map_replay.
+    erewrite mapeq_elements with (m2:= extract_blocks_map bm'' ms_1); eauto.
+    apply extract_blocks_map_subset_trans; auto;
+    solve_blockmem_subset.
     solve_hashmap_subset.
 
     Unshelve.
@@ -1460,6 +1616,7 @@ Qed.
     xform_normr; cancel; eauto.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1491,8 +1648,7 @@ Qed.
     apply In_map_fst_MapIn in HIn.
     eapply map_empty_not_In; [| eauto].
     apply empty_extract_blocks_map; auto.
-
-    eapply handles_valid_subset_trans; eauto.
+    
     eapply list2nmem_updN; eauto.
 
     cancel.
@@ -1544,6 +1700,7 @@ Qed.
     xform_normr; cancel; eauto.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1561,13 +1718,12 @@ Qed.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
     eapply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
+    
     eapply list2nmem_updN; eauto.
     
     Unshelve. all: eauto.
     unfold EqDec; apply handle_eq_dec.
     exact (Synced 0 nil).
-    exact bmap0.
   Qed.
 
   Section UnfoldProof4.
@@ -1621,6 +1777,7 @@ Qed.
     rewrite <- H1; cancel.
     rewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1628,13 +1785,13 @@ Qed.
     eapply map_valid_equal; eauto.
     eapply extract_blocks_map_subset_trans; auto.
     erewrite mapeq_elements; eauto.
-    eapply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
+    eapply extract_blocks_map_subset_trans; auto.    
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
     rewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1643,12 +1800,12 @@ Qed.
     eapply extract_blocks_map_subset_trans; auto.
     erewrite mapeq_elements; eauto.
     eapply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
     rewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1657,7 +1814,6 @@ Qed.
     eapply extract_blocks_map_subset_trans; auto.
     erewrite mapeq_elements; eauto.
     eapply extract_blocks_map_subset_trans; auto.
-    eapply handles_valid_subset_trans; eauto.
     solve_hashmap_subset.    
   Qed.
 
@@ -1946,12 +2102,13 @@ Qed.
     apply map_valid_empty; auto.
   Qed.
 
-*)
-
+ *)
   
-  Lemma crash_xform_applying : forall xp d mm hm,
-    crash_xform (rep xp (Applying d) mm hm) =p=>
-      exists na d' mm', (rep xp (Synced na d') mm' hm) *
+Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
+(*
+  Lemma crash_xform_applying : forall xp d mm bm hm,
+    crash_xform (rep xp (Applying d) mm bm hm) =p=>
+      exists na d' mm', (rep xp (Synced na d') mm' bm hm) *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     unfold rep, synced_rep, unsync_rep, map_replay; intros.
@@ -1959,9 +2116,9 @@ Qed.
     - rewrite PermDiskLog.xform_rep_synced.
       rewrite crash_xform_arrayN_subset.
       cancel; eauto. simplen.
-      rewrite <- H; setoid_rewrite H4; auto.
+      rewrite <- H0; setoid_rewrite H5; auto.
       eapply length_eq_map_valid; eauto. simplen.
-      rewrite <- H; setoid_rewrite H4; auto.
+      rewrite <- H0; setoid_rewrite H5; auto.
 
       eapply list2nmem_replay_disk_crash_xform; eauto.
       erewrite <- equal_unless_in_replay_disk; eauto.
@@ -1972,16 +2129,18 @@ Qed.
       cancel; eauto; try solve [simplen].
 
       simplen.
-      rewrite <- H1.
+      rewrite <- H2.
       rewrite replay_disk_length; auto.
       
       eapply length_eq_map_valid; eauto; simplen.
-      rewrite <- H1.
+      rewrite <- H2.
       rewrite replay_disk_length; auto.
       eapply list2nmem_replay_disk_crash_xform; eauto.
       rewrite replay_disk_twice; auto.
       unfold diskIs; auto.
 
+      
+      simplen.
       apply MapFacts.Equal_refl.
       simplen.
       rewrite <- H1.
@@ -1990,31 +2149,93 @@ Qed.
       eapply list2nmem_replay_disk_crash_xform; eauto.
       unfold diskIs; cbn; auto.
   Qed.
-
-
-  Lemma crash_xform_synced : forall xp nr d ms hm,
-    crash_xform (rep xp (Synced nr d) ms hm) =p=>
-      exists d' ms' nr', rep xp (Synced nr' d') ms' hm *
+*)
+(*
+  Lemma crash_xform_synced : forall xp nr d ms bm hm,
+    crash_xform (rep xp (Synced nr d) ms bm hm) =p=>
+      exists d' ms' nr', rep xp (Synced nr' d') ms' bm hm *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     intros.
-    rewrite synced_applying.
-    xform_norm.
-    rewrite crash_xform_applying; cancel.
+    unfold rep, synced_rep, unsync_rep, map_replay; intros.
+    xform_norml.
+    - rewrite PermDiskLog.xform_rep_synced.
+      rewrite crash_xform_arrayN_subset.
+      cancel; eauto. simplen.
+      rewrite <- H2; auto.
+      eapply length_eq_map_valid; eauto. simplen.
+
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      erewrite <- equal_unless_in_replay_disk; eauto.
+      unfold diskIs; auto.
+      apply equal_unless_in_refl.
   Qed.
 
 
-  Lemma crash_xform_applying_applying : forall xp d ms hm,
-    crash_xform (rep xp (Applying d) ms hm) =p=>
-      exists d' ms', rep xp (Applying d') ms' hm *
+  Lemma crash_xform_applying_applying : forall xp d ms bm hm,
+    crash_xform (rep xp (Applying d) ms bm hm) =p=>
+      exists d' ms', rep xp (Applying d') ms' bm hm *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     intros.
+    unfold rep, synced_rep, unsync_rep, map_replay; intros.
+    xform_norml.
+    - rewrite PermDiskLog.xform_rep_synced.
+      rewrite crash_xform_arrayN_subset.
+      cancel; eauto.
+      or_l; cancel; eauto.
+      unfold equal_unless_in in *.
+      cleanup.
+      (* Search possible_crash_list.
+      eapply crash_xform_list2nmem_list_eq in H0.
+      cleanup; intuition.
+      unfold crash_xform.
+      eexists; intuition; eauto.
+      Focus 2.
+      unfold possible_crash, possible_crash_list in *.
+      intros.
+      
+      simplen.
+      Search equal_unless_in.
+      rewrite <- H0; setoid_rewrite H5; auto.
+      eapply length_eq_map_valid; eauto. simplen.
+      rewrite <- H0; setoid_rewrite H5; auto.
+*)
+      Focus 2.
+      (*eapply list2nmem_replay_disk_crash_xform; eauto.*)
+      erewrite <- equal_unless_in_replay_disk; eauto.
+      unfold diskIs; auto.
+
+    - rewrite PermDiskLog.xform_rep_truncated.
+      rewrite crash_xform_arrayN_subset.
+      cancel; eauto; try solve [simplen].
+
+      simplen.
+      rewrite <- H2.
+      rewrite replay_disk_length; auto.
+      
+      eapply length_eq_map_valid; eauto; simplen.
+      rewrite <- H2.
+      rewrite replay_disk_length; auto.
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      rewrite replay_disk_twice; auto.
+      unfold diskIs; auto.
+
+      
+      simplen.
+      apply MapFacts.Equal_refl.
+      simplen.
+      rewrite <- H1.
+      rewrite replay_disk_length; auto.
+      apply map_valid_map0.
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      unfold diskIs; cbn; auto.
+      
     rewrite crash_xform_applying; eauto.
     norml; unfold stars; simpl.
     rewrite synced_applying; cancel.
   Qed.
-
+*)
 (*  
   Lemma crash_xform_flushing : forall xp d ents ms hm,
     crash_xform (rep xp (Flushing d ents) ms hm) =p=>
@@ -2071,11 +2292,11 @@ Qed.
 *)
 
   
-  Lemma crash_xform_recovering' : forall xp d ms hm,
-    crash_xform (rep xp (Recovering d) ms hm) =p=>
+  Lemma crash_xform_recovering' : forall xp d ms bm hm,
+    crash_xform (rep xp (Recovering d) ms bm hm) =p=>
       exists d' ms',
-        ((exists nr, rep xp (Synced nr d') ms' hm) \/
-          rep xp (Rollback d') ms' hm) *
+        ((exists nr, rep xp (Synced nr d') ms' bm hm) \/
+          rep xp (Rollback d') ms' bm hm) *
         [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     unfold rep, synced_rep, map_replay; intros.
@@ -2083,34 +2304,35 @@ Qed.
     rewrite PermDiskLog.xform_rep_recovering, crash_xform_arrayN_subset.
     cancel.
     or_r; cancel; eauto; try solve [simplen].
-    simplen; rewrite <- H1; auto.
+    simplen; rewrite <- H2; auto.
     eapply length_eq_map_valid; eauto; simplen.
     eapply list2nmem_replay_disk_crash_xform; eauto; easy.
 
     or_l; cancel; eauto; try solve [simplen].
-    simplen; rewrite <- H1; auto.
+    simplen; rewrite <- H2; auto.
     eapply length_eq_map_valid; eauto; simplen.
     eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
 
-  Lemma crash_xform_rollback : forall xp d ms hm,
-    crash_xform (rep xp (Rollback d) ms hm) =p=>
-      exists d' ms', rep xp (Rollback d') ms' hm *
+  Lemma crash_xform_rollback : forall xp d ms bm hm,
+    crash_xform (rep xp (Rollback d) ms bm hm) =p=>
+      exists d' ms', rep xp (Rollback d') ms' bm hm *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     unfold rep, synced_rep; intros.
     xform_norm.
     rewrite PermDiskLog.xform_rep_rollback, crash_xform_arrayN_subset.
     cancel; eauto; try solve [simplen].
-    simplen; rewrite <- H2; auto.
+    simplen; rewrite <- H3; auto.
     eapply length_eq_map_valid; eauto; simplen.
     unfold map_replay in *; subst.
     eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
 
-  Lemma crash_xform_before : forall xp d hm,
-    crash_xform (would_recover_before xp d hm) =p=>
-      exists d' ms' na, rep xp (Synced na d') ms' hm *
+  (*
+  Lemma crash_xform_before : forall xp d bm hm,
+    crash_xform (would_recover_before xp d bm hm) =p=>
+      exists d' ms' na, rep xp (Synced na d') ms' bm hm *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     unfold would_recover_before; intros.
@@ -2119,13 +2341,14 @@ Qed.
     rewrite crash_xform_synced; cancel.
   Qed.
 
-
-  Definition recover_either_pred xp d ents hm :=
+   *)
+  
+  Definition recover_either_pred xp d ents bm hm :=
     (exists d' ms',
-      (exists nr, rep xp (Synced nr d') ms' hm *
+      (exists nr, rep xp (Synced nr d') ms' bm hm *
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])) \/
-      (rep xp (Rollback d') ms' hm *
+      (rep xp (Rollback d') ms' bm hm *
         [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]]))%pred.
 
 (*  
@@ -2155,9 +2378,9 @@ Qed.
   Qed.
 *)
 
-  Lemma crash_xform_recovering : forall xp d ms ents hm,
-    crash_xform (rep xp (Recovering d) ms hm) =p=>
-      recover_either_pred xp d ents hm.
+  Lemma crash_xform_recovering : forall xp d ms ents bm hm,
+    crash_xform (rep xp (Recovering d) ms bm hm) =p=>
+      recover_either_pred xp d ents bm hm.
   Proof.
     unfold recover_either_pred; intros.
     rewrite crash_xform_recovering'.
@@ -2166,18 +2389,19 @@ Qed.
     or_l; cancel.
   Qed.
 
-  Lemma either_pred_either : forall xp d hm ents,
-    recover_either_pred xp d ents hm =p=>
-    exists d', would_recover_either xp d' ents hm.
+  Lemma either_pred_either : forall xp d bm hm ents,
+    recover_either_pred xp d ents bm hm =p=>
+    exists d', would_recover_either xp d' ents bm hm.
   Proof.
     unfold recover_either_pred, would_recover_either.
     intros; xform_norm; cancel.
     erewrite rep_rollback_pimpl. cancel.
   Qed.
 
-  Lemma recover_idem : forall xp d ents hm,
-    crash_xform (recover_either_pred xp d ents hm) =p=>
-                 recover_either_pred xp d ents hm.
+  (*
+  Lemma recover_idem : forall xp d ents bm hm,
+    crash_xform (recover_either_pred xp d ents bm hm) =p=>
+                 recover_either_pred xp d ents bm hm.
   Proof.
     intros.
     unfold recover_either_pred.
@@ -2197,7 +2421,7 @@ Qed.
     or_r; cancel.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
-
+*)
 
   Theorem recover_ok:
     forall xp cs pr,
@@ -2205,17 +2429,17 @@ Qed.
     PERM:pr   
     PRE:bm, hm,
       PermCacheDef.rep cs raw bm *
-      [[ (F * recover_either_pred xp d ents hm)%pred raw ]] *
+      [[ (F * recover_either_pred xp d ents bm hm)%pred raw ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:ms' exists raw',
       PermCacheDef.rep (MSCache ms') raw' bm' *
-      [[(exists d' na, F * rep xp (Synced na d') (extract_blocks_map bm' (MSInLog ms')) hm' *
+      [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') bm' hm' *
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
       ))%pred raw' ]]
     XCRASH:bm'', hm',
       exists cs' raw' ms', PermCacheDef.rep cs' raw' bm'' *
-      [[ (exists d', F * rep xp (Recovering d') ms' hm' *
+      [[ (exists d', F * rep xp (Recovering d') ms' bm'' hm' *
          ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
         ))%pred raw' ]]
@@ -2254,6 +2478,133 @@ Qed.
     apply extract_blocks_map_empty.
     unfold ent_handle; auto.
     solve_hashmap_subset.
+
+    (* This seems true but couldn't prove it yet *)
+    admit. (*
+    Definition input_dec: forall (a b: addr * handle), {a = b}+{a <> b}.
+        intros; destruct a, b.
+        destruct (addr_eq_dec n n0); subst.
+        destruct (handle_eq_dec h h0); subst.
+        left; auto.
+        all: right; intuition;
+        inversion H; eauto.
+    Defined.
+
+    Lemma KNoDup_exists_incl:
+      forall (l: list (addr * handle)),
+      exists l', incl l' l /\ KNoDup l'.
+      induction l; simpl in *; intros.
+      exists nil; intuition.
+      unfold KNoDup.
+      apply NoDupA_nil.
+      cleanup.
+    
+    Lemma replay_mem_exists_incl:
+      forall (l: list (addr * handle)),
+      exists l', Map.Equal (replay_mem l gmap0) (replay_mem l' gmap0) /\
+            incl l' l /\
+            KNoDup l'.
+    Proof.
+      Search KNoDup.
+      induction l; simpl in *; intros.
+      exists nil; intuition.
+      simpl; apply MapFacts.Equal_refl.
+      unfold KNoDup.
+      apply NoDupA_nil.
+      cleanup.
+      destruct (in_dec input_dec a x).
+      {
+        exists x.
+        unfold Map.Equal, Map.add, gmap0, map0; simpl.
+        intuition.
+        unfold replay_mem, Map.find; simpl.
+        Search AddrMap_AVL.this.
+      Search ({_ _})
+      
+      
+
+    Lemma handles_valid_map_replay_mem_gmap0:
+      forall a bm m,
+        handles_valid_map bm m ->
+        handles_valid_list bm a ->
+        handles_valid_map bm (replay_mem a m).
+    Proof.
+      unfold handles_valid_map; induction a; intros; auto.
+      simpl.
+      inversion H0; subst.
+      eapply IHa; eauto.
+
+      Lemma handle_valid_map_add:
+        forall m a bm,
+          handles_valid_map bm m ->
+          handle_valid bm (snd a) ->
+          handles_valid_map bm (Map.add (fst a) (snd a) m).
+      Proof.
+        unfold handles_valid_map, Map.add, Map.elements, AddrMap_AVL.Raw.elements;
+        intro m; destruct m;
+        generalize dependent this;
+        induction this; simpl in *; intros; auto.
+        unfold handles_valid_list, handles_valid; simpl in *; auto.
+
+        inversion is_bst; cleanup; intuition; simpl in *.
+        rewrite AddrMap_AVL.Raw.Proofs.elements_app in H.
+        unfold handles_valid_list in *.
+        rewrite map_app in *; simpl in *.
+        
+        apply handles_valid_app in H; cleanup.
+        apply handles_valid_cons in H3; cleanup.
+        rewrite AddrMap_AVL.Raw.Proofs.elements_app, app_nil_r in H4.
+        destruct (OrderedTypeEx.Nat_as_OT.compare (fst a) k); simpl.
+      
+        Search AddrMap_AVL.Raw.elements AddrMap_AVL.Raw.bal.
+        unfold AddrMap_AVL.Raw.bal.
+      
+      destruct this; simpl in *.
+      setoid_rewrite D; simpl.
+      unfold Map.elements, Map.add, AddrMap_AVL.Raw.elements,
+      AddrMap_AVL.Raw.elements_aux, AddrMap_AVL.Raw.add; simpl.
+      unfold handles_valid_list, handles_valid; simpl; apply Forall_nil.
+
+      setoid_rewrite D; simpl.
+      unfold Map.elements, Map.add, AddrMap_AVL.Raw.elements; simpl.
+      destruct m; cleanup.
+      
+      unfold handles_valid_list, handles_valid; simpl; apply Forall_nil.
+      
+      destruct m; simpl.
+      
+      Search Map.elements.
+
+      
+      
+      destruct (in_dec input_dec a a0).
+      Lemma replay_mem_in:
+        forall T a0 (a: addr * T),
+          In a a0 ->
+          Map.Equal (replay_mem (a :: a0) gmap0) (replay_mem a0 gmap0).
+      Proof.
+        intros.
+        apply in_split in H; cleanup.
+        simpl.
+        Search replay_mem app.
+        intuition; subst.
+        apply MapFacts.Equal_sym.
+        eapply MapFacts.Equal_trans.
+        apply MapFacts.Equal_refl.
+        apply MapFacts.Equal_sym.
+        eapply replay_mem_equal.
+        apply map_add_repeat.
+        simpl in *.
+        specialize (IHa0 _ (Map.add (fst a1) (snd a1) m) H0). intuition.
+             
+      Search replay_mem cons.
+      inversion H; subst.
+      
+      Search Map.elements.
+    apply handles_valid_replay_mem; auto.
+    Search KNoDup.
+            *)
+    
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
@@ -2278,8 +2629,17 @@ Qed.
     cancel; eauto.
     rewrite PermDiskLog.rep_synced_pimpl; cancel; eauto.
     or_l; cancel; eauto.
+    erewrite mapeq_elements; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
-
+ 
     (* Synced, case 2: We crashed to the new disk. *)
     prestep. norm. cancel.
     intuition simpl; auto. pred_apply; cancel.
@@ -2303,6 +2663,11 @@ Qed.
     apply extract_blocks_map_empty.
     unfold ent_handle; auto.
     solve_hashmap_subset.
+
+    (* This seems true but couldn't prove it yet *)
+    admit.
+
+    
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
@@ -2327,16 +2692,46 @@ Qed.
     cancel; eauto.
     rewrite PermDiskLog.rep_synced_pimpl; cancel; eauto.
     or_r; cancel; eauto.
+    erewrite mapeq_elements; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
     
     denote or as Hx. apply sep_star_or_distr in Hx.
     destruct Hx; destruct_lift H.
+    norml.
     rewrite <- H1; cancel; eauto.
     xcrash; eauto.
     or_l; cancel.
+    erewrite mapeq_elements; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; eauto.
+
+    norml.
     rewrite <- H1; cancel; eauto.
     xcrash; eauto.
     or_r; cancel.
+    erewrite mapeq_elements; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; eauto.
 
     (* Rollback *)
     safecancel.
@@ -2365,6 +2760,10 @@ Qed.
     apply extract_blocks_map_empty.
     unfold ent_handle; auto.
     solve_hashmap_subset.
+
+    (* This seems true but couldn't prove it yet *)
+    admit.
+    
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
@@ -2389,18 +2788,37 @@ Qed.
     cancel; eauto.
     rewrite PermDiskLog.rep_synced_pimpl; cancel; eauto.
     or_l; cancel; eauto.
+    erewrite mapeq_elements; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
-    
+
+    norml.
     rewrite <- H1; cancel; eauto.
     xcrash; eauto.
     or_l; cancel.
+    erewrite mapeq_elements; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; eauto.
 
     Unshelve.
     all: try exact tagged_block.
     all: try exact bmap0.
     3: constructor.
     all: unfold EqDec; apply handle_eq_dec.
-  Qed.
+  Admitted.
 
 
   Theorem dwrite_vecs_ok :
@@ -2431,13 +2849,14 @@ Qed.
 
     step.
     eapply handles_valid_subset_trans; eauto.
-    rewrite replay_disk_length in H9; auto.
+    rewrite replay_disk_length in H8; auto.
 
     step.
     step.
     unfold rep, synced_rep, map_replay; cancel.
     rewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    clear H24; eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -2449,7 +2868,6 @@ Qed.
     repeat rewrite replay_disk_empty; auto.
     apply empty_extract_blocks_map; auto.
     apply empty_extract_blocks_map; auto.
-    eapply handles_valid_subset_trans; eauto.
     solve_hashmap_subset.
     
     (* crashes for case 1 *)
@@ -2464,6 +2882,7 @@ Qed.
     pred_apply; cancel.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -2476,8 +2895,6 @@ Qed.
     apply empty_extract_blocks_map; auto.
     apply empty_extract_blocks_map; auto.
     
-    eapply handles_valid_subset_trans; eauto.
-
     cancel.
 
     rewrite <- H1; cancel.
@@ -2499,6 +2916,7 @@ Qed.
     unfold rep, synced_rep, map_replay; cancel.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -2519,7 +2937,6 @@ Qed.
     unfold overlap in *.
             *)
     apply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
     solve_hashmap_subset.
 
     (* crashes for case 2 *)
@@ -2533,6 +2950,7 @@ Qed.
     pred_apply; cancel.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -2541,7 +2959,6 @@ Qed.
     eapply map_valid_equal; eauto.
     apply extract_blocks_map_subset_trans; eauto.
     admit.    
-    eapply handles_valid_subset_trans; eauto.
 
     Unshelve.
     3: constructor.
@@ -2571,6 +2988,7 @@ Qed.
     step.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -2581,10 +2999,11 @@ Qed.
     erewrite mapeq_elements.
     apply replay_disk_vssync_vecs_comm.
     apply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
     solve_hashmap_subset.
+    
     rewrite <- H1; cancel; eauto.
     erewrite PermDiskLog.rep_hashmap_subset; eauto.
+    eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -2592,7 +3011,6 @@ Qed.
     apply extract_blocks_map_subset_trans; eauto.
     erewrite mapeq_elements; eauto.
     apply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.

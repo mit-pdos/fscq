@@ -386,6 +386,35 @@ Definition extract_block (bm: block_mem) h :=
 Definition extract_blocks_map bm hm :=
   map (fun x => extract_block bm x) hm.
 
+Lemma handles_valid_map_subset_trans:
+  forall hmap bm bm',
+    bm c= bm' ->
+    handles_valid_map bm hmap ->
+    handles_valid_map bm' hmap.
+Proof.
+  unfold handles_valid_map; intros.
+  eapply handles_valid_list_subset_trans; eauto.
+Qed.
+
+
+Lemma handles_valid_map_equal:
+  forall hmap hmap' bm,
+    Map.Equal hmap hmap' ->
+    handles_valid_map bm hmap ->
+    handles_valid_map bm hmap'.
+Proof.
+  unfold handles_valid_map; intros.
+  erewrite <- mapeq_elements; eauto.
+Qed.
+
+Lemma extract_blocks_map_equal:
+  forall hmap hmap' bm,
+    Map.Equal hmap hmap' ->
+    Map.Equal (extract_blocks_map bm hmap) (extract_blocks_map bm hmap').
+Proof.
+  unfold extract_blocks_map; intros.
+  apply MapFacts.map_m; eauto.
+Qed.
 
 Lemma empty_extract_blocks_map:
   forall hmap bm,
@@ -546,19 +575,39 @@ Definition handles_valid_nested {T} bm (hl: list (list (T * handle))) :=
 Definition extract_blocks_nested {T} bm (hl: list (list (T * handle))) := 
   List.map (fun tl => extract_blocks_list bm tl) hl.
 
-Lemma extract_blocks_nested_subset_trans:
-    forall T l bm bm',
+  Lemma handles_valid_nested_subset_trans:
+    forall T ts bm bm',
       bm c= bm' ->
-      @handles_valid_nested T bm l ->
-      extract_blocks_nested bm' l = extract_blocks_nested bm l.
+      @handles_valid_nested T bm ts ->
+      handles_valid_nested bm' ts.
   Proof.
-    induction l; simpl; intros; auto.
-    unfold handles_valid_nested in *.
-    inversion H0; subst.
-    erewrite <- extract_blocks_list_subset_trans; eauto.
-    erewrite IHl; eauto.
+    unfold handles_valid_nested; intros.
+    rewrite Forall_forall in *; intros;
+    eapply handles_valid_subset_trans; eauto.
+    apply H0; eauto.
   Qed.
 
+
+  Lemma extract_blocks_nested_subset_trans:
+    forall T ts bm bm',
+      bm c= bm' ->
+      @handles_valid_nested T bm ts ->
+      extract_blocks_nested bm' ts =
+      extract_blocks_nested bm ts.
+  Proof.
+    unfold handles_valid_nested, extract_blocks_nested; intros.
+    apply map_ext_in; intros.
+    rewrite Forall_forall in *; symmetry; 
+    eapply extract_blocks_list_subset_trans; eauto.
+  Qed.
+
+Lemma extract_blocks_nested_length:
+    forall T ts bm,
+      length (@extract_blocks_nested T bm ts) = length ts.
+  Proof.
+    unfold extract_blocks_nested; intros.
+    rewrite map_length; auto.
+  Qed.
 
   Ltac solve_blockmem_subset:=
     match goal with
