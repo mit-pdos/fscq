@@ -86,7 +86,8 @@ Definition rep xp st hm :=
          PermCacheDef.rep cs d bm' *
          [[ extract_blocks_list bm' r = l /\
             (F * rep xp (Synced nr l) hm')%pred d ]] *
-         [[ handles_valid_list bm' r ]]
+         [[ handles_valid_list bm' r ]] *
+         [[ Forall entry_valid r ]]
     CRASH:bm'', hm'', exists cs',
          PermCacheDef.rep cs' d bm''*
          [[ (F * rep xp (Synced nr l) hm'')%pred d ]]

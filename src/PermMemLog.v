@@ -605,7 +605,6 @@ Module MLog.
     all: eauto.
     apply bmap0.
   Qed.
-
   
   Theorem read_ok:
     forall xp ms a pr,
@@ -616,7 +615,7 @@ Module MLog.
       [[[ d ::: exists F', (F' * a |-> vs) ]]]
     POST:bm', hm', RET:^(ms', r)
       << F, rep: xp (Synced na d) ms' bm' hm' >> *
-      [[ extract_block bm' r = fst vs ]] *
+      [[ bm' r = Some (fst vs) ]] *
       [[ readOnly ms ms' ]]
     CRASH:bm'', hm'',
       exists ms', << F, rep: xp (Synced na d) ms' bm'' hm'' >>
@@ -629,10 +628,17 @@ Module MLog.
     step.
     eapply PermDiskLog.rep_hashmap_subset; eauto.
     subst.
-    eapply replay_disk_eq; eauto.
-    eassign a; eassign (extract_blocks_map bm ms_1).
-    apply map_find_extract_blocks_mem; auto.
-    eassign dummy1; pred_apply; cancel.
+
+    eapply handles_valid_map_extract_some in Heqo as Hx; eauto.
+    cleanup.
+    apply list2nmem_ptsto_bound in H5 as Hl.
+    eapply list2nmem_sel in H5 as Hz.
+    erewrite replay_disk_selN_MapsTo in Hz.
+    inversion Hz; subst; eauto.
+    apply Map.find_2.
+    erewrite map_find_extract_blocks_mem; eauto.
+    unfold extract_block; cleanup; auto.
+    erewrite <- replay_disk_length; eauto.
     unfold false_pred; cancel.
 
     unfold synced_rep; cancel.
@@ -679,7 +685,9 @@ Module MLog.
     eapply map_valid_equal; eauto.
     apply extract_blocks_map_subset_trans; eauto.
     erewrite mapeq_elements; eauto.
-    apply extract_blocks_map_subset_trans; eauto.    
+    apply extract_blocks_map_subset_trans; eauto.
+    Unshelve.
+    apply valuset0.
   Qed.
 
   End UnfoldProof1.
@@ -992,26 +1000,7 @@ Qed.
                      replay_disk_vsupd_vecs.
 
 
-  Lemma in_fst_snd_map_split:
-    forall A B (l: list (A * B)) x y,
-      In (x,y) l ->
-      In x (map fst l) /\ In y (map snd l).
-  Proof.
-    induction l; simpl; intros; auto.
-    destruct a; intuition; simpl in *.
-    inversion H0; subst; auto.
-    inversion H0; subst; auto.
-    right; specialize (IHl x y H0); intuition.
-    right; specialize (IHl x y H0); intuition.
-  Qed.
   
-  Lemma in_fst:
-    forall A B (l: list (A * B)) x y,
-      In (x,y) l -> In x (map fst l).
-  Proof.
-    intros; apply in_fst_snd_map_split in H; intuition.
-  Qed.
-
   Lemma in_fst_exists_snd:
     forall A B (l: list (A * B)) x,
       In x (map fst l) ->

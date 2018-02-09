@@ -407,6 +407,24 @@ Proof.
   erewrite <- mapeq_elements; eauto.
 Qed.
 
+Lemma handles_valid_map_extract_some:
+   forall vm a h bm,
+     Map.find a vm = Some h ->
+     handles_valid_map bm vm ->
+     exists tb, bm h = Some tb.
+ Proof.
+   unfold Map.find, handles_valid_map, handles_valid_list;
+   intro vm; destruct vm; generalize dependent this; induction this;
+   simpl in *; intros; auto; try congruence.
+   inversion is_bst; subst.
+   unfold Map.elements, AddrMap_AVL.Raw.elements in *; simpl in *.
+   rewrite AddrMap_AVL.Raw.Proofs.elements_app in H0.
+   rewrite map_app in H0; apply handles_valid_app in H0.
+   simpl in *; destruct H0, (OrderedTypeEx.Nat_as_OT.compare a k);
+   inversion H1; unfold handle_valid in *; subst; destruct H4; eauto.
+   inversion H; subst; eauto.
+ Qed.
+
 Lemma extract_blocks_map_equal:
   forall hmap hmap' bm,
     Map.Equal hmap hmap' ->
@@ -564,6 +582,55 @@ Proof.
     rewrite MapFacts.map_o; unfold option_map; auto.
   }
 Qed.
+
+
+  Lemma in_fst_snd_map_split:
+    forall A B (l: list (A * B)) x y,
+      List.In (x,y) l ->
+      List.In x (List.map fst l) /\ List.In y (List.map snd l).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a; intuition; simpl in *.
+    inversion H0; subst; auto.
+    inversion H0; subst; auto.
+    right; specialize (IHl x y H0); intuition.
+    right; specialize (IHl x y H0); intuition.
+  Qed.
+  
+
+
+Lemma in_fst:
+    forall A B (l: list (A * B)) x y,
+      List.In (x,y) l -> List.In x (List.map fst l).
+  Proof.
+    intros; apply in_fst_snd_map_split in H; intuition.
+  Qed.
+
+
+
+Lemma extract_blocks_list_KNoDup:
+   forall a bm,
+     handles_valid_list bm a ->
+     KNoDup (extract_blocks_list bm a) ->
+     KNoDup a.
+ Proof.
+   unfold KNoDup; induction a; simpl; intuition.
+   inversion H; subst.
+   unfold handle_valid in H3; destruct H3.
+   unfold extract_blocks_list in *; simpl in *; rewrite H1 in *.
+   inversion H0; subst.
+   constructor; eauto.
+   intuition.
+   apply InA_alt in H2; destruct H2.
+   destruct H2.
+   destruct x0; inversion H2; simpl in *; subst.
+   apply H5.
+   apply In_KIn.
+   rewrite map_fst_combine.
+   eapply in_fst; eauto.
+   rewrite extract_blocks_length; eauto.
+   repeat rewrite map_length; eauto.
+ Qed.
 
 
 

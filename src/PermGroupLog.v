@@ -97,27 +97,23 @@ Module GLog.
       let ds' := effective ds (length ts) in
       [[ vmap_match vm ts ]] *
       [[ handles_valid_nested bm ts ]] *
-      [[ handles_valid_map bm mm ]] *
       [[ dset_match xp ds' (extract_blocks_nested bm ts) ]] * exists nr,
-      MLog.rep xp (MLog.Synced nr (fst ds')) (extract_blocks_map bm mm) hm
+      MLog.rep xp (MLog.Synced nr (fst ds')) mm bm hm
     | Flushing ds n =>
       let ds' := effective ds (length ts) in
       [[ handles_valid_nested bm ts ]] *
-      [[ handles_valid_map bm mm ]] *
       [[ dset_match xp ds' (extract_blocks_nested bm ts) /\ n <= length ts ]] *
-      MLog.would_recover_either xp (nthd n ds') (selR (extract_blocks_nested bm ts) n nil) hm
+      MLog.would_recover_either xp (nthd n ds') (selR (extract_blocks_nested bm ts) n nil) bm hm
     | Rollback d =>
       [[ vmap_match vm ts ]] *
       [[ handles_valid_nested bm ts ]] *
-      [[ handles_valid_map bm mm ]] *
       [[ dset_match xp (d, nil) (extract_blocks_nested bm ts) ]] *
-      MLog.rep xp (MLog.Rollback d) (extract_blocks_map bm mm) hm
+      MLog.rep xp (MLog.Rollback d) mm bm hm
     | Recovering d =>
       [[ vmap_match vm ts ]] *
       [[ handles_valid_nested bm ts ]] *
-      [[ handles_valid_map bm mm ]] *
       [[ dset_match xp (d, nil) (extract_blocks_nested bm ts) ]] *
-      MLog.rep xp (MLog.Recovering d) (extract_blocks_map bm mm) hm
+      MLog.rep xp (MLog.Recovering d) mm bm hm
   end)%pred.
 
   Definition would_recover_any xp ds bm hm :=
@@ -221,7 +217,6 @@ Module GLog.
     eauto.
     eauto.
     eauto.
-    eauto.
   Qed.
 
   Lemma rollback_recovering: forall xp d ms bm hm,
@@ -255,12 +250,15 @@ Module GLog.
     unfold rep; intros.
     destruct ms; simpl in *.
     destruct st; cancel.
-    all: try solve [erewrite MLog.rep_equal_trans; eauto;
+    all: try solve [erewrite MLog.rep_blockmem_subset; eauto;
     apply extract_blocks_map_subset_trans; eauto].   
     all: try solve [eapply handles_valid_nested_subset_trans; eauto].
     all: try solve [eapply handles_valid_map_subset_trans; eauto].
     all: try solve [erewrite extract_blocks_nested_subset_trans; eauto].
     erewrite extract_blocks_nested_subset_trans with (bm':= bm'); eauto.
+    unfold MLog.would_recover_either.
+    cancel.
+    all: rewrite MLog.rep_blockmem_subset; eauto; cancel.
   Qed.
 
 
@@ -406,18 +404,18 @@ Module GLog.
     apply H.
   Qed.
 
-(*  
-  Lemma diskset_vmap_find_none : forall ds ts vm a v vs xp F,
-    dset_match xp ds ts ->
+
+  Lemma diskset_vmap_find_none : forall ds ts vm bm a v vs xp F,
+    dset_match xp ds (extract_blocks_nested bm ts) ->
     vmap_match vm ts ->
     Map.find a vm = None ->
     (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
-    selN (fst ds) a ($0, nil) = (v, vs).
+    selN (fst ds) a valuset0 = (v, vs).
   Proof.
     unfold vmap_match, dset_match.
     intros ds ts; destruct ds; revert l.
     induction ts; intuition; simpl in *;
-      denote ReplaySeq as Hs;inversion Hs; subst; simpl.
+    denote ReplaySeq as Hs; inversion Hs; subst; simpl.
     denote ptsto as Hx; rewrite singular_latest in Hx by easy; simpl in Hx.
     erewrite surjective_pairing at 1.
     erewrite <- list2nmem_sel; eauto; simpl; auto.
@@ -432,14 +430,19 @@ Module GLog.
 
     rewrite latest_cons in *.
     eapply ptsto_replay_disk_not_in'; [ | | eauto].
+    inversion Hs.
     eapply map_find_replay_mem_not_in; eauto.
+    subst.
+    admit.
     denote Forall as Hx; apply Forall_inv in Hx; apply Hx.
-  Qed.
+    Unshelve.
+    exact bmap0.
+  Admitted.
 
   Lemma replay_seq_replay_mem : forall ds ts xp,
     ReplaySeq ds ts ->
     Forall (ents_valid xp (fst ds)) ts ->
-    replay_disk (Map.elements (fold_right replay_mem hmap0 ts)) (fst ds) = latest ds.
+    replay_disk (Map.elements (fold_right replay_mem bmap0 ts)) (fst ds) = latest ds.
   Proof.
     induction 1; simpl in *; intuition.
     rewrite latest_cons; subst.
@@ -452,19 +455,6 @@ Module GLog.
     rewrite replay_disk_length; auto.
   Qed.
 
-  Lemma diskset_vmap_find_ptsto : forall ds ts vm a w v vs F xp,
-    dset_match xp ds ts ->
-    vmap_match vm ts ->
-    Map.find a vm = Some w ->
-    (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
-    w = v.
-  Proof.
-    unfold vmap_match, dset_match; intuition.
-    eapply replay_disk_eq; eauto.
-    eexists; rewrite H0.
-    erewrite replay_seq_replay_mem; eauto.
-  Qed.
-*)
   Lemma dset_match_ext : forall ents ds ts xp,
     dset_match xp ds ts ->
     log_valid ents ds!! ->
@@ -680,7 +670,7 @@ Module GLog.
     forall xp ds ts bm hm,
     handles_valid_nested bm ts ->
     dset_match xp (effective ds (length ts)) (extract_blocks_nested bm ts) ->
-    MLog.would_recover_before xp ds!! hm =p=>
+    MLog.would_recover_before xp ds!! bm hm =p=>
     would_recover_any xp ds bm hm.
   Proof. 
     unfold would_recover_any, rep.
@@ -698,7 +688,7 @@ Module GLog.
     handles_valid_nested bm ts ->
     dset_match xp (effective ds (length ts)) (extract_blocks_nested bm ts) ->
     len = length ts ->
-    MLog.would_recover_before xp (fst (effective ds len)) hm =p=>
+    MLog.would_recover_before xp (fst (effective ds len)) bm hm =p=>
     would_recover_any xp ds bm hm.
   Proof. 
     unfold would_recover_any, rep.
@@ -714,7 +704,7 @@ Module GLog.
   Lemma synced_recover_any : forall xp ds nr ms ts bm hm,
     handles_valid_nested bm ts ->
     dset_match xp (effective ds (length ts)) (extract_blocks_nested bm ts) ->
-    MLog.rep xp (MLog.Synced nr ds!!) ms hm =p=>
+    MLog.rep xp (MLog.Synced nr ds!!) ms bm hm =p=>
     would_recover_any xp ds bm hm.
   Proof.
     intros.
@@ -800,13 +790,18 @@ Module GLog.
     unfold init, rep.
     step.
     step.
+    step.
+    rewrite nthd_0; simpl.
+    rewrite MLog.rep_hashmap_subset; eauto.
     apply vmap_match_nil.
+    unfold handles_valid_nested; apply Forall_nil.
     apply dset_match_nil.
+    solve_hashmap_subset.
   Qed.
 
 
-  Lemma dset_match_nthd_effective_fst : forall xp ds ts,
-    dset_match xp (effective ds (length ts)) ts ->
+  Lemma dset_match_nthd_effective_fst : forall xp ds bm ts,
+    dset_match xp (effective ds (length ts)) (extract_blocks_nested bm ts) ->
     nthd (length (snd ds) - length ts) ds = fst (effective ds (length ts)).
   Proof.
     intros.
@@ -823,15 +818,102 @@ Module GLog.
     rewrite popn_pushd_comm by omega; auto.
   Qed.
 
-  Theorem read_ok: forall xp ms a,
+ 
+
+ 
+ 
+ Lemma handles_valid_nested_handles_valid_map:
+   forall ts vm ds xp bm,
+     dset_match xp ds (extract_blocks_nested bm ts) ->
+     vmap_match vm ts ->
+     handles_valid_nested bm ts ->
+     handles_valid_map bm vm.
+ Proof.
+   unfold dset_match, vmap_match; induction ts; simpl in *; intuition.
+   eapply handles_valid_map_equal; eauto.
+   apply MapFacts.Equal_sym; eauto.
+   apply MLog.handles_valid_map_hmap0.
+   destruct b;
+   inversion H3.
+   
+   inversion H1; inversion H2;
+   clear H1 H2 H5; subst.
+   eapply handles_valid_map_equal; eauto.
+   apply MapFacts.Equal_sym; eauto.
+   assert (A: handles_valid_map bm (fold_right replay_mem hmap0 ts)).
+   eapply  IHts.
+   split.
+   2: eauto.
+   all: eauto.
+   apply MapFacts.Equal_refl.
+   unfold ents_valid, log_valid in *; cleanup.
+   apply extract_blocks_list_KNoDup in H; auto.
+   apply MLog.handles_valid_replay_mem; eauto.
+ Qed.
+
+
+ Lemma extract_blocks_map_extract_blocks_nested:
+   forall ts bm,
+     handles_valid_nested bm ts ->
+     Map.Equal (extract_blocks_map bm (fold_right replay_mem hmap0 ts))
+               (fold_right replay_mem bmap0 (extract_blocks_nested bm ts)).
+ Proof.
+   induction ts; simpl; intros.
+   apply MLog.extract_blocks_map_empty.
+   inversion H; subst.
+   unfold Map.Equal; intros.
+   erewrite replay_mem_equal.
+   2: apply MapFacts.Equal_sym; eauto.
+   rewrite MLog.extract_blocks_map_replay_mem_comm; auto.
+ Qed.
+ 
+ Lemma diskset_vmap_find_ptsto :
+   forall ds ts vm a w v vs F xp bm,
+     dset_match xp ds (extract_blocks_nested bm ts) ->
+     vmap_match vm ts ->
+     Map.find a vm = Some w ->
+     handles_valid_nested bm ts ->
+     (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
+     bm w = Some v.
+ Proof.
+   intros.
+   eapply handles_valid_nested_handles_valid_map in H as Hx; eauto.
+   eapply map_find_extract_blocks_mem in H1 as Hy; eauto.
+   eapply handles_valid_map_extract_some in Hx as Hz; eauto; cleanup.
+   unfold extract_block in *; rewrite H4 in *.
+   destruct H.
+   apply list2nmem_ptsto_bound in H3 as Hl.
+   erewrite <- replay_seq_replay_mem in H3; eauto.
+   eapply list2nmem_sel in H3 as Hz.
+   erewrite replay_disk_selN_MapsTo in Hz.
+   inversion Hz; subst; eauto.
+   apply Map.find_2.
+   unfold vmap_match in *.
+   erewrite MapFacts.find_m; eauto.
+   eapply MapFacts.Equal_trans.
+   apply MapFacts.Equal_sym; apply extract_blocks_map_extract_blocks_nested; eauto.
+   apply extract_blocks_map_equal.
+   apply MapFacts.Equal_sym; auto.
+   erewrite <- replay_seq_latest_length; eauto.
+   Unshelve.
+   exact valuset0.
+ Qed.
+
+
+  
+
+  Theorem read_ok:
+    forall xp ms a pr,
     {< F ds vs,
-    PRE:hm
-      << F, rep: xp (Cached ds) ms hm >> *
+    PERM:pr   
+    PRE:bm, hm,
+      << F, rep: xp (Cached ds) ms bm hm >> *
       [[[ ds!! ::: exists F', (F' * a |-> vs) ]]]
-    POST:hm' RET:^(ms', r)
-      << F, rep: xp (Cached ds) ms' hm' >> * [[ r = fst vs ]] * [[ readOnly ms ms' ]]
-    CRASH:hm'
-      exists ms', << F, rep: xp (Cached ds) ms' hm' >>
+    POST:bm', hm', RET:^(ms', r)
+      << F, rep: xp (Cached ds) ms' bm' hm' >> *
+      [[ bm' r = Some (fst vs) ]] * [[ readOnly ms ms' ]]
+    CRASH:bm', hm',
+      exists ms', << F, rep: xp (Cached ds) ms' bm' hm' >>
     >} read xp a ms.
   Proof.
     unfold read, rep.
@@ -840,6 +922,7 @@ Module GLog.
 
     (* case 1 : return from vmap *)
     step.
+    rewrite MLog.rep_hashmap_subset; eauto.
     eapply diskset_vmap_find_ptsto; eauto.
     rewrite latest_effective; eauto.
     pimpl_crash; cancel.
@@ -847,18 +930,30 @@ Module GLog.
     (* case 2: read from MLog *)
     cancel.
     eexists; apply list2nmem_ptsto_cancel_pair.
+  
     erewrite dset_match_nthd_effective_fst; eauto.
     eapply diskset_ptsto_bound_latest; eauto.
     rewrite latest_effective; eauto.
 
     step; subst.
-    erewrite fst_pair; eauto.
-    erewrite dset_match_nthd_effective_fst; eauto.
-    eapply diskset_vmap_find_none; eauto.
-    rewrite latest_effective; eauto.
-    pimpl_crash; cancel.
+    step; subst.
+    erewrite MLog.rep_hashmap_subset; eauto.
+    clear H16; eapply handles_valid_nested_subset_trans; eauto.
+    erewrite extract_blocks_nested_subset_trans; eauto.
+
+    erewrite <- latest_effective in H5; eauto.
+    eapply diskset_vmap_find_none in H10 as Hx; eauto.
+    erewrite dset_match_nthd_effective_fst in H15; eauto.
+    setoid_rewrite Hx in H15.
+    unfold extract_block in H15; simpl in *; auto.
+    solve_hashmap_subset.
+
+    rewrite <- H1; cancel.
     eassign (mk_mstate (MSVMap ms_1) (MSTxns ms_1) ms'_1); cancel.
-    all: auto.
+    all: simpl; auto.
+    eapply handles_valid_nested_subset_trans; eauto.
+    erewrite extract_blocks_nested_subset_trans; eauto.
+    solve_hashmap_subset.
   Qed.
 
 
