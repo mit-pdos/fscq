@@ -229,12 +229,11 @@ Definition sync_range a nr cs :=
   Definition write_vecs a l cs :=
     let^ (cs, tt) <- ForN i < length l
     Blockmem bm                          
-    Ghost [ F crash vs vls ]
+    Ghost [ F crash vs ]
     Loopvar [ cs tt ]
     Invariant
     exists d', rep cs d' bm *
-     [[ vls = extract_blocks bm (List.map snd l) ]] *
-      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn i (List.combine (List.map fst l) vls))))%pred d' ]]
+      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn i (extract_blocks_list bm l))))%pred d' ]]
     OnCrash crash
     Begin
       let v := selN l i (0, 0) in

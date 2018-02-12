@@ -676,6 +676,316 @@ Lemma extract_blocks_nested_length:
     rewrite map_length; auto.
   Qed.
 
+Lemma In_fst_InA:
+  forall T l a,
+    List.In (fst a) (List.map fst l) ->
+    InA (Map.eq_key (elt:=T)) a l.
+Proof.
+  induction l; simpl in *; intuition.
+  constructor.
+  unfold Map.eq_key, Map.E.eq; auto.
+Qed.
+
+Lemma extract_blocks_list_cons:
+  forall T l (a:T) b bm v,
+    bm b = Some v ->
+    extract_blocks_list bm ((a, b) :: l) = (a, v)::extract_blocks_list bm l.
+Proof.
+  unfold extract_blocks_list; simpl; intros.
+  rewrite H; auto.
+Qed.
+
+
+Lemma KIn_extract_blocks_list:
+  forall l a v bm,
+    handles_valid_list bm l ->
+    KIn (a, v) (extract_blocks_list bm l) ->
+    exists t, KIn (a, t) l.
+Proof.
+  unfold extract_blocks_list; intros.
+  apply InA_alt in H0.
+  deex.
+  destruct y; apply in_fst_snd_map_split in H2; destruct H2.
+  rewrite map_fst_combine in H0; simpl; eauto.
+  unfold Map.eq_key, Map.E.eq in *; simpl in *; subst.
+  eexists; apply In_fst_InA; simpl; eauto.
+  rewrite extract_blocks_length; auto.
+  repeat rewrite map_length; auto.
+  Unshelve. eauto.
+Qed.
+
+Lemma KIn_extract_blocks_list2:
+  forall l a t bm,
+    handles_valid_list bm l ->
+    KIn (a, t) l ->
+    exists v, KIn (a, v) (extract_blocks_list bm l). 
+Proof.
+  unfold extract_blocks_list; intros.
+  apply InA_alt in H0; deex.
+  destruct y; apply in_fst_snd_map_split in H2; destruct H2.
+  unfold Map.eq_key, Map.E.eq in *; simpl in *; subst.
+  eexists; apply In_fst_InA; simpl; eauto.
+  rewrite map_fst_combine; simpl; eauto.
+  rewrite extract_blocks_length; auto.
+  repeat rewrite map_length; auto.
+  Unshelve. exact tagged_block0.
+Qed.
+
+Lemma InA_extract_blocks_list:
+  forall l a b x bm,
+    handles_valid_list bm l ->
+    InA (Map.eq_key (elt:=tagged_block))
+        (a, x) (extract_blocks_list bm l) ->
+    InA (Map.eq_key (elt:=handle)) (a, b) l.
+Proof.
+  unfold extract_blocks_list; intros.
+  apply In_fst_InA.
+  apply InA_alt in H0; deex.
+  destruct y; unfold Map.eq_key, Map.E.eq in *; simpl in *; subst.
+  apply in_fst_snd_map_split in H2; destruct H2.
+  rewrite map_fst_combine in H0; auto.
+  rewrite extract_blocks_length; auto.
+  repeat rewrite map_length; auto.
+Qed.
+
+Lemma InA_extract_blocks_list2:
+  forall l a b x bm,
+    handles_valid_list bm l ->
+    InA (Map.eq_key (elt:=handle)) (a, b) l ->
+    InA (Map.eq_key (elt:=tagged_block))
+        (a, x) (extract_blocks_list bm l).
+Proof.
+  unfold extract_blocks_list; intros.
+  apply In_fst_InA.
+  apply InA_alt in H0; deex.
+  destruct y; unfold Map.eq_key, Map.E.eq in *; simpl in *; subst.
+  apply in_fst_snd_map_split in H2; destruct H2.
+  rewrite map_fst_combine; auto.
+  rewrite extract_blocks_length; auto.
+  repeat rewrite map_length; auto.
+Qed.
+
+Lemma NoDupA_combine:
+  forall l bm,
+    handles_valid_list bm l ->
+    NoDupA (Map.eq_key (elt:=handle)) l ->
+    NoDupA (Map.eq_key (elt:=tagged_block)) (extract_blocks_list bm l).
+Proof.
+  induction l; simpl in *; intuition.
+  unfold extract_blocks_list; simpl; eauto.
+  inversion H; inversion H0; subst; simpl.
+  unfold handle_valid in *; deex.
+  erewrite extract_blocks_list_cons; eauto.
+  constructor; intuition.
+  eapply InA_extract_blocks_list in H2; eauto.
+Qed.
+
+
+Lemma NoDupA_combine2:
+  forall l bm,
+    handles_valid_list bm l ->
+    NoDupA (Map.eq_key (elt:=tagged_block)) (extract_blocks_list bm l) ->
+    NoDupA (Map.eq_key (elt:=handle)) l.    
+Proof.
+  induction l; simpl in *; intuition.
+  unfold extract_blocks_list in H0; simpl in *; eauto.
+  inversion H.
+  unfold handle_valid in *; destruct H3; subst.
+  rewrite H3 in H0.
+  inversion H0; subst.
+  constructor; intuition.
+  eapply InA_extract_blocks_list2 in H1; eauto.
+  eapply IHl; eauto.
+Qed.
+
+
+Lemma extract_blocks_list_length:
+  forall T l bm,
+    @handles_valid_list T bm l ->
+    length (extract_blocks_list bm l) = length l.
+Proof.
+  induction l; simpl; intros; auto.
+  inversion H; subst.
+  unfold handle_valid in H2; destruct H2.
+  destruct a; erewrite extract_blocks_list_cons; simpl; eauto.
+Qed.
+
+
+Lemma handles_valid_nested_selN:
+  forall T ts n bm def,
+    handles_valid_nested bm ts ->
+    n < length ts ->
+    @handles_valid_list T bm (selN ts n def).
+Proof.
+  unfold handles_valid_nested; intros.
+  apply Forall_selN; auto.
+Qed.
+
+Lemma extract_blocks_list_nested_selN_comm:
+  forall T ts n bm def1 def2,
+    n < length ts ->
+    extract_blocks_list bm (selN ts n def1) =
+    selN (@extract_blocks_nested T bm ts) n def2.
+Proof.
+  unfold extract_blocks_nested; intros.
+  erewrite selN_map; eauto.
+Qed.  
+
+  Lemma handles_valid_nested_empty:
+    forall T bm, @handles_valid_nested T bm nil.
+  Proof.
+    unfold handles_valid_nested, handles_valid_list;
+    simpl; intros; apply Forall_nil.
+  Qed.
+
+
+  Lemma extract_blocks_nested_in:
+    forall T ts x bm,
+      @handles_valid_nested T bm ts ->
+      List.In x ts ->
+      List.In (extract_blocks_list bm x) (extract_blocks_nested bm ts).
+  Proof.
+    induction ts; simpl in *; intros.
+    intuition.
+    inversion H; subst.
+    intuition.
+    subst; auto.
+  Qed.
+  
+  Lemma extract_blocks_list_map_fst:
+    forall T l bm,
+      @handles_valid_list T bm l ->
+      List.map fst (extract_blocks_list bm l) = List.map fst l.
+  Proof.
+    unfold extract_blocks_list; intros.
+    apply map_fst_combine.
+    rewrite extract_blocks_length; auto.
+    repeat rewrite map_length; auto.
+  Qed.
+  
+    Lemma Forall_extract_blocks_list_length_le:
+      forall T l bm (vs: list T),
+        handles_valid_list bm l ->
+        Forall (fun e : addr * handle => fst e < length vs) l ->
+        Forall (fun e : addr * tagged_block => fst e < length vs)
+               (extract_blocks_list bm l).
+    Proof.
+      intros; rewrite Forall_forall in *; intros.
+      destruct x; simpl in *.
+      apply in_fst_snd_map_split in H1.
+      destruct H1.
+      unfold extract_blocks_list in *.
+      rewrite map_fst_combine in H1.
+      apply in_map_fst_exists_snd in H1; destruct H1.
+      apply H0 in H1; eauto.
+      rewrite extract_blocks_length; auto.
+      repeat rewrite map_length; eauto.
+    Qed.
+
+  
+  Lemma combine_elements_eq:
+    forall hmap bm,
+      handles_valid bm (List.map snd (Map.elements hmap)) ->
+      List.combine (List.map fst (Map.elements hmap))
+                   (extract_blocks bm (List.map snd (Map.elements hmap))) =
+      (Map.elements (extract_blocks_map bm hmap)).
+  Proof.
+    intro hmap; destruct hmap.
+    generalize dependent this;
+    induction this;
+    simpl in *; intros; auto; try congruence.
+    unfold handles_valid, handle_valid, Map.elements,
+    AddrMap_AVL.Raw.elements in *; simpl in *;
+    unfold extract_block in *; subst; eauto.
+    repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
+    repeat rewrite map_app in *; simpl in *.
+    inversion is_bst; subst.
+    
+    rewrite extract_blocks_app; simpl.
+    rewrite combine_app.
+    repeat rewrite app_nil_r in *.
+    eapply forall_app_l in H as Hl.
+    apply forall_app_r in H as Hr.
+    inversion Hl; subst; simpl.
+    destruct H2; rewrite H0.
+    unfold AddrMap_AVL.Raw.elements;
+    erewrite IHthis1, IHthis2; auto; simpl.
+    rewrite extract_blocks_length; auto.
+    repeat rewrite map_length; eauto.
+    unfold handles_valid, handle_valid;
+    apply forall_app_r in H; auto.
+  Qed.
+      
+
+    
+
+Lemma extract_blocks_list_map:
+  forall hmap bm,
+    handles_valid_map bm hmap ->
+    Map.elements (extract_blocks_map bm hmap)
+    = extract_blocks_list bm (Map.elements hmap).
+Proof.
+  unfold extract_blocks_map, extract_blocks_list; intros.
+  rewrite combine_elements_eq; auto.
+Qed.
+
+
+ Lemma in_fst_exists_snd:
+    forall A B (l: list (A * B)) x,
+      List.In x (List.map fst l) ->
+      exists y, List.In (x, y) l.
+  Proof.
+    induction l; simpl; intros; intuition.
+    destruct a; simpl in *; subst; eexists; eauto.
+    specialize (IHl x H0); destruct IHl; eauto.
+  Qed.
+
+  Lemma in_extract_blocks_map:
+    forall hmap bm x y b,
+      List.In (x,y) (Map.elements hmap) ->
+      bm y = Some b ->
+      List.In (x,b) (Map.elements (extract_blocks_map bm hmap)).
+  Proof.
+    intro hmap; destruct hmap.
+    generalize dependent this;
+    induction this;
+    simpl in *; intros; auto; try congruence.
+    unfold Map.elements,
+    AddrMap_AVL.Raw.elements in *; simpl in *;
+    unfold extract_block; eauto.
+    rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
+    apply in_app_iff.
+    apply in_app_iff in H.
+    inversion is_bst; subst.
+    intuition.
+    left; eapply H; eauto.
+    inversion H1.
+    inversion H3; subst; rewrite H0.
+    right; left; auto.
+    right; right; eapply H2; eauto.
+  Qed.
+
+  Lemma Forall_extract_blocks_mem_addr_in_len:
+    forall A hmap bm (l: list A),
+      handles_valid bm (List.map snd (Map.elements hmap)) ->
+      Forall (fun e : addr * tagged_block => fst e < length l)
+             (Map.elements (extract_blocks_map bm hmap)) ->
+      Forall (fun e : addr * handle => fst e < length l)
+             (Map.elements hmap).
+  Proof.
+    unfold handles_valid, handle_valid; intros;
+    rewrite Forall_forall in *; intros.
+    destruct x ; simpl in *.
+    apply in_fst_snd_map_split in H1 as Hx; intuition.
+    specialize (H h H3); destruct H.
+    eapply in_extract_blocks_map in H1; eauto.
+    specialize (H0 _ H1); simpl in *; auto.
+  Qed.
+
+
+
+
+  
   Ltac solve_blockmem_subset:=
     match goal with
     | [|- block_mem_subset _ =p=> (fun _ : Mem.mem => _ c= _)] =>

@@ -251,6 +251,27 @@ Module MLog.
   (****** auxiliary lemmas *)
 
 
+  Lemma extract_blocks_map_empty:
+    forall bm,
+      Map.Equal (extract_blocks_map bm hmap0) bmap0.
+  Proof.
+    unfold Map.Equal; intros;    
+    unfold extract_blocks_map, bmap0, hmap0, gmap0, map0; simpl.
+    rewrite MapFacts.map_o; unfold option_map;
+    repeat rewrite MapFacts.empty_o; auto.
+  Qed.
+
+Lemma handles_valid_map_hmap0:
+  forall bm, handles_valid_map bm hmap0.
+Proof.      
+  unfold handles_valid_map; intros.
+  pose proof map_empty_hmap0 as Hx.
+  apply MapProperties.elements_Empty in Hx;
+  rewrite Hx; unfold handles_valid_list, handles_valid;
+  simpl; apply Forall_nil.
+Qed.
+
+  
 
   Lemma rep_hashmap_subset : forall xp mm bm hm hm',
     (exists l, hashmap_subset l hm hm')
@@ -1001,58 +1022,7 @@ Qed.
 
 
   
-  Lemma in_fst_exists_snd:
-    forall A B (l: list (A * B)) x,
-      In x (map fst l) ->
-      exists y, In (x, y) l.
-  Proof.
-    induction l; simpl; intros; intuition.
-    destruct a; simpl in *; subst; eexists; eauto.
-    specialize (IHl x H0); destruct IHl; eauto.
-  Qed.
-
-  Lemma in_extract_blocks_map:
-    forall hmap bm x y b,
-      In (x,y) (Map.elements hmap) ->
-      bm y = Some b ->
-      In (x,b) (Map.elements (extract_blocks_map bm hmap)).
-  Proof.
-    intro hmap; destruct hmap.
-    generalize dependent this;
-    induction this;
-    simpl in *; intros; auto; try congruence.
-    unfold Map.elements,
-    AddrMap_AVL.Raw.elements in *; simpl in *;
-    unfold extract_block; cleanup; eauto.
-    rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
-    apply in_app_iff.
-    apply in_app_iff in H.
-    inversion is_bst; subst.
-    intuition.
-    left; eapply H; eauto.
-    inversion H1.
-    inversion H3; subst; cleanup.
-    right; left; auto.
-    right; right; eapply H2; eauto.
-  Qed.
-
-  Lemma Forall_extract_blocks_mem_addr_in_len:
-    forall A hmap bm (l: list A),
-      handles_valid bm (map snd (Map.elements hmap)) ->
-      Forall (fun e : addr * tagged_block => fst e < length l)
-             (Map.elements (extract_blocks_map bm hmap)) ->
-      Forall (fun e : addr * handle => fst e < length l)
-             (Map.elements hmap).
-  Proof.
-    unfold handles_valid, handle_valid; intros;
-    rewrite Forall_forall in *; intros.
-    destruct x ; simpl in *.
-    apply in_fst_snd_map_split in H1 as Hx; intuition.
-    specialize (H h H3); cleanup.
-    eapply in_extract_blocks_map in H1; eauto.
-    specialize (H0 _ H1); simpl in *; auto.
-  Qed.
-
+ 
   Lemma Forall_map_keys:
     forall A hmap (l: list A),
       Forall (fun e : addr * handle => fst e < length l)
@@ -1064,16 +1034,6 @@ Qed.
     rewrite Forall_forall in *; intros.
     apply in_fst_exists_snd in H0; cleanup.
     specialize (H _ H0); simpl in *; auto.
-  Qed.
-
-  Lemma extract_blocks_map_empty:
-    forall bm,
-      Map.Equal (extract_blocks_map bm hmap0) bmap0.
-  Proof.
-    unfold Map.Equal; intros;    
-    unfold extract_blocks_map, bmap0, hmap0, gmap0, map0; simpl.
-    rewrite MapFacts.map_o; unfold option_map;
-    repeat rewrite MapFacts.empty_o; auto.
   Qed.
 
 
@@ -1096,49 +1056,7 @@ Qed.
     repeat rewrite app_nil_r; auto.
   Qed.
 
-  Lemma combine_elements_eq:
-    forall hmap bm,
-      handles_valid bm (map snd (Map.elements hmap)) ->
-      List.combine (map fst (Map.elements hmap))
-                   (extract_blocks bm (map snd (Map.elements hmap))) =
-      (Map.elements (extract_blocks_map bm hmap)).
-  Proof.
-    intro hmap; destruct hmap.
-    generalize dependent this;
-    induction this;
-    simpl in *; intros; auto; try congruence.
-    unfold handles_valid, handle_valid, Map.elements,
-    AddrMap_AVL.Raw.elements in *; simpl in *;
-    unfold extract_block in *; cleanup; eauto.
-    repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
-    repeat rewrite map_app in *; simpl in *.
-    inversion is_bst; subst.
-    
-    rewrite extract_blocks_app; simpl.
-    rewrite combine_app.
-    repeat rewrite app_nil_r in *.
-    eapply forall_app_l in H as Hl.
-    apply forall_app_r in H as Hr.
-    inversion Hl; cleanup; simpl.
-    unfold AddrMap_AVL.Raw.elements;
-    erewrite IHthis1, IHthis2; auto; simpl.
-    apply length_map_fst_extract_blocks_eq.
-    unfold handles_valid, handle_valid;
-    apply forall_app_r in H; auto.
-  Qed.
-      
-
-Lemma handles_valid_map_hmap0:
-  forall bm, handles_valid_map bm hmap0.
-Proof.      
-  unfold handles_valid_map; intros.
-  pose proof map_empty_hmap0 as Hx.
-  apply MapProperties.elements_Empty in Hx;
-  rewrite Hx; unfold handles_valid_list, handles_valid;
-  simpl; apply Forall_nil.
-Qed.
-
-Hint Resolve handles_valid_map_hmap0.
+Local Hint Resolve handles_valid_map_hmap0.
 
  Lemma unsync_rep_equal:
    forall m m' xp d,
@@ -1198,10 +1116,8 @@ Hint Resolve handles_valid_map_hmap0.
     unfold bmap0; apply MapFacts.Equal_refl.
     rewrite replay_disk_vssync_vsupd_vecs; auto.
     rewrite map_keys_extract_blocks_map_eq.
-    rewrite combine_elements_eq; auto.
-    erewrite mapeq_elements; eauto.
-    apply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
+    rewrite extract_blocks_list_map; eauto.
+    erewrite extract_blocks_list_subset_trans; eauto.
     solve_hashmap_subset.
     solve_blockmem_subset.
 
@@ -1211,7 +1127,7 @@ Hint Resolve handles_valid_map_hmap0.
     solve_hashmap_subset.
     solve_blockmem_subset.
     xcrash_rewrite.
-    rewrite combine_elements_eq; auto.
+    repeat rewrite <- extract_blocks_list_map; eauto.
     erewrite mapeq_elements with (m2:= extract_blocks_map bm ms_1).
     erewrite <- map_keys_extract_blocks_map_eq with (bm:= bm).
     setoid_rewrite <- firstn_exact with
@@ -1269,6 +1185,7 @@ Hint Resolve handles_valid_map_hmap0.
     solve_hashmap_subset.
     solve_blockmem_subset.
     xcrash.
+    unfold extract_blocks_list.
     rewrite <- extract_blocks_subset_trans with (bm:= bm).
     rewrite combine_elements_eq.
     rewrite <- firstn_exact with
@@ -1305,8 +1222,11 @@ Hint Resolve handles_valid_map_hmap0.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash_rewrite.
+    unfold extract_blocks_list.
     rewrite <- extract_blocks_subset_trans with (bm:= bm).
     rewrite combine_elements_eq.
+    rewrite <- firstn_exact with
+        (l:= Map.elements (extract_blocks_map bm ms_1)).
     setoid_rewrite apply_unsync_applying_ok.
     xcrash.
     or_l; safecancel.
@@ -1330,6 +1250,7 @@ Hint Resolve handles_valid_map_hmap0.
     solve_blockmem_subset.
     
     erewrite mapeq_elements with (m2:= extract_blocks_map bm'' ms_1); eauto.
+    rewrite firstn_exact; eauto.
     apply extract_blocks_map_subset_trans; auto;
     solve_blockmem_subset.
     unfold handles_valid_map, handles_valid_list in *; auto.
@@ -2410,7 +2331,19 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     or_r; cancel.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
-*)
+   *)
+
+
+Lemma overlap_extract_blocks_map:
+  forall l hmap bm,
+    overlap l (extract_blocks_map bm hmap) = overlap l hmap.
+Proof.
+  unfold extract_blocks_map; induction l;
+  simpl in *; intros; auto.
+  rewrite MapFacts.map_b.
+  destruct (Map.mem a hmap); eauto.
+Qed.
+  
 
   Theorem recover_ok:
     forall xp cs pr,
@@ -2810,6 +2743,9 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
   Admitted.
 
 
+
+
+  
   Theorem dwrite_vecs_ok :
     forall xp avl ms pr,
     {< F d na,
@@ -2822,8 +2758,8 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
       << F, rep: xp (Synced na' (vsupd_vecs d (extract_blocks_list bm' avl))) ms' bm' hm' >>
     XCRASH:bm', hm',
       << F, would_recover_before: xp d bm' hm' -- >> \/
-      exists na' ms' n,
-      << F, rep: xp (Synced na' (vsupd_vecs d (firstn n (extract_blocks_list bm' avl)))) ms' bm' hm' >>
+      exists na' ms',
+      << F, rep: xp (Synced na' (vsupd_vecs d (extract_blocks_list bm' avl))) ms' bm' hm' >>
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs, would_recover_before, handles_valid_list, extract_blocks_list.
@@ -2916,15 +2852,11 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     erewrite mapeq_elements.
     apply replay_disk_vsupd_vecs_nonoverlap; auto.
 
-    admit. (*
+    rewrite extract_blocks_list_map_fst; auto.
+    rewrite overlap_extract_blocks_map; auto.
     apply not_true_is_false; auto.
-    rewrite map_fst_combine.
-    intuition.
-    erewrite overlap_equal in H13.
-    apply H16; apply H13.
-    Search overlap.
-    unfold overlap in *.
-            *)
+    clear H20; eapply handles_valid_list_subset_trans; eauto.
+    
     apply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
 
@@ -2947,12 +2879,17 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     apply map_valid_vsupd_vecs; auto.
     eapply map_valid_equal; eauto.
     apply extract_blocks_map_subset_trans; eauto.
-    admit.    
+    rewrite  extract_blocks_map_subset_trans; eauto.
+    apply replay_disk_vsupd_vecs_nonoverlap; auto.
+
+    rewrite extract_blocks_list_map_fst; auto.
+    rewrite overlap_extract_blocks_map; auto.
+    apply not_true_is_false; auto.
+    eapply handles_valid_list_subset_trans; eauto.    
 
     Unshelve.
-    3: constructor.
     all: unfold EqDec; apply handle_eq_dec.
-  Admitted.
+  Qed.
 
 
 

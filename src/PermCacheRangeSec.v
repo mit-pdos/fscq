@@ -285,30 +285,29 @@ Set Implicit Arguments.
     xform_norm.
     do 2 (xform_normr; cancel).
   Qed.
-  
+
+
   Theorem write_vecs_ok :
     forall a l cs pr,
     {< d F vs,
     PERM:pr                         
     PRE:bm, hm,
       rep cs d bm * [[ (F * arrayS a vs)%pred d ]] *
-      [[ handles_valid bm (List.map snd l) ]] *
+      [[ handles_valid_list bm l ]] *
       [[ Forall (fun e => fst e < length vs) l ]]
-    POST:bm', hm', RET:cs
-      let blocks := extract_blocks bm' (List.map snd l) in                     
+    POST:bm', hm', RET:cs                    
       exists d', rep cs d' bm' *
-      [[ (F * arrayS a (vsupd_vecs vs (List.combine (List.map fst l) blocks)))%pred d' ]]
+      [[ (F * arrayS a (vsupd_vecs vs (extract_blocks_list bm' l)))%pred d' ]]
     XCRASH:bm'', hm'',
-      let blocks := extract_blocks bm'' (List.map snd l) in   
-      exists cs' d' n, rep cs' d' bm'' *
-      [[ (F * arrayS a (vsupd_vecs vs (firstn n (List.combine (List.map fst l) blocks))))%pred d' ]]
+      exists cs' d', rep cs' d' bm'' *
+      [[ (F * arrayS a (vsupd_vecs vs (extract_blocks_list bm'' l)))%pred d' ]]
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
     safestep. auto. eauto.
     eauto.
     
-    unfold handles_valid in *;
+    unfold handles_valid_list, handles_valid in *;
     pose proof H6 as Hy.
     rewrite Forall_forall in Hy.
     edestruct Hy.
@@ -325,29 +324,33 @@ Set Implicit Arguments.
 
     erewrite firstn_S_selN_expand.
     setoid_rewrite vsupd_vecs_app; simpl.
+    unfold extract_blocks_list.
     rewrite selN_combine; simpl; auto.
     erewrite selN_map; auto.
     
     erewrite extract_blocks_selN_some; eauto.
     rewrite map_length; auto.
+    clear H18; eapply handles_valid_list_subset_trans; eauto.
     erewrite selN_map; eauto.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
-    rewrite combine_length_eq.
-    rewrite map_length; auto.
-    erewrite extract_blocks_length; auto.
-    repeat rewrite map_length; auto.
+    clear H18; eapply handles_valid_list_subset_trans; eauto.
+    erewrite extract_blocks_list_length; auto.
+    clear H18; eapply handles_valid_list_subset_trans; eauto.
     solve_hashmap_subset.
 
     cancel; rewrite <- H1; cancel.
     solve_hashmap_subset.
     solve_blockmem_subset.
 
+    xcrash_rewrite.
+    erewrite <- vsupd_vecs_xcrash_firstn.
+    simpl.
+    eassign (S m).
     xcrash.
-    eassign (S m); simpl.
-    
     erewrite firstn_S_selN_expand.
     setoid_rewrite vsupd_vecs_app; simpl.
+    unfold extract_blocks_list; simpl.
     rewrite selN_combine; simpl; auto.
     erewrite selN_map; auto.
 
@@ -356,24 +359,21 @@ Set Implicit Arguments.
     rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
     erewrite selN_map; eauto.
+    eapply handles_valid_list_subset_trans; eauto.
     eauto.
-    solve_blockmem_subset.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
-    rewrite combine_length_eq.
-    rewrite map_length; auto.
-    erewrite extract_blocks_length; auto.
-    repeat rewrite map_length; auto.
+    erewrite extract_blocks_list_length; auto.
+    eapply handles_valid_list_subset_trans; eauto.    
+    apply Forall_extract_blocks_list_length_le; auto.
     eapply handles_valid_subset_trans; eauto.
 
     step.
     step.
-    rewrite firstn_oob.
-    erewrite extract_blocks_subset_trans; eauto.
-    rewrite combine_length_eq, map_length; auto.
-    erewrite extract_blocks_length; auto.
-    repeat rewrite map_length; auto.
+    rewrite firstn_oob; auto.
+    erewrite extract_blocks_list_length; auto.
+    eapply handles_valid_list_subset_trans; eauto.
     solve_hashmap_subset.
     eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
     unfold false_pred; cancel.
@@ -383,7 +383,8 @@ Set Implicit Arguments.
     exact tt.
     unfold EqDec; apply handle_eq_dec.
   Qed.
-  
+
+
   Theorem sync_vecs_ok :
     forall a l cs pr,
     {< d d0 F vs,
