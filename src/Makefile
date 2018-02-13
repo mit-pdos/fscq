@@ -20,7 +20,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermInstr PermProgLoop PermProgList \
               PermCacheDef PermCacheLemmas PermCacheSec PermCacheRangeSec \
 	      PermDiskLogHdr PermDiskLogPadded PermDiskLog \
-	      PermGenSepN PermLogReplay PermMemLog PermDiskSet
+	      PermGenSepN PermLogReplay PermMemLog PermDiskSet \
+	      PermGroupLog PermLog
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

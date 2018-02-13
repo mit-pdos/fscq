@@ -983,7 +983,95 @@ Qed.
   Qed.
 
 
+  Lemma handles_valid_map_empty:
+    forall hmap bm,
+      Map.Empty hmap ->
+      handles_valid_map bm hmap.
+  Proof.
+    unfold handles_valid_map, handles_valid_list; intros.
+    apply MapProperties.elements_Empty in H; rewrite H;
+    simpl; apply Forall_nil.
+  Qed.
 
+
+  Lemma handles_valid_extract:
+    forall l h bm,
+      handles_valid bm l ->
+      List.In h l ->
+      exists v, bm h = Some v.
+  Proof.
+    unfold handles_valid, handle_valid; intros;
+    rewrite Forall_forall in *; auto.
+  Qed.
+
+  Lemma handles_valid_list_extract:
+    forall T l a h bm,
+      @handles_valid_list T bm l ->
+      List.In (a, h) l ->
+      exists v, bm h = Some v.
+  Proof.
+    unfold handles_valid_list; intros.
+    apply in_fst_snd_map_split in H0.
+    destruct H0.
+    eapply handles_valid_extract; eauto.
+  Qed.
+
+  Lemma handles_valid_map_extract:
+    forall m a h bm,
+      handles_valid_map bm m ->
+      Map.find a m = Some h ->
+      exists v, bm h = Some v.
+  Proof.
+    unfold handles_valid_map, handles_valid_list; intros.
+    apply map_find_In_elements in H0.
+    eapply handles_valid_extract; eauto.
+  Qed.
+
+  
+  Lemma extract_block_map_some:
+    forall hmap a h bm,
+      handles_valid_map bm hmap ->
+      List.In (a, h) (Map.elements hmap) ->
+      List.In (a, extract_block bm h) (Map.elements (extract_blocks_map bm hmap)).
+  Proof.
+    unfold extract_block, handles_valid_map; intros.
+    eapply handles_valid_list_extract in H; eauto.
+    destruct H.
+    rewrite H.
+    eapply in_extract_blocks_map; eauto.
+  Qed.
+
+  Lemma map_find_elements_in:
+    forall T m a (x: T),
+      Map.find a m = Some x ->
+      List.In (a, x) (Map.elements m).
+  Proof.
+    intros.
+    apply Map.find_2 in H.
+    apply Map.elements_1 in H.
+    apply InA_eqke_In; auto.
+  Qed.
+
+  Lemma handles_valid_map_add:
+      forall m a h v bm,
+        handles_valid_map bm m ->
+        bm h = Some v ->
+        handles_valid_map bm (Map.add a h m).
+  Proof. Admitted.
+
+
+  Lemma handles_valid_map_remove:
+    forall hmap a bm,
+      handles_valid_map bm hmap ->
+      handles_valid_map bm (Map.remove a hmap).
+  Proof. Admitted.
+
+  Lemma extract_blocks_map_remove:
+    forall hmap a bm,
+      Map.Equal  (extract_blocks_map bm (Map.remove a hmap))
+                 (Map.remove a (extract_blocks_map bm hmap)).
+  Proof. Admitted.
+  
 
   
   Ltac solve_blockmem_subset:=
