@@ -214,6 +214,31 @@ Module LOG.
     erewrite GLog.rep_hashmap_subset; eauto.
   Qed.
 
+  Lemma rep_inner_blockmem_subset : forall xp ms hm sm bm bm',
+    bm c= bm'
+    -> forall st, rep_inner xp st ms sm bm hm
+        =p=> rep_inner xp st ms sm bm' hm.
+  Proof.
+    intros.
+    destruct st; unfold rep_inner, GLog.would_recover_any.
+    cancel.
+    erewrite GLog.rep_blockmem_subset; eauto.
+    cancel.
+    erewrite GLog.rep_blockmem_subset; eauto.
+    eapply handles_valid_map_subset_trans; eauto.
+    unfold map_replay.
+    erewrite <- extract_blocks_map_subset_trans; eauto.
+    norml. norm.
+    eassign ds'; eassign n; eassign ms0; cancel.
+    erewrite GLog.rep_blockmem_subset; eauto.
+    intuition.
+    eapply handles_valid_map_subset_trans; eauto.
+    cancel.
+    erewrite GLog.rep_blockmem_subset; eauto.
+    cancel.
+    erewrite GLog.rep_blockmem_subset; eauto.
+  Qed.
+
   Lemma rep_hashmap_subset : forall xp F ms hm sm bm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp F st ms sm bm hm
@@ -222,6 +247,17 @@ Module LOG.
     unfold rep; intros; cancel.
     erewrite rep_inner_hashmap_subset; eauto.
   Qed.
+
+  Lemma rep_blockmem_subset : forall xp F ms hm sm bm bm',
+    bm c=bm'
+    -> forall st, rep xp F st ms sm bm hm
+        =p=> rep xp F st ms sm bm' hm.
+  Proof.
+    unfold rep; intros; cancel.
+    erewrite PermCacheLemmas.block_mem_subset_rep; eauto.
+    setoid_rewrite <- rep_inner_blockmem_subset; eauto.
+  Qed.
+  
 
   Lemma intact_hashmap_subset : forall xp F ds hm sm hm' bm,
     (exists l, hashmap_subset l hm hm')
