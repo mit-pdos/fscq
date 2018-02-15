@@ -973,19 +973,16 @@ Lemma synced_list_ipack_length_ok : forall len i items,
   Definition ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
     ifind_list cond vs start.
 
-(*
   Lemma ifind_result_inbound :  forall len bn items cond r,
     Forall Rec.well_formed items ->
     bn < len ->
-    ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
-      (bn * items_per_val) = Some r ->
+    ifind_block cond  (val2block (selN (ipack items) bn $0)) (bn * items_per_val) = Some r ->
     length items = len * items_per_val ->
     fst r < length items.
   Proof.
     intros.
     apply ifind_list_ok_facts with (d := item0) in H1 as [Hm [ Hb [ Hc Hi ] ] ].
     apply list_chunk_wellformed in H.
-    rewrite synced_list_selN in Hb; simpl in Hb.
     unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
     rewrite list_chunk_spec, setlen_length in *.
 
@@ -999,17 +996,14 @@ Lemma synced_list_ipack_length_ok : forall len i items,
   Lemma ifind_result_item_ok : forall len bn items cond r,
     Forall Rec.well_formed items ->
     bn < len ->
-    ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
-      (bn * items_per_val) = Some r ->
+    ifind_block cond (val2block (selN (ipack items) bn $0)) (bn * items_per_val) = Some r ->
     length items = len * items_per_val ->
     (snd r) = selN items (fst r) item0.
   Proof.
     intros.
     apply ifind_list_ok_facts with (d := item0) in H1 as [Hm [ Hb [ Hc Hi ] ] ].
     rewrite <- Hi.
-    rewrite synced_list_selN; simpl.
     apply list_chunk_wellformed in H.
-    rewrite synced_list_selN in Hb; simpl in Hb.
     unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
     rewrite list_chunk_spec, setlen_length in *.
     unfold setlen; rewrite selN_app1.
@@ -1023,6 +1017,7 @@ Lemma synced_list_ipack_length_ok : forall len i items,
     apply Nat.mul_le_mono_r; omega.
   Qed.
 
+  (*
   Lemma ifind_block_none_progress : forall i ix items v cond len,
     (forall ix, ix < i * items_per_val ->
          cond (selN items ix item0) ix = false) ->
