@@ -940,6 +940,19 @@ Qed.
     specialize (IHl x H0); destruct IHl; eauto.
   Qed.
 
+  Lemma in_snd_exists_fst:
+      forall A B  (l: list (A * B)) y,
+        List.In y (List.map snd l) ->
+        exists x, List.In (x, y) l.
+    Proof.
+      induction l; simpl; intuition.
+      simpl in *; subst.
+      eexists; intuition.
+      specialize (IHl _ H0).
+      destruct IHl.
+      eexists; right; eauto.
+    Qed.
+
   Lemma in_extract_blocks_map:
     forall hmap bm x y b,
       List.In (x,y) (Map.elements hmap) ->
@@ -1052,26 +1065,86 @@ Qed.
     apply InA_eqke_In; auto.
   Qed.
 
+  (* easier to use version for map proofs *)
+  Lemma handles_valid_map_transform:
+    forall m bm, handles_valid_map bm m <-> (forall a h, MapsTo a h m -> exists b, bm h = Some b).
+  Proof.
+    unfold handles_valid_map, handles_valid_list,
+    handles_valid, handle_valid;
+    intros; intuition.
+    apply elements_1 in H0.
+    apply InA_eqke_In in H0.
+    apply in_fst_snd_map_split in H0.
+    destruct H0.
+    rewrite Forall_forall in *; auto.
+    rewrite Forall_forall; intros.
+    apply in_snd_exists_fst in H0.
+    destruct H0.
+    eapply In_InA in H0.
+    apply elements_2 in H0; eauto.
+    intuition.
+  Qed.
+  
+
   Lemma handles_valid_map_add:
       forall m a h v bm,
         handles_valid_map bm m ->
         bm h = Some v ->
         handles_valid_map bm (Map.add a h m).
-  Proof. Admitted.
-
+  Proof.
+    intros.
+    apply handles_valid_map_transform.
+    intros.
+    apply add_mapsto_iff in H1; intuition.
+    subst; eauto.
+    eapply handles_valid_map_transform in H; eauto.
+  Qed.
 
   Lemma handles_valid_map_remove:
     forall hmap a bm,
       handles_valid_map bm hmap ->
       handles_valid_map bm (Map.remove a hmap).
-  Proof. Admitted.
+  Proof.
+    intros.
+    apply handles_valid_map_transform.
+    intros.
+    apply remove_mapsto_iff in H0; intuition.
+    eapply handles_valid_map_transform in H; eauto.
+  Qed.
 
   Lemma extract_blocks_map_remove:
     forall hmap a bm,
       Map.Equal  (extract_blocks_map bm (Map.remove a hmap))
                  (Map.remove a (extract_blocks_map bm hmap)).
-  Proof. Admitted.
-  
+  Proof.
+    intros; apply Equal_mapsto_iff; intuition.
+    - destruct (addr_eq_dec k a); subst.
+      apply find_1 in H.
+      assert (A: find a (extract_blocks_map bm (remove a hmap)) <> None). {
+        intuition.
+        rewrite H in H0; inversion H0.
+      }
+      apply in_find_iff in A.
+      unfold extract_blocks_map in *.
+      apply map_2 in A.
+      apply remove_in_iff in A; intuition.
+
+      apply find_1 in H.
+      unfold extract_blocks_map in *.
+      rewrite map_o in H; unfold option_map in H.
+      apply remove_2.
+      intuition.
+      apply find_2.
+      rewrite remove_neq_o in H; intuition.
+      rewrite map_o; unfold option_map; auto.
+
+    - apply remove_mapsto_iff in H; intuition.
+      unfold extract_blocks_map in *.
+      apply map_mapsto_iff in H1; destruct H1; intuition.
+      apply map_mapsto_iff; intuition.
+      eexists; intuition; eauto.
+      apply remove_2; intuition.
+  Qed.
 
   
   Ltac solve_blockmem_subset:=

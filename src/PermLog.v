@@ -649,7 +649,12 @@ Module LOG.
       bm h = Some v ->
       replay_disk (Map.elements (extract_blocks_map bm (Map.add a h hmap))) m =
       updN (replay_disk (Map.elements (extract_blocks_map bm hmap)) m)  a (v, []).
-  Proof. Admitted.
+  Proof.
+    intros.
+    pose proof (map_add_extract_blocks_mem_comm hmap bm (a, h) v H); simpl in *.
+    erewrite <- mapeq_elements; eauto.
+    apply replay_disk_add.
+  Qed.
 
   Theorem write_ok :
     forall xp ms a h pr,

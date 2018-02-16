@@ -2343,7 +2343,45 @@ Proof.
   rewrite MapFacts.map_b.
   destruct (Map.mem a hmap); eauto.
 Qed.
-  
+
+Lemma replay_mem_in:
+  forall T l (x: Map.key * T) m,
+    In x (Map.elements (replay_mem l m)) ->
+    In x l \/ In x (Map.elements m).
+Proof.
+  induction l; simpl; intros; intuition.
+  destruct x, a; simpl in *.
+  specialize (IHl _ _ H).
+  intuition.
+  eapply In_InA in H0; eauto.
+  apply Map.elements_2 in H0.
+  destruct (addr_eq_dec k n); subst.
+  apply mapsto_add in H0; subst; intuition.
+  apply Map.add_3 in H0; eauto.
+  apply Map.elements_1 in H0.
+  eapply InA_eqke_In in H0; eauto.
+Qed.
+
+
+Lemma handles_valid_replay_mem2:
+  forall l bm m,
+    handles_valid_list bm l ->
+    handles_valid_map bm m ->
+    handles_valid_map bm (replay_mem l m).
+Proof.
+  intros.
+  apply handles_valid_map_transform.
+  intros.
+  apply Map.elements_1 in H1.
+  apply InA_eqke_In in H1.    
+  apply replay_mem_in in H1; intuition; eauto.
+  eapply handles_valid_list_extract.
+  apply H. eauto.
+  eapply handles_valid_map_extract; eauto.
+  apply Map.find_1.
+  apply Map.elements_2.
+  apply In_InA; eauto.
+Qed.
 
   Theorem recover_ok:
     forall xp cs pr,
@@ -2401,132 +2439,10 @@ Qed.
     unfold ent_handle; auto.
     solve_hashmap_subset.
 
-    (* This seems true but couldn't prove it yet *)
-    admit. (*
-    Definition input_dec: forall (a b: addr * handle), {a = b}+{a <> b}.
-        intros; destruct a, b.
-        destruct (addr_eq_dec n n0); subst.
-        destruct (handle_eq_dec h h0); subst.
-        left; auto.
-        all: right; intuition;
-        inversion H; eauto.
-    Defined.
+    eapply handles_valid_replay_mem2; eauto.
+    apply handles_valid_map_empty; eauto.
+    apply map_empty_gmap0.
 
-    Lemma KNoDup_exists_incl:
-      forall (l: list (addr * handle)),
-      exists l', incl l' l /\ KNoDup l'.
-      induction l; simpl in *; intros.
-      exists nil; intuition.
-      unfold KNoDup.
-      apply NoDupA_nil.
-      cleanup.
-    
-    Lemma replay_mem_exists_incl:
-      forall (l: list (addr * handle)),
-      exists l', Map.Equal (replay_mem l gmap0) (replay_mem l' gmap0) /\
-            incl l' l /\
-            KNoDup l'.
-    Proof.
-      Search KNoDup.
-      induction l; simpl in *; intros.
-      exists nil; intuition.
-      simpl; apply MapFacts.Equal_refl.
-      unfold KNoDup.
-      apply NoDupA_nil.
-      cleanup.
-      destruct (in_dec input_dec a x).
-      {
-        exists x.
-        unfold Map.Equal, Map.add, gmap0, map0; simpl.
-        intuition.
-        unfold replay_mem, Map.find; simpl.
-        Search AddrMap_AVL.this.
-      Search ({_ _})
-      
-      
-
-    Lemma handles_valid_map_replay_mem_gmap0:
-      forall a bm m,
-        handles_valid_map bm m ->
-        handles_valid_list bm a ->
-        handles_valid_map bm (replay_mem a m).
-    Proof.
-      unfold handles_valid_map; induction a; intros; auto.
-      simpl.
-      inversion H0; subst.
-      eapply IHa; eauto.
-
-      Lemma handle_valid_map_add:
-        forall m a bm,
-          handles_valid_map bm m ->
-          handle_valid bm (snd a) ->
-          handles_valid_map bm (Map.add (fst a) (snd a) m).
-      Proof.
-        unfold handles_valid_map, Map.add, Map.elements, AddrMap_AVL.Raw.elements;
-        intro m; destruct m;
-        generalize dependent this;
-        induction this; simpl in *; intros; auto.
-        unfold handles_valid_list, handles_valid; simpl in *; auto.
-
-        inversion is_bst; cleanup; intuition; simpl in *.
-        rewrite AddrMap_AVL.Raw.Proofs.elements_app in H.
-        unfold handles_valid_list in *.
-        rewrite map_app in *; simpl in *.
-        
-        apply handles_valid_app in H; cleanup.
-        apply handles_valid_cons in H3; cleanup.
-        rewrite AddrMap_AVL.Raw.Proofs.elements_app, app_nil_r in H4.
-        destruct (OrderedTypeEx.Nat_as_OT.compare (fst a) k); simpl.
-      
-        Search AddrMap_AVL.Raw.elements AddrMap_AVL.Raw.bal.
-        unfold AddrMap_AVL.Raw.bal.
-      
-      destruct this; simpl in *.
-      setoid_rewrite D; simpl.
-      unfold Map.elements, Map.add, AddrMap_AVL.Raw.elements,
-      AddrMap_AVL.Raw.elements_aux, AddrMap_AVL.Raw.add; simpl.
-      unfold handles_valid_list, handles_valid; simpl; apply Forall_nil.
-
-      setoid_rewrite D; simpl.
-      unfold Map.elements, Map.add, AddrMap_AVL.Raw.elements; simpl.
-      destruct m; cleanup.
-      
-      unfold handles_valid_list, handles_valid; simpl; apply Forall_nil.
-      
-      destruct m; simpl.
-      
-      Search Map.elements.
-
-      
-      
-      destruct (in_dec input_dec a a0).
-      Lemma replay_mem_in:
-        forall T a0 (a: addr * T),
-          In a a0 ->
-          Map.Equal (replay_mem (a :: a0) gmap0) (replay_mem a0 gmap0).
-      Proof.
-        intros.
-        apply in_split in H; cleanup.
-        simpl.
-        Search replay_mem app.
-        intuition; subst.
-        apply MapFacts.Equal_sym.
-        eapply MapFacts.Equal_trans.
-        apply MapFacts.Equal_refl.
-        apply MapFacts.Equal_sym.
-        eapply replay_mem_equal.
-        apply map_add_repeat.
-        simpl in *.
-        specialize (IHa0 _ (Map.add (fst a1) (snd a1) m) H0). intuition.
-             
-      Search replay_mem cons.
-      inversion H; subst.
-      
-      Search Map.elements.
-    apply handles_valid_replay_mem; auto.
-    Search KNoDup.
-            *)
-    
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
@@ -2586,9 +2502,9 @@ Qed.
     unfold ent_handle; auto.
     solve_hashmap_subset.
 
-    (* This seems true but couldn't prove it yet *)
-    admit.
-
+    eapply handles_valid_replay_mem2; eauto.
+    apply handles_valid_map_empty; eauto.
+    apply map_empty_gmap0.
     
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
@@ -2683,8 +2599,9 @@ Qed.
     unfold ent_handle; auto.
     solve_hashmap_subset.
 
-    (* This seems true but couldn't prove it yet *)
-    admit.
+    eapply handles_valid_replay_mem2; eauto.
+    apply handles_valid_map_empty; eauto.
+    apply map_empty_gmap0.
     
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
@@ -2740,7 +2657,7 @@ Qed.
     all: try exact bmap0.
     3: constructor.
     all: unfold EqDec; apply handle_eq_dec.
-  Admitted.
+  Qed.
 
 
 

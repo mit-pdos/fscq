@@ -1539,9 +1539,8 @@ length l1 = length l1' ->
  	Qed. *)
 
   	Lemma merge_bs_firstn_skipn: forall a b c l l',
-	a + b = c ->
-	merge_bs (firstn c l) (firstn c l') = merge_bs (firstn a l) (firstn a l') 
-																					++ merge_bs (firstn b (skipn a l)) (firstn b (skipn a l')).
+	                               a + b = c ->
+	                               merge_bs (firstn c l) (firstn c l') = merge_bs (firstn a l) (firstn a l') ++ merge_bs (firstn b (skipn a l)) (firstn b (skipn a l')).
 		Proof.
 			induction a; intros.
 			simpl.

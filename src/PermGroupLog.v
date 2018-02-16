@@ -412,6 +412,7 @@ Module GLog.
     vmap_match vm ts ->
     Map.find a vm = None ->
     (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
+    handles_valid_nested bm ts ->
     selN (fst ds) a valuset0 = (v, vs).
   Proof.
     unfold vmap_match, dset_match.
@@ -422,6 +423,7 @@ Module GLog.
     erewrite surjective_pairing at 1.
     erewrite <- list2nmem_sel; eauto; simpl; auto.
 
+    
     rewrite H0 in H1.
     eapply IHts.
     split; eauto.
@@ -432,14 +434,15 @@ Module GLog.
 
     rewrite latest_cons in *.
     eapply ptsto_replay_disk_not_in'; [ | | eauto].
-    inversion Hs.
     eapply map_find_replay_mem_not_in; eauto.
-    subst.
-    admit.
+    apply replay_mem_find_none_mono in H1 as Hx.
+
+    erewrite MLog.extract_blocks_map_replay_mem_comm.
+    apply map_find_In_elements_none; eauto.
+    inversion H3; eauto.
     denote Forall as Hx; apply Forall_inv in Hx; apply Hx.
-    Unshelve.
-    exact bmap0.
-  Admitted.
+    inversion H3; eauto.
+    Qed.
 
   Lemma replay_seq_replay_mem : forall ds ts xp,
     ReplaySeq ds ts ->
@@ -1221,8 +1224,7 @@ Lemma dset_match_log_valid_selN : forall ds ts i n bm xp,
     -> dset_match xp ds (extract_blocks_nested bm ts)
     -> handles_valid_nested bm ts
     -> replay_disk  (extract_blocks_list bm (Map.elements vmap)) (fst ds) = nthd (length ts) ds.
-  Proof. Admitted.
-    (*
+  Proof.
     intros; simpl in *.
     denote dset_match as Hdset.
     apply dset_match_length in Hdset as Hlength.
@@ -1231,135 +1233,18 @@ Lemma dset_match_log_valid_selN : forall ds ts i n bm xp,
 
     unfold vmap_match in *.
     rewrite H.
-
-    Search (Map.elements (fold_right _ _ _)).
-
-    
-    Search replay_disk.
-
-    Lemma asd:
-      forall ts ds xp bm,
-        handles_valid_nested bm ts ->
-        Forall (ents_valid xp (fst ds)) (extract_blocks_nested bm ts) ->
-        ReplaySeq ds (extract_blocks_nested bm ts) ->
-        replay_disk (extract_blocks_list bm (Map.elements (fold_right replay_mem hmap0 ts))) (fst ds) =
-       replay_disk (Map.elements (fold_right replay_mem bmap0 (extract_blocks_nested bm ts))) (fst ds).
-    Proof.
-      induction 1; simpl in *; intuition eauto.
-      inversion H1; cleanup; clear H1.
-   
-      Search (Map.elements (replay_mem _ _)).
-      rewrite <- replay_disk_replay_mem.
-      rewrite <- IHForall.
-      Search (replay_disk _ (replay_disk _ _)).
-      rewrite replay_disk_merge'.
-
-      Lemma qwe:
-        forall l x bm,
-          
-          extract_blocks_list bm (Map.elements (replay_mem x (fold_right replay_mem hmap0 l))) =
-          Map.elements (replay_mem (extract_blocks_list bm x)
-                       (replay_mem (extract_blocks_list bm (Map.elements (fold_right replay_mem hmap0 l))) bmap0)).
-
-      Proof.
-        induction l; simpl in *; intuition.
-        Search extract_blocks_list replay_mem.
-
-        Lemma rty:
-          forall x hmap bmap bm,
-            handles_valid_map bm hmap ->
-            handles_valid_list bm x ->
-            Map.Equal (extract_blocks_map bm hmap) bmap ->
-            extract_blocks_list bm (Map.elements (replay_mem x hmap)) =
-            Map.elements (replay_mem (extract_blocks_list bm x) bmap).
-        Proof.
-          induction x; simpl in *; intuition eauto.
-          erewrite <- mapeq_elements with (m2:= bmap); eauto.
-
-          Lemma extract_blocks_list_elements:
-            forall hmap bm,
-              handles_valid_map bm hmap ->
-              extract_blocks_list bm (Map.elements hmap) = Map.elements (extract_blocks_map bm hmap).
-          Proof.
-            unfold extract_blocks_map, extract_blocks_list, handles_valid_map,
-            Map.elements, AddrMap_AVL.Raw.elements, handles_valid_list;
-            intro hmap; destruct hmap; generalize dependent this;
-            induction this; simpl in *; intros; eauto.
-            repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *;
-            repeat rewrite map_app in *; simpl in *; repeat rewrite app_nil_r in *.
-            
-            rewrite extract_blocks_app; simpl.
-            apply  handles_valid_app in H.
-            destruct H.
-            inversion H0; subst.
-            rewrite combine_app.           
-            unfold handle_valid in *; cleanup.
-            unfold extract_block at 2; simpl in *; cleanup.
-            inversion is_bst; cleanup.
-            rewrite IHthis1, IHthis2; auto.
-            rewrite extract_blocks_length; eauto.
-            repeat rewrite map_length; eauto.
-          Qed.
-
-          apply extract_blocks_list_elements; auto.
-
-          inversion H0; subst; unfold handle_valid in *; cleanup.
-          erewrite extract_blocks_list_cons; eauto; simpl.
-          apply IHx.
-
-
-          Lemma handles_valid_map_add:
-            forall m a b v bm,
-              bm b = Some v ->
-              handles_valid_map bm m ->
-              handles_valid_map bm (Map.add a b m).
-          Proof.
-            unfold handles_valid_map, Map.elements, AddrMap_AVL.Raw.elements, handles_valid_list;
-            intro hmap; destruct hmap; generalize dependent this;
-            induction this; simpl in *; intros; eauto.
-            unfold handles_valid; simpl.
-            rewrite Forall_forall; intros.
-            unfold handle_valid; inversion H1; subst; eauto.
-            inversion H2.
-
-            repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *;
-            repeat rewrite map_app in *; simpl in *; repeat rewrite app_nil_r in *.
-            apply  handles_valid_app in H0.
-            destruct H0.
-            inversion H1; subst.
-
-            destruct (Nat_as_OT.compare a k) eqn:D; simpl.
-            eapply AddrMap_AVL.Raw.Proofs.R_add_1 in D.
-            Search AddrMap_AVL.Raw.bal.
-            Search AddrMap_AVL.Raw.add.
-            unfold AddrMap_AVL.Raw.elements; simpl
-            apply MapProperties.elements_Empty in HI.
-            Search Map.add.
-            Search Map.elements nil.
-            
-            
-          
-
-          
-            inversion H; subst.
-            induction hmap; simpl in *; eauto.
-          
-          unfold extract_blocks_map.
-          
-          Search Map.elements Map.map.
-          destruct a; erewrite extract_blocks_list_cons.
-          simpl.
-
-        
-      Search (replay_mem _ (replay_mem  _ _)).
-      unfold extract_blocks_nested.
-      Search fold_right.
-    
+    rewrite <- extract_blocks_list_map; eauto.
+    rewrite extract_blocks_map_extract_blocks_nested; auto.
     erewrite replay_seq_replay_mem; eauto.
     erewrite nthd_oob; eauto.
-    omega.
-    Qed.
-     *)
+    setoid_rewrite extract_blocks_nested_length in Hlength;
+    eauto; setoid_rewrite Hlength; auto.
+    eapply handles_valid_nested_handles_valid_map; eauto.
+    split; eauto.
+    unfold vmap_match in *.
+    rewrite <- H; eauto.
+    apply MapFacts.Equal_refl.
+  Qed.
 
 Lemma dset_match_grouped : forall ts vmap ds bm xp,
     length (snd ds) > 0
@@ -1394,10 +1279,6 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     setoid_rewrite extract_blocks_nested_length; eauto.
     constructor.
   Qed.
-
-
-
-  
 
   Theorem flushall_ok:
     forall xp ms pr,
@@ -1935,23 +1816,23 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite <- dsupd_latest.
     rewrite synced_recover_any; eauto.
 
-    (* This goeal doesn't match with the lemma it used to solve.
     rewrite effective_dsupd_comm.
-
     rewrite H20 in H27; simpl in H27.
     rewrite Nat.sub_0_r, <- latest_nthd in H27.
     rewrite <- dsupd_latest in H27.
     unfold effective in H27.
     simpl in *.
     rewrite popn_0 in H27.
+    apply dset_match_length in H27 as Hx; simpl in Hx.
+    setoid_rewrite extract_blocks_nested_length in Hx; auto.
+    cleanup.
+    unfold effective.
+    rewrite Nat.sub_0_r.
+    rewrite popn_oob.
+    unfold dsupd, d_map; simpl.
+    rewrite dsupd_latest in H27; auto.
+    auto.
 
-
-    LEFTHERE.
-    
-    eapply dset_match_dsupd; eauto.
-     *) admit.
-
-    
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     repeat xcrash_rewrite; xform_norm.
@@ -2006,10 +1887,9 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite latest_effective; eauto.
     3: eauto.
     eapply handles_valid_nested_subset_trans; eauto.
-    rewrite effective_dsupd_comm.
-    (* Same as above 
-    eapply dset_match_dsupd; eauto.
-     *) admit.
+
+    admit.
+    
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.
   Admitted.
@@ -2059,6 +1939,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Lemma vmap_match_nonoverlap : forall ts vm al bm,
     overlap al vm = false ->
     vmap_match vm ts ->
+    handles_valid_nested bm ts ->
     Forall (fun e => disjoint al (map fst e)) (extract_blocks_nested bm ts).
   Proof.
     unfold vmap_match; induction ts; intros.
@@ -2066,15 +1947,15 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite H0 in H; simpl in *.
     constructor; simpl in *.
     eapply nonoverlap_replay_mem_disjoint; eauto.
-    Search replay_mem extract_blocks_list.
-    
-    admit.
+    rewrite MLog.extract_blocks_map_replay_mem_comm; auto.
+    rewrite MLog.overlap_extract_blocks_map; eauto.
+    inversion H1; auto.
     
     eapply IHts.
     2: apply MapFacts.Equal_refl.
     eapply replay_mem_nonoverlap_mono; eauto.
-    Unshelve. exact bmap0.
-  Admitted.
+    inversion H1; auto.
+  Qed.
 
 
 
