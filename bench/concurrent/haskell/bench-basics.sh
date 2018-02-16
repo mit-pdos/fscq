@@ -14,19 +14,19 @@ bench() {
 
 info "==> metadata-only"
 info "statfs"
-bench --target-ms=1000 --reps=1000 statfs "$@"
+bench --target-ms=500 --reps=10000 statfs "$@"
 sep
 
 info "stat"
-bench --target-ms=1000 --reps=1000 stat "$@"
+bench --target-ms=500 --reps=10000 stat "$@"
 sep
 
 info "open"
-bench --target-ms=1000 --reps=1000 open "$@"
+bench --target-ms=500 --reps=10000 open "$@"
 sep
 
 info "traverse large file directory"
-bench --target-ms=1000 --reps=5 traverse-dir --dir '/large-dir' "$@"
+bench --target-ms=500 --reps=10 traverse-dir --dir '/large-dir' "$@"
 sep
 
 info "==> reading data"
@@ -35,12 +35,12 @@ info "==> reading data"
 #sep
 
 info "cat large"
-bench --iters=1 --reps=2 cat-file --file '/large' "$@"
+bench --target-ms=500 --reps=1 cat-file --file '/large' "$@"
 sep
 
 info "cat large file directory"
-bench --iters=1 --reps=2 cat-dir --dir '/large-dir' "$@"
+bench --target-ms=500 --reps=2 cat-dir --dir '/large-dir' "$@"
 sep
 
 info "cat small file directory"
-bench --target-ms=1000 --reps=5 cat-dir --dir '/large-dir-small-files' "$@"
+bench --target-ms=500 --reps=5 cat-dir --dir '/large-dir-small-files' "$@"
