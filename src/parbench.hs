@@ -105,6 +105,24 @@ openOp FileOpOptions{..} Filesystem{fuseOps=fs} = do
     _ <- fuseOpen fs optFile ReadOnly defaultFileFlags
     return ()
 
+data FileOffsetOpOptions =
+  FileOffsetOpOptions { optFileName :: String
+                      , optFileOffset :: Int }
+instance Options FileOffsetOpOptions where
+  defineOptions = pure FileOffsetOpOptions
+    <*> simpleOption "file" "/large"
+      "file to operate on"
+    <*> simpleOption "offset" 0
+      "offset (in bytes) to read from"
+
+readFilePrepare :: FileOffsetOpOptions -> Filesystem -> IO Integer
+readFilePrepare FileOffsetOpOptions{..} Filesystem{fuseOps=fs} =
+  getResult optFileName =<< fuseOpen fs optFileName ReadOnly defaultFileFlags
+
+readFileOp :: FileOffsetOpOptions -> Filesystem -> Integer -> IO ()
+readFileOp FileOffsetOpOptions{..} Filesystem{fuseOps=fs} inum =
+  void $ fuseRead fs optFileName inum 4096 (fromIntegral optFileOffset)
+
 type ThreadNum = Int
 
 -- replicateInParallel par iters act runs act in n parallel copies, passing
@@ -443,6 +461,7 @@ main = do
                 , simpleBenchmark "cat-dir" catDirOp
                 , simpleBenchmark "cat-file" catFileOp
                 , simpleBenchmarkWithSetup "readdir" readDirPrepare readDirOp
+                , simpleBenchmarkWithSetup "read" readFilePrepare readFileOp
                 , simpleBenchmark "traverse-dir" traverseDirOp
                 , ioConcurCommand
                 , parSearchCommand
