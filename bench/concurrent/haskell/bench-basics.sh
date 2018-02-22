@@ -25,6 +25,10 @@ info "open"
 bench --target-ms=500 --reps=10000 open "$@"
 sep
 
+info "readdir medium"
+bench --target-ms=500 --reps=10 readdir --dir '/medium-dir' "$@"
+sep
+
 info "traverse large file directory"
 bench --target-ms=500 --reps=10 traverse-dir --dir '/large-dir' "$@"
 sep
@@ -33,6 +37,14 @@ info "==> reading data"
 #info "cat linux.tar.xz"
 #bench --iters=1 --reps=4 cat-file --file '/linux-source/linux.tar.xz' "$@"
 #sep
+
+info "read 0"
+bench --target-ms=500 --reps=10 read --file '/large' --offset 0 "$@"
+sep
+
+info "read far"
+bench --target-ms=500 --reps=10 read --file '/large' --offset 10000000 "$@"
+sep
 
 info "cat large"
 bench --target-ms=500 --reps=1 cat-file --file '/large' "$@"
