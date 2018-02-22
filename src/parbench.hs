@@ -75,6 +75,14 @@ traverseDirOp :: ScanDirOptions -> Filesystem -> IO ()
 traverseDirOp ScanDirOptions{..} Filesystem{fuseOps} =
   void $ traverseDirectory fuseOps optScanRoot
 
+readDirPrepare :: ScanDirOptions -> Filesystem -> IO Integer
+readDirPrepare ScanDirOptions{..} Filesystem{fuseOps=fs} =
+  getResult optScanRoot =<< fuseOpenDirectory fs optScanRoot
+
+readDirOp :: ScanDirOptions -> Filesystem -> Integer -> IO ()
+readDirOp ScanDirOptions{..} Filesystem{fuseOps=fs} dnum =
+  void $ fuseReadDirectory fs optScanRoot dnum
+
 data FileOpOptions =
   FileOpOptions { optFile :: String }
 instance Options FileOpOptions where
@@ -434,6 +442,7 @@ main = do
                 , simpleBenchmark "statfs" statfsOp
                 , simpleBenchmark "cat-dir" catDirOp
                 , simpleBenchmark "cat-file" catFileOp
+                , simpleBenchmarkWithSetup "readdir" readDirPrepare readDirOp
                 , simpleBenchmark "traverse-dir" traverseDirOp
                 , ioConcurCommand
                 , parSearchCommand

@@ -32,6 +32,11 @@ for num in $(seq 1 100); do
   echo 'small' > "$mnt/large-dir-small-files/dir2/file$num"
 done
 
+mkdir -p "$mnt/medium-dir"
+for num in $(seq 1 20); do
+  touch "$mnt/medium-dir/file$num"
+done
+
 dd if=/dev/urandom of="$mnt/small" bs=4k count=1
 dd if=/dev/urandom of="$mnt/large" bs=1k count=20000
 
@@ -74,5 +79,5 @@ echo "unmounting"
 fusermount -u "$mnt"
 
 while pgrep "^fscq$" >/dev/null; do
-  :
+  sleep 1
 done
