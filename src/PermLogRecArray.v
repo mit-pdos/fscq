@@ -885,7 +885,7 @@ End LogRecArray.
 
 
 
-(* Defer this until I know what it is used for
+
 Module LogRecArrayCache (RA : RASig).
 
   Module LRA := LogRecArray RA.
@@ -904,21 +904,20 @@ Module LogRecArrayCache (RA : RASig).
   Definition cache_rep (items : itemlist) (c : Cache_type) :=
      arrayN cache_ptsto 0 items (M.mm _ c).
 
-  Definition rep xp (items : itemlist) c :=
-    ( LRA.rep xp items * [[ cache_rep items c ]] )%pred.
+  Definition rep xp tags (items : itemlist) c :=
+    ( LRA.rep xp tags items * [[ cache_rep items c ]] )%pred.
 
   Definition get lxp xp ix cache ms :=
     match Cache.find ix cache with
     | Some v =>
       Ret ^(cache, ms, v)
     | None =>
-      let^ (ms, v) <- LRA.get lxp xp ix ms;
-      AlertModified;;
+      let^ (ms, v) <- LRA.get lxp xp ix ms;;
       Ret ^(Cache.add ix v cache, ms, v)
     end.
 
-  Definition put lxp xp ix item cache ms :=
-    ms <- LRA.put lxp xp ix item ms;
+  Definition put lxp xp ix tag item cache ms :=
+    ms <- LRA.put lxp xp ix tag item ms;;
     Ret ^(Cache.add ix item cache, ms).
 
   Definition read := LRA.read.
@@ -927,19 +926,19 @@ Module LogRecArrayCache (RA : RASig).
   Definition ifind := LRA.ifind.
 
   Definition get_array lxp xp ix cache ms :=
-    r <- get lxp xp ix cache ms;
+    r <- get lxp xp ix cache ms;;
     Ret r.
 
-  Definition put_array lxp xp ix item cache ms :=
-    r <- put lxp xp ix item cache ms;
+  Definition put_array lxp xp ix tag item cache ms :=
+    r <- put lxp xp ix tag item cache ms;;
     Ret r.
 
   Definition read_array lxp xp nblocks ms :=
-    r <- read lxp xp nblocks ms;
+    r <- read lxp xp nblocks ms;;
     Ret r.
 
   Definition ifind_array lxp xp cond ms :=
-    r <- ifind lxp xp cond ms;
+    r <- ifind lxp xp cond ms;;
     Ret r.
 
   Definition read_ok := LRA.read_ok.
@@ -950,12 +949,12 @@ Module LogRecArrayCache (RA : RASig).
 
   Definition ifind_ok := LRA.ifind_ok.
 
-  Hint Extern 1 ({{_}} Bind (read _ _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
-  Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (read _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (write _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (init _ _ _) _) => apply init_ok : prog.
 
-  Lemma item_wellformed : forall F xp m i l cache,
-    (F ✶ rep xp l cache)%pred m ->
+  Lemma item_wellformed : forall F xp m i tl l cache,
+    (F ✶ rep xp tl l cache)%pred m ->
     Rec.well_formed (selN l i item0).
   Proof.
     unfold rep.
@@ -964,19 +963,19 @@ Module LogRecArrayCache (RA : RASig).
     eauto using LRA.item_wellformed.
   Qed.
 
-  Lemma items_length_ok_pimpl : forall xp l cache,
-    rep xp l cache =p=>
-    [[ length l = (RALen xp * items_per_val)%nat ]] ✶ rep xp l cache.
+  Lemma items_length_ok_pimpl : forall xp tl l cache,
+    rep xp tl l cache =p=>
+    [[ length l = (RALen xp * items_per_val)%nat ]] ✶ rep xp tl l cache.
   Proof.
     unfold rep.
-    intros xp l c m H.
+    intros xp tl l c m H.
     rewrite LRA.items_length_ok_pimpl in H.
     pred_apply.
     cancel.
   Qed.
 
-  Lemma xform_rep : forall xp l c,
-    crash_xform (rep xp l c) <=p=> rep xp l c.
+  Lemma xform_rep : forall xp tl l c,
+    crash_xform (rep xp tl l c) <=p=> rep xp tl l c.
   Proof.
     unfold rep.
     intros.
@@ -1000,8 +999,8 @@ Module LogRecArrayCache (RA : RASig).
     intro; auto.
   Qed.
 
-  Lemma rep_clear_cache: forall xp items cache,
-    rep xp items cache =p=> rep xp items cache0.
+  Lemma rep_clear_cache: forall xp tags items cache,
+    rep xp tags items cache =p=> rep xp tags items cache0.
   Proof.
     unfold rep. cancel.
     apply cache_rep_empty.
@@ -1147,52 +1146,69 @@ Module LogRecArrayCache (RA : RASig).
   Unshelve. all : eauto.
   Qed.
 
-  Theorem get_array_ok : forall lxp xp ix cache ms,
-    {< F Fm m0 sm m items,
-    PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+  Theorem get_array_ok :
+    forall lxp xp ix cache ms pr,
+    {< F Fm m0 sm m tags items,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
           [[ ix < length items ]] *
-          [[[ m ::: Fm * rep xp items cache ]]]
-    POST:hm' RET:^(cache', ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm' *
-          [[[ m ::: Fm * rep xp items cache' ]]] *
+          [[[ m ::: Fm * rep xp tags items cache ]]] *
+          [[ can_access pr (selN tags (ix / items_per_val) Public) ]]
+    POST:bm', hm', RET:^(cache', ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+          [[[ m ::: Fm * rep xp tags items cache' ]]] *
           [[ r = selN items ix item0 ]]
-    CRASH:hm' exists ms',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm hm'
+    CRASH:bm', hm', exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} get_array lxp xp ix cache ms.
   Proof.
     unfold get_array, get, rep.
     hoare.
-    all : eauto using cache_rep_some, cache_rep_add.
+    all: try erewrite LOG.rep_hashmap_subset; eauto.
+    all: solve_hashmap_subset.
+    all: eauto using cache_rep_some, cache_rep_add.
   Qed.
 
-  Theorem put_array_ok : forall lxp xp ix e cache ms,
-    {< F Fm Fi m0 sm m items e0,
-    PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm hm *
+  Theorem put_array_ok :
+    forall lxp xp ix tag e cache ms pr,
+    {< F Fm Fi Ft m0 sm m tags items t0 e0,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
           [[ Rec.well_formed e ]] *
-          [[[ m ::: Fm * rep xp items cache ]]] *
-          [[[ items ::: Fi * (ix |-> e0) ]]]
-    POST:hm' RET:^(cache', ms') exists m' items',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm hm' *
+          [[[ m ::: Fm * rep xp tags items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] *
+          [[[ tags ::: Ft * ((ix / items_per_val) |-> t0) ]]] *
+          [[ can_access pr t0 ]] *
+          [[ can_access pr tag ]]
+    POST:bm', hm', RET:^(cache', ms') exists m' tags' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
           [[ items' = updN items ix e ]] *
-          [[[ m' ::: Fm * rep xp items' cache' ]]] *
-          [[[ items' ::: Fi * (ix |-> e) ]]]
-    CRASH:hm' LOG.intact lxp F m0 sm hm'
-    >} put_array lxp xp ix e cache ms.
+          [[ tags' = updN tags (ix / items_per_val) tag ]] *
+          [[[ m' ::: Fm * rep xp tags' items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] *
+          [[[ tags' ::: Ft * ((ix / items_per_val) |-> tag) ]]]
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    >} put_array lxp xp ix tag e cache ms.
   Proof.
     unfold put_array, put, rep.
     hoare.
     eapply list2nmem_ptsto_bound; eauto.
+    erewrite <- list2nmem_sel; [ |eauto]; auto.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    solve_hashmap_subset.
+    pred_apply; cancel.
     eapply cache_rep_updN; eauto.
     eapply list2nmem_ptsto_bound; eauto.
     eapply list2nmem_updN; eauto.
+    eapply list2nmem_updN; eauto.
+    solve_hashmap_subset.
   Qed.
 
-  Hint Extern 1 ({{_}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok : prog.
-  Hint Extern 1 ({{_}} Bind (put_array _ _ _ _ _ _) _) => apply put_array_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (put_array _ _ _ _ _ _ _) _) => apply put_array_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep ?xp _ _ _) (rep ?xp _ _ _)) => constructor : okToUnify.
 
 End LogRecArrayCache.
-*)
