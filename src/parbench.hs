@@ -250,15 +250,15 @@ parallelTimeForIters par act iters =
     then replicateM iters (timeIt . act $ tid)
     else replicateM_ iters (act tid) >> return [])
 
-parallelBench :: ParOptions -> (ThreadNum -> IO a) -> IO () -> IO [DataPoint]
-parallelBench opts@ParOptions{..} act prepare = do
+parallelBench :: ParOptions -> IO b -> (b -> ThreadNum -> IO a) -> IO [DataPoint]
+parallelBench opts@ParOptions{..} prepare act = do
+  setup <- prepare
   when optWarmup $ do
-    forM_ [0..optN-1] act
+    forM_ [0..optN-1] (act setup)
     logVerbose opts "===> warmup done <==="
   performMajorGC
-  prepare
   micros <- pickAndRunIters opts $
-    parallelTimeForIters optN $ replicateM_ optReps . act
+    parallelTimeForIters optN $ replicateM_ optReps . (act setup)
   p <- optsData opts
   return $ map (\t -> p{ pIters=length micros
                        , pElapsedMicros=t }) micros
@@ -281,12 +281,21 @@ clearTimings fs = writeIORef (timings fs) emptyTimings
 reportData :: [DataPoint] -> IO ()
 reportData = mapM_ (putStrLn . valueData . dataValues)
 
+simpleBenchmarkWithSetup :: Options subcmdOpts =>
+                            String ->
+                            (subcmdOpts -> Filesystem -> IO b) ->
+                            (subcmdOpts -> Filesystem -> b -> IO a) ->
+                            Parcommand ()
+simpleBenchmarkWithSetup name prepare act = parcommand name $ \opts cmdOpts -> do
+  ps <- withFs opts $ \fs -> parallelBench opts
+    (clearTimings fs >> prepare cmdOpts fs)
+    (\setup _thread -> act cmdOpts fs setup)
+  reportData $ map (\p -> p{pBenchName=name}) ps
+
 simpleBenchmark :: Options subcmdOpts =>
                    String -> (subcmdOpts -> Filesystem -> IO a) ->
                    Parcommand ()
-simpleBenchmark name act = parcommand name $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> parallelBench opts (\_ -> act cmdOpts fs) (clearTimings fs)
-  reportData $ map (\p -> p{pBenchName=name}) ps
+simpleBenchmark name act = simpleBenchmarkWithSetup name (\_ _ -> return ()) (\opts fs _ -> act opts fs)
 
 data IOConcurOptions =
   IOConcurOptions { optLargeFile :: String
