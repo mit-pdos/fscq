@@ -1,7 +1,7 @@
 Require Import Arith Omega Word Setoid.
-Require Import Pred Hoare SepAuto AsyncDisk Word.
-Require Import Array List ListUtils.
-Require Import GenSepN ListPred.
+Require Import Pred PermHoare PermSepAuto PermAsyncDisk Word.
+Require Import PermArray List ListUtils.
+Require Import PermGenSepN ListPred.
 
 (*
 Require Import Arith.
@@ -59,7 +59,7 @@ Ltac filldef :=
 
 Ltac rewrite_ignore H :=
   match type of H with
-  | forall _, corr2 _ _ => idtac
+  | forall _, corr2 _ _ _ => idtac
   end.
 
 Ltac simplen_rewrite_hyp H := try progress (

@@ -899,13 +899,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     simpl in *. auto.
   Qed.
 
-  Lemma Forall_can_access_public:
-      forall pr n,
-        Forall (can_access pr) (repeat Public n).
-    Proof.
-      intros; rewrite Forall_forall in *; intros.
-      apply repeat_spec in H; subst; eauto.
-    Qed.
+  
 
    Hint Resolve Forall_can_access_public Defs.items_per_val_not_0. 
   
@@ -985,33 +979,10 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     rewrite <- H1; cancel.
     auto.
     solve_hashmap_subset.
-  Qed.
-
-  Lemma can_access_repeat_public_selN:
-      forall pr n i,
-        can_access pr (selN (repeat Public n) i Public).
-    Proof.
-      intros.
-      destruct (lt_dec i n).
-      rewrite repeat_selN; auto.
-      rewrite selN_oob; eauto.
-      rewrite repeat_length; omega.
-    Qed.
+  Qed.   
     
     Hint Resolve can_access_repeat_public_selN.
 
-  Lemma repeat_updN_noop:
-      forall T (x:T) n a,
-        updN (repeat x n) a x = repeat x n.
-    Proof.
-      intros.
-      eapply selN_eq_updN_eq; auto.
-      destruct (lt_dec a n).
-      rewrite repeat_selN; auto.
-      rewrite selN_oob; eauto.
-      rewrite repeat_length; omega.
-    Qed.
-    
     
   Theorem steal_ok :
     forall V FP lxp xp bn ms pr,
