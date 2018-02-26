@@ -9,7 +9,7 @@ sep() {
 }
 
 bench() {
-    bencher --n=4 --RTS -- "$@"
+    bencher --scalability --n=6 --RTS -- "$@"
 }
 
 info "==> metadata-only"
@@ -25,8 +25,16 @@ info "open"
 bench --target-ms=500 --reps=10000 open "$@"
 sep
 
+info "read oob"
+bench --target-ms=500 --reps=10 read --file '/small' --offset 10000 "$@"
+sep
+
 info "readdir medium"
 bench --target-ms=500 --reps=10 readdir --dir '/medium-dir' "$@"
+sep
+
+info "readdir large"
+bench --target-ms=500 --reps=10 readdir --dir '/large-dir/dir1' "$@"
 sep
 
 info "traverse large file directory"
@@ -40,6 +48,10 @@ info "==> reading data"
 
 info "read 0"
 bench --target-ms=500 --reps=10 read --file '/large' --offset 0 "$@"
+sep
+
+info "read indirect"
+bench --target-ms=500 --reps=10 read --file '/large' --offset 62000 "$@"
 sep
 
 info "read far"
