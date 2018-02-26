@@ -390,12 +390,17 @@ withCapabilities n act = do
   setNumCapabilities n'
   return r
 
+parSearch :: ParallelSearchOptions -> Filesystem -> Int -> IO [(FilePath, Int)]
+parSearch ParallelSearchOptions{..} Filesystem{fuseOps} par =
+  parallelSearchAtRoot fuseOps par (BSC8.pack searchString) searchDir
+
+printSearchResults :: ParOptions -> [(FilePath, Int)] -> IO ()
+printSearchResults opts = mapM_ $ \(p, count) -> do
+  when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count
+
 runParallelSearch :: ParOptions -> ParallelSearchOptions -> Filesystem -> IO [DataPoint]
-runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fuseOps} = do
-  let benchmark par = parallelSearchAtRoot fuseOps par (BSC8.pack searchString) searchDir
-  let printSearchResults results =
-        forM_ results $ \(p, count) -> do
-          when (count > 0) $ logVerbose opts $ p ++ ": " ++ show count
+runParallelSearch opts@ParOptions{..} cmdOpts fs = do
+  let benchmark = parSearch cmdOpts fs
   when optWarmup $ do
     _ <- withCapabilities 1 $ benchmark optN
     clearTimings fs
@@ -404,7 +409,7 @@ runParallelSearch opts@ParOptions{..} ParallelSearchOptions{..} fs@Filesystem{fu
   micros <- pickAndRunIters opts $ \iters ->
     replicateM iters . timeIt $ replicateM_ optReps $ do
       results <- benchmark optN
-      when optVerbose $ printSearchResults results
+      when optVerbose $ printSearchResults opts results
   p <- optsData opts
   return $ map (\t -> p{ pBenchName="par-search"
                        , pElapsedMicros=t }) micros
