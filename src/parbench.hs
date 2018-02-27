@@ -15,6 +15,7 @@ import           System.IO (hPutStrLn, stderr)
 import           System.Random (getStdGen, setStdGen, mkStdGen)
 import           System.Random.Shuffle (shuffle')
 
+import           Benchmarking
 import           CfscqFs
 import           DbenchExecute
 import           DbenchScript (parseScriptFile)
@@ -22,10 +23,10 @@ import           FscqFs
 import           Fuse
 import           GenericFs
 import           ParallelSearch
+import           System.Posix.Files (ownerModes)
 import           System.Posix.IO (defaultFileFlags)
-import           System.Posix.Types (FileOffset)
+import           System.Posix.Types (FileOffset, CDev(..))
 import           Timings
-import           Benchmarking
 
 import           GHC.RTS.Flags
 import           System.Mem (performMajorGC)
@@ -307,16 +308,24 @@ clearTimings fs = writeIORef (timings fs) emptyTimings
 reportData :: [DataPoint] -> IO ()
 reportData = mapM_ (putStrLn . valueData . dataValues)
 
+benchmarkWithSetup :: Options subcmdOpts =>
+                      String ->
+                      (ParOptions -> subcmdOpts -> Filesystem -> IO b) ->
+                      (ParOptions -> subcmdOpts -> Filesystem -> b -> ThreadNum -> IO a) ->
+                      Parcommand ()
+benchmarkWithSetup name prepare act = parcommand name $ \opts cmdOpts -> do
+  ps <- withFs opts $ \fs -> parallelBench opts
+    (clearTimings fs >> prepare opts cmdOpts fs)
+    (\setup thread -> act opts cmdOpts fs setup thread)
+  reportData $ map (\p -> p{pBenchName=name}) ps
+
 simpleBenchmarkWithSetup :: Options subcmdOpts =>
                             String ->
                             (ParOptions -> subcmdOpts -> Filesystem -> IO b) ->
                             (ParOptions -> subcmdOpts -> Filesystem -> b -> IO a) ->
                             Parcommand ()
-simpleBenchmarkWithSetup name prepare act = parcommand name $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> parallelBench opts
-    (clearTimings fs >> prepare opts cmdOpts fs)
-    (\setup _thread -> act opts cmdOpts fs setup)
-  reportData $ map (\p -> p{pBenchName=name}) ps
+simpleBenchmarkWithSetup name prepare act =
+  benchmarkWithSetup name prepare (\opts cmdOpts fs setup _thread -> act opts cmdOpts fs setup)
 
 simpleBenchmark :: Options subcmdOpts =>
                    String -> (ParOptions -> subcmdOpts -> Filesystem -> IO a) ->
@@ -459,6 +468,35 @@ headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
   putStrLn . valueHeader . dataValues $ emptyData
 
+type UniqueCtr = [IORef Int]
+
+initUnique :: Int -> IO UniqueCtr
+initUnique par = replicateM par (newIORef 0)
+
+getUnique :: UniqueCtr -> ThreadNum -> IO Int
+getUnique ctr t = let ref = ctr !! t in do
+  c <- readIORef ref
+  modifyIORef' ref (+1)
+  return c
+
+data WriteOptions =
+  WriteOptions { writeDir :: FilePath }
+
+instance Options WriteOptions where
+  defineOptions = pure WriteOptions
+    <*> simpleOption "dir" "/empty-dir"
+        "directory to write within"
+
+counterPrepare :: ParOptions -> WriteOptions -> Filesystem -> IO UniqueCtr
+counterPrepare ParOptions{..} _ _ = initUnique optN
+
+createOp :: ParOptions -> WriteOptions -> Filesystem -> UniqueCtr -> ThreadNum -> IO ()
+createOp _ WriteOptions{..} Filesystem{fuseOps} ctr tid = do
+  n <- getUnique ctr tid
+  let fname = writeDir ++ "/" ++ show n
+  _ <- fuseCreateDevice fuseOps fname RegularFile ownerModes (CDev 0)
+  return ()
+
 main :: IO ()
 main = do
   setStdGen (mkStdGen 0)
@@ -470,6 +508,7 @@ main = do
                 , simpleBenchmarkWithSetup "readdir" readDirPrepare readDirOp
                 , simpleBenchmarkWithSetup "read" readFilePrepare readFileOp
                 , simpleBenchmark "traverse-dir" traverseDirOp
+                , benchmarkWithSetup "create" counterPrepare createOp
                 , ioConcurCommand
                 , parSearchCommand
                 , dbenchCommand

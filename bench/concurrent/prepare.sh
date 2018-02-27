@@ -70,6 +70,8 @@ for core in $(seq 0 11); do
   mkdir "$mnt/dbench/core$core"
 done
 
+mkdir "$mnt/empty-dir"
+
 echo "syncing"
 for file in $mnt/**; do
   sync $file
