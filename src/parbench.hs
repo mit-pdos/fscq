@@ -34,8 +34,8 @@ data NoOptions = NoOptions {}
 instance Options NoOptions where
   defineOptions = pure NoOptions
 
-statfsOp :: NoOptions -> Filesystem -> IO ()
-statfsOp _ Filesystem{fuseOps=fs} = void $ fuseGetFileSystemStats fs "/"
+statfsOp :: ParOptions -> NoOptions -> Filesystem -> IO ()
+statfsOp _ _ Filesystem{fuseOps=fs} = void $ fuseGetFileSystemStats fs "/"
 
 data ScanDirOptions =
   ScanDirOptions { optScanRoot :: String }
@@ -66,21 +66,21 @@ catFiles :: Filesystem -> [(FilePath, FileStat)] -> IO ()
 catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
   readEntireFile fs (Just $ statFileSize s) p
 
-catDirOp :: ScanDirOptions -> Filesystem -> IO ()
-catDirOp ScanDirOptions{..} fs@Filesystem{fuseOps} = do
+catDirOp :: ParOptions -> ScanDirOptions -> Filesystem -> IO ()
+catDirOp _ ScanDirOptions{..} fs@Filesystem{fuseOps} = do
   entries <- traverseDirectory fuseOps optScanRoot
   catFiles fs entries
 
-traverseDirOp :: ScanDirOptions -> Filesystem -> IO ()
-traverseDirOp ScanDirOptions{..} Filesystem{fuseOps} =
+traverseDirOp :: ParOptions -> ScanDirOptions -> Filesystem -> IO ()
+traverseDirOp _ ScanDirOptions{..} Filesystem{fuseOps} =
   void $ traverseDirectory fuseOps optScanRoot
 
-readDirPrepare :: ScanDirOptions -> Filesystem -> IO Integer
-readDirPrepare ScanDirOptions{..} Filesystem{fuseOps=fs} =
+readDirPrepare :: ParOptions -> ScanDirOptions -> Filesystem -> IO Integer
+readDirPrepare _ ScanDirOptions{..} Filesystem{fuseOps=fs} =
   getResult optScanRoot =<< fuseOpenDirectory fs optScanRoot
 
-readDirOp :: ScanDirOptions -> Filesystem -> Integer -> IO ()
-readDirOp ScanDirOptions{..} Filesystem{fuseOps=fs} dnum =
+readDirOp :: ParOptions -> ScanDirOptions -> Filesystem -> Integer -> IO ()
+readDirOp _ ScanDirOptions{..} Filesystem{fuseOps=fs} dnum =
   void $ fuseReadDirectory fs optScanRoot dnum
 
 data FileOpOptions =
@@ -90,18 +90,18 @@ instance Options FileOpOptions where
     simpleOption "file" "/small"
       "file to operate on"
 
-statOp :: FileOpOptions -> Filesystem -> IO ()
-statOp FileOpOptions{..} Filesystem{fuseOps=fs} = do
+statOp :: ParOptions -> FileOpOptions -> Filesystem -> IO ()
+statOp _ FileOpOptions{..} Filesystem{fuseOps=fs} = do
     _ <- fuseGetFileStat fs optFile
     return ()
 
-catFileOp :: FileOpOptions -> Filesystem -> IO ()
-catFileOp FileOpOptions{..} fs = do
+catFileOp :: ParOptions -> FileOpOptions -> Filesystem -> IO ()
+catFileOp _ FileOpOptions{..} fs = do
     _ <- readEntireFile fs Nothing optFile
     return ()
 
-openOp :: FileOpOptions -> Filesystem -> IO ()
-openOp FileOpOptions{..} Filesystem{fuseOps=fs} = do
+openOp :: ParOptions -> FileOpOptions -> Filesystem -> IO ()
+openOp _ FileOpOptions{..} Filesystem{fuseOps=fs} = do
     _ <- fuseOpen fs optFile ReadOnly defaultFileFlags
     return ()
 
@@ -115,12 +115,12 @@ instance Options FileOffsetOpOptions where
     <*> simpleOption "offset" 0
       "offset (in bytes) to read from"
 
-readFilePrepare :: FileOffsetOpOptions -> Filesystem -> IO Integer
-readFilePrepare FileOffsetOpOptions{..} Filesystem{fuseOps=fs} =
+readFilePrepare :: ParOptions -> FileOffsetOpOptions -> Filesystem -> IO Integer
+readFilePrepare _ FileOffsetOpOptions{..} Filesystem{fuseOps=fs} =
   getResult optFileName =<< fuseOpen fs optFileName ReadOnly defaultFileFlags
 
-readFileOp :: FileOffsetOpOptions -> Filesystem -> Integer -> IO ()
-readFileOp FileOffsetOpOptions{..} Filesystem{fuseOps=fs} inum =
+readFileOp :: ParOptions -> FileOffsetOpOptions -> Filesystem -> Integer -> IO ()
+readFileOp _ FileOffsetOpOptions{..} Filesystem{fuseOps=fs} inum =
   void $ fuseRead fs optFileName inum 4096 (fromIntegral optFileOffset)
 
 type ThreadNum = Int
@@ -269,7 +269,7 @@ pickAndRunIters opts@ParOptions{..} act = do
     searchIters opts act (fromIntegral optTargetMs * 1000)
   else act optIters
 
-parallelTimeForIters :: Int -> (ThreadNum -> IO a) -> Int -> IO [Float]
+parallelTimeForIters :: Int -> (ThreadNum -> IO a) -> NumIters -> IO [Float]
 parallelTimeForIters par act iters =
   concat <$> (replicateInParallel par $ \tid ->
     if tid == 0
@@ -309,19 +309,21 @@ reportData = mapM_ (putStrLn . valueData . dataValues)
 
 simpleBenchmarkWithSetup :: Options subcmdOpts =>
                             String ->
-                            (subcmdOpts -> Filesystem -> IO b) ->
-                            (subcmdOpts -> Filesystem -> b -> IO a) ->
+                            (ParOptions -> subcmdOpts -> Filesystem -> IO b) ->
+                            (ParOptions -> subcmdOpts -> Filesystem -> b -> IO a) ->
                             Parcommand ()
 simpleBenchmarkWithSetup name prepare act = parcommand name $ \opts cmdOpts -> do
   ps <- withFs opts $ \fs -> parallelBench opts
-    (clearTimings fs >> prepare cmdOpts fs)
-    (\setup _thread -> act cmdOpts fs setup)
+    (clearTimings fs >> prepare opts cmdOpts fs)
+    (\setup _thread -> act opts cmdOpts fs setup)
   reportData $ map (\p -> p{pBenchName=name}) ps
 
 simpleBenchmark :: Options subcmdOpts =>
-                   String -> (subcmdOpts -> Filesystem -> IO a) ->
+                   String -> (ParOptions -> subcmdOpts -> Filesystem -> IO a) ->
                    Parcommand ()
-simpleBenchmark name act = simpleBenchmarkWithSetup name (\_ _ -> return ()) (\opts fs _ -> act opts fs)
+simpleBenchmark name act = simpleBenchmarkWithSetup name
+  (\_ _ _ -> return ())
+  (\opts cmdOpts fs _ -> act opts cmdOpts fs)
 
 data IOConcurOptions =
   IOConcurOptions { optLargeFile :: String
