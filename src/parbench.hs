@@ -6,6 +6,7 @@ module Main where
 import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad (void)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC8
 import           Data.IORef
 import           Data.List (intercalate)
@@ -490,21 +491,46 @@ instance Options WriteOptions where
 counterPrepare :: ParOptions -> WriteOptions -> Filesystem -> IO UniqueCtr
 counterPrepare ParOptions{..} _ _ = initUnique optN
 
-genericCounterOp :: (Int -> IO a) -> UniqueCtr -> ThreadNum -> IO ()
+uniqueName :: ThreadNum -> Int -> String
+uniqueName tid n = "thread" ++ show tid ++ "_file" ++ show n
+
+genericCounterOp :: (String -> IO a) -> UniqueCtr -> ThreadNum -> IO ()
 genericCounterOp act ctr tid = do
-  getUnique ctr tid >>= void . act
+  n <- getUnique ctr tid
+  _ <- act (uniqueName tid n)
+  return ()
 
 createOp :: ParOptions -> WriteOptions -> Filesystem ->
             UniqueCtr -> ThreadNum -> IO ()
-createOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \n -> do
-  let fname = writeDir ++ "/" ++ show n
+createOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \name -> do
+  let fname = writeDir ++ "/" ++ name
   fuseCreateDevice fuseOps fname RegularFile ownerModes (CDev 0)
 
 createDirOp :: ParOptions -> WriteOptions -> Filesystem ->
                UniqueCtr -> ThreadNum -> IO ()
-createDirOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \n -> do
-  let fname = writeDir ++ "/" ++ show n
+createDirOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \name -> do
+  let fname = writeDir ++ "/" ++ name
   fuseCreateDirectory fuseOps fname ownerModes
+
+writeFilePrepare :: ParOptions -> WriteOptions -> Filesystem ->
+                    IO [(FilePath, Integer)]
+writeFilePrepare ParOptions{..} WriteOptions{..} Filesystem{fuseOps=fs} = do
+  forM [0..optN-1] $ \tid -> do
+    let fname = uniqueName tid 0
+    _ <- fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
+    _ <- fuseSetFileSize fs fname 4096
+    inum <- getResult fname =<< fuseOpen fs fname ReadOnly defaultFileFlags
+    return (fname, inum)
+
+zeroBlock :: BS.ByteString
+zeroBlock = BS.pack (replicate 4096 0)
+
+writeFileOp :: ParOptions -> WriteOptions -> Filesystem ->
+               [(FilePath, Integer)] -> ThreadNum -> IO ()
+writeFileOp _ WriteOptions{..} Filesystem{fuseOps} inums tid = do
+  let (fname, inum) = inums !! tid
+  _ <- fuseWrite fuseOps fname inum zeroBlock 0
+  return ()
 
 main :: IO ()
 main = do
@@ -519,6 +545,7 @@ main = do
                 , simpleBenchmark "traverse-dir" traverseDirOp
                 , benchmarkWithSetup "create" counterPrepare createOp
                 , benchmarkWithSetup "create-dir" counterPrepare createDirOp
+                , benchmarkWithSetup "write" writeFilePrepare writeFileOp
                 , ioConcurCommand
                 , parSearchCommand
                 , dbenchCommand
