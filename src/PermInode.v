@@ -263,9 +263,7 @@ Module INODE.
     let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;;
     let^ (ms, r) <- Ind.read lxp ir ms;;
     Ret ^(cache, ms, r).
-       
-Print IRec.put_array.
-       
+
   Definition shrink lxp bxp xp inum nr cache ms :=
     let^ (cache, lms, (ir : irec)) <- IRec.get_array lxp xp inum cache (BALLOCC.MSLog ms);;
     let^ (ms, ir') <- Ind.shrink lxp bxp ir nr (BALLOCC.upd_memstate lms ms);;
@@ -369,7 +367,6 @@ Print IRec.put_array.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.
 
- (*
   Theorem rep_bxp_switch : forall bxp bxp' xp IFs ilist cache,
     BmapNBlocks bxp = BmapNBlocks bxp' ->
     rep bxp IFs xp ilist cache <=p=> rep bxp' IFs xp ilist cache.
@@ -383,14 +380,28 @@ Print IRec.put_array.
     eassign fsl.
     erewrite listmatch_piff_replace.
     eassign (inode_match bxp'); cancel.
-    all : intros; unfold inode_match, BALLOCC.bn_valid.
-    all : try rewrite Ind.rep_bxp_switch by (eassumption||symmetry; eassumption).
-    all : try rewrite H in *.
+    intros; unfold inode_match, BALLOCC.bn_valid.
+    destruct x.
+    rewrite Ind.rep_bxp_switch by (eassumption||symmetry; eassumption).
+    try rewrite H in *.
     split; cancel.
-    cancel.
-    all : split; cancel.
+    intuition.
+
+    norml.
+    norm.
+    unfold stars; simpl.
+    eassign reclist.
+    eassign fsl.
+    erewrite listmatch_piff_replace.
+    eassign (inode_match bxp); cancel.
+    intros; unfold inode_match, BALLOCC.bn_valid.
+    destruct x.
+    rewrite Ind.rep_bxp_switch by (eassumption||symmetry; eassumption).
+    try rewrite H in *.
+    split; cancel.
+    intuition.
   Qed.
-   *)
+
   
   Lemma rep_clear_cache: forall bxp IFs xp ilist cache,
     rep bxp IFs xp ilist cache =p=> rep bxp IFs xp ilist IRec.cache0.

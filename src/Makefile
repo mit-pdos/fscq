@@ -6,7 +6,8 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem Pred DestructVarname ADestructPair \
 	      Errno ListUtils MapUtils Rec \
-	      FSLayout ListPred FMapMem NEList \
+	      FSLayout ListPred FMapMem NEList StringUtils\
+	      GenSepAuto \
 	      \
 	      PermAsyncDisk PermPredCrash \
 	      PermArray PermRecArrayUtils PermAsyncRecArray \
@@ -19,7 +20,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermDiskLogHdr PermDiskLogPadded PermDiskLog \
 	      PermGenSepN PermLogReplay PermMemLog PermDiskSet \
 	      PermGroupLog PermLog PermLogRecArray \
-	      PermBalloc PermBlockPtr GenSepAuto
+	      PermBalloc PermBlockPtr PermInode \
+	      PermBFile PermBFileCrash
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
