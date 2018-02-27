@@ -490,12 +490,21 @@ instance Options WriteOptions where
 counterPrepare :: ParOptions -> WriteOptions -> Filesystem -> IO UniqueCtr
 counterPrepare ParOptions{..} _ _ = initUnique optN
 
-createOp :: ParOptions -> WriteOptions -> Filesystem -> UniqueCtr -> ThreadNum -> IO ()
-createOp _ WriteOptions{..} Filesystem{fuseOps} ctr tid = do
-  n <- getUnique ctr tid
+genericCounterOp :: (Int -> IO a) -> UniqueCtr -> ThreadNum -> IO ()
+genericCounterOp act ctr tid = do
+  getUnique ctr tid >>= void . act
+
+createOp :: ParOptions -> WriteOptions -> Filesystem ->
+            UniqueCtr -> ThreadNum -> IO ()
+createOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \n -> do
   let fname = writeDir ++ "/" ++ show n
-  _ <- fuseCreateDevice fuseOps fname RegularFile ownerModes (CDev 0)
-  return ()
+  fuseCreateDevice fuseOps fname RegularFile ownerModes (CDev 0)
+
+createDirOp :: ParOptions -> WriteOptions -> Filesystem ->
+               UniqueCtr -> ThreadNum -> IO ()
+createDirOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \n -> do
+  let fname = writeDir ++ "/" ++ show n
+  fuseCreateDirectory fuseOps fname ownerModes
 
 main :: IO ()
 main = do
@@ -509,6 +518,7 @@ main = do
                 , simpleBenchmarkWithSetup "read" readFilePrepare readFileOp
                 , simpleBenchmark "traverse-dir" traverseDirOp
                 , benchmarkWithSetup "create" counterPrepare createOp
+                , benchmarkWithSetup "create-dir" counterPrepare createDirOp
                 , ioConcurCommand
                 , parSearchCommand
                 , dbenchCommand
