@@ -248,22 +248,22 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
 
 type NumIters = Int
 
-searchIters :: ParOptions -> (NumIters -> IO [Float]) -> Float -> IO [Float]
+searchIters :: ParOptions -> (NumIters -> IO a) -> Float -> IO a
 searchIters opts act targetMicros = go 1
   where go iters = do
           performMajorGC
           logVerbose opts $ "trying " ++ show iters ++ " iters"
-          micros <- act iters
-          if sum micros < targetMicros
+          (x, micros) <- timed $ act iters
+          if micros < targetMicros
             then let iters' = fromInteger . round $
-                       (fromIntegral iters :: Float) * targetMicros / sum micros
+                       (fromIntegral iters :: Float) * targetMicros / micros
                      nextIters = max
                        (min
                          (iters'+(iters' `div` 5))
                          (100*iters))
                        (iters+1) in
                  go nextIters
-          else return micros
+          else return x
 
 pickAndRunIters :: ParOptions -> (NumIters -> IO [Float]) -> IO [Float]
 pickAndRunIters opts@ParOptions{..} act = do
@@ -488,7 +488,7 @@ instance Options WriteOptions where
     <*> simpleOption "dir" "/empty-dir"
         "directory to write within"
 
-counterPrepare :: ParOptions -> WriteOptions -> Filesystem -> IO UniqueCtr
+counterPrepare :: ParOptions -> subcmdOpts -> Filesystem -> IO UniqueCtr
 counterPrepare ParOptions{..} _ _ = initUnique optN
 
 uniqueName :: ThreadNum -> Int -> String
@@ -515,14 +515,21 @@ createDirOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \name ->
 zeroBlock :: BS.ByteString
 zeroBlock = BS.pack (replicate 4096 0)
 
+-- returns inum of created file
+createSmallFile :: Filesystem -> FilePath -> IO Integer
+createSmallFile Filesystem{fuseOps=fs} fname = do
+  checkError fname $ fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
+  inum <- getResult fname =<< fuseOpen fs fname ReadOnly defaultFileFlags
+  bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
+  when (bytes < 4096) (error $ "failed to initialize " ++ fname)
+  return inum
+
 writeFilePrepare :: ParOptions -> WriteOptions -> Filesystem ->
                     IO [(FilePath, Integer)]
-writeFilePrepare ParOptions{..} WriteOptions{..} Filesystem{fuseOps=fs} = do
+writeFilePrepare ParOptions{..} WriteOptions{..} fs = do
   forM [0..optN-1] $ \tid -> do
     let fname = uniqueName tid 0
-    checkError fname $ fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
-    inum <- getResult fname =<< fuseOpen fs fname ReadOnly defaultFileFlags
-    _ <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
+    inum <- createSmallFile fs fname
     return (fname, inum)
 
 writeFileOp :: ParOptions -> WriteOptions -> Filesystem ->

@@ -13,12 +13,15 @@ elapsedMicros start = do
       elapsed = (fromIntegral elapsedNanos)/1e3 :: Float in
     return elapsed
 
-timeIt :: IO a -> IO Float
-timeIt act = do
+timed :: IO a -> IO (a, Float)
+timed act = do
   start <- getTime Monotonic
-  _ <- act
+  r <- act
   totalTime <- elapsedMicros start
-  return totalTime
+  return (r, totalTime)
+
+timeIt :: IO a -> IO Float
+timeIt act = snd <$> timed act
 
 runInThread :: IO a -> IO (MVar a)
 runInThread act = do
