@@ -504,32 +504,33 @@ createOp :: ParOptions -> WriteOptions -> Filesystem ->
             UniqueCtr -> ThreadNum -> IO ()
 createOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \name -> do
   let fname = writeDir ++ "/" ++ name
-  fuseCreateDevice fuseOps fname RegularFile ownerModes (CDev 0)
+  checkError fname $ fuseCreateDevice fuseOps fname RegularFile ownerModes (CDev 0)
 
 createDirOp :: ParOptions -> WriteOptions -> Filesystem ->
                UniqueCtr -> ThreadNum -> IO ()
 createDirOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \name -> do
   let fname = writeDir ++ "/" ++ name
-  fuseCreateDirectory fuseOps fname ownerModes
+  checkError fname $ fuseCreateDirectory fuseOps fname ownerModes
+
+zeroBlock :: BS.ByteString
+zeroBlock = BS.pack (replicate 4096 0)
 
 writeFilePrepare :: ParOptions -> WriteOptions -> Filesystem ->
                     IO [(FilePath, Integer)]
 writeFilePrepare ParOptions{..} WriteOptions{..} Filesystem{fuseOps=fs} = do
   forM [0..optN-1] $ \tid -> do
     let fname = uniqueName tid 0
-    _ <- fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
-    _ <- fuseSetFileSize fs fname 4096
+    checkError fname $ fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
     inum <- getResult fname =<< fuseOpen fs fname ReadOnly defaultFileFlags
+    _ <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
     return (fname, inum)
-
-zeroBlock :: BS.ByteString
-zeroBlock = BS.pack (replicate 4096 0)
 
 writeFileOp :: ParOptions -> WriteOptions -> Filesystem ->
                [(FilePath, Integer)] -> ThreadNum -> IO ()
-writeFileOp _ WriteOptions{..} Filesystem{fuseOps} inums tid = do
+writeFileOp _ WriteOptions{..} Filesystem{fuseOps=fs} inums tid = do
   let (fname, inum) = inums !! tid
-  _ <- fuseWrite fuseOps fname inum zeroBlock 0
+  bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
+  when (bytes < 4096) (error $ "failed to write to " ++ fname)
   return ()
 
 main :: IO ()
