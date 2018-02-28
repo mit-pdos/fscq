@@ -1017,12 +1017,13 @@ Lemma synced_list_ipack_length_ok : forall len i items,
     apply Nat.mul_le_mono_r; omega.
   Qed.
 
-  (*
-  Lemma ifind_block_none_progress : forall i ix items v cond len,
+
+  Lemma ifind_block_none_progress : forall i ix tags items v cond len,
     (forall ix, ix < i * items_per_val ->
          cond (selN items ix item0) ix = false) ->
     ifind_block cond (val2block v) (i * items_per_val) = None ->
-    v = fst (selN (synced_list (ipack items)) i ($0, nil)) ->
+    length tags = length (ipack items) ->
+    v = snd (fst (selN (synced_list (List.combine tags (ipack items))) i valuset0)) ->
     ix < items_per_val + i * items_per_val ->
     i < len ->
     length items = len * items_per_val ->
@@ -1033,7 +1034,7 @@ Lemma synced_list_ipack_length_ok : forall len i items,
     destruct (lt_dec ix (i * items_per_val)); [ eauto | subst ].
 
     assert (ix < length items).
-    setoid_rewrite H4.
+    setoid_rewrite H5.
     eapply lt_le_trans; eauto.
     setoid_rewrite Nat.mul_comm.
     rewrite Nat.add_comm, mult_n_Sm.
@@ -1044,7 +1045,8 @@ Lemma synced_list_ipack_length_ok : forall len i items,
     apply ifind_list_none.
     replace (ix / items_per_val) with i.
     rewrite Nat.mul_comm.
-    rewrite synced_list_selN in H0; simpl in H0; auto.
+    setoid_rewrite synced_list_selN in H0; simpl in H0; auto.
+    setoid_rewrite selN_combine in H0; simpl in H0; auto.
 
     destruct (lt_eq_lt_dec i (ix / items_per_val)).
     destruct s; auto.
@@ -1061,7 +1063,7 @@ Lemma synced_list_ipack_length_ok : forall len i items,
     setoid_rewrite list_chunk_length; apply div_lt_divup; auto.
     setoid_rewrite list_chunk_length; apply div_lt_divup; auto.
   Qed.
-*)
+
 
   Definition selN_val2block v idx :=
     Rec.of_word (@Rec.word_selN' itemtype items_per_val idx (val2word v)).

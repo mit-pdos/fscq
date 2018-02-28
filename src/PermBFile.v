@@ -21,11 +21,11 @@ Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import StringUtils.
 
-Require Import PermBalloc.
-Require Import FSLayout.
-Require Import PermInode.
-Require Import GenSepAuto.
-Require Import PermDiskSet.
+Require Export PermBalloc.
+Require Export FSLayout.
+Require Export PermInode.
+Require Export GenSepAuto.
+Require Export PermDiskSet.
 
 Import ListNotations.
 

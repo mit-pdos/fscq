@@ -7,7 +7,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem Pred DestructVarname ADestructPair \
 	      Errno ListUtils MapUtils Rec \
 	      FSLayout ListPred FMapMem NEList StringUtils\
-	      GenSepAuto \
+	      GenSepAuto MemMatch \
 	      \
 	      PermAsyncDisk PermPredCrash \
 	      PermArray PermRecArrayUtils PermAsyncRecArray \
@@ -21,7 +21,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermGenSepN PermLogReplay PermMemLog PermDiskSet \
 	      PermGroupLog PermLog PermLogRecArray \
 	      PermBalloc PermBlockPtr PermInode \
-	      PermBFile PermBFileCrash
+	      PermBFile PermBFileCrash PermFileRecArray
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
