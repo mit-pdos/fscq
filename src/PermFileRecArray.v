@@ -199,7 +199,7 @@ Module FileRecArray (FRA : FileRASig).
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} get lxp ixp inum ix ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold get, rep.
     prestep.
     intros m Hm;
@@ -239,7 +239,7 @@ Module FileRecArray (FRA : FileRASig).
     Unshelve.
     all: eauto.
   Qed.
-*)
+
   Theorem put_ok :
     forall lxp ixp bxp inum ix tag e ms pr,
     {< F Fm Fi m0 sm m flist f tags items ilist frees,
@@ -264,7 +264,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSDBlocks ms' = MSDBlocks ms ]] *)
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} put lxp ixp inum ix tag e ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold put, rep.
     prestep.
     intros m Hm;
@@ -336,7 +336,7 @@ Module FileRecArray (FRA : FileRASig).
     Unshelve.
     all: eauto.
   Qed.
-*)
+
 
   Lemma extend_ok_helper :
     forall f e tag tags items,
@@ -405,7 +405,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]])
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} extend lxp bxp ixp inum tag e ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold extend, rep.
     prestep. norm. cancel.
     intuition.
@@ -445,7 +445,7 @@ Module FileRecArray (FRA : FileRASig).
     Unshelve.
     all: eauto.
   Qed.
-*)
+
 
   Theorem readall_ok :
     forall lxp ixp bxp inum ms pr,
@@ -469,7 +469,7 @@ Module FileRecArray (FRA : FileRASig).
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} readall lxp ixp inum ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold readall, rep.
     prestep.
     intros m Hm.
@@ -520,7 +520,7 @@ Module FileRecArray (FRA : FileRASig).
     Unshelve.
     all: eauto.
   Qed.
-*)
+
 
   Theorem init_ok :
     forall lxp bxp ixp inum ms pr,
@@ -542,7 +542,7 @@ Module FileRecArray (FRA : FileRASig).
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} init lxp bxp ixp inum ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold init, rep.
     prestep.
     intros m Hm.
@@ -582,7 +582,7 @@ Module FileRecArray (FRA : FileRASig).
     Unshelve.
     all: eauto.
   Qed.
-*)
+
 
   Theorem ifind_ok :
     forall lxp bxp ixp inum cond ms pr,
@@ -611,7 +611,7 @@ Module FileRecArray (FRA : FileRASig).
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} ifind lxp ixp inum cond ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold ifind, rep.
     prestep.
     intros m Hm.
@@ -715,7 +715,7 @@ Module FileRecArray (FRA : FileRASig).
     Unshelve.
     all: try exact tt; eauto.
   Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (get _ _ _ _ _) _) => apply get_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (put _ _ _ _ _ _ _) _) => apply put_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (extend _ _ _ _ _ _ _) _) => apply extend_ok : prog.
@@ -765,7 +765,7 @@ Module FileRecArray (FRA : FileRASig).
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} get_array lxp ixp inum ix ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold get_array.
     prestep.
     intros m Hm.
@@ -789,7 +789,7 @@ Module FileRecArray (FRA : FileRASig).
     eapply list2nmem_sel; eauto.
     intros; rewrite <- H2; cancel; eauto.
   Qed.
-*)
+
 
   Theorem put_array_ok :
     forall lxp ixp bxp inum ix t e ms pr,
@@ -821,7 +821,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSDBlocks ms' = MSDBlocks ms ]] *)
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} put_array lxp ixp inum ix t e ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold put_array.
     prestep.
     intros m Hm.
@@ -847,7 +847,7 @@ Module FileRecArray (FRA : FileRASig).
     eapply list2nmem_updN; eauto.
     intros; rewrite <- H2; cancel; eauto.
   Qed.
-  *)
+
   
   Theorem extend_array_ok :
     forall lxp bxp ixp inum t e ms pr,
@@ -885,7 +885,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} extend_array lxp bxp ixp inum t e ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold extend_array.
     prestep.
     intros m Hm.
@@ -925,7 +925,7 @@ Module FileRecArray (FRA : FileRASig).
 
     intros; rewrite <-H2; cancel; eauto.
   Qed.
-  *)
+
 
   Theorem ifind_array_ok :
     forall lxp bxp ixp inum cond ms pr,
