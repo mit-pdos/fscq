@@ -548,7 +548,7 @@ writeFileOp _ WriteOptions{..} Filesystem{fuseOps=fs} inums tid = do
 data ReaderWriterOptions = ReaderWriterOptions
   { optRWSmallFile :: FilePath
   , optRWWriteDir :: FilePath
-  , optReadRepFactor :: Float }
+  , optWriteReps :: Int }
 
 instance Options ReaderWriterOptions where
   defineOptions = pure ReaderWriterOptions
@@ -556,21 +556,18 @@ instance Options ReaderWriterOptions where
         "small file to read"
     <*> simpleOption "dir" "/empty-dir"
         "directory to write to"
-    <*> simpleOption "reads-per-write" 10
-        "run this many times more reps for reads than writes"
-
-scaleBy :: Int -> Float -> Int
-scaleBy a b = round $ fromIntegral a*b
+    <*> simpleOption "write-reps" 1
+        "run this many reps for writes (reps applies to reads)"
 
 rwRead :: ParOptions -> ReaderWriterOptions -> Filesystem -> IO ()
 rwRead ParOptions{..} ReaderWriterOptions{..} fs =
-  let reps = optReps `scaleBy` optReadRepFactor in
-    replicateM_ reps $ readEntireFile fs Nothing optRWSmallFile
+  replicateM_ optReps $ readEntireFile fs Nothing optRWSmallFile
 
 rwWrite :: ParOptions -> ReaderWriterOptions -> Filesystem ->
            UniqueCtr -> IO ()
 rwWrite ParOptions{..} ReaderWriterOptions{..} fs ctr =
-  genericCounterOp (\fname -> createSmallFile fs fname) ctr 0
+  genericCounterOp (\name -> let fname = optRWWriteDir ++ "/" ++ name in
+                       replicateM_ optWriteReps $ createSmallFile fs fname) ctr 0
 
 data ReadsTerminated = ReadsTerminated
   deriving Show
@@ -616,11 +613,11 @@ readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..
       readPoints = for readTimings $ \f ->
         p { pBenchName="rw-reader"
           , pElapsedMicros=f
-          , pReps=optReps `scaleBy` optReadRepFactor
           , pIters=length readTimings }
       writePoints = for writeTimings $ \f ->
         p { pBenchName="rw-writer"
           , pElapsedMicros=f
+          , pReps=optWriteReps
           , pIters=length writeTimings }
   return (readPoints ++ writePoints)
 
@@ -660,4 +657,5 @@ main = do
                 , parSearchCommand
                 , dbenchCommand
                 , readwriteCommand
+                , readWriteMixCommand
                 , headerCommand ]
