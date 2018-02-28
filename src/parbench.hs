@@ -14,7 +14,7 @@ import           Data.List (intercalate)
 import           Options
 import           System.Exit
 import           System.IO (hPutStrLn, stderr)
-import           System.Random (getStdGen, setStdGen, mkStdGen)
+import           System.Random
 import           System.Random.Shuffle (shuffle')
 
 import           Benchmarking
@@ -621,14 +621,19 @@ readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..
           , pIters=length writeTimings }
   return (readPoints ++ writePoints)
 
-runReadersWriter :: ParOptions -> ReaderWriterOptions -> Filesystem ->
-                    IO [DataPoint]
-runReadersWriter opts@ParOptions{..} cmdOpts fs = do
+warmupReadWrite :: ParOptions -> ReaderWriterOptions -> Filesystem -> IO UniqueCtr
+warmupReadWrite opts@ParOptions{..} cmdOpts fs = do
   ctr <- initUnique optN
   when optWarmup $ do
     rwRead opts cmdOpts fs
     rwWrite opts cmdOpts fs ctr
     logVerbose opts "===> warmup done <==="
+  return ctr
+
+runReadersWriter :: ParOptions -> ReaderWriterOptions -> Filesystem ->
+                    IO [DataPoint]
+runReadersWriter opts cmdOpts fs = do
+  ctr <- warmupReadWrite opts cmdOpts fs
   performMajorGC
   raw <- pickAndRunIters opts $
     readwriteIterate opts cmdOpts fs ctr
@@ -638,6 +643,72 @@ runReadersWriter opts@ParOptions{..} cmdOpts fs = do
 readwriteCommand :: Parcommand ()
 readwriteCommand = benchCommand "readers-writer" $ \opts cmdOpts fs -> do
   runReadersWriter opts cmdOpts fs
+
+data ReadWriteMixOptions = ReadWriteMixOptions
+  { optMixReaderWriter :: ReaderWriterOptions
+  , optMixReadPercentage :: Float }
+
+instance Options ReadWriteMixOptions where
+  defineOptions = pure ReadWriteMixOptions
+    <*> defineOptions
+    <*> simpleOption "read-perc" 0.5
+        "percentage of reads to issue"
+
+data RawReadWriteMixResults = RawReadWriteMixResults
+  { -- (isRead, micros) tuples
+    readWriteMixTimings :: [(Bool, Float)] }
+
+randomDecisions :: RandomGen g =>
+                   Float -> g -> [Bool]
+randomDecisions percTrue gen = do
+  map (\f -> f < percTrue) (randomRs (0.0, 1.0) gen)
+
+randomReadWrites :: RandomGen g =>
+                    ParOptions -> ReadWriteMixOptions -> Filesystem ->
+                    g -> UniqueCtr -> NumIters -> IO RawReadWriteMixResults
+randomReadWrites opts ReadWriteMixOptions{..} fs gen ctr iters =
+  let isReads = take iters $ randomDecisions optMixReadPercentage gen in do
+  timings <- forM isReads $ \isRead -> do
+    t <- if isRead
+         then timeIt $ rwRead opts optMixReaderWriter fs
+         else timeIt $ rwWrite opts optMixReaderWriter fs ctr
+    return (isRead, t)
+  return $ RawReadWriteMixResults timings
+
+parRandomReadWrites :: ParOptions -> ReadWriteMixOptions -> Filesystem ->
+                       UniqueCtr -> NumIters -> IO RawReadWriteMixResults
+parRandomReadWrites opts@ParOptions{..} cmdOpts fs ctr iters = do
+  gens <- replicateM optN newStdGen
+  m_results <- forM gens $ \gen ->
+    runInThread $ randomReadWrites opts cmdOpts fs gen ctr iters
+  threadResults <- mapM takeMVar m_results
+  -- TODO: should we report results from every thread?
+  return $ head threadResults
+
+rwMixData :: ParOptions -> ReadWriteMixOptions -> RawReadWriteMixResults -> IO [DataPoint]
+rwMixData opts@ParOptions{..} ReadWriteMixOptions{..} RawReadWriteMixResults{..} = do
+  p <- optsData opts
+  let for = flip map
+      ps = for readWriteMixTimings $ \(isRead, f) ->
+        p { pBenchName=if isRead then "rw-mix-r" else "rw-mix-w"
+          , pReps=if isRead then optReps else optWriteReps optMixReaderWriter
+          , pElapsedMicros=f
+          , pIters=length readWriteMixTimings }
+  return ps
+
+runReadWriteMix :: ParOptions -> ReadWriteMixOptions -> Filesystem ->
+                   IO [DataPoint]
+runReadWriteMix opts cmdOpts@ReadWriteMixOptions{..} fs = do
+  ctr <- warmupReadWrite opts optMixReaderWriter fs
+  performMajorGC
+  raw <- pickAndRunIters opts $
+    parRandomReadWrites opts cmdOpts fs ctr
+  ps <- rwMixData opts cmdOpts raw
+  return ps
+
+readWriteMixCommand :: Parcommand ()
+readWriteMixCommand = benchCommand "rw-mix" $ \opts cmdOpts fs ->
+  runReadWriteMix opts cmdOpts fs
 
 main :: IO ()
 main = do
