@@ -610,12 +610,12 @@ readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..
   p <- optsData opts
   let for = flip map
       readPoints = for readTimings $ \f ->
-        p { pBenchName="rw-read"
+        p { pBenchName="rw-reader"
           , pElapsedMicros=f
           , pReps=optReps `scaleBy` optReadRepFactor
           , pIters=length readTimings }
       writePoints = for writeTimings $ \f ->
-        p { pBenchName="rw-write"
+        p { pBenchName="rw-writer"
           , pElapsedMicros=f
           , pIters=length writeTimings }
   return (readPoints ++ writePoints)
