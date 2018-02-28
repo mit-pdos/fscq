@@ -543,7 +543,8 @@ writeFileOp _ WriteOptions{..} Filesystem{fuseOps=fs} inums tid = do
 
 data ReaderWriterOptions = ReaderWriterOptions
   { optRWSmallFile :: FilePath
-  , optRWWriteDir :: FilePath }
+  , optRWWriteDir :: FilePath
+  , optReadRepFactor :: Float }
 
 instance Options ReaderWriterOptions where
   defineOptions = pure ReaderWriterOptions
@@ -551,13 +552,20 @@ instance Options ReaderWriterOptions where
         "small file to read"
     <*> simpleOption "dir" "/empty-dir"
         "directory to write to"
+    <*> simpleOption "reads-per-write" 10
+        "run this many times more reps for reads than writes"
+
+scaleBy :: Int -> Float -> Int
+scaleBy a b = round $ fromIntegral a*b
 
 rwRead :: ParOptions -> ReaderWriterOptions -> Filesystem -> IO ()
-rwRead _ ReaderWriterOptions{..} fs = readEntireFile fs Nothing optRWSmallFile
+rwRead ParOptions{..} ReaderWriterOptions{..} fs =
+  let reps = optReps `scaleBy` optReadRepFactor in
+    replicateM_ reps $ readEntireFile fs Nothing optRWSmallFile
 
 rwWrite :: ParOptions -> ReaderWriterOptions -> Filesystem ->
            UniqueCtr -> IO ()
-rwWrite _ ReaderWriterOptions{..} fs ctr =
+rwWrite ParOptions{..} ReaderWriterOptions{..} fs ctr =
   genericCounterOp (\fname -> createSmallFile fs fname) ctr 0
 
 data ReadsTerminated = ReadsTerminated
@@ -597,13 +605,14 @@ readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters = do
   return $ RawReadWriteResults { readTimings=readTimes
                                , writeTimings=writeTimes }
 
-readWriteData :: ParOptions -> RawReadWriteResults -> IO [DataPoint]
-readWriteData opts RawReadWriteResults{..} = do
+readWriteData :: ParOptions -> ReaderWriterOptions -> RawReadWriteResults -> IO [DataPoint]
+readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..} = do
   p <- optsData opts
   let for = flip map
       readPoints = for readTimings $ \f ->
         p { pBenchName="rw-read"
           , pElapsedMicros=f
+          , pReps=optReps `scaleBy` optReadRepFactor
           , pIters=length readTimings }
       writePoints = for writeTimings $ \f ->
         p { pBenchName="rw-write"
@@ -622,7 +631,7 @@ runReadersWriter opts@ParOptions{..} cmdOpts fs = do
   performMajorGC
   raw <- pickAndRunIters opts $
     readwriteIterate opts cmdOpts fs ctr
-  ps <- readWriteData opts raw
+  ps <- readWriteData opts cmdOpts raw
   return ps
 
 readwriteCommand :: Parcommand ()
