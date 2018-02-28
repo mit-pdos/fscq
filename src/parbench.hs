@@ -564,10 +564,11 @@ rwRead ParOptions{..} ReaderWriterOptions{..} fs =
   replicateM_ optReps $ readEntireFile fs Nothing optRWSmallFile
 
 rwWrite :: ParOptions -> ReaderWriterOptions -> Filesystem ->
-           UniqueCtr -> IO ()
-rwWrite ParOptions{..} ReaderWriterOptions{..} fs ctr =
-  genericCounterOp (\name -> let fname = optRWWriteDir ++ "/" ++ name in
-                       replicateM_ optWriteReps $ createSmallFile fs fname) ctr 0
+           UniqueCtr -> ThreadNum -> IO ()
+rwWrite ParOptions{..} ReaderWriterOptions{..} fs ctr tid =
+  replicateM_ optWriteReps $ genericCounterOp (\name ->
+  let fname = optRWWriteDir ++ "/" ++ name in
+    createSmallFile fs fname) ctr tid
 
 data ReadsTerminated = ReadsTerminated
   deriving Show
@@ -590,7 +591,7 @@ readwriteIterate :: ParOptions -> ReaderWriterOptions -> Filesystem ->
 readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters = do
   -- start the reads and writes in separate threads
   let readOp = rwRead opts cmdOpts fs
-      writeOp = rwWrite opts cmdOpts fs ctr
+      writeOp = rwWrite opts cmdOpts fs ctr 0
   m_reads <- runInThread $ replicateM iters (timeIt readOp)
   other_reads <- replicateM (optN-1) $ runInThread readOp
   m_writes <- newEmptyMVar
@@ -626,7 +627,7 @@ warmupReadWrite opts@ParOptions{..} cmdOpts fs = do
   ctr <- initUnique optN
   when optWarmup $ do
     rwRead opts cmdOpts fs
-    rwWrite opts cmdOpts fs ctr
+    rwWrite opts cmdOpts fs ctr 0
     logVerbose opts "===> warmup done <==="
   return ctr
 
@@ -665,13 +666,13 @@ randomDecisions percTrue gen = do
 
 randomReadWrites :: RandomGen g =>
                     ParOptions -> ReadWriteMixOptions -> Filesystem ->
-                    g -> UniqueCtr -> NumIters -> IO RawReadWriteMixResults
-randomReadWrites opts ReadWriteMixOptions{..} fs gen ctr iters =
+                    g -> UniqueCtr -> ThreadNum -> NumIters -> IO RawReadWriteMixResults
+randomReadWrites opts ReadWriteMixOptions{..} fs gen ctr tid iters =
   let isReads = take iters $ randomDecisions optMixReadPercentage gen in do
   timings <- forM isReads $ \isRead -> do
     t <- if isRead
          then timeIt $ rwRead opts optMixReaderWriter fs
-         else timeIt $ rwWrite opts optMixReaderWriter fs ctr
+         else timeIt $ rwWrite opts optMixReaderWriter fs ctr tid
     return (isRead, t)
   return $ RawReadWriteMixResults timings
 
@@ -679,8 +680,8 @@ parRandomReadWrites :: ParOptions -> ReadWriteMixOptions -> Filesystem ->
                        UniqueCtr -> NumIters -> IO RawReadWriteMixResults
 parRandomReadWrites opts@ParOptions{..} cmdOpts fs ctr iters = do
   gens <- replicateM optN newStdGen
-  m_results <- forM gens $ \gen ->
-    runInThread $ randomReadWrites opts cmdOpts fs gen ctr iters
+  m_results <- forM (zip [0..] gens) $ \(tid, gen) ->
+    runInThread $ randomReadWrites opts cmdOpts fs gen ctr tid iters
   threadResults <- mapM takeMVar m_results
   -- TODO: should we report results from every thread?
   return $ head threadResults
