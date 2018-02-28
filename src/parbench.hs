@@ -247,6 +247,13 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
   checkArgs args
   action opts cmdOpts
 
+benchCommand :: Options subcmdOpts =>
+             String -> (ParOptions -> subcmdOpts -> Filesystem -> IO [DataPoint]) ->
+             Parcommand ()
+benchCommand name bench = parcommand name $ \opts cmdOpts -> do
+  ps <- withFs opts $ \fs -> bench opts cmdOpts fs
+  reportData ps
+
 type NumIters = Int
 
 searchIters :: ParOptions -> (NumIters -> IO a) -> Float -> IO a
@@ -315,11 +322,11 @@ benchmarkWithSetup :: Options subcmdOpts =>
                       (ParOptions -> subcmdOpts -> Filesystem -> IO b) ->
                       (ParOptions -> subcmdOpts -> Filesystem -> b -> ThreadNum -> IO a) ->
                       Parcommand ()
-benchmarkWithSetup name prepare act = parcommand name $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> parallelBench opts
+benchmarkWithSetup name prepare act = benchCommand name $ \opts cmdOpts fs -> do
+  ps <- parallelBench opts
     (clearTimings fs >> prepare opts cmdOpts fs)
     (\setup thread -> act opts cmdOpts fs setup thread)
-  reportData $ map (\p -> p{pBenchName=name}) ps
+  return $ map (\p -> p{pBenchName=name}) ps
 
 simpleBenchmarkWithSetup :: Options subcmdOpts =>
                             String ->
@@ -380,9 +387,8 @@ runIOConcur opts@ParOptions{..} ioOpts fs = do
                  , pElapsedMicros=smallMicros} ]
 
 ioConcurCommand :: Parcommand ()
-ioConcurCommand = parcommand "io-concur" $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> runIOConcur opts cmdOpts fs
-  reportData ps
+ioConcurCommand = benchCommand "io-concur" $ \opts cmdOpts fs ->
+  runIOConcur opts cmdOpts fs
 
 data ParallelSearchOptions =
   ParallelSearchOptions { searchDir :: FilePath
@@ -428,9 +434,8 @@ runParallelSearch opts@ParOptions{..} cmdOpts fs = do
                        , pElapsedMicros=t }) micros
 
 parSearchCommand :: Parcommand ()
-parSearchCommand = parcommand "par-search" $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> runParallelSearch opts cmdOpts fs
-  reportData ps
+parSearchCommand = benchCommand "par-search" $ \opts cmdOpts fs ->
+  runParallelSearch opts cmdOpts fs
 
 data DbenchOptions =
   DbenchOptions { rootDir :: FilePath
@@ -462,9 +467,8 @@ runDbenchScript opts@ParOptions{..} DbenchOptions{..} Filesystem{fuseOps} = do
               , pElapsedMicros=t }) micros
 
 dbenchCommand :: Parcommand ()
-dbenchCommand = parcommand "dbench" $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> runDbenchScript opts cmdOpts fs
-  reportData ps
+dbenchCommand = benchCommand "dbench" $ \opts cmdOpts fs ->
+  runDbenchScript opts cmdOpts fs
 
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
@@ -635,9 +639,8 @@ runReadersWriter opts@ParOptions{..} cmdOpts fs = do
   return ps
 
 readwriteCommand :: Parcommand ()
-readwriteCommand = parcommand "readers-writer" $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> runReadersWriter opts cmdOpts fs
-  reportData ps
+readwriteCommand = benchCommand "readers-writer" $ \opts cmdOpts fs -> do
+  runReadersWriter opts cmdOpts fs
 
 main :: IO ()
 main = do
