@@ -4,6 +4,7 @@
 module Main where
 
 import           Control.Concurrent
+import           Control.Exception (Exception, catch)
 import           Control.Monad
 import           Control.Monad (void)
 import qualified Data.ByteString as BS
@@ -265,7 +266,7 @@ searchIters opts act targetMicros = go 1
                  go nextIters
           else return x
 
-pickAndRunIters :: ParOptions -> (NumIters -> IO [Float]) -> IO [Float]
+pickAndRunIters :: ParOptions -> (NumIters -> IO a) -> IO a
 pickAndRunIters opts@ParOptions{..} act = do
   if optTargetMs > 0 then
     searchIters opts act (fromIntegral optTargetMs * 1000)
@@ -540,6 +541,95 @@ writeFileOp _ WriteOptions{..} Filesystem{fuseOps=fs} inums tid = do
   when (bytes < 4096) (error $ "failed to write to " ++ fname)
   return ()
 
+data ReaderWriterOptions = ReaderWriterOptions
+  { optRWSmallFile :: FilePath
+  , optRWWriteDir :: FilePath }
+
+instance Options ReaderWriterOptions where
+  defineOptions = pure ReaderWriterOptions
+    <*> simpleOption "file" "/small"
+        "small file to read"
+    <*> simpleOption "dir" "/empty-dir"
+        "directory to write to"
+
+rwRead :: ParOptions -> ReaderWriterOptions -> Filesystem -> IO ()
+rwRead _ ReaderWriterOptions{..} fs = readEntireFile fs Nothing optRWSmallFile
+
+rwWrite :: ParOptions -> ReaderWriterOptions -> Filesystem ->
+           UniqueCtr -> IO ()
+rwWrite _ ReaderWriterOptions{..} fs ctr =
+  genericCounterOp (\fname -> createSmallFile fs fname) ctr 0
+
+data ReadsTerminated = ReadsTerminated
+  deriving Show
+
+instance Exception ReadsTerminated
+
+runTillException :: IO a -> IO [a]
+runTillException act = do
+  mx <- catch (Just <$> act) (\(_::ReadsTerminated) -> return Nothing)
+  case mx of
+    Nothing -> return []
+    Just x -> (x:) <$> runTillException act
+
+data RawReadWriteResults = RawReadWriteResults
+  { readTimings :: [Float]
+  , writeTimings :: [Float] }
+
+readwriteIterate :: ParOptions -> ReaderWriterOptions -> Filesystem ->
+                    UniqueCtr -> NumIters -> IO RawReadWriteResults
+readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters = do
+  -- start the reads and writes in separate threads
+  let readOp = rwRead opts cmdOpts fs
+      writeOp = rwWrite opts cmdOpts fs ctr
+  m_reads <- runInThread $ replicateM iters (timeIt readOp)
+  other_reads <- replicateM (optN-1) $ runInThread readOp
+  m_writes <- newEmptyMVar
+  w_tid <- forkIO $ do
+    v <- runTillException $ timeIt writeOp
+    putMVar m_writes v
+  -- now finish the reads
+  readTimes <- takeMVar m_reads
+  forM_ other_reads takeMVar
+  -- ...and then terminate the writer thread
+  throwTo w_tid ReadsTerminated
+  writeTimes <- takeMVar m_writes
+  return $ RawReadWriteResults { readTimings=readTimes
+                               , writeTimings=writeTimes }
+
+readWriteData :: ParOptions -> RawReadWriteResults -> IO [DataPoint]
+readWriteData opts RawReadWriteResults{..} = do
+  p <- optsData opts
+  let for = flip map
+      readPoints = for readTimings $ \f ->
+        p { pBenchName="rw-read"
+          , pElapsedMicros=f
+          , pIters=length readTimings }
+      writePoints = for writeTimings $ \f ->
+        p { pBenchName="rw-write"
+          , pElapsedMicros=f
+          , pIters=length writeTimings }
+  return (readPoints ++ writePoints)
+
+runReadersWriter :: ParOptions -> ReaderWriterOptions -> Filesystem ->
+                    IO [DataPoint]
+runReadersWriter opts@ParOptions{..} cmdOpts fs = do
+  ctr <- initUnique optN
+  when optWarmup $ do
+    rwRead opts cmdOpts fs
+    rwWrite opts cmdOpts fs ctr
+    logVerbose opts "===> warmup done <==="
+  performMajorGC
+  raw <- pickAndRunIters opts $
+    readwriteIterate opts cmdOpts fs ctr
+  ps <- readWriteData opts raw
+  return ps
+
+readwriteCommand :: Parcommand ()
+readwriteCommand = parcommand "readers-writer" $ \opts cmdOpts -> do
+  ps <- withFs opts $ \fs -> runReadersWriter opts cmdOpts fs
+  reportData ps
+
 main :: IO ()
 main = do
   setStdGen (mkStdGen 0)
@@ -557,4 +647,5 @@ main = do
                 , ioConcurCommand
                 , parSearchCommand
                 , dbenchCommand
+                , readwriteCommand
                 , headerCommand ]
