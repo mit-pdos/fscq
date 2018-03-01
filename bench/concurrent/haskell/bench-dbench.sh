@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 summary() {
-    awk '{printf "N=%d %s %5s %0.3f ms\n", $1, $4, $5, $9/1000}'
+    awk '{printf "N=%d %s %5s %0.3f ms\n", $1, $5, $6, $10/1000}'
 }
 
 dbench() {

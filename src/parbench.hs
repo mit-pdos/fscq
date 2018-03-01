@@ -154,18 +154,24 @@ data DataPoint =
   DataPoint { pRts :: RtsInfo
             , pWarmup :: Bool
             , pBenchName :: String
+            , pBenchCategory :: String
             , pSystem :: String
             , pReps :: Int
             , pIters :: Int
             , pPar :: Int
             , pElapsedMicros :: Float }
 
+strVal :: String -> String
+strVal s = let quoted_s = "\"" ++ s ++ "\"" in
+             if s == "" || ' ' `elem` s then quoted_s else s
+
 dataValues :: DataPoint -> [(String, String)]
 dataValues DataPoint{..} =
   rtsValues pRts ++
   [ ("warmup", if pWarmup then "warmup" else "cold")
-  , ("benchmark", pBenchName)
-  , ("system", pSystem)
+  , ("benchmark", strVal pBenchName)
+  , ("category", strVal pBenchCategory)
+  , ("system", strVal pSystem)
   , ("reps", show pReps)
   , ("iters", show pIters)
   , ("par", show pPar)
@@ -182,6 +188,7 @@ emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
                                       , rtsMinAllocMB = 0.0 }
                       , pWarmup = False
                       , pBenchName = ""
+                      , pBenchCategory = ""
                       , pSystem = "none"
                       , pReps = 0
                       , pIters = 0
@@ -247,13 +254,6 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
   checkArgs args
   action opts cmdOpts
 
-benchCommand :: Options subcmdOpts =>
-             String -> (ParOptions -> subcmdOpts -> Filesystem -> IO [DataPoint]) ->
-             Parcommand ()
-benchCommand name bench = parcommand name $ \opts cmdOpts -> do
-  ps <- withFs opts $ \fs -> bench opts cmdOpts fs
-  reportData ps
-
 type NumIters = Int
 
 searchIters :: ParOptions -> (NumIters -> IO a) -> Float -> IO a
@@ -317,16 +317,22 @@ clearTimings fs = writeIORef (timings fs) emptyTimings
 reportData :: [DataPoint] -> IO ()
 reportData = mapM_ (putStrLn . valueData . dataValues)
 
+benchCommand :: Options subcmdOpts =>
+             String -> (ParOptions -> subcmdOpts -> Filesystem -> IO [DataPoint]) ->
+             Parcommand ()
+benchCommand name bench = parcommand name $ \opts cmdOpts -> do
+  ps <- withFs opts $ \fs -> bench opts cmdOpts fs
+  reportData $ map (\p -> p{pBenchName=name}) ps
+
 benchmarkWithSetup :: Options subcmdOpts =>
                       String ->
                       (ParOptions -> subcmdOpts -> Filesystem -> IO b) ->
                       (ParOptions -> subcmdOpts -> Filesystem -> b -> ThreadNum -> IO a) ->
                       Parcommand ()
-benchmarkWithSetup name prepare act = benchCommand name $ \opts cmdOpts fs -> do
-  ps <- parallelBench opts
+benchmarkWithSetup name prepare act = benchCommand name $ \opts cmdOpts fs ->
+  parallelBench opts
     (clearTimings fs >> prepare opts cmdOpts fs)
     (\setup thread -> act opts cmdOpts fs setup thread)
-  return $ map (\p -> p{pBenchName=name}) ps
 
 simpleBenchmarkWithSetup :: Options subcmdOpts =>
                             String ->
@@ -334,7 +340,8 @@ simpleBenchmarkWithSetup :: Options subcmdOpts =>
                             (ParOptions -> subcmdOpts -> Filesystem -> b -> IO a) ->
                             Parcommand ()
 simpleBenchmarkWithSetup name prepare act =
-  benchmarkWithSetup name prepare (\opts cmdOpts fs setup _thread -> act opts cmdOpts fs setup)
+  benchmarkWithSetup name prepare
+  (\opts cmdOpts fs setup _thread -> act opts cmdOpts fs setup)
 
 simpleBenchmark :: Options subcmdOpts =>
                    String -> (ParOptions -> subcmdOpts -> Filesystem -> IO a) ->
@@ -379,10 +386,10 @@ runIOConcur opts@ParOptions{..} ioOpts fs = do
   basePoint <- optsData opts
   let p = basePoint{ pIters=1
                    , pWarmup=False } in
-    return $ [ p{ pBenchName="ioconcur-large"
+    return $ [ p{ pBenchCategory="large"
                 , pReps=1
                 , pElapsedMicros=largeMicros }
-              , p{ pBenchName="ioconcur-small"
+              , p{ pBenchCategory="small"
                  , pReps=optReps
                  , pElapsedMicros=smallMicros} ]
 
@@ -430,8 +437,7 @@ runParallelSearch opts@ParOptions{..} cmdOpts fs = do
       results <- benchmark optN
       when optVerbose $ printSearchResults opts results
   p <- optsData opts
-  return $ map (\t -> p{ pBenchName="par-search"
-                       , pElapsedMicros=t }) micros
+  return $ map (\t -> p{pElapsedMicros=t}) micros
 
 parSearchCommand :: Parcommand ()
 parSearchCommand = benchCommand "par-search" $ \opts cmdOpts fs ->
@@ -461,10 +467,10 @@ runDbenchScript opts@ParOptions{..} DbenchOptions{..} Filesystem{fuseOps} = do
         run tid = runScript fuseOps . prefixScript (threadRoot tid) $ script in do
     micros <- parallelTimeForIters optN run optIters
     p <- optsData opts
-    return $ map (\t -> p { pBenchName="dbench"
-              , pWarmup=False
-              , pReps=1
-              , pElapsedMicros=t }) micros
+    return $ map (\t -> p
+                   { pWarmup=False
+                   , pReps=1
+                   , pElapsedMicros=t }) micros
 
 dbenchCommand :: Parcommand ()
 dbenchCommand = benchCommand "dbench" $ \opts cmdOpts fs ->
@@ -612,11 +618,11 @@ readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..
   p <- optsData opts
   let for = flip map
       readPoints = for readTimings $ \f ->
-        p { pBenchName="rw-reader"
+        p { pBenchCategory="reader"
           , pElapsedMicros=f
           , pIters=length readTimings }
       writePoints = for writeTimings $ \f ->
-        p { pBenchName="rw-writer"
+        p { pBenchCategory="writer"
           , pElapsedMicros=f
           , pReps=optWriteReps
           , pIters=length writeTimings }
@@ -691,7 +697,7 @@ rwMixData opts@ParOptions{..} ReadWriteMixOptions{..} RawReadWriteMixResults{..}
   p <- optsData opts
   let for = flip map
       ps = for readWriteMixTimings $ \(isRead, f) ->
-        p { pBenchName=if isRead then "rw-mix-r" else "rw-mix-w"
+        p { pBenchCategory=if isRead then "r" else "w"
           , pReps=if isRead then optReps else optWriteReps optMixReaderWriter
           , pElapsedMicros=f
           , pIters=length readWriteMixTimings }

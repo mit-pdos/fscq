@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 summary() {
-    awk '{print $4 " " $5 " " $9/1000 " ms"}'
+    awk '{print $5 " " $6 " " $10/1000 " ms"}'
 }
 
 function bench() {
