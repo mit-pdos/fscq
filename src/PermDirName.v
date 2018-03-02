@@ -2,23 +2,17 @@ Require Import Mem.
 Require Import Word.
 Require Import Ascii.
 Require Import String.
-Require Import Dir.
 Require Import Omega.
-Require Import Prog.
-Require Import BasicProg.
-Require Import Pred PredCrash.
-Require Import Hoare.
-Require Import SepAuto.
-Require Import Log.
-Require Import BFile.
-Require Import GenSepN.
+Require Import Pred.
 Require Import ListPred.
 Require Import MemMatch.
 Require Import FunctionalExtensionality.
 Require Import ListUtils.
-Require Import AsyncDisk.
 Require Import Errno.
 Require List.
+
+Require Export PermDir.
+
 
 Set Implicit Arguments.
 
@@ -551,7 +545,7 @@ Module SDIR.
 
   Definition lookup lxp ixp dnum name ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let^ (ms, r) <- DIR.lookup lxp ixp dnum (sname2wname name) ms;
+      let^ (ms, r) <- DIR.lookup lxp ixp dnum (sname2wname name) ms;;
       Ret ^(ms, r)
     } else {
       Ret ^(ms, None)
@@ -559,7 +553,7 @@ Module SDIR.
 
   Definition unlink lxp ixp dnum name ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let^ (ms, ix, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;
+      let^ (ms, ix, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;;
       Ret ^(ms, ix, r)
     } else {
       Ret ^(ms, 0, Err ENAMETOOLONG)
@@ -567,7 +561,7 @@ Module SDIR.
 
   Definition link lxp bxp ixp dnum name inum isdir ix0 ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let^ (ms, ix, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ix0 ms;
+      let^ (ms, ix, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ix0 ms;;
       Ret ^(ms, ix, r)
     } else {
       Ret ^(ms, 0, Err ENAMETOOLONG)
@@ -577,7 +571,7 @@ Module SDIR.
     (wname2sname (fst di), snd di).
 
   Definition readdir lxp ixp dnum ms :=
-    let^ (ms, r) <- DIR.readdir lxp ixp dnum ms;
+    let^ (ms, r) <- DIR.readdir lxp ixp dnum ms;;
     Ret ^(ms, List.map readdir_trans r).
 
 
@@ -628,12 +622,15 @@ Module SDIR.
   Notation MSIAllocC := BFILE.MSIAllocC.
 
 
-  Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
+  Theorem lookup_ok :
+    forall lxp bxp ixp dnum name ms pr,
     {< F Fm Fi m0 sm m dmap ilist frees f,
-    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm
-    POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+    POST:bm', hm', RET:^(ms',r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' sm *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
@@ -641,21 +638,24 @@ Module SDIR.
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\ inum <> 0 /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]])
-    CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} lookup lxp ixp dnum name ms.
   Proof.
     unfold lookup.
     hoare.
 
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     resolve_valid_preds.
     eapply mem_atrans_inv_notindomain; eauto.
 
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
     resolve_valid_preds.
     eapply mem_atrans_inv_ptsto; eauto.
 
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     resolve_valid_preds; auto.
     apply notindomain_not_indomain; auto.
@@ -695,35 +695,43 @@ Module SDIR.
   Qed.
 
 
-  Theorem readdir_ok : forall lxp bxp ixp dnum ms,
+  Theorem readdir_ok :
+    forall lxp bxp ixp dnum ms pr,
     {< F Fm Fi m0 sm m dmap ilist frees f,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+    PERM:pr   
+    PRE:bm, hm,
+              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm
-    POST:hm' RET:^(ms', r)
-             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm' *
+    POST:bm', hm', RET:^(ms', r)
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' sm *
              [[ listpred readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]]
-    CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm hm'
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir.
     safestep. eauto.
     step.
+    simpl.
+    step.
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     eapply readdir_trans_addr_ok; eauto.
   Qed.
 
 
-  Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
+  Theorem unlink_ok :
+    forall lxp bxp ixp dnum name ms pr,
     {< F Fm Fi m0 sm m dmap ilist frees,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+    PERM:pr   
+    PRE:bm, hm,   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
              exists f, rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm
-    POST:hm' RET:^(ms', hint, r) exists m' dmap' f',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+    POST:bm', hm', RET:^(ms', hint, r) exists m' dmap' f',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees f' ms' sm *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
@@ -731,12 +739,13 @@ Module SDIR.
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]]
-    CRASH:hm' LOG.intact lxp F m0 sm hm'
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} unlink lxp ixp dnum name ms.
   Proof.
     unfold unlink.
     hoare; resolve_valid_preds.
 
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     subst; eexists.
     split; [ eauto | split ]; [ intros ? Hx | split; [ intros ? Hx | ] ].
     apply indomain_mem_except_indomain in Hx; auto.
@@ -745,6 +754,7 @@ Module SDIR.
     apply mem_except_notindomain.
     eapply mem_atrans_inv_indomain; eauto.
 
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     rewrite <- notindomain_mem_eq.
     subst; eexists.
     apply notindomain_not_indomain; eauto.
@@ -768,21 +778,24 @@ Module SDIR.
   Qed.
 
 
-  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ix0 ms,
+  Theorem link_ok :
+    forall lxp bxp ixp dnum name inum isdir ix0 ms pr,
     {< F Fm Fi m0 sm m dmap ilist frees,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm hm *
+    PERM:pr   
+    PRE:bm, hm,
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
              exists f, rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm *
              [[ notindomain name dmap ]] *
              [[ goodSize addrlen inum ]] *
              [[ inum <> 0 ]]
-    POST:hm' RET:^(ms', ix0', r) exists m',
+    POST:bm', hm', RET:^(ms', ix0', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm')
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm')
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees' f',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm hm' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' f' ms' sm *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
@@ -790,13 +803,14 @@ Module SDIR.
              [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                                  ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
-    CRASH:hm' LOG.intact lxp F m0 sm hm'
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} link lxp bxp ixp dnum name inum isdir ix0 ms.
   Proof.
     unfold link.
     hoare.
     eauto using link_dir_rep_pimpl_notindomain.
-
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; resolve_valid_preds; cancel.
     subst; eexists.
     split; [ eauto | split ]; [ intros ? Hx | split; [ intros ? Hx | ] ].
@@ -808,13 +822,14 @@ Module SDIR.
 
     eapply mem_ainv_mem_upd; eauto.
     apply ptsto_upd_disjoint; auto.
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
   Qed.
+ 
 
-
-  Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
-  Hint Extern 1 ({{_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
-  Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
-  Hint Extern 1 ({{_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (link _ _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
 
   Hint Extern 0 (okToUnify (rep ?f _) (rep ?f _)) => constructor : okToUnify.
 

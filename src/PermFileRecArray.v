@@ -496,7 +496,7 @@ Module FileRecArray (FRA : FileRASig).
     auto.
 
     step.
-    cleanup.rewrite H29 in H10.
+    cleanup. rewrite H29 in H10.
     rewrite synced_list_map_fst, firstn_oob, map_fst_combine in H10; auto.
     rewrite Forall_forall in *; eauto.
     rewrite <- synced_list_length at 1.
