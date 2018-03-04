@@ -251,7 +251,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f tags items ]]] *
           [[ can_access pr (selN tags (ix / items_per_val) Public) ]] *
-          [[ can_access pr tag ]]
+          [[ can_access pr tag ]] *
+          [[ tag = INODE.IOwner(selN ilist inum INODE.inode0) ]]
     POST:bm', hm', RET:ms' exists m' flist' f',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
@@ -279,11 +280,11 @@ Module FileRecArray (FRA : FileRASig).
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
     rewrite synced_list_length.
     setoid_rewrite combine_length_eq; auto.
-    rewrite H20, ipack_length; eauto.
+    rewrite H21, ipack_length; eauto.
     apply div_lt_divup; auto.
 
     safestep.
-    apply H7.
+    apply H8.
     denote (bm0 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
     setoid_rewrite selN_combine in Hx; eauto.
@@ -297,16 +298,19 @@ Module FileRecArray (FRA : FileRASig).
     cancel.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     erewrite LOG.rep_blockmem_subset; eauto; cancel.
-    intuition.
+    Opaque corr2.
+    repeat split.
     pred_apply; cancel.
     eauto.
     unfold RAData in *;
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
     rewrite synced_list_length.
     setoid_rewrite combine_length_eq; auto.
-    rewrite H20, ipack_length; eauto.
+    rewrite H21, ipack_length; eauto.
     apply div_lt_divup; auto.
     eapply upd_eq; eauto.
+    right; simpl; auto.
+    auto.
 
     step.
     safestep.
@@ -331,7 +335,7 @@ Module FileRecArray (FRA : FileRASig).
     apply items_valid_updN; auto.
     unfold items_valid, RALen in *; simpl; intuition.
     rewrite length_updN; auto.
-    all: rewrite <- H2; cancel; eauto.
+    all: intros; rewrite <- H2; cancel; eauto.
 
     Unshelve.
     all: eauto.
@@ -387,7 +391,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f tags items ]]] *
-          [[ can_access pr tag ]]
+          [[ can_access pr tag ]] *
+          [[ tag = INODE.IOwner(selN ilist inum INODE.inode0) ]]
     POST:bm', hm', RET: ^(ms', r) exists m',
          [[ MSAlloc ms' = MSAlloc ms ]] *
          [[ MSCache ms' = MSCache ms ]] *
@@ -417,9 +422,11 @@ Module FileRecArray (FRA : FileRASig).
     cancel.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     erewrite LOG.rep_blockmem_subset; eauto; cancel.
-    intuition.
+    repeat split.
     eauto. eauto. eauto.
     eapply upd_eq; eauto.
+    right; simpl; auto.
+    auto.
 
     step.
     safestep.
@@ -440,7 +447,7 @@ Module FileRecArray (FRA : FileRASig).
     rewrite divup_add; cleanup; auto.
     apply extend_item_valid; auto.
 
-    all: rewrite <- H1; cancel; eauto.
+    all: intros; rewrite <- H1; cancel; eauto.
 
     Unshelve.
     all: eauto.
@@ -804,7 +811,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ items ::: Fe * ix |-> e0 ]]] *
           [[[ tags ::: Ft * (ix/items_per_val) |-> t0 ]]] *
           [[ can_access pr t ]] *
-          [[ can_access pr t0 ]]
+          [[ can_access pr t0 ]] *
+          [[ t = INODE.IOwner(selN ilist inum INODE.inode0) ]]
     POST:bm', hm', RET:ms' exists m' flist' f' tags' items',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
@@ -861,7 +869,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f tags items ]]] *
           [[[ items ::: Fe ]]] *
           [[[ tags ::: Ft ]]] *
-          [[ can_access pr t ]]
+          [[ can_access pr t ]] *
+          [[ t = INODE.IOwner(selN ilist inum INODE.inode0) ]]
     POST:bm', hm', RET:^(ms', r) exists m',
          [[ MSAlloc ms' = MSAlloc ms ]] *
          [[ MSCache ms' = MSCache ms ]] *
