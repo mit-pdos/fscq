@@ -120,21 +120,25 @@ for system in fscq cfscq; do
 done
 sep
 
-info "read + write"
+info "readers-writer"
 for par in $(seq 0 5); do
     info "> n=$par"
     args=( --n=$par +RTS -N$((par+1)) -RTS --img=/tmp/disk.img --fscq=false --iters=5000 )
+    runbasic "" "${args[@]}" readers-writer --reps=10 --write-reps=1
     if [ $par -eq 1 ]; then
         runbasic "only-reads" "${args[@]}" \
                  +RTS -N1 -RTS \
                  readers-writer --reps=10 --write-reps=1 --only-reads
     fi
-    runbasic "" "${args[@]}" \
-             readers-writer --reps=10 --write-reps=1
-    runbasic "mix-0.9" "${args[@]}" \
-             rw-mix --reps=10 --write-reps=1 --read-perc=0.9
-    runbasic "mix-0.8" "${args[@]}" \
-             rw-mix --reps=10 --write-reps=1 --read-perc=0.8
-    runbasic "mix-0.5" "${args[@]}" \
-             rw-mix --reps=10 --write-reps=1 --read-perc=0.5
+done
+sep
+
+info "rw-mix"
+for par in $(seq 1 6); do
+    info "> n=$par"
+    args=( --n=$par +RTS -N$par -RTS --img=/tmp/disk.img --fscq=false --target-ms=1000 )
+    for mix in 0.95 0.9 0.8; do
+        runbasic "mix-$mix" "${args[@]}" \
+                 rw-mix --reps=10 --write-reps=1 --read-perc=$mix
+    done
 done
