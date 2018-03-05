@@ -95,6 +95,7 @@ Module DIR.
 
   Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees f ms sm : (@pred _ addr_eq_dec valuset) :=
     (exists flist,
+    [[ INODE.IOwner (selN ilist inum INODE.inode0) = Public ]] *
     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) ]]] *
     [[[ flist ::: Fi * inum |-> f ]]] *
     [[ rep f dmap ]])%pred.
@@ -610,7 +611,8 @@ Module DIR.
     congruence.
     congruence.
     cancel.
-    inversion H9; subst.
+    denote (Some _ = Some _) as Hx;
+    inversion Hx; subst; clear Hx.
     intuition.
     eauto.
     apply Dent.Defs.item0_wellformed.
@@ -621,6 +623,7 @@ Module DIR.
 
     denote (lookup_f) as HH.
     pose proof (lookup_f_ok _ _ _ HH) as [Hx Hy].
+    auto.
 
     step.
     step.
@@ -634,6 +637,8 @@ Module DIR.
       with (length (Dent.Defs.ipack (updN x a0_1 dent0))); eauto.
     repeat rewrite Dent.Defs.ipack_length.
     rewrite length_updN; auto.
+    denote lookup_f as Hx;
+    apply lookup_f_ok in Hx; cleanup.
     apply listpred_dmatch_dent0_emp; auto.
 
     rewrite lookup_ptsto by eauto.
@@ -657,8 +662,9 @@ Module DIR.
     congruence.
     rewrite <- H2; cancel; eauto.
     
-  Unshelve.
-    all: easy.
+    Unshelve.
+    exact nat.
+    all: try eauto.
   Qed.
 
   Theorem link'_ok :
@@ -718,10 +724,12 @@ Module DIR.
     eauto.
     eauto.
     unfold Dent.RA.RAData; eauto.
+    auto.
     
     step.
     step; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    auto.
     eexists; split; eauto.
     unfold Dent.RA.RAData in *; eauto.
     subst.
@@ -754,18 +762,30 @@ Module DIR.
     pred_apply; cancel.
     eauto.
     unfold Dent.RA.RAData; eauto.
+    auto.
     
     step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
 
     step.
+    intros mz Hmz; pose proof Hmz as Htemp; pred_apply.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+
+    apply listmatch_emp; intros; cancel.
+    rewrite BFILE.rep_length_pimpl in *.
+    destruct_lift H5.
+    destruct_lift H28.
+    apply list2nmem_ptsto_bound in H36.
+
+    rewrite listmatch_isolate with (i:=dnum) in Htemp; try omega.
+    destruct_lift Htemp; eauto.
+    rewrite <- H41; eauto.
+    
     eexists; split; eauto.
     unfold Dent.RA.RAData in *; eauto.
     subst.
     pred_apply.
-    Search repeat app.
     rewrite <- repeat_app_tail.
     
     replace ((S (length (Dent.Defs.ipack x))))
@@ -854,6 +874,7 @@ Module DIR.
     pred_apply; norm.
     cancel.
     intuition.
+    eauto.
     msalloc_eq.
     eauto.
     eauto.
@@ -867,12 +888,10 @@ Module DIR.
 
     step.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    auto.
     eexists; split; eauto.
     rewrite <- upd_mem_except; auto.
     eapply ptsto_upd_disjoint; auto.
-
-
-
     rewrite <- H2; cancel; eauto.
 
     prestep.
@@ -889,10 +908,12 @@ Module DIR.
     msalloc_eq; eauto.
     eauto.
     eauto.
+    eauto.
 
-     step.
+    step.
     step; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    eauto.
     eexists; split; eauto.
 
     unfold Dent.RA.RAData in *; eauto.
@@ -924,6 +945,7 @@ Module DIR.
     intuition.
     eauto.
     eauto.
+    eauto.
     eexists; split; eauto.
     erewrite <- notindomain_mem_eq; eauto.
 
@@ -934,6 +956,7 @@ Module DIR.
 
     step.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    eauto.
     eexists; split; eauto.
     rewrite <- upd_mem_except; auto.
     eapply ptsto_upd_disjoint; auto.

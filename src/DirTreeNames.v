@@ -1,18 +1,18 @@
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec Inode.
+Require Import PermBFile Bytes Rec PermInode.
 Require Import String.
 Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import AsyncDisk.
-Require Import DirName.
+Require Import PermAsyncDisk.
+Require Import PermDirName.
 Require Import DirTreeDef.
 Require Import DirTreePath.
 Require Import DirTreePred.
 Require Import DirTreeRep.
-Require Import SepAuto.
+Require Import PermSepAuto.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -58,7 +58,7 @@ Set Implicit Arguments.
     unfold rep; intros.
     destruct_lift H.
     eapply rep_tree_names_distinct' with (xp := fsxp).
-    pred_apply' H2.
+    pred_apply' H1.
     cancel.
   Qed.
 

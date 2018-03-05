@@ -1,12 +1,12 @@
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec Inode.
+Require Import Bytes Rec.
 Require Import String.
 Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import AsyncDisk.
+Require Import PermBFile PermInode.
 Require Import DirTreePath.
 
 Import ListNotations.
@@ -55,7 +55,7 @@ Set Implicit Arguments.
     | TreeDir  _ _ => dirfile0
     end.
 
-  Definition synced_dirfile f := mk_dirfile (Array.synced_list (map fst (DFData f))) (DFAttr f).
+  Definition synced_dirfile f := mk_dirfile (PermArray.synced_list (map fst (DFData f))) (DFAttr f).
 
   Definition dirfile_to_bfile f c := BFILE.mk_bfile (DFData f) (DFAttr f) c.
 

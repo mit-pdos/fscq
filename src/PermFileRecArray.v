@@ -407,7 +407,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f' ::: rep f' (tags++[tag]) (items ++ (updN block0 0 e)) ]]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
-          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]])
+          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
+          listmatch (fun i1 i2 => [[INODE.IOwner i1 = INODE.IOwner i2]]) ilist ilist')
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} extend lxp bxp ixp inum tag e ms.
   Proof. 
@@ -437,12 +438,48 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
     or_r. norm; [ cancel | intuition eauto ].
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
+    rewrite BFILE.rep_length_pimpl in H19; destruct_lift H19.
+    rewrite BFILE.rep_length_pimpl in H0; destruct_lift H0.
+    unfold BFILE.ilist_safe, BFILE.treeseq_ilist_safe in *.
+    apply list2nmem_ptsto_bound in H8.
+    cleanup.
+    rewrite listmatch_isolate with (i:= inum); try omega.    
+    cancel; eauto.
+    erewrite list_selN_ext' with (a:= (removeN ilist inum))(b:= (removeN ilist' inum)).
+    unfold listmatch; cancel.
+    apply listpred_emp_piff.
+    intros.
+    destruct x; simpl.
+    split; cancel.
+    denote In as Hy;
+    eapply in_selN_exists in Hy; cleanup.
+    rewrite selN_combine with (a0:=INODE.inode0)(b0:=INODE.inode0) in H32; cleanup.
+    inversion H32; subst; auto.
+    auto.
+    eauto.
+    repeat rewrite removeN_length; omega.
+    intros.
+    unfold removeN.
+    destruct (lt_dec pos inum).
+    repeat rewrite selN_app1; auto.
+    repeat rewrite selN_firstn; auto.
+    apply H15; omega.
+    rewrite firstn_length_l; omega.
+    rewrite firstn_length_l; omega.
+    apply Nat.nlt_ge in n.
+    repeat rewrite selN_app2; auto.
+    repeat rewrite firstn_length_l; try omega.
+    repeat rewrite skipn_selN.
+    apply H15; omega.
+    rewrite firstn_length_l; try omega.
+    rewrite firstn_length_l; try omega.
+    
     simpl; pred_apply; norm; [ | intuition ].
     cancel; apply extend_ok_helper; auto.
     rewrite ipack_length in *.
     setoid_rewrite app_length;
     rewrite block0_repeat. rewrite length_updN, repeat_length; auto.
-    Search divup plus.
     replace items_per_val with (items_per_val * 1) at 1 by omega.
     rewrite divup_add; cleanup; auto.
     apply extend_item_valid; auto.
@@ -451,6 +488,7 @@ Module FileRecArray (FRA : FileRASig).
 
     Unshelve.
     all: eauto.
+    exact INODE.inode0.
   Qed.
 
 

@@ -1,20 +1,20 @@
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec Inode.
+Require Import PermBFile Bytes Rec PermInode.
 Require Import String.
 Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import AsyncDisk.
-Require Import DirName.
+Require Import PermAsyncDisk.
+Require Import PermDirName.
 Require Import DirTreePath.
 Require Import DirTreeDef.
 Require Import DirTreePred.
 Require Import DirTreeRep.
 Require Import DirTreeNames.
-Require Import SepAuto.
-Require Import GenSepN.
+Require Import PermSepAuto.
+Require Import PermGenSepN.
 
 
 Import ListNotations.
@@ -396,10 +396,8 @@ Import ListNotations.
       intuition. inversion H2; subst. eauto.
     }
 
-    destruct t; simpl. intuition eauto. eapply incl_refl.
-
+    destruct t; simpl. intuition eauto. 
     induction l; simpl; eauto.
-    intuition.
 
     destruct a0; simpl in *.
     inversion H2; subst.
@@ -764,7 +762,6 @@ Import ListNotations.
          (dirlist_combine tree_inodes l).
   Proof.
     induction l; simpl; eauto.
-    eapply incl_refl.
     destruct a.
     destruct (string_dec s name); subst.
     - eapply incl_appr; apply incl_refl.
@@ -1630,11 +1627,12 @@ Import ListNotations.
           inversion H; constructor; eauto.
   Qed.
 
-  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms inum off v bn m f,
-    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
+  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms inum off v bn m f sm,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms)%pred (list2nmem (updN m bn v)).
+    fst (fst v) = INODE.IOwner (selN ilist inum INODE.inode0) ->
+    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     apply rep_tree_names_distinct in H as Hnames.
@@ -1644,18 +1642,18 @@ Import ListNotations.
     eapply pimpl_apply; [ | eapply BFILE.rep_safe_used; eauto; pred_apply; cancel ].
     cancel.
 
-    rewrite subtree_extract in H3; eauto.
-    remember H3 as H3'; clear HeqH3'.
+    rewrite subtree_extract in H4; eauto.
+    pose proof H4 as H4'.
     erewrite dirtree_update_inode_update_subtree; eauto.
     rewrite <- subtree_absorb; eauto; simpl in *.
-    eapply pimpl_apply. 2: destruct_lift H3'; eapply list2nmem_updN; pred_apply; cancel.
-    destruct_lift H3.
+    eapply pimpl_apply. 2: destruct_lift H4'; eapply list2nmem_updN; pred_apply; cancel.
+    destruct_lift H4.
     eapply pimpl_apply in H2. eapply list2nmem_sel with (i := inum) in H2. 2: cancel.
     rewrite <- H2.
     cancel.
 
     simpl in *.
-    destruct_lift H3'.
+    destruct_lift H4'.
     eapply pimpl_apply in H2.
     eapply list2nmem_sel with (i := inum) in H2.
     2: cancel.

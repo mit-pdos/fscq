@@ -1,23 +1,17 @@
-Require Import DirCache.
-Require Import Balloc.
-Require Import Prog ProgMonad.
-Require Import BasicProg.
+Require Import PermDirCache.
+Require Import PermBalloc.
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec Inode.
+Require Import PermBFile Bytes Rec PermInode.
 Require Import String.
 Require Import FSLayout.
 Require Import Pred.
 Require Import Arith.
-Require Import GenSepN.
+Require Import PermGenSepN.
 Require Import List ListUtils.
-Require Import Hoare.
-Require Import Log.
-Require Import SepAuto.
-Require Import Array.
+Require Import PermArray.
 Require Import FunctionalExtensionality.
-Require Import AsyncDisk.
-Require Import DiskSet.
+Require Import PermDiskSet.
 Require Import GenSepAuto.
 Require Import Lock.
 Require Import Errno.
@@ -52,11 +46,12 @@ Module DIRTREE.
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let^ (mscs, inum, isdir, valid) <- ForEach fn fnrest fnlist
+      Blockmem bm
       Hashmap hm
       Ghost [ mbase m sm F Fm IFs Ftop treetop freeinodes freeinode_pred ilist freeblocks mscs0 ]
       Loopvar [ mscs inum isdir valid ]
       Invariant
-        LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm hm *
+        LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
         exists tree bflist fndone,
         [[ fndone ++ fnrest = fnlist ]] *
         [[ valid = OK tt ->
@@ -76,14 +71,14 @@ Module DIRTREE.
         [[ MSAllocC mscs = MSAllocC mscs0 ]] *
         [[ MSDBlocks mscs = MSDBlocks mscs0 ]]
       OnCrash
-        LOG.intact fsxp.(FSXPLog) F mbase sm hm
+        LOG.intact fsxp.(FSXPLog) F mbase sm bm hm
       Begin
         match valid with
         | Err e =>
           Ret ^(mscs, inum, isdir, Err e)
         | OK _ =>
           If (bool_dec isdir true) {
-            let^ (mscs, r) <- SDIR.lookup lxp ixp inum fn mscs;
+            let^ (mscs, r) <- SDIR.lookup lxp ixp inum fn mscs;;
             match r with
             | Some (inum, isdir) => Ret ^(mscs, inum, isdir, OK tt)
             | None => Ret ^(mscs, inum, isdir, Err ENOENT)
@@ -92,7 +87,7 @@ Module DIRTREE.
             Ret ^(mscs, inum, isdir, Err ENOTDIR)
           }
         end
-    Rof ^(mscs, dnum, true, OK tt);
+    Rof ^(mscs, dnum, true, OK tt);;
     match valid with
     | OK _ =>
       Ret ^(mscs, OK (inum, isdir))
@@ -104,12 +99,12 @@ Module DIRTREE.
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let '(al, alc, ialc, ms, icache, cache, dbcache) := (MSAlloc fms, MSAllocC fms, MSIAllocC fms, MSLL fms, MSICache fms, MSCache fms, MSDBlocks fms) in
-    let^ (ms, oi) <- IAlloc.alloc lxp ibxp (IAlloc.mk_memstate ms ialc);
+    let^ (ms, oi) <- IAlloc.alloc lxp ibxp (IAlloc.mk_memstate ms ialc);;
     let fms := BFILE.mk_memstate al (IAlloc.MSLog ms) alc (IAlloc.MSCache ms) icache cache dbcache in
     match oi with
     | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
-      let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum false fms;
+      let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum false fms;;
       match ok with
       | OK _ =>
         Ret ^(fms, OK (inum : addr))
@@ -123,12 +118,12 @@ Module DIRTREE.
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let '(al, alc, ialc, ms, icache, cache, dbcache) := (MSAlloc fms, MSAllocC fms, MSIAllocC fms, MSLL fms, MSICache fms, MSCache fms, MSDBlocks fms) in
-    let^ (ms, oi) <- IAlloc.alloc lxp ibxp (IAlloc.mk_memstate ms ialc);
+    let^ (ms, oi) <- IAlloc.alloc lxp ibxp (IAlloc.mk_memstate ms ialc);;
     let fms := BFILE.mk_memstate al (IAlloc.MSLog ms) alc (IAlloc.MSCache ms) icache cache dbcache in
     match oi with
     | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
-      let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum true fms;
+      let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum true fms;;
       match ok with
       | OK _ =>
         Ret ^(fms, OK (inum : addr))
@@ -141,27 +136,27 @@ Module DIRTREE.
   Definition delete fsxp dnum name mscs :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let^ (mscs, oi) <- SDIR.lookup lxp ixp dnum name mscs;
+    let^ (mscs, oi) <- SDIR.lookup lxp ixp dnum name mscs;;
     match oi with
     | None => Ret ^(mscs, Err ENOENT)
     | Some (inum, isdir) =>
       let^ (mscs, ok) <- If (bool_dec isdir false) {
         Ret ^(mscs, true)
       } else {
-        let^ (mscs, l) <- SDIR.readdir lxp ixp inum mscs;
+        let^ (mscs, l) <- SDIR.readdir lxp ixp inum mscs;;
         match l with
         | nil => Ret ^(mscs, true)
         | _ => Ret ^(mscs, false)
         end
-      };
+      };;
       If (bool_dec ok false) {
         Ret ^(mscs, Err ENOTEMPTY)
       } else {
-        let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;
+        let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;;
         match ok with
         | OK _ =>
-          mscs <- BFILE.reset lxp bxp ixp inum mscs;
-          mscs' <- IAlloc.free lxp ibxp inum (IAlloc.mk_memstate (MSLL mscs) (MSIAllocC mscs));
+          mscs <- BFILE.reset lxp bxp ixp inum mscs;;
+          mscs' <- IAlloc.free lxp ibxp inum (IAlloc.mk_memstate (MSLL mscs) (MSIAllocC mscs));;
           Ret ^(BFILE.mk_memstate (MSAlloc mscs) (IAlloc.MSLog mscs') (MSAllocC mscs) (IAlloc.MSCache mscs') (MSICache mscs) (MSCache mscs) (MSDBlocks mscs), OK tt)
         | Err e =>
           Ret ^(mscs, Err e)
@@ -172,31 +167,31 @@ Module DIRTREE.
   Definition rename fsxp dnum srcpath srcname dstpath dstname mscs :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let^ (mscs, osrcdir) <- namei fsxp dnum srcpath mscs;
+    let^ (mscs, osrcdir) <- namei fsxp dnum srcpath mscs;;
     match osrcdir with
     | Err _ => Ret ^(mscs, Err ENOENT)
     | OK (_, false) => Ret ^(mscs, Err ENOTDIR)
     | OK (dsrc, true) =>
-      let^ (mscs, osrc) <- SDIR.lookup lxp ixp dsrc srcname mscs;
+      let^ (mscs, osrc) <- SDIR.lookup lxp ixp dsrc srcname mscs;;
       match osrc with
       | None => Ret ^(mscs, Err ENOENT)
       | Some (inum, inum_isdir) =>
-        let^ (mscs, _) <- SDIR.unlink lxp ixp dsrc srcname mscs;
-        let^ (mscs, odstdir) <- namei fsxp dnum dstpath mscs;
+        let^ (mscs, _) <- SDIR.unlink lxp ixp dsrc srcname mscs;;
+        let^ (mscs, odstdir) <- namei fsxp dnum dstpath mscs;;
         match odstdir with
         | Err _ => Ret ^(mscs, Err ENOENT)
         | OK (_, false) => Ret ^(mscs, Err ENOTDIR)
         | OK (ddst, true) =>
-          let^ (mscs, odst) <- SDIR.lookup lxp ixp ddst dstname mscs;
+          let^ (mscs, odst) <- SDIR.lookup lxp ixp ddst dstname mscs;;
           match odst with
           | None =>
-            let^ (mscs, ok) <- SDIR.link lxp bxp ixp ddst dstname inum inum_isdir mscs;
+            let^ (mscs, ok) <- SDIR.link lxp bxp ixp ddst dstname inum inum_isdir mscs;;
             Ret ^(mscs, ok)
           | Some _ =>
-            let^ (mscs, ok) <- delete fsxp ddst dstname mscs;
+            let^ (mscs, ok) <- delete fsxp ddst dstname mscs;;
             match ok with
             | OK _ =>
-              let^ (mscs, ok) <- SDIR.link lxp bxp ixp ddst dstname inum inum_isdir mscs;
+              let^ (mscs, ok) <- SDIR.link lxp bxp ixp ddst dstname inum inum_isdir mscs;;
               Ret ^(mscs, ok)
             | Err e =>
               Ret ^(mscs, Err e)
@@ -207,48 +202,48 @@ Module DIRTREE.
     end.
 
   Definition read fsxp inum off mscs :=
-    let^ (mscs, v) <- BFILE.read (FSXPLog fsxp) (FSXPInode fsxp) inum off mscs;
+    let^ (mscs, v) <- BFILE.read (FSXPLog fsxp) (FSXPInode fsxp) inum off mscs;;
     Ret ^(mscs, v).
 
   Definition write fsxp inum off v mscs :=
-    mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+    mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;;
     Ret mscs.
 
   Definition dwrite fsxp inum off v mscs :=
-    mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+    mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;;
     Ret mscs.
 
   Definition datasync fsxp inum mscs :=
-    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
     Ret mscs.
 
   Definition sync fsxp mscs :=
-    mscs <- BFILE.sync (FSXPLog fsxp) (FSXPInode fsxp) mscs;
+    mscs <- BFILE.sync (FSXPLog fsxp) (FSXPInode fsxp) mscs;;
     Ret mscs.
 
   Definition sync_noop fsxp mscs :=
-    mscs <- BFILE.sync_noop (FSXPLog fsxp) (FSXPInode fsxp) mscs;
+    mscs <- BFILE.sync_noop (FSXPLog fsxp) (FSXPInode fsxp) mscs;;
     Ret mscs.
 
   Definition truncate fsxp inum nblocks mscs :=
     let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
-                                     inum nblocks mscs;
+                                     inum nblocks mscs;;
     Ret ^(mscs, ok).
 
   Definition getlen fsxp inum mscs :=
-    let^ (mscs, len) <- BFILE.getlen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    let^ (mscs, len) <- BFILE.getlen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
     Ret ^(mscs, len).
 
   Definition getattr fsxp inum mscs :=
-    let^ (mscs, attr) <- BFILE.getattrs (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    let^ (mscs, attr) <- BFILE.getattrs (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
     Ret ^(mscs, attr).
 
   Definition setattr fsxp inum attr mscs :=
-    mscs <- BFILE.setattrs (FSXPLog fsxp) (FSXPInode fsxp) inum attr mscs;
+    mscs <- BFILE.setattrs (FSXPLog fsxp) (FSXPInode fsxp) inum attr mscs;;
     Ret mscs.
 
   Definition updattr fsxp inum kv mscs :=
-    mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum kv mscs;
+    mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum kv mscs;;
     Ret mscs.
 
   (* Specs and proofs *)

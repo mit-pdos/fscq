@@ -1,18 +1,18 @@
 Require Import Bool.
 Require Import Word.
-Require Import Balloc.
-Require Import BFile Bytes Rec Inode.
+Require Import PermBalloc.
+Require Import PermBFile Bytes Rec PermInode.
 Require Import String.
 Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import AsyncDisk.
-Require Import DirCache.
+Require Import PermAsyncDisk.
+Require Import PermDirCache.
 Require Import DirTreeDef.
 Require Import FSLayout.
-Require Import GenSepN.
-Require Import SepAuto.
+Require Import PermGenSepN.
+Require Import PermSepAuto.
 Require Import DirTreePred.
 
 
@@ -63,7 +63,7 @@ Set Implicit Arguments.
     (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    selN (DFData f) off ($0, nil) = selN m bn ($0, nil).
+    selN (DFData f) off valuset0 = selN m bn valuset0.
   Proof.
     intros.
 

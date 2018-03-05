@@ -1,18 +1,18 @@
 Require Import Bool.
 Require Import Word.
-Require Import Balloc.
-Require Import BFile Bytes Rec Inode.
+Require Import PermBalloc.
+Require Import PermBFile Bytes Rec PermInode.
 Require Import String.
 Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import AsyncDisk.
-Require Import DirCache.
+Require Import PermAsyncDisk.
+Require Import PermDirCache.
 Require Import DirTreeDef.
 Require Import FSLayout.
-Require Import GenSepN.
-Require Import SepAuto.
+Require Import PermGenSepN.
+Require Import PermSepAuto.
 
 Import ListNotations.
 
@@ -1222,9 +1222,9 @@ Set Implicit Arguments.
     unfold BFILE.file_crash in Hf.
     rewrite <- Hs in Hf. cbn in Hf.
     deex.
-    denote Array.possible_crash_list as Hp.
-    apply Array.possible_crash_list_synced_list_eq in Hp. subst.
-    unfold BFILE.synced_file. cbn -[Array.synced_list].
+    denote PermArray.possible_crash_list as Hp.
+    apply PermArray.possible_crash_list_synced_list_eq in Hp. subst.
+    unfold BFILE.synced_file. cbn -[PermArray.synced_list].
     denote (selN _ _ _ = _) as Hx.
     rewrite <- Hx.
     apply list2nmem_array_pick.
