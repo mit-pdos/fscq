@@ -592,21 +592,31 @@ data RawReadWriteResults = RawReadWriteResults
   { readTimings :: [Float]
   , writeTimings :: [Float] }
 
+startReadThreads :: ParOptions -> ReaderWriterOptions -> Filesystem ->
+                   NumIters -> IO (MVar [Float])
+startReadThreads opts@ParOptions{..} cmdOpts fs iters =
+  if optN == 0
+  then newMVar []
+  else
+    runInThread $ do
+      let readOp = rwRead opts cmdOpts fs
+      m_timings <- runInThread $ replicateM iters (timeIt readOp)
+      other_reads <- replicateM (optN-1) $ runInThread readOp
+      forM_ other_reads takeMVar
+      takeMVar m_timings
+
 readwriteIterate :: ParOptions -> ReaderWriterOptions -> Filesystem ->
                     UniqueCtr -> NumIters -> IO RawReadWriteResults
 readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters = do
   -- start the reads and writes in separate threads
-  let readOp = rwRead opts cmdOpts fs
-      writeOp = rwWrite opts cmdOpts fs ctr 0
-  m_reads <- runInThread $ replicateM iters (timeIt readOp)
-  other_reads <- replicateM (optN-1) $ runInThread readOp
+  let writeOp = rwWrite opts cmdOpts fs ctr 0
+  m_reads <- startReadThreads opts cmdOpts fs iters
   m_writes <- newEmptyMVar
   w_tid <- forkIO $ do
     v <- runTillException $ timeIt writeOp
     putMVar m_writes v
   -- now finish the reads
   readTimes <- takeMVar m_reads
-  forM_ other_reads takeMVar
   -- ...and then terminate the writer thread
   throwTo w_tid ReadsTerminated
   writeTimes <- takeMVar m_writes

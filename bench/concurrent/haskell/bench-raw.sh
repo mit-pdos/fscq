@@ -121,7 +121,7 @@ done
 sep
 
 info "read + write"
-for par in $(seq 1 5); do
+for par in $(seq 0 5); do
     info "> n=$par"
     args=( --n=$par +RTS -N$((par+1)) -RTS --img=/tmp/disk.img --fscq=false --iters=5000 )
     runbasic "" "${args[@]}" \
