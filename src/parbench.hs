@@ -656,7 +656,8 @@ readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..
 
 warmupReadWrite :: ParOptions -> ReaderWriterOptions -> Filesystem -> IO UniqueCtr
 warmupReadWrite opts@ParOptions{..} cmdOpts fs = do
-  ctr <- initUnique optN
+  -- sometimes we have a writer thread but no readers
+  ctr <- initUnique (max 1 optN)
   when optWarmup $ do
     rwRead opts cmdOpts fs
     rwWrite opts cmdOpts fs ctr 0
