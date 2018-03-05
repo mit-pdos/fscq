@@ -576,50 +576,52 @@ rwWrite ParOptions{..} ReaderWriterOptions{..} fs ctr tid =
   let fname = optRWWriteDir ++ "/" ++ name in
     createSmallFile fs fname) ctr tid
 
-data ReadsTerminated = ReadsTerminated
+data TerminateThreadException = TerminateThreadException
   deriving Show
 
-instance Exception ReadsTerminated
+instance Exception TerminateThreadException
 
 runTillException :: IO a -> IO [a]
 runTillException act = do
-  mx <- catch (Just <$> act) (\(_::ReadsTerminated) -> return Nothing)
+  mx <- catch (Just <$> act) (\(_::TerminateThreadException) -> return Nothing)
   case mx of
     Nothing -> return []
     Just x -> (x:) <$> runTillException act
+
+repeatTillTerminated :: IO a -> IO (ThreadId, MVar [a])
+repeatTillTerminated act = do
+  m_result <- newEmptyMVar
+  tid <- forkIO $ do
+    v <- runTillException act
+    putMVar m_result v
+  return (tid, m_result)
+
+terminateThread :: (ThreadId, MVar a) -> IO a
+terminateThread (tid, m_result) = do
+  throwTo tid TerminateThreadException
+  takeMVar m_result
+
 
 data RawReadWriteResults = RawReadWriteResults
   { readTimings :: [Float]
   , writeTimings :: [Float] }
 
-startReadThreads :: ParOptions -> ReaderWriterOptions -> Filesystem ->
-                   NumIters -> IO (MVar [Float])
-startReadThreads opts@ParOptions{..} cmdOpts fs iters =
-  if optN == 0
-  then newMVar []
-  else
-    runInThread $ do
-      let readOp = rwRead opts cmdOpts fs
-      m_timings <- runInThread $ replicateM iters (timeIt readOp)
-      other_reads <- replicateM (optN-1) $ runInThread readOp
-      forM_ other_reads takeMVar
-      takeMVar m_timings
+runInThreads :: Int -> NumIters -> IO a -> IO (MVar [a])
+runInThreads par iters act = runInThread $ do
+  m_results <- runInThread $ replicateM iters act
+  other_results <- replicateM (par-1) $ runInThread act
+  forM_ other_results takeMVar
+  takeMVar m_results
 
 readwriteIterate :: ParOptions -> ReaderWriterOptions -> Filesystem ->
                     UniqueCtr -> NumIters -> IO RawReadWriteResults
 readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters = do
-  -- start the reads and writes in separate threads
+  let readOp = rwRead opts cmdOpts fs
   let writeOp = rwWrite opts cmdOpts fs ctr 0
-  m_reads <- startReadThreads opts cmdOpts fs iters
-  m_writes <- newEmptyMVar
-  w_tid <- forkIO $ do
-    v <- runTillException $ timeIt writeOp
-    putMVar m_writes v
-  -- now finish the reads
+  m_reads <- runInThreads optN iters $ timeIt readOp
+  write_thread <- repeatTillTerminated $ timeIt writeOp
   readTimes <- takeMVar m_reads
-  -- ...and then terminate the writer thread
-  throwTo w_tid ReadsTerminated
-  writeTimes <- takeMVar m_writes
+  writeTimes <- terminateThread write_thread
   return $ RawReadWriteResults { readTimings=readTimes
                                , writeTimings=writeTimes }
 
