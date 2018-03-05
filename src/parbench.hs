@@ -615,15 +615,20 @@ runInThreads par iters act = runInThread $ do
 
 readwriteIterate :: ParOptions -> ReaderWriterOptions -> Filesystem ->
                     UniqueCtr -> NumIters -> IO RawReadWriteResults
-readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters = do
+readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters =
   let readOp = rwRead opts cmdOpts fs
-  let writeOp = rwWrite opts cmdOpts fs ctr 0
-  m_reads <- runInThreads optN iters $ timeIt readOp
-  write_thread <- repeatTillTerminated $ timeIt writeOp
-  readTimes <- takeMVar m_reads
-  writeTimes <- terminateThread write_thread
-  return $ RawReadWriteResults { readTimings=readTimes
-                               , writeTimings=writeTimes }
+      writeOp = rwWrite opts cmdOpts fs ctr 0 in
+    if optN == 0 then do
+      writeTimes <- replicateM iters $ timeIt writeOp
+      return $ RawReadWriteResults { readTimings=[]
+                                   , writeTimings=writeTimes}
+    else do
+      m_reads <- runInThreads optN iters $ timeIt readOp
+      write_thread <- repeatTillTerminated $ timeIt writeOp
+      readTimes <- takeMVar m_reads
+      writeTimes <- terminateThread write_thread
+      return $ RawReadWriteResults { readTimings=readTimes
+                                   , writeTimings=writeTimes }
 
 readWriteData :: ParOptions -> ReaderWriterOptions -> RawReadWriteResults -> IO [DataPoint]
 readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..} = do
