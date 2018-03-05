@@ -124,6 +124,11 @@ info "read + write"
 for par in $(seq 0 5); do
     info "> n=$par"
     args=( --n=$par +RTS -N$((par+1)) -RTS --img=/tmp/disk.img --fscq=false --iters=5000 )
+    if [ $par -eq 1 ]; then
+        runbasic "only-reads" "${args[@]}" \
+                 +RTS -N1 -RTS \
+                 readers-writer --reps=10 --write-reps=1 --only-reads
+    fi
     runbasic "" "${args[@]}" \
              readers-writer --reps=10 --write-reps=1
     runbasic "mix-0.9" "${args[@]}" \

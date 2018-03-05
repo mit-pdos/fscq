@@ -554,7 +554,8 @@ writeFileOp _ WriteOptions{..} Filesystem{fuseOps=fs} inums tid = do
 data ReaderWriterOptions = ReaderWriterOptions
   { optRWSmallFile :: FilePath
   , optRWWriteDir :: FilePath
-  , optWriteReps :: Int }
+  , optWriteReps :: Int
+  , optOnlyReads :: Bool }
 
 instance Options ReaderWriterOptions where
   defineOptions = pure ReaderWriterOptions
@@ -564,6 +565,8 @@ instance Options ReaderWriterOptions where
         "directory to write to"
     <*> simpleOption "write-reps" 1
         "run this many reps for writes (reps applies to reads)"
+    <*> simpleOption "only-reads" False
+        "skip writes altogether"
 
 rwRead :: ParOptions -> ReaderWriterOptions -> Filesystem -> IO ()
 rwRead ParOptions{..} ReaderWriterOptions{..} fs =
@@ -622,13 +625,19 @@ readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters =
       writeTimes <- replicateM iters $ timeIt writeOp
       return $ RawReadWriteResults { readTimings=[]
                                    , writeTimings=writeTimes}
-    else do
-      m_reads <- runInThreads optN iters $ timeIt readOp
-      write_thread <- repeatTillTerminated $ timeIt writeOp
-      readTimes <- takeMVar m_reads
-      writeTimes <- terminateThread write_thread
-      return $ RawReadWriteResults { readTimings=readTimes
-                                   , writeTimings=writeTimes }
+    else
+      if optOnlyReads cmdOpts then do
+        m_reads <- runInThreads optN iters $ timeIt readOp
+        readTimes <- takeMVar m_reads
+        return $ RawReadWriteResults { readTimings=readTimes
+                                     , writeTimings=[]}
+      else do
+        m_reads <- runInThreads optN iters $ timeIt readOp
+        write_thread <- repeatTillTerminated $ timeIt writeOp
+        readTimes <- takeMVar m_reads
+        writeTimes <- terminateThread write_thread
+        return $ RawReadWriteResults { readTimings=readTimes
+                                     , writeTimings=writeTimes }
 
 readWriteData :: ParOptions -> ReaderWriterOptions -> RawReadWriteResults -> IO [DataPoint]
 readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..} = do
