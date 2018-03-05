@@ -121,15 +121,15 @@ done
 sep
 
 info "read + write"
-for par in $(seq 1 6); do
+for par in $(seq 1 5); do
     info "> n=$par"
-    args=( $par --img=/tmp/disk.img --fscq=false --iters=5000 )
-    run "" "${args[@]}" \
-        readers-writer --reps=10 --write-reps=1
-    run "mix-0.9" "${args[@]}" \
-        rw-mix --reps=10 --write-reps=1 --read-perc=0.9
-    run "mix-0.8" "${args[@]}" \
-        rw-mix --reps=10 --write-reps=1 --read-perc=0.8
-    run "mix-0.5" "${args[@]}" \
-        rw-mix --reps=10 --write-reps=1 --read-perc=0.5
+    args=( --n=$par +RTS -N$((par+1)) -RTS --img=/tmp/disk.img --fscq=false --iters=5000 )
+    runbasic "" "${args[@]}" \
+             readers-writer --reps=10 --write-reps=1
+    runbasic "mix-0.9" "${args[@]}" \
+             rw-mix --reps=10 --write-reps=1 --read-perc=0.9
+    runbasic "mix-0.8" "${args[@]}" \
+             rw-mix --reps=10 --write-reps=1 --read-perc=0.8
+    runbasic "mix-0.5" "${args[@]}" \
+             rw-mix --reps=10 --write-reps=1 --read-perc=0.5
 done
