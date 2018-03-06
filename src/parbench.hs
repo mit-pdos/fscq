@@ -223,7 +223,7 @@ instance Options ParOptions where
     <*> simpleOption "target-ms" 0
          "pick iterations to run for at least this many ms (0 to disable)"
     <*> simpleOption "n" 1
-         "number of parallel threads to issue stats from"
+         "number of parallel threads to use"
     <*> simpleOption "warmup" True
          "warmup by running untimed iterations"
 
