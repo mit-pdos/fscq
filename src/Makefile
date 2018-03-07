@@ -8,7 +8,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Errno ListUtils MapUtils Rec \
 	      FSLayout ListPred FMapMem NEList StringUtils\
 	      GenSepAuto MemMatch \
-	      \
+	      ExtrHaskellPrelude ExtrHaskellMap \
 	      PermAsyncDisk PermPredCrash \
 	      PermArray PermRecArrayUtils PermAsyncRecArray \
 	      PermProg PermHashmap PermBlockmem \
