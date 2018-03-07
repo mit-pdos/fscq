@@ -982,3 +982,26 @@ Ltac xcrash_rewrite :=
 Ltac xcrash := subst; repeat xcrash_rewrite;
                xform_norm; cancel; xform_normr; cancel.
 
+Ltac lightstep :=
+    let m := fresh "m" in
+    let Hm := fresh "Hm" in
+    prestep;
+    intros m Hm;
+    destruct_lift Hm;
+    repeat eexists;
+    pred_apply;
+    norm; [cancel|intuition];
+    match goal with
+    | [|- corr2 _ _ _] => idtac
+    | _ => eauto
+    end.
+  
+  Ltac safelightstep :=
+    let m := fresh "m" in
+    let Hm := fresh "Hm" in
+    prestep;
+    intros m Hm;
+    destruct_lift Hm;
+    repeat eexists;
+    pred_apply;
+    norm; [cancel|repeat split].

@@ -583,6 +583,7 @@ Module SDIR.
 
   Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm : @pred _ addr_eq_dec valuset :=
     (exists flist,
+     [[ INODE.IOwner (selN ilist inum INODE.inode0) = Public ]] *
      [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
      [[ rep f dsmap ]])%pred.
@@ -641,7 +642,7 @@ Module SDIR.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} lookup lxp ixp dnum name ms.
-  Proof.
+  Proof. 
     unfold lookup.
     hoare.
 
@@ -713,7 +714,7 @@ Module SDIR.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} readdir lxp ixp dnum ms.
-  Proof.
+  Proof. 
     unfold readdir.
     safestep. eauto.
     step.
@@ -722,7 +723,6 @@ Module SDIR.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     eapply readdir_trans_addr_ok; eauto.
   Qed.
-
 
   Theorem unlink_ok :
     forall lxp bxp ixp dnum name ms pr,
@@ -741,7 +741,7 @@ Module SDIR.
              [[ MSIAllocC ms' = MSIAllocC ms ]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} unlink lxp ixp dnum name ms.
-  Proof.
+  Proof. 
     unfold unlink.
     hoare; resolve_valid_preds.
 
@@ -777,7 +777,7 @@ Module SDIR.
   rewrite wname2sname_sname2wname; auto.
   Qed.
 
-
+  
   Theorem link_ok :
     forall lxp bxp ixp dnum name inum isdir ix0 ms pr,
     {< F Fm Fi m0 sm m dmap ilist frees,
@@ -805,13 +805,28 @@ Module SDIR.
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} link lxp bxp ixp dnum name inum isdir ix0 ms.
-  Proof.
+  Proof. 
     unfold link.
-    hoare.
-    eauto using link_dir_rep_pimpl_notindomain.
+    lightstep.
+    lightstep.
+    eapply  link_dir_rep_pimpl_notindomain; eauto.
+    prestep;
+    intros mx Hmx;
+    destruct_lift Hmx;
+    repeat eexists;
+    pred_apply;
+    norm; try congruence.
+    cancel.
+    intuition.
+    lightstep.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    cancel.
+    cancel.
+    intuition.
+    lightstep.
+    erewrite LOG.rep_hashmap_subset; eauto.
     or_r; resolve_valid_preds; cancel.
+    auto.
     subst; eexists.
     split; [ eauto | split ]; [ intros ? Hx | split; [ intros ? Hx | ] ].
     destruct (weq w (sname2wname name)); subst.
@@ -822,7 +837,11 @@ Module SDIR.
 
     eapply mem_ainv_mem_upd; eauto.
     apply ptsto_upd_disjoint; auto.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    cancel.
+    lightstep.
+    lightstep.
+    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    cancel.
   Qed.
  
 

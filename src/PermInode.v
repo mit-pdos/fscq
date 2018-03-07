@@ -304,7 +304,7 @@ Module INODE.
   Definition inode_match bxp ino (ir : irec) := Eval compute_rec in
     let '(ino, IFs) := ino in
     ( [[ IAttr ino = (ir :-> "attrs") ]] *
-      [[ Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks ino) ]] *
+      [[ Forall (fun a => BALLOCC.bn_valid bxp (# a)) (IBlocks ino) ]] *
       Ind.rep bxp IFs ir (IBlocks ino) )%pred.
 
   Definition rep bxp IFs xp (ilist : list inode) cache := (

@@ -28,12 +28,20 @@ Set Implicit Arguments.
    * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
 
+Fixpoint inode_tags_public ilist tree :=
+  match tree with
+  | TreeDir inum tdl =>
+    ([[ INODE.IOwner (selN ilist inum INODE.inode0) = Public ]] *
+    dirlist_pred (inode_tags_public ilist) tdl)%pred
+  | _ => [[ True ]]%pred
+  end.
+
   Definition rep fsxp F tree ilist frees ms sm :=
     (exists bflist freeinodes freeinode_pred,
      BFILE.rep fsxp.(FSXPBlockAlloc) sm fsxp.(FSXPInode) bflist ilist frees
         (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) *
      IAlloc.rep BFILE.freepred fsxp freeinodes freeinode_pred (IAlloc.Alloc.mk_memstate (BFILE.MSLL ms) (BFILE.MSIAllocC ms)) *
-     [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
+     [[ (F * tree_pred fsxp tree * freeinode_pred * inode_tags_public ilist tree)%pred (list2nmem bflist) ]]
     )%pred.
 
   Theorem rep_length : forall fsxp F tree ilist frees ms sm,

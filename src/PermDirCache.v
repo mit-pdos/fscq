@@ -112,6 +112,7 @@ Module CacheOneDir.
 
   Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm : @pred _ addr_eq_dec valuset :=
     (exists flist,
+     [[ INODE.IOwner (selN ilist inum INODE.inode0) = Public ]] *
      [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
      [[ rep f dsmap ]])%pred.
@@ -229,28 +230,11 @@ Module CacheOneDir.
     >} init_cache lxp ixp dnum ms.
   Proof. 
     unfold init_cache, rep_macro.
-    prestep.
-    intros m Hm.
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
-    eauto.
-    prestep.
-    intros mx Hmx.
-    destruct_lift Hmx.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    msalloc_eq; eauto.
-    eauto.
-
-    msalloc_eq; step.
-    step; msalloc_eq.
+    lightstep.
+    msalloc_eq.
+    lightstep.
+    msalloc_eq; lightstep.
+    msalloc_eq; lightstep.
     erewrite LOG.rep_hashmap_subset; eauto.
     cbn in *. subst_cache.
     eauto using fill_cache_correct.
@@ -282,22 +266,14 @@ Module CacheOneDir.
     >} get_dcache lxp ixp dnum ms.
   Proof. 
     unfold get_dcache, rep_macro.
-    prestep.
-    intros m Hm.
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
+    lightstep.
     step.
-    step; msalloc_eq.
+    lightstep.
     erewrite LOG.rep_hashmap_subset; eauto.
-    step.
-    step; msalloc_eq.
+    lightstep.
+    lightstep.
     erewrite LOG.rep_hashmap_subset; eauto.
-    rewrite <- H2; cancel; eauto.
+    all: rewrite <- H2; cancel; eauto.
     Unshelve. all: eauto.
   Qed.
 
@@ -317,6 +293,7 @@ Module CacheOneDir.
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
+           [[ MSDBlocks ms' = MSDBlocks ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\ inum <> 0 /\
@@ -327,19 +304,9 @@ Module CacheOneDir.
     >} lookup lxp ixp dnum name ms.
   Proof. 
     unfold lookup.
-    prestep.
-    intros m Hm.
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
-    eauto.
-    eauto.
-    step.
-    step; msalloc_eq.
+    lightstep.
+    lightstep.
+    lightstep; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto.
     subst_cache.
     denote (Dcache.find) as Hf.
@@ -354,6 +321,8 @@ Module CacheOneDir.
     cancel.
     eauto using any_sep_star_ptsto.
     cancel.
+    cancel.
+    
   Unshelve.
     all: repeat (solve [eauto] || constructor).
   Qed.
@@ -381,13 +350,11 @@ Module CacheOneDir.
     >} readdir lxp ixp dnum ms.
   Proof. 
     unfold readdir, rep_macro, rep.
-    intros. monad_simpl_one.
-    eapply pimpl_ok2. eauto with prog.
-    unfold SDIR.rep_macro.
-    cancel; eauto.
-    step.
-    step.
+    lightstep.
+    lightstep.
+    lightstep; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto.
+    cancel.
   Qed.
 
   Theorem unlink_ok :
@@ -411,68 +378,28 @@ Module CacheOneDir.
     >} unlink lxp ixp dnum name ms.
   Proof. 
     unfold unlink.
-    step.
-    prestep.
-    intros mx Hmx.
-    destruct_lift Hmx.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
+    lightstep.
+    simpl. destruct_branch.
+    safestep.
     eauto.
-    eauto.
-    eauto.
-    
-    prestep.
-    intros my Hmy.
-    destruct_lift Hmy.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    msalloc_eq; pred_apply; cancel.
-    eauto.
-    step.
-    
-    prestep.
-    intros mz Hmz.
-    destruct_lift Hmz.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
+    lightstep.
+    lightstep.
+    lightstep.
     erewrite LOG.rep_hashmap_subset; eauto.
-    intuition; msalloc_eq.
-    subst; pred_apply.
-    eauto.
-    eauto.
-    eauto.
+    msalloc_eq.
+    subst; pred_apply; cancel.
     simpl in *.
-    inversion H29; subst.
+    inversion H23; subst.
     unfold mem_except; cbn [fst snd].
     rewrite DcacheDefs.MapFacts.remove_o.
     denote (Dcache.find) as Hf.
     repeat destruct string_dec; (congruence || eauto).
-    all: eauto.
-    all: try solve [rewrite <- H1; cancel; eauto].
+    all: subst; msalloc_eq; eauto.
+    all: try solve [rewrite <- H2; cancel; eauto].
 
-
-    intros my Hmy.
-    destruct_lift Hmy.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    prestep.
-    intros mz Hmz.
-    destruct_lift Hmz.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
+    lightstep.
+    lightstep; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto.
-    intuition; msalloc_eq.
-    subst; pred_apply.
-    eauto.
-    eauto.
     cbn in *.
     rewrite mem_except_none; eauto.
     denote (Dcache.find) as Hf.
@@ -484,7 +411,7 @@ Module CacheOneDir.
 
     eauto.
     apply mem_except_notindomain.
-    inversion H6.
+    congruence.
     cancel.
 
   Unshelve.
@@ -528,39 +455,17 @@ Module CacheOneDir.
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} link' lxp bxp ixp dnum name inum isdir ms.
-  Proof.
+  Proof. 
     unfold link'.
-    prestep.
-    intros mx Hmx.
-    destruct_lift Hmx.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
-    eauto.
-    eauto.
-    
-    prestep.
-    intros my Hmy.
-    destruct_lift Hmy.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    msalloc_eq; pred_apply; cancel.
-    eauto.
-    eauto.
-    eauto.
-
-    simpl.
+    lightstep.
+    lightstep; try congruence.
+    simpl; destruct_branch.
     prestep.
     intros mz Hmz.
     destruct_lift Hmz.
     pred_apply; norml.
-    inversion H12.
-    inversion H12.
+    inversion H13.
+    inversion H13.
     intros mz' Hmz'; repeat eexists;
     pred_apply' Hmz'; norm.
     cancel.
@@ -568,8 +473,8 @@ Module CacheOneDir.
     msalloc_eq; pred_apply; cancel.
     eauto.
 
-    step.
-    safestep; msalloc_eq.
+    lightstep.
+    lightstep; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto.
     
     msalloc_eq. subst_cache.
@@ -579,18 +484,15 @@ Module CacheOneDir.
     rewrite DcacheDefs.MapFacts.add_o.
     repeat destruct string_dec; (congruence || eauto).
     all: try solve [rewrite <- H2; cancel; eauto].
-    norml.
-    norm.
-    cancel.
-    intuition.
-    safestep.
+    auto.
+    step.
+    lightstep; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
-    cancel.
-    congruence.
+    auto.
   Unshelve.
     all : try exact BALLOCC.Alloc.freelist0.
     all : eauto.
-  Qed.
+   Qed.
 
   Hint Extern 0 ({{_|_}} Bind (link' _ _ _ _ _ _ _ _) _) => apply link'_ok : prog.
 
@@ -622,25 +524,15 @@ Module CacheOneDir.
     >} link lxp bxp ixp dnum name inum isdir ms.
   Proof.
     unfold link.
-    prestep.
-    intros mx Hmx.
-    destruct_lift Hmx.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
-    eauto.
-    eauto.
-    
+    lightstep.
+   
     simpl.
     prestep. norml.
     congruence.
     norm.
     cancel.
     intuition.
-    safestep.
+    lightstep.
     erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
     cancel.
 
@@ -649,6 +541,7 @@ Module CacheOneDir.
     pred_apply' Hmy; norm.
     cancel.
     intuition.
+    eauto.
     msalloc_eq; pred_apply; cancel.
     eauto.
     eauto.
@@ -656,14 +549,16 @@ Module CacheOneDir.
     eauto.
 
     step.
-    safestep.
-
+    lightstep.
     simpl.
     erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
-    safestep.
+    msalloc_eq; auto.
+    lightstep.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
     eauto.
     eauto.
+    eauto.
+    msalloc_eq; eauto.
     rewrite <- H2; cancel; eauto.
     congruence.
 

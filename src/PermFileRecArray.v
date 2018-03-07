@@ -261,21 +261,13 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
-          [[ MSAllocC ms' = MSAllocC ms ]] (* *
-          [[ MSDBlocks ms' = MSDBlocks ms ]] *)
+          [[ MSAllocC ms' = MSAllocC ms ]]  *
+          [[ MSDBlocks ms' = MSDBlocks ms ]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} put lxp ixp inum ix tag e ms.
   Proof. 
     unfold put, rep.
-    prestep.
-    intros m Hm;
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    pred_apply; cancel.
-    eauto.
+    lightstep.
     unfold RAData in *;
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
     rewrite synced_list_length.
@@ -290,16 +282,10 @@ Module FileRecArray (FRA : FileRASig).
     setoid_rewrite selN_combine in Hx; eauto.
 
     step.
-    prestep.
-    intros m' Hm';
-    destruct_lift Hm'.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
+    Opaque corr2.
+    safelightstep.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     erewrite LOG.rep_blockmem_subset; eauto; cancel.
-    Opaque corr2.
-    repeat split.
     pred_apply; cancel.
     eauto.
     unfold RAData in *;
@@ -309,7 +295,7 @@ Module FileRecArray (FRA : FileRASig).
     rewrite H21, ipack_length; eauto.
     apply div_lt_divup; auto.
     eapply upd_eq; eauto.
-    right; simpl; auto.
+    simpl; eauto.
     auto.
 
     step.
@@ -863,20 +849,14 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
-          [[ MSAllocC ms' = MSAllocC ms ]] (* *
-          [[ MSDBlocks ms' = MSDBlocks ms ]] *)
+          [[ MSAllocC ms' = MSAllocC ms ]] *
+          [[ MSDBlocks ms' = MSDBlocks ms ]] 
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} put_array lxp ixp inum ix t e ms.
   Proof. 
     unfold put_array.
-    prestep.
-    intros m Hm.
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
     Opaque corr2.
-    repeat split.
+    safelightstep.
     eapply list2nmem_ptsto_bound; eauto.
     eauto.
     eauto.
