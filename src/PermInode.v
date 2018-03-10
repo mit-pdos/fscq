@@ -25,6 +25,12 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
+Axiom encode_tag: tag -> word 8.
+Axiom decode_tag: word 8 -> tag.
+Axiom encode_decode: forall t, decode_tag (encode_tag  t) = t.
+Axiom encode_inj: forall t t', encode_tag t = encode_tag t' -> t = t'.
+Axiom encode_public: encode_tag Public = $0.
+
 Module INODE.
 
   (************* on-disk representation of inode *)
@@ -38,10 +44,13 @@ Module INODE.
     ("atime",  Rec.WordF 32) ;        (* last access time *)
     ("ctime",  Rec.WordF 32) ;        (* create time *)
     ("itype",  Rec.WordF  8) ;        (* type code, 0 = regular file, 1 = directory, ... *)
-    ("unused", Rec.WordF 24)          (* reserved (permission bits) *)
+    ("owner",  Rec.WordF  8) ;
+    ("unused", Rec.WordF 16)          (* reserved (permission bits) *)
   ]).
 
   Definition NDirect := 7.
+
+  Print Rec.type.
 
   Definition irectype : Rec.type := Rec.RecF ([
     ("len", Rec.WordF addrlen);     (* number of blocks *)
@@ -50,7 +59,6 @@ Module INODE.
     ("dindptr", Rec.WordF addrlen); (* doubly-indirect block pointer *)
     ("tindptr", Rec.WordF addrlen); (* triply-indirect block pointer *)
     ("blocks", Rec.ArrayF (Rec.WordF addrlen) NDirect)]).
-
 
   (* RecArray for inodes records *)
   Module IRecSig <: RASig.
@@ -221,6 +229,7 @@ Module INODE.
   Definition AMTime  (a : iattr) := Eval cbn in ( a :-> "mtime" ).
   Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
   Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
+  Definition AOwner    (a : iattr) := Eval cbn in ( a :-> "owner" ).
 
   Definition getattrs lxp xp inum cache ms := Eval compute_rec in
     let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
@@ -238,6 +247,7 @@ Module INODE.
   | UMTime (v : word 32)
   | UType  (v : word  8)
   | UDev   (v : word 64)
+  | UOwner (v : word  8)
   .
 
   Definition iattr_upd (e : iattr) (a : iattrupd_arg) : iattr := Eval compute_rec in
@@ -246,6 +256,7 @@ Module INODE.
   | UMTime v => (e :=> "mtime" := v)
   | UType  v => (e :=> "itype" := v)
   | UDev   v => (e :=> "dev"   := v)
+  | UOwner v => (e :=> "owner" := v)
   end.
 
   Definition updattr lxp xp inum a cache ms := Eval compute_rec in
@@ -253,6 +264,13 @@ Module INODE.
     let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) cache ms;;
     Ret ^(cache, ms).
 
+  Definition getowner lxp xp inum cache ms := Eval compute_rec in
+    let^ (cache, ms, a) <- getattrs lxp xp inum cache ms;;
+    Ret ^(cache, ms, decode_tag (AOwner a)).
+
+  Definition setowner lxp xp inum t cache ms := Eval compute_rec in
+    let^ (cache, ms) <- updattr lxp xp inum (UOwner (encode_tag t)) cache ms;;
+    Ret ^(cache, ms).     
 
   Definition getbnum lxp xp inum off cache ms :=
     let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;;
@@ -293,11 +311,11 @@ Module INODE.
   Record inode := mk_inode {
     IBlocks : bnlist;
     IAttr   : iattr;
-    IOwner  : tag
   }.
-
+  Definition IOwner ino := decode_tag (AOwner (IAttr ino)).
+  
   Definition iattr0 := @Rec.of_word iattrtype $0.
-  Definition inode0 := mk_inode nil iattr0 Public.
+  Definition inode0 := mk_inode nil iattr0.
   Definition irec0 := IRec.Defs.item0.
 
 
@@ -520,7 +538,7 @@ Module INODE.
            [[ (Fs * IFs)%pred sm ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} init lxp xp ms.
-  Proof.
+  Proof. 
     unfold init, rep.
     step.
     cbv; auto.
@@ -552,7 +570,7 @@ Module INODE.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} getlen lxp xp inum cache ms.
-  Proof.
+  Proof. 
     unfold getlen, rep; pose proof irec0.
     safestep.
     sepauto.
@@ -596,7 +614,7 @@ Module INODE.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} getattrs lxp xp inum cache ms.
-  Proof.
+  Proof. 
     unfold getattrs, rep.
     safestep.
     sepauto.
@@ -636,10 +654,10 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp IFs xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode (IBlocks ino) attr (IOwner ino) ]]
+           [[ ino' = mk_inode (IBlocks ino) attr ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} setattrs lxp xp inum attr cache ms.
-  Proof.
+  Proof. 
     unfold setattrs, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
@@ -667,7 +685,6 @@ Module INODE.
     unfold inode_match; rewrite selN_combine; auto.
     erewrite <- list2nmem_sel with (x:= ino); eauto.
     cancel; eauto.
-    Search updN selN.
     rewrite updN_selN_eq; auto.
     repeat rewrite length_updN; auto.
     cancel.
@@ -693,10 +710,10 @@ Module INODE.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs')%pred sm ]] *
-           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) (IOwner ino)]]
+           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} updattr lxp xp inum kv cache ms.
-  Proof.
+  Proof. 
     unfold updattr, rep.
     safestep.
     sepauto.
@@ -754,7 +771,7 @@ Module INODE.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} getbnum lxp xp inum off cache ms.
-  Proof.
+  Proof. 
     unfold getbnum, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
@@ -801,7 +818,7 @@ Module INODE.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} getallbnum lxp xp inum cache ms.
-  Proof.
+  Proof. 
     unfold getallbnum, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
@@ -867,6 +884,75 @@ Proof.
   split; cancel.
 Qed.
 
+ Hint Extern 1 ({{_|_}} Bind (getattrs _ _ _ _ _) _) => apply getattrs_ok : prog.
+ Hint Extern 1 ({{_|_}} Bind (updattr _ _ _ _ _ _) _) => apply updattr_ok : prog.
+
+ Theorem getowner_ok :
+    forall lxp bxp xp inum cache ms pr,
+    {< F Fm Fi m0 sm m IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST:bm', hm', RET:^(cache',ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
+           [[ r = IOwner ino ]]
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    >} getowner lxp xp inum cache ms.
+  Proof.
+    unfold getowner.
+    step.
+    step.
+    step.
+    erewrite LOG.rep_hashmap_subset; eauto.
+  Qed.
+ 
+
+
+  Theorem setowner_ok :
+    forall lxp bxp xp inum t cache ms pr,
+    {< F Fm Fi Fs m0 sm m IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs)%pred sm ]]
+    POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache') ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs')%pred sm ]] *
+           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) (UOwner (encode_tag t)))]] *
+           [[ IOwner ino' = t ]]
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    >} setowner lxp xp inum t cache ms.
+  Proof.
+    unfold setowner.
+    intros.
+    try autounfold with hoare_unfold in *.
+    repeat (destruct_branch || monad_simpl_one).
+    eapply pimpl_ok2.
+    eauto with prog.
+    intros.
+    intros m Hm; destruct_lift Hm.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    intuition.
+    eauto.
+    eauto.
+    eauto.
+
+    step.
+    step.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    unfold IOwner, AOwner; simpl.
+    apply encode_decode.
+  Qed.
+
 
   Theorem shrink_ok :
     forall lxp bxp xp inum nr cache ms pr, 
@@ -882,7 +968,7 @@ Qed.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) (IOwner ino)]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino)]] *
            [[ incl freelist freelist' ]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} shrink lxp bxp xp inum nr cache ms.
@@ -976,7 +1062,7 @@ Qed.
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ ilist' = updN ilist inum ino' ]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr (IOwner ino)]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr]] *
            [[ incl freelist freelist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} reset lxp bxp xp inum nr attr cache ms.
@@ -1092,7 +1178,7 @@ Qed.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
-           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) (IOwner ino)]] *
+           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino)]] *
            [[ incl freelist' freelist ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} grow lxp bxp xp inum bn cache ms.
@@ -1184,6 +1270,8 @@ cancel.
   Hint Extern 1 ({{_|_}} Bind (grow _ _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _ _) _) => apply getowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
