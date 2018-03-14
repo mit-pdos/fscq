@@ -1,8 +1,9 @@
 module Benchmarking where
 
-import System.Clock
-import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar
+import Control.Monad.IO.Class
+import System.Clock
 
 -- mini benchmarking library
 
@@ -13,14 +14,14 @@ elapsedMicros start = do
       elapsed = (fromIntegral elapsedNanos)/1e3 :: Double in
     return elapsed
 
-timed :: IO a -> IO (a, Double)
+timed :: MonadIO m => m a -> m (a, Double)
 timed act = do
-  start <- getTime Monotonic
+  start <- liftIO $ getTime Monotonic
   r <- act
-  totalTime <- elapsedMicros start
+  totalTime <- liftIO $ elapsedMicros start
   return (r, totalTime)
 
-timeIt :: IO a -> IO Double
+timeIt :: MonadIO m => m a -> m Double
 timeIt act = snd <$> timed act
 
 runInThread :: IO a -> IO (MVar a)
