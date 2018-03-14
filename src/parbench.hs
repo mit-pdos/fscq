@@ -138,7 +138,7 @@ replicateInParallel par act = do
 
 data RtsInfo =
   RtsInfo { rtsN :: Int
-          , rtsMinAllocMB :: Float }
+          , rtsMinAllocMB :: Double }
 
 getRtsInfo :: IO RtsInfo
 getRtsInfo = do
@@ -160,7 +160,7 @@ data DataPoint =
             , pReps :: Int
             , pIters :: Int
             , pPar :: Int
-            , pElapsedMicros :: Float }
+            , pElapsedMicros :: Double }
 
 strVal :: String -> String
 strVal s = let quoted_s = "\"" ++ s ++ "\"" in
@@ -251,7 +251,7 @@ parcommand name action = subcommand name $ \opts cmdOpts args -> do
 
 type NumIters = Int
 
-searchIters :: ParOptions -> (NumIters -> IO a) -> Float -> IO a
+searchIters :: ParOptions -> (NumIters -> IO a) -> Double -> IO a
 searchIters opts act targetMicros = go 1
   where go iters = do
           performMajorGC
@@ -259,7 +259,7 @@ searchIters opts act targetMicros = go 1
           (x, micros) <- timed $ act iters
           if micros < targetMicros
             then let iters' = fromInteger . round $
-                       (fromIntegral iters :: Float) * targetMicros / micros
+                       (fromIntegral iters :: Double) * targetMicros / micros
                      nextIters = max
                        (min
                          (iters'+(iters' `div` 5))
@@ -274,7 +274,7 @@ pickAndRunIters opts@ParOptions{..} act = do
     searchIters opts act (fromIntegral optTargetMs * 1000)
   else act optIters
 
-parallelTimeForIters :: Int -> (ThreadNum -> IO a) -> NumIters -> IO [Float]
+parallelTimeForIters :: Int -> (ThreadNum -> IO a) -> NumIters -> IO [Double]
 parallelTimeForIters par act iters =
   concat <$> (replicateInParallel par $ \tid ->
     if tid == 0
@@ -356,7 +356,7 @@ instance Options IOConcurOptions where
     <*> simpleOption "small-file" "/small"
        "path to small file to read <reps> times"
 
-parIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
+parIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Double, Double)
 parIOConcur reps IOConcurOptions{..} fs = do
   m1 <- timeAsync $ readEntireFile fs Nothing optLargeFile
   size <- getFileSize (fuseOps fs) optSmallFile
@@ -365,7 +365,7 @@ parIOConcur reps IOConcurOptions{..} fs = do
   smallMicros <- takeMVar m2
   return (largeMicros, smallMicros)
 
-seqIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Float, Float)
+seqIOConcur :: Int -> IOConcurOptions -> Filesystem -> IO (Double, Double)
 seqIOConcur reps IOConcurOptions{..} fs = do
   largeMicros <- timeIt $ readEntireFile fs Nothing optLargeFile
   size <- getFileSize (fuseOps fs) optSmallFile
@@ -601,8 +601,8 @@ terminateThread (tid, m_result) = do
 
 
 data RawReadWriteResults = RawReadWriteResults
-  { readTimings :: [Float]
-  , writeTimings :: [Float] }
+  { readTimings :: [Double]
+  , writeTimings :: [Double] }
 
 runInThreads :: Int -> NumIters -> IO a -> IO (MVar [a])
 runInThreads par iters act = runInThread $ do
@@ -675,7 +675,7 @@ readwriteCommand = benchCommand "readers-writer" $ \opts cmdOpts fs -> do
 
 data ReadWriteMixOptions = ReadWriteMixOptions
   { optMixReaderWriter :: ReaderWriterOptions
-  , optMixReadPercentage :: Float }
+  , optMixReadPercentage :: Double }
 
 instance Options ReadWriteMixOptions where
   defineOptions = pure ReadWriteMixOptions
@@ -685,10 +685,10 @@ instance Options ReadWriteMixOptions where
 
 data RawReadWriteMixResults = RawReadWriteMixResults
   { -- (isRead, micros) tuples
-    readWriteMixTimings :: [(Bool, Float)] }
+    readWriteMixTimings :: [(Bool, Double)] }
 
 randomDecisions :: RandomGen g =>
-                   Float -> g -> [Bool]
+                   Double -> g -> [Bool]
 randomDecisions percTrue gen = do
   map (\f -> f < percTrue) (randomRs (0.0, 1.0) gen)
 

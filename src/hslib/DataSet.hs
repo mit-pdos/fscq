@@ -21,7 +21,7 @@ instance DataVal String where
 instance DataVal Int where
   printData = show
 
-instance DataVal Float where
+instance DataVal Double where
   printData = show
 
 instance DataVal Bool where
