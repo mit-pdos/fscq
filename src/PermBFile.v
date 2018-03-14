@@ -263,6 +263,11 @@ Module BFILE.
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     Ret (mk_memstate al ms alc ialc icache (BFcache.add inum dc cache) dblocks).
 
+  Definition get_owner lxp ixp inum fms :=
+  let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
+  let^ (icache, ms, ow) <- INODE.getowner lxp ixp inum icache ms;;
+  Ret ^(mk_memstate al ms alc ialc icache cache dblocks, ow).
+
   Definition set_owner lxp ixp inum tag fms :=
   let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
   let^ (icache, ms) <- INODE.setowner lxp ixp inum tag icache ms;;
@@ -1377,6 +1382,41 @@ Qed.
     erewrite H2 by eauto.
     erewrite H3 by eauto.
     eauto.
+  Qed.
+
+
+  Theorem get_owner_ok :
+    forall lxp bxp ixp inum ms pr,
+    {< F Fm Fi m0 sm m flist ilist allocc frees f,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:bm', hm', RET:^(ms',r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
+           [[ r = INODE.IOwner (selN ilist inum INODE.inode0) ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSDBlocks ms = MSDBlocks ms' ]]
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
+    >} get_owner lxp ixp inum ms.
+  Proof. 
+    unfold get_owner, rep.
+    safestep.
+    sepauto.
+
+    safestep.
+    safestep.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    eauto.
+
+    cancel.
+    rewrite <- H1; cancel; eauto.
   Qed.
 
   Theorem set_owner_ok :
@@ -2661,6 +2701,7 @@ Qed.
  Hint Extern 1 ({{_|_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (get_owner _ _ _ _) _) => apply get_owner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (set_owner _ _ _ _ _) _) => apply set_owner_ok : prog.
    Hint Extern 0 (okToUnify (rep _ _ _ _ _ _ _ _ _ _) (rep _ _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
 

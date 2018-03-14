@@ -239,6 +239,10 @@ Module DIRTREE.
     let^ (mscs, attr) <- BFILE.getattrs (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
     Ret ^(mscs, attr).
 
+  Definition getowner fsxp inum mscs :=
+    let^ (mscs, ow) <- BFILE.get_owner (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
+    Ret ^(mscs, ow).
+
   Definition setattr fsxp inum attr mscs :=
     mscs <- BFILE.setattrs (FSXPLog fsxp) (FSXPInode fsxp) inum attr mscs;;
     Ret mscs.
@@ -889,6 +893,43 @@ Module DIRTREE.
     INODE.AOwner, INODE.iattr0; simpl.
     setoid_rewrite <- encode_public; apply encode_decode.
   Qed.
+
+  Theorem getowner_ok :
+    forall fsxp inum mscs pr,
+    {< F ds sm d pathname Fm Ftop tree f ilist frees,
+    PERM:pr   
+    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm ]]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ r = INODE.IOwner (selN ilist inum INODE.inode0) /\ MSAlloc mscs' = MSAlloc mscs ]]
+    CRASH:bm', hm',
+           LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
+    >} getowner fsxp inum mscs.
+  Proof. 
+    unfold getowner, rep.
+    intros. prestep.
+    intros m Hm; destruct_lift Hm.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    intuition.      
+    pred_apply; cancel.
+    pred_apply; cancel.
+
+    step.
+    step; msalloc_eq.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    cancel.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+    rewrite<- H2; cancel; eauto.
+  Qed.
+
+
   
 
   Theorem namei_ok :
@@ -2105,6 +2146,7 @@ Module DIRTREE.
   Hint Extern 1 ({{_|_}} Bind (truncate _ _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattr _ _ _) _) => apply getattr_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (getowner _ _ _) _) => apply getowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setattr _ _ _ _) _) => apply setattr_ok : prog.
 
  
