@@ -19,6 +19,7 @@ import           System.Random.Shuffle (shuffle')
 
 import           Benchmarking
 import           CfscqFs
+import           DataSet
 import           DbenchExecute
 import           DbenchScript (parseScriptFile)
 import           FscqFs
@@ -145,10 +146,10 @@ getRtsInfo = do
   gc <- getGCFlags
   return $ RtsInfo n (fromIntegral (minAllocAreaSize gc) * 4.0 / 1000 )
 
-rtsValues :: RtsInfo -> [(String, String)]
+rtsValues :: RtsInfo -> [DataValue]
 rtsValues RtsInfo{..} =
-  [ ("capabilities", show rtsN)
-  , ("alloc area MB", show rtsMinAllocMB) ]
+  [ kv "capabilities" rtsN
+  , kv "alloc area MB" rtsMinAllocMB ]
 
 data DataPoint =
   DataPoint { pRts :: RtsInfo
@@ -165,23 +166,17 @@ strVal :: String -> String
 strVal s = let quoted_s = "\"" ++ s ++ "\"" in
              if s == "" || ' ' `elem` s then quoted_s else s
 
-dataValues :: DataPoint -> [(String, String)]
+dataValues :: DataPoint -> [DataValue]
 dataValues DataPoint{..} =
   rtsValues pRts ++
-  [ ("warmup", if pWarmup then "warmup" else "cold")
-  , ("benchmark", strVal pBenchName)
-  , ("category", strVal pBenchCategory)
-  , ("system", strVal pSystem)
-  , ("reps", show pReps)
-  , ("iters", show pIters)
-  , ("par", show pPar)
-  , ("total micros", show pElapsedMicros) ]
-
-valueHeader :: [(String, String)] -> String
-valueHeader kvs = intercalate "\t" (map fst kvs)
-
-valueData :: [(String, String)] -> String
-valueData kvs = intercalate "\t" (map snd kvs)
+  [ kv "warmup" pWarmup
+  , kv "benchmark" pBenchName
+  , kv "category" pBenchCategory
+  , kv "system" pSystem
+  , kv "reps" pReps
+  , kv "iters" pIters
+  , kv "par" pPar
+  , kv "total micros" pElapsedMicros ]
 
 emptyData :: DataPoint
 emptyData = DataPoint { pRts = RtsInfo{ rtsN = 0
@@ -315,7 +310,7 @@ clearTimings :: Filesystem -> IO ()
 clearTimings fs = writeIORef (timings fs) emptyTimings
 
 reportData :: [DataPoint] -> IO ()
-reportData = mapM_ (putStrLn . valueData . dataValues)
+reportData = mapM_ (putStrLn . dataRow . dataValues)
 
 benchCommand :: Options subcmdOpts =>
              String -> (ParOptions -> subcmdOpts -> Filesystem -> IO [DataPoint]) ->
@@ -478,7 +473,7 @@ dbenchCommand = benchCommand "dbench" $ \opts cmdOpts fs ->
 
 headerCommand :: Parcommand ()
 headerCommand = parcommand "print-header" $ \_ (_::NoOptions) -> do
-  putStrLn . valueHeader . dataValues $ emptyData
+  putStrLn . dataHeader . dataValues $ emptyData
 
 type UniqueCtr = [IORef Int]
 
