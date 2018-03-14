@@ -74,7 +74,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: vio proof clean
 
-all: cfscq fscq mkfs parbench diskread translate hslib/dbench_spec
+all: cfscq fscq mkfs parbench fusesearch diskread translate hslib/dbench_spec
 
 -include $(OCAMLFUSE_DEP)
 
