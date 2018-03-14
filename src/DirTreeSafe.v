@@ -239,7 +239,7 @@ Set Implicit Arguments.
   Qed.
 
 
-  Theorem dirlist_safe_mkfile : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks
+  Theorem dirlist_safe_mkfile' : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks
                                       dnum tree_elem name inum m flist' bxp ixp F Fm,
    (Fm * BFILE.rep bxp IFs ixp flist' ilist' frees msc ms icache dblocks)%pred m ->
    (F * inum |-> BFILE.bfile0 )%pred (list2nmem flist') ->
@@ -289,6 +289,66 @@ Set Implicit Arguments.
 
     Unshelve. all: eauto; exact unit.
   Qed.
+
+  Theorem dirlist_safe_mkfile : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks
+                                      dnum tree_elem name inum m flist' bxp ixp F Fm tag,
+   (Fm * BFILE.rep bxp IFs ixp flist' ilist' frees msc ms icache dblocks)%pred m ->
+   (F * inum |-> {| BFILE.BFData := [];
+                    BFILE.BFAttr := (INODE.iattr_upd INODE.iattr0
+                    (INODE.UOwner (encode_tag tag)));
+                    BFILE.BFCache:= None |} )%pred (list2nmem flist') ->
+    BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
+    tree_names_distinct (TreeDir dnum tree_elem) ->
+    ~ In name (map fst tree_elem) ->
+    dirtree_safe ilist  freeblocks (TreeDir dnum tree_elem)
+                 ilist' freeblocks' (TreeDir dnum (tree_elem ++
+                        [(name, TreeFile inum {| DFData := [];
+                                                 DFAttr := (INODE.iattr_upd INODE.iattr0
+                                                 (INODE.UOwner (encode_tag tag)))|} )])).
+  Proof.
+    unfold dirtree_safe, BFILE.ilist_safe; intuition.
+    denote (forall _, _ ) as Hx; denote (BFILE.block_belong_to_file) as Hy.
+    specialize (Hx _ _ _ Hy); destruct Hx.
+    2: right; intuition.  (* Unused block. *)
+    destruct pathname.
+    simpl in *; congruence.
+
+    denote tree_names_distinct as Hz; inversion Hz; subst.
+    apply find_subtree_ents_rev_nodup in H1.
+    rewrite rev_app_distr in H1; simpl in *.
+    destruct (string_dec name s); subst; eauto.
+
+    - (* Same filename; contradiction because the file is empty *)
+      exfalso.
+      destruct pathname; simpl in *; try congruence.
+
+      inversion H1; subst.
+      unfold BFILE.rep in H; destruct_lift H.
+      unfold BFILE.block_belong_to_file in Hy; intuition subst.
+      extract.
+      eapply list2nmem_sel in H0; rewrite <- H0 in *.
+      setoid_rewrite ListPred.listmatch_length_pimpl in H at 2.
+      destruct_lift H; rewrite map_length in *.
+      denote (0 = _) as Heq; rewrite <- Heq in *.
+      denote (off < _) as Hlt; inversion Hlt.
+    - (* Different filename *)
+      left; intuition.
+      do 2 eexists.
+      rewrite <- rev_involutive with (l := tree_elem).
+      apply find_subtree_ents_rev_nodup.
+      rewrite map_rev.
+      apply NoDup_rev_1; auto.
+      eassign (s :: pathname); simpl; eauto.
+
+    - rewrite map_app; simpl.
+      apply NoDup_app_comm; simpl.
+      constructor; auto.
+
+    Unshelve. all: eauto; exact unit.
+  Qed.
+
+
+  
 
   Lemma dirtree_safe_update_subtree : forall ilist frees tree ilist' frees' tree' inum pathname f f',
     dirtree_safe ilist frees tree ilist' frees' tree' ->
