@@ -1,11 +1,8 @@
-Require Import BFile.
-Require Import SepAuto.
+Require Import PermBFile.
 Require Import Pred.
-Require Import Array.
-Require Import AsyncDisk.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
-Require Import GenSepN.
+Require Import PermGenSepN.
 Require Import Arith.
 Require Import Omega.
 Require Import List.

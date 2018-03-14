@@ -1,15 +1,12 @@
-Require Import Prog.
 Require Import Word.
 Require Import Rec.
 Require Import List.
-Require Import Pred PredCrash.
+Require Import Pred.
 Require Import Eqdep_dec.
 Require Import Arith.
-Require Import Hoare.
-Require Import SepAuto.
-Require Import Cache.
-Require Import AsyncDisk.
+Require Import PermCacheDef.
 Require Import Omega.
+Require Import PermSepAuto.
 Require Import FSLayout.
 
 Import ListNotations.
@@ -123,7 +120,7 @@ Module SB.
   Qed.
 
   Definition v_pickle_superblock (fsxp : fs_xparams) : valu.
-    remember (pickle_superblock fsxp) as sb; clear Heqsb.
+    pose proof (pickle_superblock fsxp) as sb.
     rewrite superblock_padded_len in *.
     exact sb.
   Defined.
@@ -155,62 +152,88 @@ Module SB.
   Definition rep (fsxp : fs_xparams) : rawpred :=
     ([[ fs_xparams_ok fsxp ]] *
      [[ FSXPMagic fsxp = magic_number ]] *
-     0 |+> (v_pickle_superblock fsxp, nil))%pred.
+     0 |+>((Public, v_pickle_superblock fsxp), nil))%pred.
 
   Definition load cs :=
-    let^ (cs, v) <- BUFCACHE.read 0 cs;
+    let^ (cs, v) <- PermCacheDef.read 0 cs;;
+    v <- Unseal v;;
     Ret ^(cs, v_unpickle_superblock v).
 
-  Theorem load_ok : forall cs,
+  Theorem load_ok :
+    forall cs pr,
     {< m F fsxp,
-    PRE:hm
-      BUFCACHE.rep cs m * [[ (F * rep fsxp)%pred m ]]
-    POST:hm' RET:^(cs',r)
-      BUFCACHE.rep cs' m * [[ r = fsxp ]]
-    CRASH:hm'
-      exists cs', BUFCACHE.rep cs' m
+    PERM:pr   
+    PRE:bm, hm,
+       PermCacheDef.rep cs m bm * [[ (F * rep fsxp)%pred m ]]
+    POST:bm', hm', RET:^(cs',r)
+       PermCacheDef.rep cs' m bm' * [[ r = fsxp ]]
+    CRASH:bm', hm',
+      exists cs',  PermCacheDef.rep cs' m bm'
     >} load cs.
   Proof.
     unfold load, rep.
     hoare.
+    unfold can_access; destruct pr; auto.
     apply v_pickle_unpickle_superblock; auto.
+    eexists; repeat (eapply hashmap_subset_trans; eauto).
   Qed.
 
   Definition init fsxp cs :=
-    cs <- BUFCACHE.write 0 (v_pickle_superblock fsxp) cs;
-    cs <- BUFCACHE.begin_sync cs;
-    cs <- BUFCACHE.sync 0 cs;
-    cs <- BUFCACHE.end_sync cs;
+    h <- Seal Public (v_pickle_superblock fsxp);;
+    cs <- PermCacheDef.write 0 h cs;;
+    cs <- PermCacheDef.begin_sync cs;;
+    cs <- PermCacheDef.sync 0 cs;;
+    cs <- PermCacheDef.end_sync cs;;
     Ret cs.
 
-  Theorem init_ok : forall fsxp cs,
+  Theorem init_ok :
+    forall fsxp cs pr,
     {< m F,
-    PRE:hm
-      BUFCACHE.rep cs m * 
+    PERM:pr   
+    PRE:bm, hm,
+      PermCacheDef.rep cs m bm * 
       [[ fs_xparams_ok fsxp ]] *
       [[ FSXPMagic fsxp = magic_number ]] *
       [[ (F * 0 |->?)%pred m ]] *
       [[ sync_invariant F ]]
-    POST:hm' RET:cs
+    POST:bm', hm', RET:cs
       exists m',
-      BUFCACHE.rep cs m' * [[ (F * rep fsxp)%pred m' ]]
-    XCRASH:hm'
-      exists cs' m' vs, BUFCACHE.rep cs' m' * 
+      PermCacheDef.rep cs m' bm' * [[ (F * rep fsxp)%pred m' ]]
+    XCRASH:bm', hm',
+      exists cs' m' vs, PermCacheDef.rep cs' m' bm' * 
       [[ (F * 0 |+> vs)%pred m' ]]
     >} init fsxp cs.
   Proof.
     unfold rep, init.
     step.
-    rewrite ptsto_pimpl_ptsto_subset; cancel.
-    hoare.
+    unfold can_access; destruct pr; auto.
+    safestep.
+    eassign F_; cancel.
+    eapply PermCacheLemmas.block_mem_subset_rep; eauto.
+    apply Mem.upd_eq; auto.
+    pred_apply; rewrite ptsto_pimpl_ptsto_subset; cancel.
+    eassign F; cancel.
+    auto.
+    step.
+    safestep.
+    eassign F_; cancel.
+    all: eauto.
+    safestep.
+    eassign F_; cancel.
+    all: eauto.
+    step.
+    step.
+    eexists; repeat (eapply hashmap_subset_trans; eauto).
+    all: rewrite <- H1; cancel; eauto.
+    all: try cancel; try solve [eexists; repeat (eapply hashmap_subset_trans; eauto)].
     xcrash.
     xcrash.
-    xcrash.
-    xcrash.
+    Unshelve.
+    all: unfold Mem.EqDec; apply handle_eq_dec.
   Qed.
 
-  Hint Extern 1 ({{_}} Bind (load _) _) => apply load_ok : prog.
-  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (load _) _) => apply load_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.
 
   Theorem crash_xform_rep : forall fsxp,
     crash_xform (rep fsxp) <=p=> rep fsxp.

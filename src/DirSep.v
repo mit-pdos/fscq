@@ -4,9 +4,8 @@ Require Import DirTree.
 Require Import String.
 Require Import Mem.
 Require Import List.
-Require Import SepAuto.
-Require Import BFile.
-Require Import AsyncDisk.
+Require Import PermSepAuto.
+Require Import PermBFile.
 Require Import FunctionalExtensionality.
 Require Import DirTreePath.
 Require Import DirTreeNames.

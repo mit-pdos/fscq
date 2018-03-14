@@ -24,7 +24,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermBFile PermBFileCrash PermFileRecArray \
 	      PermDir PermDirName PermDirCache \
 	      DirTreePath DirTreeDef DirTreePred DirTreeRep \
-	      DirTreeNames DirTreeInodes DirTreeSafe DirTree
+	      DirTreeNames DirTreeInodes DirTreeSafe DirTree \
+	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

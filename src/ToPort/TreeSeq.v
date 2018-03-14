@@ -1,26 +1,14 @@
-Require Import Prog.
-Require Import Log.
-Require Import BFile.
 Require Import Word.
 Require Import Omega.
-Require Import Hashmap.   (* must go before basicprog, because notation using hashmap *)
-Require Import BasicProg.
 Require Import Bool.
-Require Import Pred PredCrash.
-Require Import DiskSet.
-Require Import DirTree.
+Require Import Pred.
+(* Require Import DiskSet. *)
 Require Import Pred.
 Require Import String.
 Require Import List.
-Require Import BFile.
-Require Import Inode.
-Require Import Hoare.
-Require Import GenSepN.
+Require Import PermGenSepN.
 Require Import ListPred.
-Require Import SepAuto.
-Require Import Idempotent.
-Require Import AsyncDisk.
-Require Import Array.
+(* Require Import Idempotent. *)
 Require Import ListUtils.
 Require Import DirTree.
 Require Import DirSep.
@@ -41,7 +29,8 @@ Require Import DirTreePred.
 Require Import DirTreeNames.
 Require Import DirTreeInodes.
 Require Import DirTreeSafe.
-
+Require Import DirTree.
+Require Import PermBFile.
 
 Import DIRTREE.
 Import ListNotations.

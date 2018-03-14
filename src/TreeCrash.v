@@ -1,25 +1,19 @@
-Require Import DirName.
-Require Import Balloc.
-Require Import Prog.
-Require Import BasicProg.
+Require Import PermDirName.
+Require Import PermBalloc.
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec Inode.
+Require Import PermBFile Bytes Rec PermInode.
 Require Import String.
 Require Import FSLayout.
-Require Import Pred PredCrash.
+Require Import Pred.
 Require Import Arith.
-Require Import GenSepN.
+Require Import PermGenSepN.
 Require Import List ListUtils.
-Require Import Hoare.
-Require Import Log.
-Require Import SepAuto.
-Require Import Array.
+Require Import PermArray.
 Require Import FunctionalExtensionality.
-Require Import AsyncDisk.
-Require Import DiskSet.
+Require Import PermDiskSet.
 Require Import GenSepAuto.
-Require Import BFileCrash.
+Require Import PermBFileCrash.
 Require Import Omega.
 Require Import DirTreeDef.
 Require Import DirTreeRep.
@@ -29,7 +23,7 @@ Require Import DirTreeInodes.
 
 Import ListNotations.
 
-Module SDIR := DirCache.CacheOneDir.
+Module SDIR := PermDirCache.CacheOneDir.
 
 Set Implicit Arguments.
 
@@ -190,12 +184,12 @@ Module DTCrash.
     rewrite flist_crash_xform_lift_empty.
     rewrite flist_crash_xform_ptsto. cancel. eauto.
   Qed.
-
-  Lemma xform_tree_rep : forall xp F t ilist frees ms msll',
-     crash_xform (rep xp F t ilist frees ms) =p=> 
+(*
+  Lemma xform_tree_rep : forall xp F t ilist frees sm ms msll',
+     crash_xform (rep xp F t ilist frees ms sm) =p=> 
      exists t',
       [[ tree_crash t t' ]] * 
-      rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty msll').
+      rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty msll') sm.
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -220,7 +214,7 @@ Module DTCrash.
   Grab Existential Variables.
     all: exact (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 1)).
   Qed.
-
+*)
   Theorem tree_crash_find_name :
     forall fnlist t t' subtree,
     tree_crash t t' ->

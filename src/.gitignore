@@ -34,3 +34,4 @@ Makefile.coqproof
 *.cmxa
 *.prof
 /hslib/libopfuse.a
+/.lia.cache
