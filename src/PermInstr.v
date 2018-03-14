@@ -35,6 +35,7 @@ Proof.
   }
 Qed.
 
+(*
 Lemma permission_drop_secure:
   forall d bm pr1 pr2 T (p: prog T) hm,
     permission_secure d bm hm pr1 p ->
@@ -48,7 +49,7 @@ Proof.
   specialize (H _ _ _ H1); intuition.
   eapply trace_secure_match; eauto.
 Qed.
-
+*)
 Hint Resolve HS_nil.
 
 Definition false_pred {AT AEQ V}:= lift_empty(False)(AT:=AT)(AEQ:=AEQ)(V:=V).
@@ -62,6 +63,102 @@ Proof.
 Qed.
 
 Hint Unfold false_pred: hoare_unfold.
+
+Lemma auth_secure:
+  forall pr t,
+    {!< F,
+       PERM: pr
+       PRE: bm, hm,
+         F
+       POST: bm', hm',
+          RET : i
+        F * (([[ i = true ]] * [[ can_access pr t ]]) \/
+            ([[ i = false ]] * [[ ~can_access pr t ]]))    
+       CRASH: bm'', hm'',
+          false_pred (* Can't crash *)
+     >!} Auth t.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_l; cancel.
+    split; auto.
+    clear H0; eapply bind_secure; intuition.  
+    unfold permission_secure; intros.
+    inv_exec_perm; cleanup; auto.
+    simpl; eauto.
+    simpl; eauto.
+    
+    unfold permission_secure; intros.
+    clear H1.
+    inv_exec_perm; cleanup; auto.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_l; cancel.
+    intuition.
+  }
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_r; cancel.
+    split; auto.
+    clear H0; eapply bind_secure; intuition.  
+    unfold permission_secure; intros.
+    inv_exec_perm; cleanup; auto.
+    simpl; eauto.
+    simpl; eauto.
+    
+    unfold permission_secure; intros.
+    clear H1.
+    inv_exec_perm; cleanup; auto.
+    intuition.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_r; cancel.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    split.
+    right; do 3 eexists; intuition.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_l; cancel.
+    split_ors; cleanup; try congruence.
+    eapply bind_secure; intuition.
+    unfold permission_secure; intros.
+    inv_exec_perm; cleanup; auto.
+    simpl; eauto.
+    simpl; eauto.
+    unfold permission_secure; intros.
+    inv_exec_perm; cleanup; auto.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_l; cancel.
+    intuition.
+  }
+  {
+    split.
+    right; do 3 eexists; intuition.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_r; cancel.
+    split_ors; cleanup; try congruence.
+    eapply bind_secure; intuition.
+    unfold permission_secure; intros.
+    inv_exec_perm; cleanup; auto.
+    simpl; eauto.
+    simpl; eauto.
+    unfold permission_secure; intros.
+    inv_exec_perm; cleanup; auto.
+    intuition.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_r; cancel.
+  }
+Qed.
 
 
 Lemma read_secure:
@@ -833,6 +930,7 @@ Hint Extern 1 ({{_|_}} Bind (Hash _) _) => apply hash_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (Hash2 _ _) _) => apply hash2_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (HashHandle _) _) => apply hashhandle_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (HashHandle2 _ _) _) => apply hashhandle2_ok : prog.
+Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply hashhandle2_ok : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.
 

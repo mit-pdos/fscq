@@ -33,6 +33,11 @@ Definition handle_eq_dec:= Nat.eq_dec.
 Definition tagged_disk:= rawdisk.
 Definition block_mem:= @Mem.mem handle handle_eq_dec tagged_block.
 
+(* Axiom finite_map : forall A AEQ V (m : @mem A AEQ V), exists a, m a = None. *)
+Axiom can_access: perm -> tag -> Prop.
+Axiom can_access_public: forall pr, can_access pr Public.
+Hint Resolve can_access_public.
+
 Inductive result : Type :=
 | Finished : forall T, tagged_disk -> block_mem -> hashmap -> T -> result
 | Crashed : tagged_disk -> block_mem -> hashmap -> result.
@@ -47,6 +52,7 @@ Inductive prog : Type -> Type :=
 | Hash2 (sz1 sz2: nat) (buf1 : word sz1) (buf2 : word sz2) : prog (word hashlen)
 | HashHandle : handle -> prog (word hashlen)
 | HashHandle2 (h:handle) (sz: nat) (buf: word sz) : prog (word hashlen)
+| Auth : tag -> prog bool
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
 
@@ -73,6 +79,14 @@ Inductive exec:
                       
 | ExecSync : forall pr d bm hm tr,
                exec pr tr d bm hm (Sync) (Finished (sync_mem d) bm hm tt) tr
+
+| ExecAuthSucc : forall pr d bm hm tr t,
+               can_access pr t ->
+               exec pr tr d bm hm (Auth t) (Finished d bm hm true) tr
+
+| ExecAuthFail : forall pr d bm hm tr t,
+               ~can_access pr t ->
+               exec pr tr d bm hm (Auth t) (Finished d bm hm false) tr
 
 | StepHash : forall pr d bm hm tr sz (buf : word sz) h,
                hash_safe hm h buf ->

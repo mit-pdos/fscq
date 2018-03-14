@@ -7,33 +7,7 @@ Require Export PermProgAuto.
 
 Set Implicit Arguments.
 
-Axiom finite_map : forall A AEQ V (m : @mem A AEQ V), exists a, m a = None.
-
-Definition permitted (pr pr': perm) :=
-  match pr' with
-  | None => True
-  | Some o' =>
-    match pr with
-    | None => False
-    | Some o => o = o'
-    end
-  end.
-
-
-Definition can_access (pr: perm) t :=
-  match pr with
-  | None =>
-    match t with
-    | Private _ => False
-    | _ => True
-    end
-  | Some o =>
-    match t with
-    | Private o' => o = o'
-    | _ => True
-    end
-  end.
-
+(* Axiom finite_map : forall A AEQ V (m : @mem A AEQ V), exists a, m a = None. *)
 
 Definition op_secure pr o :=
   match o with
@@ -53,7 +27,7 @@ Definition permission_secure {T} d bm hm pr (p: prog T) :=
   forall tr tr' r,
     exec pr tr d bm hm p r (tr'++tr) ->
     trace_secure pr tr'.
-
+(*
 Lemma can_access_trans:
   forall t pr pr',
     can_access pr' t ->
@@ -84,7 +58,7 @@ Proof.
   destruct pr'; try congruence.  
   intuition.
 Qed.
-
+*)
 Lemma trace_app:
   forall  T (p: prog T) pr d bm hm tr r tr',
     exec pr tr d bm hm p r tr' ->
@@ -104,7 +78,7 @@ Lemma trace_secure_app:
 Proof.
   induction tr1; simpl in *; intuition.
 Qed.
-
+(*
 Lemma trace_secure_permitted:
   forall pr1 pr2 tr,
     trace_secure pr1 tr ->
@@ -149,3 +123,4 @@ Proof.
   subst; simpl; intuition.
   eapply op_secure_not_escalating; eauto.
 Qed.
+*)
