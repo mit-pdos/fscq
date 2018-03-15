@@ -12,6 +12,7 @@ import Foreign.C.Error
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
+import System.IO
 import System.FilePath.Posix
 import Word
 import Disk
@@ -115,6 +116,7 @@ initFscq disk_fn silent getIds = do
           set_nblocks_disk ds $ fromIntegral $ coq_FSXPMaxBlock fsxp
           return (s, fsxp)
   unless silent $ putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
+  hFlush stdout
   ref <- newMVar s
   m_fsxp <- newMVar fsxp
   return $ Filesystem (fscqFSOps getIds disk_fn ds (doFScall fscqSt ref) m_fsxp) (I.timings fscqSt)

@@ -13,6 +13,7 @@ import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
 import System.FilePath.Posix
+import System.IO
 import Word
 import Disk
 import CCLProg
@@ -127,6 +128,7 @@ initCfscq disk_fn silent getIds = do
           set_nblocks_disk ds $ fromIntegral $ coq_FSXPMaxBlock fsxp_val
           return (mscs0, fsxp_val)
   unless silent $ putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp_val) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp_val)
+  hFlush stdout
   s <- I.newState ds
   fsP <- I.run s (CFS.init fsxp_val mscs0)
   return $ Filesystem (fscqFSOps getIds disk_fn ds (doFScall s) s fsP) (I.timings s)

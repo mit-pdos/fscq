@@ -95,8 +95,8 @@ newtype FsHandle = FsHandle { procHandle :: ProcessHandle }
 
 hReadTill :: Handle -> (String -> Bool) -> IO ()
 hReadTill h p = do
-  done <- p <$> hGetLine h
-  if done then return () else hReadTill h p
+  line <- hGetLine h
+  if p line then return () else hReadTill h p
 
 startFs :: App FsHandle
 startFs = do
@@ -105,6 +105,7 @@ startFs = do
   (_, Just hout, _, ph) <- liftIO $ createProcess
     cp{ std_in=NoStream
       , std_out=CreatePipe }
+  liftIO $ hSetBinaryMode hout True
   liftIO $ hReadTill hout ("Starting file system" `isPrefixOf`)
   debug "==> started file system"
   return $ FsHandle ph
