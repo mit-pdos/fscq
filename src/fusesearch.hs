@@ -67,6 +67,8 @@ optsData = do
                     , pWarmup=optWarmup
                     , pSystem=if optFscq then "fscq" else "cfscq"
                     , pPar=optN
+                    , pIters=1
+                    , pReps=1
                     , pBenchName="ripgrep"
                     , pBenchCategory=optCategory }
 
@@ -141,10 +143,10 @@ withFs act = bracket startFs stopFs (\_ -> act)
 
 fuseSearch :: App ()
 fuseSearch = do
+  warmup <- reader optWarmup
   t <- withFs $ do
-    warmup <- reader optWarmup
-    debug "==> warmup done"
     when warmup $ parSearch
+    debug "==> warmup done"
     timeIt parSearch
   p <- optsData
   liftIO $ reportData [p{pElapsedMicros=t}]
