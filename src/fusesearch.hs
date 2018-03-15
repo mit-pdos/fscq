@@ -24,7 +24,8 @@ data FuseSearchOptions = FuseSearchOptions
   , optN :: Int
   , optSearchDir :: FilePath
   , optSearchQuery :: String
-  , optCategory :: String }
+  , optCategory :: String
+  , optVerbose :: Bool }
 
 instance Options FuseSearchOptions where
   defineOptions = pure FuseSearchOptions
@@ -48,6 +49,8 @@ instance Options FuseSearchOptions where
         "string to search for"
     <*> simpleOption "category" ""
         "category field to use for output data"
+    <*> simpleOption "verbose" False
+        "print debug messages for fusesearch"
 
 type AppPure a = forall m. Monad m => ReaderT FuseSearchOptions m a
 type App a = ReaderT FuseSearchOptions IO a
@@ -65,6 +68,11 @@ optsData = do
                     , pBenchName="ripgrep"
                     , pBenchCategory=optCategory }
 
+debug :: String -> App ()
+debug s = do
+  v <- reader optVerbose
+  when v (liftIO $ hPutStrLn stderr s)
+
 splitArgs :: String -> [String]
 splitArgs = words
 
@@ -76,6 +84,13 @@ fsProcess = ask >>= \FuseSearchOptions{..} -> do
     ++ ["--", "-f"]
     ++ if optFuseOptions == "" then [] else ["-o", optFuseOptions]
 
+debugProc :: CreateProcess -> App ()
+debugProc cp = do
+  let cmd = case cmdspec cp of
+        ShellCommand s -> s
+        RawCommand bin args -> showCommandForUser bin args
+  debug $ "> " ++ cmd
+
 newtype FsHandle = FsHandle { procHandle :: ProcessHandle }
 
 hReadTill :: Handle -> (String -> Bool) -> IO ()
@@ -86,24 +101,26 @@ hReadTill h p = do
 startFs :: App FsHandle
 startFs = do
   cp <- fsProcess
-  liftIO $ do
-    (_, Just hout, _, ph) <- createProcess
-      cp{ std_in=NoStream
-        , std_out=CreatePipe }
-    hReadTill hout ("Starting file system" `isPrefixOf`)
-    return $ FsHandle ph
+  debugProc cp
+  (_, Just hout, _, ph) <- liftIO $ createProcess
+    cp{ std_in=NoStream
+      , std_out=CreatePipe }
+  liftIO $ hReadTill hout ("Starting file system" `isPrefixOf`)
+  debug "==> started file system"
+  return $ FsHandle ph
 
 stopFs :: FsHandle -> App ()
 stopFs FsHandle{..} = do
   mountPath <- reader optMountPath
-  liftIO $ do
-    callProcess "fusermount" $ ["-u", mountPath]
-    e <- waitForProcess procHandle
-    case e of
-      ExitSuccess -> return ()
-      ExitFailure _ -> do
-        hPutStrLn stderr "filesystem terminated badly"
-        exitWith e
+  liftIO $ callProcess "fusermount" $ ["-u", mountPath]
+  debug $ "unmounted " ++ mountPath
+  e <- liftIO $ waitForProcess procHandle
+  debug $ "==> file system shut down"
+  case e of
+    ExitSuccess -> return ()
+    ExitFailure _ -> liftIO $ do
+      hPutStrLn stderr "filesystem terminated badly"
+      exitWith e
 
 parSearch :: App ()
 parSearch = ask >>= \FuseSearchOptions{..} -> liftIO $ do
@@ -125,6 +142,7 @@ fuseSearch :: App ()
 fuseSearch = do
   t <- withFs $ do
     warmup <- reader optWarmup
+    debug "==> warmup done"
     when warmup $ parSearch
     timeIt parSearch
   p <- optsData
