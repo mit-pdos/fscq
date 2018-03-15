@@ -43,7 +43,7 @@ instance Options FuseSearchOptions where
         "warmup before timing search"
     <*> simpleOption "n" 1
         "parallelism to use in ripgrep"
-    <*> simpleOption "dir" "/search-benchmarks/coq"
+    <*> simpleOption "dir" "search-benchmarks/coq"
         "directory to search in"
     <*> simpleOption "query" "dependency graph"
         "string to search for"
@@ -124,12 +124,14 @@ stopFs FsHandle{..} = do
       exitWith e
 
 parSearch :: App ()
-parSearch = ask >>= \FuseSearchOptions{..} -> liftIO $ do
-  _ <- readCreateProcess
-    (proc "rg" $ [ "-j", show optN
+parSearch = do
+  FuseSearchOptions{..} <- ask
+  let cp = proc "rg" $ [ "-j", show optN
                  , "-u", "-c"
                  , optSearchQuery
-                 , optSearchDir]){ cwd=Just optMountPath } ""
+                 , optSearchDir]
+  debugProc cp
+  _ <- liftIO $ readCreateProcess cp{ cwd=Just optMountPath } ""
   return ()
 
 withFs :: App a -> App a
