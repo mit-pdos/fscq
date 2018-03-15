@@ -74,7 +74,7 @@ fsProcess = ask >>= \FuseSearchOptions{..} -> do
   return $ proc binary $ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
     ++ [optDiskImg, optMountPath]
     ++ ["--", "-f"]
-    ++ ["-o"] ++ splitArgs optFuseOptions
+    ++ if optFuseOptions == "" then [] else "-o":optFuseOptions
 
 newtype FsHandle = FsHandle { procHandle :: ProcessHandle }
 
