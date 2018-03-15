@@ -14,6 +14,7 @@ import DataSet
 
 import Options
 import System.Process
+import System.FilePath.Posix (joinPath)
 
 data FuseSearchOptions = FuseSearchOptions
   { optDiskImg :: FilePath
@@ -130,9 +131,9 @@ parSearch = do
   let cp = proc "rg" $ [ "-j", show optN
                  , "-u", "-c"
                  , optSearchQuery
-                 , optSearchDir]
+                 , joinPath [optMountPath,optSearchDir] ]
   debugProc cp
-  _ <- liftIO $ readCreateProcess cp{ cwd=Just optMountPath } ""
+  _ <- liftIO $ readCreateProcess cp ""
   return ()
 
 withFs :: App a -> App a
