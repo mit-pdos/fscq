@@ -42,7 +42,7 @@ instance Options FuseSearchOptions where
         "warmup before timing search"
     <*> simpleOption "n" 1
         "parallelism to use in ripgrep"
-    <*> simpleOption "dir" "/coq"
+    <*> simpleOption "dir" "/search-benchmarks/coq"
         "directory to search in"
     <*> simpleOption "query" "dependency graph"
         "string to search for"
@@ -74,7 +74,7 @@ fsProcess = ask >>= \FuseSearchOptions{..} -> do
   return $ proc binary $ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
     ++ [optDiskImg, optMountPath]
     ++ ["--", "-f"]
-    ++ if optFuseOptions == "" then [] else "-o":optFuseOptions
+    ++ if optFuseOptions == "" then [] else ["-o", optFuseOptions]
 
 newtype FsHandle = FsHandle { procHandle :: ProcessHandle }
 
