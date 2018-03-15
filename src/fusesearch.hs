@@ -1,11 +1,12 @@
 {-# LANGUAGE RecordWildCards, Rank2Types #-}
 module Main where
 
+import Control.Monad.Catch (bracket)
 import Control.Monad (when)
 import Control.Monad.Reader
 import Data.List (isPrefixOf)
-import System.IO
 import System.Exit
+import System.IO
 
 import Benchmarking
 import BenchmarkingData
@@ -135,11 +136,7 @@ parSearch = do
   return ()
 
 withFs :: App a -> App a
-withFs act = do
-  fsh <- startFs
-  r <- act
-  stopFs fsh
-  return r
+withFs act = bracket startFs stopFs (\_ -> act)
 
 fuseSearch :: App ()
 fuseSearch = do
