@@ -592,20 +592,22 @@ readWriteData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteResults{..
           , pIters=length writeTimings }
   return (readPoints ++ writePoints)
 
-warmupReadWrite :: ParOptions -> ReaderWriterOptions -> Filesystem -> IO UniqueCtr
-warmupReadWrite opts@ParOptions{..} cmdOpts fs = do
+warmupReadWrite :: ParOptions ->
+                   IO a -> (UniqueCtr -> ThreadNum -> IO b) ->
+                   IO UniqueCtr
+warmupReadWrite opts@ParOptions{..} readOp writeOp = do
   -- sometimes we have a writer thread but no readers
   ctr <- initUnique (max 1 optN)
   when optWarmup $ do
-    rwRead opts cmdOpts fs
-    rwWrite opts cmdOpts fs ctr 0
+    _ <- readOp
+    _ <- writeOp ctr 0
     logVerbose opts "===> warmup done <==="
   return ctr
 
 runReadersWriter :: ParOptions -> ReaderWriterOptions -> Filesystem ->
                     IO [DataPoint]
 runReadersWriter opts cmdOpts fs = do
-  ctr <- warmupReadWrite opts cmdOpts fs
+  ctr <- warmupReadWrite opts (rwRead opts cmdOpts fs) (rwWrite opts cmdOpts fs)
   performMajorGC
   raw <- pickAndRunIters opts $
     readwriteIterate opts cmdOpts fs ctr
@@ -615,16 +617,6 @@ runReadersWriter opts cmdOpts fs = do
 readwriteCommand :: Parcommand ()
 readwriteCommand = benchCommand "readers-writer" $ \opts cmdOpts fs -> do
   runReadersWriter opts cmdOpts fs
-
-data ReadWriteMixOptions = ReadWriteMixOptions
-  { optMixReaderWriter :: ReaderWriterOptions
-  , optMixReadPercentage :: Double }
-
-instance Options ReadWriteMixOptions where
-  defineOptions = pure ReadWriteMixOptions
-    <*> defineOptions
-    <*> simpleOption "read-perc" 0.5
-        "percentage of reads to issue"
 
 data RawReadWriteMixResults = RawReadWriteMixResults
   { -- (isRead, micros) tuples
@@ -636,26 +628,39 @@ randomDecisions percTrue gen = do
   map (\f -> f < percTrue) (randomRs (0.0, 1.0) gen)
 
 randomReadWrites :: RandomGen g =>
-                    ParOptions -> ReadWriteMixOptions -> Filesystem ->
-                    g -> UniqueCtr -> ThreadNum -> NumIters -> IO RawReadWriteMixResults
-randomReadWrites opts ReadWriteMixOptions{..} fs gen ctr tid iters =
-  let isReads = take iters $ randomDecisions optMixReadPercentage gen in do
+                    Double ->
+                    g -> NumIters ->
+                    -- read and write ops
+                    IO a -> IO b ->
+                    IO RawReadWriteMixResults
+randomReadWrites readPerc gen iters readOp writeOp =
+  let isReads = take iters $ randomDecisions readPerc gen in do
   timings <- forM isReads $ \isRead -> do
-    t <- if isRead
-         then timeIt $ rwRead opts optMixReaderWriter fs
-         else timeIt $ rwWrite opts optMixReaderWriter fs ctr tid
+    t <- if isRead then timeIt $ readOp else timeIt $ writeOp
     return (isRead, t)
   return $ RawReadWriteMixResults timings
 
-parRandomReadWrites :: ParOptions -> ReadWriteMixOptions -> Filesystem ->
-                       UniqueCtr -> NumIters -> IO RawReadWriteMixResults
-parRandomReadWrites opts@ParOptions{..} cmdOpts fs ctr iters = do
+parRandomReadWrites :: ParOptions -> Double ->
+                       IO a -> (ThreadNum -> IO b) ->
+                       NumIters ->
+                       IO RawReadWriteMixResults
+parRandomReadWrites ParOptions{..} readPerc readOp writeOp iters = do
   gens <- replicateM optN newStdGen
   m_results <- forM (zip [0..] gens) $ \(tid, gen) ->
-    runInThread $ randomReadWrites opts cmdOpts fs gen ctr tid iters
+    runInThread $ randomReadWrites readPerc gen iters readOp (writeOp tid)
   threadResults <- mapM takeMVar m_results
   -- TODO: should we report results from every thread?
   return $ head threadResults
+
+data ReadWriteMixOptions = ReadWriteMixOptions
+  { optMixReaderWriter :: ReaderWriterOptions
+  , optMixReadPercentage :: Double }
+
+instance Options ReadWriteMixOptions where
+  defineOptions = pure ReadWriteMixOptions
+    <*> defineOptions
+    <*> simpleOption "read-perc" 0.5
+        "percentage of reads to issue"
 
 rwMixData :: ParOptions -> ReadWriteMixOptions -> RawReadWriteMixResults -> IO [DataPoint]
 rwMixData opts@ParOptions{..} ReadWriteMixOptions{..} RawReadWriteMixResults{..} = do
@@ -671,10 +676,12 @@ rwMixData opts@ParOptions{..} ReadWriteMixOptions{..} RawReadWriteMixResults{..}
 runReadWriteMix :: ParOptions -> ReadWriteMixOptions -> Filesystem ->
                    IO [DataPoint]
 runReadWriteMix opts cmdOpts@ReadWriteMixOptions{..} fs = do
-  ctr <- warmupReadWrite opts optMixReaderWriter fs
+  let readOp = rwRead opts optMixReaderWriter fs
+      writeOp = rwWrite opts optMixReaderWriter fs
+  ctr <- warmupReadWrite opts readOp writeOp
   performMajorGC
   raw <- pickAndRunIters opts $
-    parRandomReadWrites opts cmdOpts fs ctr
+    parRandomReadWrites opts optMixReadPercentage readOp (writeOp ctr)
   ps <- rwMixData opts cmdOpts raw
   return ps
 
