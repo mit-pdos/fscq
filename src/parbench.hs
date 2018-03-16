@@ -662,32 +662,93 @@ instance Options ReadWriteMixOptions where
     <*> simpleOption "read-perc" 0.5
         "percentage of reads to issue"
 
-rwMixData :: ParOptions -> ReadWriteMixOptions -> RawReadWriteMixResults -> IO [DataPoint]
-rwMixData opts@ParOptions{..} ReadWriteMixOptions{..} RawReadWriteMixResults{..} = do
+rwMixData :: ParOptions -> ReaderWriterOptions -> RawReadWriteMixResults -> IO [DataPoint]
+rwMixData opts@ParOptions{..} ReaderWriterOptions{..} RawReadWriteMixResults{..} = do
   p <- optsData opts
   let for = flip map
       ps = for readWriteMixTimings $ \(isRead, f) ->
         p { pBenchCategory=if isRead then "r" else "w"
-          , pReps=if isRead then optReps else optWriteReps optMixReaderWriter
+          , pReps=if isRead then optReps else optWriteReps
           , pElapsedMicros=f
           , pIters=length readWriteMixTimings }
   return ps
 
 runReadWriteMix :: ParOptions -> ReadWriteMixOptions -> Filesystem ->
                    IO [DataPoint]
-runReadWriteMix opts cmdOpts@ReadWriteMixOptions{..} fs = do
+runReadWriteMix opts ReadWriteMixOptions{..} fs = do
   let readOp = rwRead opts optMixReaderWriter fs
       writeOp = rwWrite opts optMixReaderWriter fs
   ctr <- warmupReadWrite opts readOp writeOp
   performMajorGC
   raw <- pickAndRunIters opts $
     parRandomReadWrites opts optMixReadPercentage readOp (writeOp ctr)
-  ps <- rwMixData opts cmdOpts raw
+  ps <- rwMixData opts optMixReaderWriter raw
   return ps
 
 readWriteMixCommand :: Parcommand ()
 readWriteMixCommand = benchCommand "rw-mix" $ \opts cmdOpts fs ->
   runReadWriteMix opts cmdOpts fs
+
+data MailServerOptions = MailServerOptions
+  { optMailReaderWriter :: ReaderWriterOptions
+  , optMailReadPercentage :: Double
+  , optMailMailboxDir :: FilePath
+  , optMailNumUsers :: Int }
+
+instance Options MailServerOptions where
+  defineOptions = pure MailServerOptions
+    <*> defineOptions
+    <*> simpleOption "read-perc" 0.5
+        "percentage of mail reads to issue"
+    <*> simpleOption "mailbox-dir" "/mailboxes"
+        "directory where users' mailboxes should be stored"
+    <*> simpleOption "num-users" 1
+        "number of users to create and use"
+
+userMailDir :: FilePath -> Int -> FilePath
+userMailDir mailboxDir uid = mailboxDir ++ "/" ++ "user" ++ show uid
+
+mailInit :: MailServerOptions -> Filesystem -> IO ()
+mailInit MailServerOptions{..} Filesystem{fuseOps=fs} =
+  forM_ [1..optMailNumUsers] $ \uid ->
+    let userDir = userMailDir optMailMailboxDir uid in
+      checkError userDir $ fuseCreateDirectory fs userDir ownerModes
+
+mailRead :: MailServerOptions -> Filesystem -> Int -> IO ()
+mailRead MailServerOptions{..} Filesystem{fuseOps=fs} uid =
+  let userDir = userMailDir optMailMailboxDir uid in do
+    dnum <- getResult userDir =<< fuseOpen fs userDir ReadOnly defaultFileFlags
+    _ <- fuseReadDirectory fs userDir dnum
+    return ()
+
+mailDeliver :: MailServerOptions -> Filesystem -> Int -> UniqueCtr -> ThreadNum -> IO ()
+mailDeliver MailServerOptions{..} fs uid ctr tid =
+  let userDir = userMailDir optMailMailboxDir uid in do
+  genericCounterOp
+    (\name ->
+       let tmpname = optRWWriteDir optMailReaderWriter ++ "/" ++ name
+           fname = userDir ++ "/" ++ name in do
+         _ <- createSmallFile fs tmpname
+         checkError fname $ fuseRename (fuseOps fs) tmpname fname
+         return ()) ctr tid
+
+runMailServer :: ParOptions -> MailServerOptions -> Filesystem ->
+                 IO [DataPoint]
+runMailServer opts cmdOpts@MailServerOptions{..} fs = do
+  -- TODO: need to thread random user IDs through to mailRead and mailDeliver
+  let readOp = mailRead cmdOpts fs 1
+      writeOp = mailDeliver cmdOpts fs 1
+  mailInit cmdOpts fs
+  ctr <- warmupReadWrite opts readOp writeOp
+  performMajorGC
+  raw <- pickAndRunIters opts $
+    parRandomReadWrites opts optMailReadPercentage readOp (writeOp ctr)
+  ps <- rwMixData opts optMailReaderWriter raw
+  return ps
+
+mailServerCommand :: Parcommand ()
+mailServerCommand = benchCommand "mailserver" $ \opts cmdOpts fs ->
+  runMailServer opts cmdOpts fs
 
 main :: IO ()
 main = do
@@ -708,4 +769,5 @@ main = do
                 , dbenchCommand
                 , readwriteCommand
                 , readWriteMixCommand
+                , mailServerCommand
                 , headerCommand ]
