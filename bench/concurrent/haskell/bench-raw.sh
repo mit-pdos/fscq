@@ -165,11 +165,11 @@ ripgrep() {
             args=( --n=$par --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$is_fscq
                  --dir 'search-benchmarks/coq/core0' search )
             fusesearch "${args[@]}" --rts-flags="-N1" | addfield "seq_fs"
-            fusesearch "${args[@]}" --rts-flags="-N12 -qg" | addfield "seq_gc"
-            fusesearch "${args[@]}" --rts-flags="-N12 -qn4" | addfield "par_gc"
+            fusesearch "${args[@]}" --rts-flags="-N10 -qg" | addfield "seq_gc"
+            fusesearch "${args[@]}" --rts-flags="-N10 -qn4" | addfield "par_gc"
             fusesearch "${args[@]}" --rts-flags="-N12 -qg" --use-downcalls=false | \
                 addfield "upcalls_seq_gc"
-            fusesearch "${args[@]}" --rts-flags="-N12 -qn4 -qa -A512m" | \
+            fusesearch "${args[@]}" --rts-flags="-N10 -qn4 -qa -A512m" | \
                 addfield "more_mem"
         done
     done
