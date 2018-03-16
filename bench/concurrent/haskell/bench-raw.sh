@@ -156,6 +156,24 @@ rw_mix() {
 	done
 }
 
+ripgrep() {
+    info "ripgrep"
+    for system in fscq cfscq; do
+        info_system
+        for par in $(seq 1 12); do
+            info "> n=$par"
+            args=( --n=$par --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$is_fscq
+                 --dir 'search-benchmarks/coq/core0' )
+            fusesearch search "${args[@]}" --rts-flags="-N12 -qg" | \
+                addfield "seq_gc"
+            fusesearch search "${args[@]}" --rts-flags="-N12 -qn6" | \
+                addfield "par_gc"
+            fusesearch search "${args[@]}" --rts-flags="-N12 -qn6" --use-downcalls=f | \
+                addfield "upcalls"
+        done
+    done
+}
+
 parbench print-header | addfield "description"
 
 syscalls
@@ -164,3 +182,4 @@ dbench
 parsearch
 readers_writer
 rw_mix
+ripgrep
