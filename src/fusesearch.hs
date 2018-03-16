@@ -100,7 +100,8 @@ debugProc cp = do
         RawCommand bin args -> showCommandForUser bin args
   debug $ "> " ++ cmd
 
-newtype FsHandle = FsHandle { procHandle :: ProcessHandle }
+data FsHandle = FsHandle { procHandle :: ProcessHandle
+                         , procStdout :: Handle }
 
 untilM :: Monad m => m Bool -> m ()
 untilM test = do
@@ -129,13 +130,15 @@ startFs = do
   search <- getSearchPath
   liftIO $ waitForPath search
   debug "==> started file system"
-  return $ FsHandle ph
+  return $ FsHandle ph hout
 
 stopFs :: FsHandle -> App ()
 stopFs FsHandle{..} = do
   mountPath <- reader optMountPath
   liftIO $ callProcess "fusermount" $ ["-u", mountPath]
   debug $ "unmounted " ++ mountPath
+  -- for a clean shutdown, we have to finish reading from the pipe
+  _ <- liftIO $ hGetContents procStdout
   e <- liftIO $ waitForProcess procHandle
   debug $ "==> file system shut down"
   case e of
