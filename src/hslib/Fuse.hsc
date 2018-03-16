@@ -1133,7 +1133,7 @@ fuseMainRealUpcalls foreground ops handler pArgs mountPt =
                               -- This doesn't happen with GHC's signal handling in place.
                               withSignalHandlers (fuse_session_exit session) $
                                  do retVal <- fuse_loop_mt pFuse
-                                    if retVal == 1 
+                                    if retVal == 0
                                       then exitWith ExitSuccess
                                       else exitFailure
                                     return ()
