@@ -161,15 +161,16 @@ ripgrep() {
     for system in fscq cfscq; do
         info_system
         for par in $(seq 1 12); do
-            info "> n=$par"
+            info "  > n=$par"
             args=( --n=$par --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$is_fscq
-                 --dir 'search-benchmarks/coq/core0' )
-            fusesearch search "${args[@]}" --rts-flags="-N12 -qg" | \
-                addfield "seq_gc"
-            fusesearch search "${args[@]}" --rts-flags="-N12 -qn6" | \
-                addfield "par_gc"
-            fusesearch search "${args[@]}" --rts-flags="-N12 -qn6" --use-downcalls=false | \
-                addfield "upcalls"
+                 --dir 'search-benchmarks/coq/core0' search )
+            fusesearch "${args[@]}" --rts-flags="-N1" | addfield "seq_fs"
+            fusesearch "${args[@]}" --rts-flags="-N12 -qg" | addfield "seq_gc"
+            fusesearch "${args[@]}" --rts-flags="-N12 -qn4" | addfield "par_gc"
+            fusesearch "${args[@]}" --rts-flags="-N12 -qg" --use-downcalls=false | \
+                addfield "upcalls_seq_gc"
+            fusesearch "${args[@]}" --rts-flags="-N12 -qn4 -qa -A512m" | \
+                addfield "more_mem"
         done
     done
 }
