@@ -23,6 +23,7 @@ data FuseSearchOptions = FuseSearchOptions
   , optFscq :: Bool
   , optRtsFlags :: String
   , optFuseOptions :: String
+  , optDowncalls :: Bool
   , optWarmup :: Bool
   , optN :: Int
   , optSearchDir :: FilePath
@@ -42,6 +43,8 @@ instance Options FuseSearchOptions where
         "RTS flags to pass to FSCQ binary"
     <*> simpleOption "fuse-opts" ""
         "options to pass to FUSE library via -o"
+    <*> simpleOption "use-downcalls" True
+        "use downcalls (opqueue) instead of C->HS upcalls"
     <*> simpleOption "warmup" True
         "warmup before timing search"
     <*> simpleOption "n" 1
@@ -85,6 +88,7 @@ fsProcess :: AppPure CreateProcess
 fsProcess = ask >>= \FuseSearchOptions{..} -> do
   let binary = if optFscq then "fscq" else "cfscq"
   return $ proc binary $ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
+    ++ ["--use-downcalls", if optDowncalls then "t" else "f"]
     ++ [optDiskImg, optMountPath]
     ++ ["--", "-f"]
     ++ if optFuseOptions == "" then [] else ["-o", optFuseOptions]
