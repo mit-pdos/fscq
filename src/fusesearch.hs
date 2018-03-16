@@ -140,11 +140,11 @@ stopFs FsHandle{..} = do
       hPutStrLn stderr "filesystem terminated badly"
       exitWith e
 
-parSearch :: App ()
-parSearch = do
+parSearch :: Int -> App ()
+parSearch par = do
   FuseSearchOptions{..} <- ask
   path <- getSearchPath
-  let cp = proc "rg" $ [ "-j", show optN
+  let cp = proc "rg" $ [ "-j", show par
                  , "-u", "-c"
                  , optSearchQuery
                  , path ]
@@ -158,10 +158,11 @@ withFs act = bracket startFs stopFs (\_ -> act)
 fuseSearch :: App ()
 fuseSearch = do
   warmup <- reader optWarmup
+  par <- reader optN
   t <- withFs $ do
-    when warmup $ parSearch
+    when warmup $ parSearch 2
     debug "==> warmup done"
-    timeIt parSearch
+    timeIt $ parSearch par
   p <- optsData
   liftIO $ reportData [p{pElapsedMicros=t}]
   return ()
