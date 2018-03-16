@@ -88,7 +88,7 @@ fsProcess :: AppPure CreateProcess
 fsProcess = ask >>= \FuseSearchOptions{..} -> do
   let binary = if optFscq then "fscq" else "cfscq"
   return $ proc binary $ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
-    ++ ["--use-downcalls", if optDowncalls then "t" else "f"]
+    ++ ["--use-downcalls=" ++ if optDowncalls then "true" else "false"]
     ++ [optDiskImg, optMountPath]
     ++ ["--", "-f"]
     ++ if optFuseOptions == "" then [] else ["-o", optFuseOptions]

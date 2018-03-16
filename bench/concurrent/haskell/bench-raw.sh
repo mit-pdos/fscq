@@ -168,7 +168,7 @@ ripgrep() {
                 addfield "seq_gc"
             fusesearch search "${args[@]}" --rts-flags="-N12 -qn6" | \
                 addfield "par_gc"
-            fusesearch search "${args[@]}" --rts-flags="-N12 -qn6" --use-downcalls=f | \
+            fusesearch search "${args[@]}" --rts-flags="-N12 -qn6" --use-downcalls=false | \
                 addfield "upcalls"
         done
     done
