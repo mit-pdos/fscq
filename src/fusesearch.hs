@@ -13,8 +13,9 @@ import BenchmarkingData
 import DataSet
 
 import Options
-import System.Process
+import System.Directory
 import System.FilePath.Posix (joinPath)
+import System.Process
 
 data FuseSearchOptions = FuseSearchOptions
   { optDiskImg :: FilePath
@@ -97,10 +98,20 @@ debugProc cp = do
 
 newtype FsHandle = FsHandle { procHandle :: ProcessHandle }
 
+untilM :: Monad m => m Bool -> m ()
+untilM test = do
+  p <- test
+  if p then return () else untilM test
+
 hReadTill :: Handle -> (String -> Bool) -> IO ()
-hReadTill h p = do
-  line <- hGetLine h
-  if p line then return () else hReadTill h p
+hReadTill h p = untilM $ p <$> hGetLine h
+
+waitForPath :: FilePath -> IO ()
+waitForPath = untilM . doesPathExist
+
+getSearchPath :: AppPure FilePath
+getSearchPath = ask >>= \FuseSearchOptions{..} ->
+  return $ joinPath [optMountPath, optSearchDir]
 
 startFs :: App FsHandle
 startFs = do
@@ -111,6 +122,8 @@ startFs = do
       , std_out=CreatePipe }
   liftIO $ hSetBinaryMode hout True
   liftIO $ hReadTill hout ("Starting file system" `isPrefixOf`)
+  search <- getSearchPath
+  liftIO $ waitForPath search
   debug "==> started file system"
   return $ FsHandle ph
 
@@ -130,10 +143,11 @@ stopFs FsHandle{..} = do
 parSearch :: App ()
 parSearch = do
   FuseSearchOptions{..} <- ask
+  path <- getSearchPath
   let cp = proc "rg" $ [ "-j", show optN
                  , "-u", "-c"
                  , optSearchQuery
-                 , joinPath [optMountPath,optSearchDir] ]
+                 , path ]
   debugProc cp
   _ <- liftIO $ readCreateProcess cp ""
   return ()
