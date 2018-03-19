@@ -136,7 +136,7 @@ readers_writer() {
 		args=( --n=$par +RTS -qa -N$((par+1)) -RTS --img=/tmp/disk.img --fscq=false --iters=5000 )
 		runbasic "" "${args[@]}" readers-writer --reps=10 --write-reps=1
 		if [ $par -eq 0 ]; then
-			runbasic "" "${args[@]}" --n=0 \
+			runbasic "" "${args[@]}" \
 				+RTS -N1 -RTS \
 				readers-writer --reps=10 --write-reps=1 --only-reads
 		fi
