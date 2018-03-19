@@ -22,6 +22,8 @@ data FsOptions = FsOptions
   , optMountPath :: FilePath
   , optFscq :: Bool
   , optRtsFlags :: String
+  , optFsN :: Int
+  , optFsPin :: String
   , optFuseOptions :: String
   , optDowncalls :: Bool }
 
@@ -29,6 +31,7 @@ data FuseSearchOptions = FuseSearchOptions
   { optFsOpts :: FsOptions
   , optWarmup :: Bool
   , optN :: Int
+  , optAppPin :: String
   , optSearchDir :: FilePath
   , optSearchQuery :: String
   , optCategory :: String
@@ -44,6 +47,10 @@ instance Options FsOptions where
         "use FSCQ instead of CFSCQ"
     <*> simpleOption "rts-flags" ""
         "RTS flags to pass to FSCQ binary"
+    <*> simpleOption "fs-N" 1
+        "number of capabilities for FS"
+    <*> simpleOption "fs-pin" ""
+        "cpu list to pin filesystem to"
     <*> simpleOption "fuse-opts" ""
         "options to pass to FUSE library via -o"
     <*> simpleOption "use-downcalls" True
@@ -56,6 +63,8 @@ instance Options FuseSearchOptions where
         "warmup before timing search"
     <*> simpleOption "n" 1
         "parallelism to use in ripgrep"
+    <*> simpleOption "app-pin" ""
+        "cpu list to pin app to"
     <*> simpleOption "dir" "search-benchmarks/coq"
         "directory to search in"
     <*> simpleOption "query" "dependency graph"
@@ -70,10 +79,8 @@ type App a = ReaderT FuseSearchOptions IO a
 
 optsData :: AppPure DataPoint
 optsData = do
-  -- we don't get RTS info for the underlying file system, so just put in dummy
-  -- values
-  let rts = RtsInfo{rtsN=0, rtsMinAllocMB=0}
   FuseSearchOptions{optFsOpts=FsOptions{..}, ..} <- ask
+  let rts = RtsInfo{rtsN=optFsN, rtsMinAllocMB=0}
   return $ emptyData{ pRts=rts
                     , pWarmup=optWarmup
                     , pSystem=if optFscq then "fscq" else "cfscq"
@@ -91,10 +98,21 @@ debug s = do
 splitArgs :: String -> [String]
 splitArgs = words
 
+pinProcess :: String -> CreateProcess -> CreateProcess
+pinProcess cpuList p = if cpuList == ""
+  then p
+  else let cmdspec' = case cmdspec p of
+             ShellCommand s -> ShellCommand $ "taskset -c " ++ cpuList ++ " " ++ s
+             RawCommand prog args -> RawCommand "taskset" $
+               ["-c", cpuList] ++ [prog] ++ args in
+         p{cmdspec=cmdspec'}
+
 fsProcess :: AppPure CreateProcess
 fsProcess = ask >>= \FuseSearchOptions{optFsOpts=FsOptions{..}} -> do
   let binary = if optFscq then "fscq" else "cfscq"
-  return $ proc binary $ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
+  return $ pinProcess optFsPin $ proc binary $
+    ["+RTS", "-N" ++ show optFsN, "-RTS"]
+    ++ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
     ++ ["--use-downcalls=" ++ if optDowncalls then "true" else "false"]
     ++ [optDiskImg, optMountPath]
     ++ ["--", "-f"]
@@ -158,10 +176,11 @@ parSearch :: Int -> App ()
 parSearch par = do
   FuseSearchOptions{..} <- ask
   path <- getSearchPath
-  let cp = proc "rg" $ [ "-j", show par
-                 , "-u", "-c"
-                 , optSearchQuery
-                 , path ]
+  let cp = pinProcess optAppPin $ proc "rg" $
+        [ "-j", show par
+        , "-u", "-c"
+        , optSearchQuery
+        , path ]
   debugProc cp
   _ <- liftIO $ readCreateProcess cp ""
   return ()
