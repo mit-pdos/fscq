@@ -162,14 +162,19 @@ ripgrep() {
         info_system
         for par in $(seq 1 12); do
             info "  > n=$par"
-            args=( --n=$par --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$is_fscq
+            args=( --n=$par --app-pin="0-$((par-1))" --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$is_fscq
                  --dir 'search-benchmarks/coq/core0' search )
-            fusesearch "${args[@]}" --rts-flags="-N1" | addfield "seq_fs"
-            fusesearch "${args[@]}" --rts-flags="-N10 -qg" | addfield "seq_gc"
-            fusesearch "${args[@]}" --rts-flags="-N10 -qn4" | addfield "par_gc"
-            fusesearch "${args[@]}" --rts-flags="-N12 -qg" --use-downcalls=false | \
+            fusesearch "${args[@]}" --fs-N=1  \
+                | addfield "seq_fs"
+            fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qg" \
+                | addfield "seq_gc"
+            fusesearch "${args[@]}" --fs-N=4  --rts-flags="-qn4" \
+                | addfield "par_gc4"
+            fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qn4" \
+                | addfield "par_gc"
+            fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qg" --use-downcalls=false | \
                 addfield "upcalls_seq_gc"
-            fusesearch "${args[@]}" --rts-flags="-N10 -qn4 -qa -A512m" | \
+            fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
                 addfield "more_mem"
         done
     done
@@ -177,10 +182,10 @@ ripgrep() {
 
 parbench print-header | addfield "description"
 
-syscalls
-io_concur
-dbench
-parsearch
-readers_writer
-rw_mix
+#syscalls
+#io_concur
+#dbench
+#parsearch
+#readers_writer
+#rw_mix
 ripgrep
