@@ -930,7 +930,7 @@ Hint Extern 1 ({{_|_}} Bind (Hash _) _) => apply hash_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (Hash2 _ _) _) => apply hash2_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (HashHandle _) _) => apply hashhandle_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (HashHandle2 _ _) _) => apply hashhandle2_ok : prog.
-Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply hashhandle2_ok : prog.
+Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply auth_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.
 

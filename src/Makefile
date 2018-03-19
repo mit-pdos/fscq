@@ -122,7 +122,7 @@ $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
 $(VS_VIO): coqbuild/Makefile.coq
-	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick ) #quick was here
+	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq ) #quick was here
 	@touch coqbuild/*.vio
 
 coq: $(VS_VIO)

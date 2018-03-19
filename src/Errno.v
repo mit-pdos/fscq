@@ -11,7 +11,8 @@ Inductive Errno :=
 | ENOSPCBLOCK
 | ENOSPCINODE
 | ENOTEMPTY
-| EINVAL.
+| EINVAL
+| ENOPERMIT.
 
 Inductive res (T : Type) :=
 | OK : T -> res T

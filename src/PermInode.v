@@ -34,8 +34,7 @@ Axiom encode_public: encode_tag Public = $0.
 Module INODE.
 
   (************* on-disk representation of inode *)
-
-  Definition iattrtype : Rec.type := Rec.RecF ([
+  Definition attrtype : Rec.type := Rec.RecF ([
     ("bytes",  Rec.WordF 64) ;       (* file size in bytes *)
     ("uid",    Rec.WordF 32) ;        (* user id *)
     ("gid",    Rec.WordF 32) ;        (* group id *)
@@ -43,14 +42,16 @@ Module INODE.
     ("mtime",  Rec.WordF 32) ;        (* last modify time *)
     ("atime",  Rec.WordF 32) ;        (* last access time *)
     ("ctime",  Rec.WordF 32) ;        (* create time *)
-    ("itype",  Rec.WordF  8) ;        (* type code, 0 = regular file, 1 = directory, ... *)
+    ("itype",  Rec.WordF  8)          (* type code, 0 = regular file, 1 = directory, ... *)
+   ]).
+
+  Definition iattrtype : Rec.type := Rec.RecF ([
+    ("attr", attrtype) ;
     ("owner",  Rec.WordF  8) ;
     ("unused", Rec.WordF 16)          (* reserved (permission bits) *)
   ]).
 
   Definition NDirect := 7.
-
-  Print Rec.type.
 
   Definition irectype : Rec.type := Rec.RecF ([
     ("len", Rec.WordF addrlen);     (* number of blocks *)
@@ -84,6 +85,7 @@ Module INODE.
 
 
   Definition iattr := Rec.data iattrtype.
+  Definition iattrin := Rec.data attrtype.
   Definition irec := IRec.Defs.item.
   Definition bnlist := list waddr.
 
@@ -225,19 +227,20 @@ Module INODE.
 
   (* attribute getters *)
 
-  Definition ABytes  (a : iattr) := Eval cbn in ( a :-> "bytes" ).
-  Definition AMTime  (a : iattr) := Eval cbn in ( a :-> "mtime" ).
-  Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
-  Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
+  Definition ABytes  (a : iattrin) := Eval cbn in ( a :-> "bytes" ).
+  Definition AMTime  (a : iattrin) := Eval cbn in ( a :-> "mtime" ).
+  Definition AType   (a : iattrin) := Eval cbn in ( a :-> "itype" ).
+  Definition ADev    (a : iattrin) := Eval cbn in ( a :-> "dev" ).
+  Definition AAttrs    (a : iattr) := Eval cbn in ( a :-> "attr" ).
   Definition AOwner    (a : iattr) := Eval cbn in ( a :-> "owner" ).
 
   Definition getattrs lxp xp inum cache ms := Eval compute_rec in
     let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
-    Ret ^(cache, ms, (i :-> "attrs")).
+    Ret ^(cache, ms, (i :-> "attrs" :-> "attr")).
 
-  Definition setattrs lxp xp inum attr cache ms := Eval compute_rec in
+  Definition setattrs lxp xp inum (attr: iattrin) cache ms := Eval compute_rec in
     let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
-    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) cache ms;;
+    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (i :-> "attrs" :=> "attr" := attr)) cache ms;;
     Ret ^(cache, ms).
 
   (* For updattr : a convenient way for setting individule attribute *)
@@ -247,30 +250,29 @@ Module INODE.
   | UMTime (v : word 32)
   | UType  (v : word  8)
   | UDev   (v : word 64)
-  | UOwner (v : word  8)
   .
 
-  Definition iattr_upd (e : iattr) (a : iattrupd_arg) : iattr := Eval compute_rec in
+  Definition iattr_upd (e : iattrin) (a : iattrupd_arg) : iattrin := Eval compute_rec in
   match a with
   | UBytes v => (e :=> "bytes" := v)
   | UMTime v => (e :=> "mtime" := v)
   | UType  v => (e :=> "itype" := v)
   | UDev   v => (e :=> "dev"   := v)
-  | UOwner v => (e :=> "owner" := v)
   end.
 
   Definition updattr lxp xp inum a cache ms := Eval compute_rec in
     let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
-    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) cache ms;;
+    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (i :-> "attrs" :=> "attr" := (iattr_upd (i :-> "attrs" :-> "attr") a))) cache ms;;
     Ret ^(cache, ms).
 
   Definition getowner lxp xp inum cache ms := Eval compute_rec in
-    let^ (cache, ms, a) <- getattrs lxp xp inum cache ms;;
-    Ret ^(cache, ms, decode_tag (AOwner a)).
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
+    Ret ^(cache, ms, decode_tag (i :-> "attrs" :-> "owner")).
 
   Definition setowner lxp xp inum t cache ms := Eval compute_rec in
-    let^ (cache, ms) <- updattr lxp xp inum (UOwner (encode_tag t)) cache ms;;
-    Ret ^(cache, ms).     
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
+    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (i :-> "attrs" :=> "owner" := encode_tag t)) cache ms;;
+    Ret ^(cache, ms).
 
   Definition getbnum lxp xp inum off cache ms :=
     let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;;
@@ -292,7 +294,7 @@ Module INODE.
   Definition reset lxp bxp xp inum nr attr cache ms := Eval compute_rec in
     let^ (cache, lms, (ir : irec)) <- IRec.get_array lxp xp inum cache (BALLOCC.MSLog ms);;
     let^ (ms, (ir': irec)) <- Ind.shrink lxp bxp ir nr (BALLOCC.upd_memstate lms ms);;
-    let^ (cache, lms) <- IRec.put_array lxp xp inum (ir' :=> "attrs" := attr) cache (BALLOCC.MSLog ms);;
+    let^ (cache, lms) <- IRec.put_array lxp xp inum (ir' :=> "attrs" := (ir' :-> "attrs" :=> "attr" := attr)) cache (BALLOCC.MSLog ms);;
     Ret ^(cache, (BALLOCC.upd_memstate lms ms)).
 
   Definition grow lxp bxp xp inum bn cache ms :=
@@ -310,18 +312,19 @@ Module INODE.
 
   Record inode := mk_inode {
     IBlocks : bnlist;
-    IAttr   : iattr;
+    IAttr   : iattrin;
+    IOwner   : tag;
   }.
-  Definition IOwner ino := decode_tag (AOwner (IAttr ino)).
   
-  Definition iattr0 := @Rec.of_word iattrtype $0.
-  Definition inode0 := mk_inode nil iattr0.
+  Definition iattr0 := @Rec.of_word attrtype $0.
+  Definition inode0 := mk_inode nil iattr0 Public.
   Definition irec0 := IRec.Defs.item0.
 
 
   Definition inode_match bxp ino (ir : irec) := Eval compute_rec in
     let '(ino, IFs) := ino in
-    ( [[ IAttr ino = (ir :-> "attrs") ]] *
+    ( [[ IAttr ino = (ir :-> "attrs" :-> "attr") ]] *
+      [[ IOwner ino = decode_tag (ir :-> "attrs" :-> "owner") ]] *
       [[ Forall (fun a => BALLOCC.bn_valid bxp (# a)) (IBlocks ino) ]] *
       Ind.rep bxp IFs ir (IBlocks ino) )%pred.
 
@@ -444,6 +447,42 @@ Module INODE.
     all: reflexivity.
   Qed.
 
+
+  Lemma pred_fold_left_transform:
+  forall AT AEQ V (l: list (@pred AT AEQ V)),
+  pred_fold_left l <=p=> fold_left sep_star l emp.
+Proof.
+  intros.
+  destruct l; simpl.
+  split; cancel.
+  rewrite stars_prepend'.
+  rewrite stars_prepend' with (x:= (emp * p)%pred).
+  split; cancel.
+Qed.
+
+Lemma pred_fold_left_selN:
+  forall AT AEQ V (l: list (@pred AT AEQ V)) n def,
+    n < length l ->
+    pred_fold_left l <=p=> pred_fold_left (removeN l n) * (selN l n def).
+Proof.
+  induction l; simpl; intuition.
+  destruct n.
+  destruct l; simpl; eauto.
+  split; cancel.
+  rewrite stars_prepend'.
+  rewrite stars_prepend' with (x:= p).
+  split; cancel.
+  rewrite removeN_head.
+  simpl.
+  rewrite stars_prepend'.
+  rewrite <- pred_fold_left_transform.
+  apply lt_S_n in H.
+  erewrite IHl; eauto.
+  rewrite stars_prepend'.
+  rewrite <- pred_fold_left_transform.
+  split; cancel.
+Qed.
+
   (**************  Automation *)
 
   Fact resolve_selN_irec0 : forall l i d,
@@ -466,6 +505,7 @@ Module INODE.
     match type of x with
     | irec => let b := fresh in destruct x as [? b] eqn:? ; destruct_irec' b
     | iattr => let b := fresh in destruct x as [? b] eqn:? ; destruct_irec' b
+    | iattrin => let b := fresh in destruct x as [? b] eqn:? ; destruct_irec' b
     | prod _ _ => let b := fresh in destruct x as [? b] eqn:? ; destruct_irec' b
     | _ => idtac
     end.
@@ -517,6 +557,7 @@ Module INODE.
     rewrite Ind.indrep_0 by (compute; auto). cancel.
     repeat constructor.
     eapply list_same_repeat.
+    setoid_rewrite <- encode_public; rewrite encode_decode; auto.
     apply Forall_nil.
   Qed.
 
@@ -654,7 +695,7 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp IFs xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode (IBlocks ino) attr ]]
+           [[ ino' = mk_inode (IBlocks ino) attr (IOwner ino)]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} setattrs lxp xp inum attr cache ms.
   Proof. 
@@ -669,6 +710,7 @@ Module INODE.
     destruct_lift H0.
     rewrite combine_length_eq in *; [ |eauto].
     step.
+    simpl.
     irec_wf.
     sepauto.
 
@@ -710,7 +752,7 @@ Module INODE.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs')%pred sm ]] *
-           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)]]
+           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) (IOwner ino)]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} updattr lxp xp inum kv cache ms.
   Proof. 
@@ -849,44 +891,6 @@ Module INODE.
     all: eauto.
   Qed.
 
-Lemma pred_fold_left_transform:
-  forall AT AEQ V (l: list (@pred AT AEQ V)),
-  pred_fold_left l <=p=> fold_left sep_star l emp.
-Proof.
-  intros.
-  destruct l; simpl.
-  split; cancel.
-  rewrite stars_prepend'.
-  rewrite stars_prepend' with (x:= (emp * p)%pred).
-  split; cancel.
-Qed.
-
-Lemma pred_fold_left_selN:
-  forall AT AEQ V (l: list (@pred AT AEQ V)) n def,
-    n < length l ->
-    pred_fold_left l <=p=> pred_fold_left (removeN l n) * (selN l n def).
-Proof.
-  induction l; simpl; intuition.
-  destruct n.
-  destruct l; simpl; eauto.
-  split; cancel.
-  rewrite stars_prepend'.
-  rewrite stars_prepend' with (x:= p).
-  split; cancel.
-  rewrite removeN_head.
-  simpl.
-  rewrite stars_prepend'.
-  rewrite <- pred_fold_left_transform.
-  apply lt_S_n in H.
-  erewrite IHl; eauto.
-  rewrite stars_prepend'.
-  rewrite <- pred_fold_left_transform.
-  split; cancel.
-Qed.
-
- Hint Extern 1 ({{_|_}} Bind (getattrs _ _ _ _ _) _) => apply getattrs_ok : prog.
- Hint Extern 1 ({{_|_}} Bind (updattr _ _ _ _ _ _) _) => apply updattr_ok : prog.
-
  Theorem getowner_ok :
     forall lxp bxp xp inum cache ms pr,
     {< F Fm Fi m0 sm m IFs ilist ino,
@@ -903,14 +907,30 @@ Qed.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} getowner lxp xp inum cache ms.
   Proof.
-    unfold getowner.
+    unfold getowner, rep.
+    safestep.
+    sepauto.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H0.
+    rewrite combine_length_eq in *; eauto.
+    setoid_rewrite <- H8.
+    eapply list2nmem_inbound; eauto.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H0.
+    rewrite combine_length_eq in *; [ |eauto].
     step.
     step.
-    step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-  Qed.
- 
 
+    erewrite LOG.rep_hashmap_subset; eauto.
+    subst.
+    rewrite listmatch_isolate with (i:= inum) in H0 by simplen.
+    unfold inode_match at 2 in H0.
+    erewrite selN_combine in H0; auto.
+    destruct_lift H0; auto.
+    erewrite list2nmem_sel with (x:= ino); eauto.
+    Unshelve.
+    all: eauto.
+  Qed.
 
   Theorem setowner_ok :
     forall lxp bxp xp inum t cache ms pr,
@@ -926,31 +946,46 @@ Qed.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs')%pred sm ]] *
-           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) (UOwner (encode_tag t)))]] *
-           [[ IOwner ino' = t ]]
+           [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} setowner lxp xp inum t cache ms.
   Proof.
-    unfold setowner.
-    intros.
-    try autounfold with hoare_unfold in *.
-    repeat (destruct_branch || monad_simpl_one).
-    eapply pimpl_ok2.
-    eauto with prog.
-    intros.
-    intros m Hm; destruct_lift Hm.
-    repeat eexists; pred_apply; norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
-    eauto.
+    unfold setowner, rep.
+    safestep.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H4.
+    rewrite combine_length_eq in *; eauto.
+    setoid_rewrite <- H9.
+    eapply list2nmem_inbound; eauto.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H4.
+    rewrite combine_length_eq in *; [ |eauto].
+    step.
+    irec_wf.
+    sepauto.
 
-    step.
-    step.
+    safestep.
+    safestep.
     erewrite LOG.rep_hashmap_subset; eauto.
-    unfold IOwner, AOwner; simpl.
-    apply encode_decode.
+    pred_apply.
+    cancel.
+    erewrite listmatch_updN_selN; simplen.
+    rewrite <- combine_updN.
+    eauto.
+    all: eauto.
+    4: eapply list2nmem_updN; eauto.
+    unfold inode_match; rewrite selN_combine; auto.
+    erewrite <- list2nmem_sel with (x:= ino); eauto.
+    cancel; eauto.
+    rewrite encode_decode; auto.
+    rewrite updN_selN_eq; auto.
+    repeat rewrite length_updN; auto.
+    cancel.
+    rewrite <- H1; cancel.
+    solve_blockmem_subset.
+    rewrite <- H1; cancel; eauto.
+    Unshelve. exact irec0.
+    all: eauto.
   Qed.
 
 
@@ -968,7 +1003,7 @@ Qed.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino)]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) (IOwner ino)]] *
            [[ incl freelist freelist' ]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} shrink lxp bxp xp inum nr cache ms.
@@ -1028,6 +1063,7 @@ Qed.
     replace (length (IBlocks ilist ⟦ inum ⟧)) with (# (fst (selN dummy inum IRec.LRA.Defs.item0))).
     cancel.
     eauto.
+    eauto.
     apply forall_firstn; auto.
     cleanup; unfold BPtrSig.IRLen; auto.
     rewrite combine_length_eq; auto.
@@ -1062,7 +1098,7 @@ Qed.
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ ilist' = updN ilist inum ino' ]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr (IOwner ino)]] *
            [[ incl freelist freelist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} reset lxp bxp xp inum nr attr cache ms.
@@ -1125,6 +1161,7 @@ Qed.
     unfold cuttail, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
     replace (length (IBlocks ilist ⟦ inum ⟧)) with (# (fst (selN dummy inum IRec.LRA.Defs.item0))).
     cancel.
+    eauto.
     apply forall_firstn; eauto.
     cleanup; unfold BPtrSig.IRLen; auto.
     rewrite combine_length_eq; auto.
@@ -1143,7 +1180,8 @@ Qed.
     Unshelve. exact IRec.Defs.item0. all: eauto.
   Qed.
 
-  Lemma grow_wellformed : forall (a : BPtrSig.irec) inum reclist cache F1 F2 F3 F4 m xp,
+  Lemma grow_wellformed :
+    forall (a : BPtrSig.irec) inum reclist cache F1 F2 F3 F4 m xp,
     ((((F1 * IRec.rep xp reclist cache) * F2) * F3) * F4)%pred m ->
     length (BPtrSig.IRBlocks a) = length (BPtrSig.IRBlocks (selN reclist inum irec0)) ->
     inum < length reclist ->
@@ -1178,7 +1216,7 @@ Qed.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
-           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino)]] *
+           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) (IOwner ino)]] *
            [[ incl freelist' freelist ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} grow lxp bxp xp inum bn cache ms.
@@ -1244,6 +1282,7 @@ cancel.
     cancel.
 
     rewrite H23; eauto.
+    rewrite H23 in *; eauto.
     apply Forall_app; auto.
     eapply BALLOCC.bn_valid_roundtrip; eauto.
     rewrite combine_length_eq; auto.

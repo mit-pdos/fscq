@@ -169,13 +169,6 @@ Proof.
   cancel.
 Qed.
 
-Lemma can_access_public_all:
-  forall pr, can_access pr Public.
-Proof.
-  unfold can_access; intros; destruct pr; intuition eauto.
-Qed.
-
-Hint Resolve can_access_public_all.
 
 Theorem write_ok :
   forall xp n cs pr,

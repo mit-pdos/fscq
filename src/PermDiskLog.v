@@ -67,6 +67,29 @@ Definition rep xp st hm :=
 
   Hint Resolve sync_invariant_rep.
   Local Hint Unfold rep rep_common : hoare_unfold.
+  Hint Resolve DescDefs.items_per_val_gt_0 DescDefs.items_per_val_not_0.
+  Lemma xform_rep_extended : forall xp old new hm,
+    crash_xform (rep xp (Extended old new) hm) =p=>
+       (exists na, rep xp (Synced na old) hm) \/
+       (exists na, rep xp (Synced na (old ++ new)) hm) \/
+       (rep xp (Rollback old) hm).
+  Proof.
+    unfold rep, rep_common; intros.
+    xform.
+    rewrite rep_extended_facts.
+    xform; cancel.
+    rewrite PermDiskLogPadded.xform_rep_extended.
+    cancel.
+    rewrite PermDiskLogPadded.rep_synced_app_pimpl.
+    or_r; or_l; cancel.
+    rewrite log_nonzero_app.
+    repeat rewrite log_nonzero_padded_log; eauto.
+    rewrite entry_valid_vals_nonzero with (l:=new); auto.
+    unfold padded_log; rewrite <- padded_log_app.
+    repeat rewrite padded_log_length.
+    unfold roundup.
+    rewrite divup_divup; eauto.
+  Qed.
 
   Section UnifyProof.
   Hint Extern 0 (okToUnify (PermDiskLogPadded.rep _ _) (PermDiskLogPadded.rep _ _)) => constructor : okToUnify.
@@ -449,24 +472,6 @@ Hint Resolve rep_hashmap_subset.
     xform; cancel.
     apply PermDiskLogPadded.xform_rep_synced.
   Qed.
-
-  (*
-  Lemma xform_rep_extended : forall xp old new hm,
-    crash_xform (rep xp (Extended old new) hm) =p=>
-       (exists na, rep xp (Synced na old) hm) \/
-       (exists na, rep xp (Synced na (old ++ new)) hm) \/
-       (rep xp (Rollback old) hm).
-  Proof.
-    unfold rep, rep_common; intros.
-    xform.
-    rewrite rep_extended_facts.
-    xform; cancel.
-    rewrite PermDiskLogPadded.xform_rep_extended.
-    cancel.
-    rewrite PaddedLog.rep_synced_app_pimpl.
-    or_r; or_l; cancel.
-  Qed.
-   *)
   
   Lemma xform_rep_rollback : forall xp l hm,
     crash_xform (rep xp (Rollback l) hm) =p=>

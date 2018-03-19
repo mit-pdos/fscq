@@ -433,7 +433,19 @@ Module LOG.
 
   Local Hint Resolve KNoDup_map_elements.
   Local Hint Resolve MapProperties.eqke_equiv.
-(*
+
+
+   Lemma list2nmem_except_last:
+      forall T (l: list T) x,
+        (mem_except (list2nmem (l ++ [x])) (length l)) = list2nmem l.
+    Proof.
+      intros.
+      rewrite listapp_memupd.
+      rewrite <- mem_except_upd.
+      apply mem_except_none.
+      apply list2nmem_oob; auto.
+    Qed.
+
   Lemma possible_crash_list2nmem_synced: forall d' d,
     possible_crash d (list2nmem d') ->
     Forall (fun v => snd v = nil) d'.
@@ -494,7 +506,7 @@ Module LOG.
   Unshelve.
     all: constructor.
   Qed.
-*)
+
   Local Hint Resolve sm_vs_valid_upd_synced sm_vs_valid_same_upd_synced
      vs_synced_updN_synced
      sm_ds_valid_synced sm_ds_valid_pushd_l sm_ds_valid_pushd_r
@@ -1040,83 +1052,7 @@ Module LOG.
   Qed.
 
   Hint Resolve sync_invariant_after_crash sync_invariant_before_crash.
-
-
-  Lemma list2nmem_except_last:
-      forall V (d: list V) x,
-        mem_except (list2nmem (d ++ [x])) (length d) = list2nmem d.
-    Proof.
-      unfold mem_except; intros.
-      extensionality a.
-      destruct (Nat.eq_dec a (length d)).
-      rewrite list2nmem_oob; auto.
-      subst; eauto.
-      rewrite listapp_memupd; rewrite upd_ne; auto.
-    Qed.
-    
-  Lemma possible_crash_list2nmem_synced: forall d' d,
-    possible_crash d (list2nmem d') ->
-    Forall (fun v => snd v = nil) d'.
-  Proof.
-    induction d' using rev_ind; intros.
-    constructor.
-    apply Forall_app.
-    eapply IHd'.
-    eapply possible_crash_mem_except in H.
-    rewrite list2nmem_except_last in *.
-    eauto.
-    specialize (H (length d')); cbn in *.
-    erewrite list2nmem_sel_inb in *.
-    intuition.
-    congruence.
-    rewrite selN_app2 in * by auto.
-    rewrite Nat.sub_diag in *; cbn in *.
-    repeat deex.
-    inversion H; subst; auto.
-    inversion H; subst; auto.
-    rewrite app_length; cbn; omega.
-  Unshelve.
-    all: auto.
-  Qed.
-
-  Lemma sm_vs_valid_crash_xform: forall ds sm d n,
-    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-    sm_ds_valid sm ds ->
-    sm_vs_valid sm d.
-  Proof.
-    intros.
-    unfold crash_xform, diskIs in *.
-    deex.
-    eapply sm_vs_valid_all_synced.
-    eapply sm_ds_valid_nthd; eauto.
-    eauto using possible_crash_list2nmem_length.
-    eauto using possible_crash_list2nmem_synced.
-  Qed.
   
-  Lemma sm_vs_valid_disk_synced: forall d d',
-    crash_xform (diskIs (list2nmem d')) (list2nmem d) ->
-    sm_vs_valid (sm_disk_synced d) d.
-  Proof.
-    intros.
-    apply crash_xform_diskIs in H.
-    destruct_lift H.
-    unfold diskIs in *; subst.
-    eapply possible_crash_list2nmem_synced in H0.
-    unfold sm_disk_synced, sm_vs_valid.
-    rewrite Forall_forall in *.
-    intuition.
-    erewrite list2nmem_sel_inb in H1.
-    congruence.
-    autorewrite with lists; auto.
-    unfold vs_synced.
-    rewrite H0; auto.
-    eapply in_selN; auto.
-  Unshelve.
-    all: constructor.
-  Qed.
-
-  
-
   Theorem recover_ok:
     forall xp cs pr,
     {< F ds,
@@ -1209,7 +1145,6 @@ Module LOG.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
-(*
   Lemma crash_xform_any : forall xp F ds sm bm hm,
     crash_xform (recover_any xp F ds sm bm hm) =p=>
       exists cs, after_crash xp (crash_xform F) ds cs bm hm.
@@ -1223,7 +1158,7 @@ Module LOG.
     rewrite GLog.crash_xform_any.
     unfold GLog.recover_any_pred.
     norm. cancel.
-    eassign (mk_mstate vmap0 ms); eauto.
+    eassign (mk_mstate hmap0 ms); eauto.
     intuition simpl; eauto.
 
     or_l; cancel.
@@ -1231,12 +1166,11 @@ Module LOG.
     intuition simpl; eauto.
     cancel.
     or_r; cancel.
-    eassign (mk_mstate vmap0 ms); eauto.
+    eassign (mk_mstate hmap0 ms); eauto.
     eauto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
   Qed.
-*)
 
   Lemma after_crash_notxn : forall xp cs F ds bm hm,
     after_crash xp F ds cs bm hm =p=>
@@ -1266,7 +1200,7 @@ Module LOG.
     intros; rewrite after_crash_notxn; cancel.
   Qed.
 
-(*
+
   Lemma after_crash_idem : forall xp F ds cs bm hm,
     crash_xform (after_crash xp F ds cs bm hm) =p=>
      exists cs', after_crash xp (crash_xform F) ds cs' bm hm.
@@ -1289,7 +1223,7 @@ Module LOG.
     rewrite GLog.crash_xform_cached.
     norm. cancel.
     or_l; cancel.
-    eassign (mk_mstate vmap0 ms'); cancel.
+    eassign (mk_mstate hmap0 ms'); cancel.
     auto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
@@ -1298,7 +1232,7 @@ Module LOG.
     rewrite GLog.crash_xform_rollback.
     norm. cancel.
     or_r; cancel.
-    eassign (mk_mstate vmap0 ms'); cancel.
+    eassign (mk_mstate hmap0 ms'); cancel.
     auto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
@@ -1316,18 +1250,18 @@ Module LOG.
     unfold rep_inner; intros.
     xform_norml.
     rewrite GLog.crash_xform_cached; cancel.
-    eassign (mk_mstate vmap0 ms').
+    eassign (mk_mstate hmap0 ms').
     or_l; cancel.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     eapply crash_xform_diskIs_pred; eauto.
 
     rewrite GLog.crash_xform_rollback; cancel.
-    eassign (mk_mstate vmap0 ms').
+    eassign (mk_mstate hmap0 ms').
     or_r; cancel.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     eapply crash_xform_diskIs_pred; eauto.
   Qed.
- *)
+
   
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _ _ _) (LOG.rep_inner _ _ _ _ _ _)) => constructor : okToUnify.
 
@@ -1411,7 +1345,7 @@ Module LOG.
   Qed.
   Hint Resolve sync_invariant_idempred.
 
-  (*
+
   Theorem idempred_idem : forall xp F ds sm bm hm,
     crash_xform (idempred xp F ds sm bm hm) =p=>
       exists cs, after_crash xp (crash_xform F) ds cs bm hm.
@@ -1422,7 +1356,7 @@ Module LOG.
     rewrite crash_xform_before_crash; cancel.
     rewrite after_crash_idem; cancel.
   Qed.
-   *)
+  
   
   Theorem recover_any_idempred : forall xp F ds sm bm hm,
     recover_any xp F ds sm bm hm =p=> idempred xp F ds sm bm hm.
@@ -1500,7 +1434,7 @@ Module LOG.
     rewrite H0; cancel.
     intuition simpl; eauto.
   Qed.
-(*
+
   Theorem crash_xform_intact : forall xp F ds sm bm hm,
     crash_xform (intact xp F ds sm bm hm) =p=>
       exists ms d n, rep xp (crash_xform F) (NoTxn (d, nil)) ms sm bm hm *
@@ -1525,7 +1459,7 @@ Module LOG.
     eauto.
 
     safecancel.
-    eassign (mk_mstate vmap0 dummy1).
+    eassign (mk_mstate hmap0 dummy1).
     cancel. auto.
     eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
     eauto. auto.
@@ -1556,14 +1490,14 @@ Module LOG.
 
       safecancel.
       or_l; cancel.
-      eassign (mk_mstate (Map.empty valu) dummy1).
+      eassign (mk_mstate (Map.empty handle) dummy1).
       cancel. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption. auto.
 
       safecancel.
       or_r; cancel.
-      eassign (mk_mstate (Map.empty valu) dummy1).
+      eassign (mk_mstate (Map.empty handle) dummy1).
       cancel. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption. auto.
@@ -1579,7 +1513,7 @@ Module LOG.
 
       safecancel.
       or_l; cancel.
-      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
       cancel. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption.
@@ -1588,7 +1522,7 @@ Module LOG.
 
       safecancel.
       or_r; cancel.
-      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
       cancel. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption.
@@ -1603,7 +1537,7 @@ Module LOG.
       destruct_lift H0.
       safecancel.
       or_l; cancel.
-      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
       cancel. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption.
@@ -1613,7 +1547,7 @@ Module LOG.
       destruct_lift H0.
       safecancel.
       or_r; cancel.
-      match goal with |- context [?x] => eassign (mk_mstate (Map.empty valu) x) end.
+      match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
       cancel. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto; eauto.
       eassumption.
@@ -1621,7 +1555,6 @@ Module LOG.
   Unshelve.
     all: eauto.
   Qed.
-*)
 
   Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _ _ _) (intact _ _ _ _ _)) => constructor : okToUnify.
@@ -1757,7 +1690,6 @@ Module LOG.
       Ret ^(ms)
     Rof ^(ms);;
     Ret ms.
-
 
   Theorem read_range_ok :
     forall xp a nr ms pr,
@@ -2455,7 +2387,6 @@ Module LOG.
     intuition simpl; eauto.
   Qed.
 
-  (*
   Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F sm ds al hm bm,
     crash_xform (LOG.intact xp F (dssync_vecs ds al) sm bm hm) =p=>
     LOG.idempred xp (crash_xform F) ds sm bm hm.
@@ -2471,7 +2402,7 @@ Module LOG.
     rewrite crash_xform_diskIs_vssync_vecs; eauto.
     rewrite map_length in *; auto.
   Qed.
-*)
+
 
   Lemma crash_xform_cached_before: forall fsxp F d hm ms ds sm n bm,
     n <= length (snd ds) ->
