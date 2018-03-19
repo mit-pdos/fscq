@@ -17,13 +17,16 @@ import System.Directory
 import System.FilePath.Posix (joinPath)
 import System.Process
 
-data FuseSearchOptions = FuseSearchOptions
+data FsOptions = FsOptions
   { optDiskImg :: FilePath
   , optMountPath :: FilePath
   , optFscq :: Bool
   , optRtsFlags :: String
   , optFuseOptions :: String
-  , optDowncalls :: Bool
+  , optDowncalls :: Bool }
+
+data FuseSearchOptions = FuseSearchOptions
+  { optFsOpts :: FsOptions
   , optWarmup :: Bool
   , optN :: Int
   , optSearchDir :: FilePath
@@ -31,8 +34,8 @@ data FuseSearchOptions = FuseSearchOptions
   , optCategory :: String
   , optVerbose :: Bool }
 
-instance Options FuseSearchOptions where
-  defineOptions = pure FuseSearchOptions
+instance Options FsOptions where
+  defineOptions = pure FsOptions
     <*> simpleOption "img" "/tmp/disk.img"
         "disk image to mount"
     <*> simpleOption "mount" "/tmp/fscq"
@@ -45,6 +48,10 @@ instance Options FuseSearchOptions where
         "options to pass to FUSE library via -o"
     <*> simpleOption "use-downcalls" True
         "use downcalls (opqueue) instead of C->HS upcalls"
+
+instance Options FuseSearchOptions where
+  defineOptions = pure FuseSearchOptions
+    <*> defineOptions
     <*> simpleOption "warmup" True
         "warmup before timing search"
     <*> simpleOption "n" 1
@@ -66,7 +73,7 @@ optsData = do
   -- we don't get RTS info for the underlying file system, so just put in dummy
   -- values
   let rts = RtsInfo{rtsN=0, rtsMinAllocMB=0}
-  FuseSearchOptions{..} <- ask
+  FuseSearchOptions{optFsOpts=FsOptions{..}, ..} <- ask
   return $ emptyData{ pRts=rts
                     , pWarmup=optWarmup
                     , pSystem=if optFscq then "fscq" else "cfscq"
@@ -85,7 +92,7 @@ splitArgs :: String -> [String]
 splitArgs = words
 
 fsProcess :: AppPure CreateProcess
-fsProcess = ask >>= \FuseSearchOptions{..} -> do
+fsProcess = ask >>= \FuseSearchOptions{optFsOpts=FsOptions{..}} -> do
   let binary = if optFscq then "fscq" else "cfscq"
   return $ proc binary $ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
     ++ ["--use-downcalls=" ++ if optDowncalls then "true" else "false"]
@@ -116,7 +123,7 @@ waitForPath = untilM . doesPathExist
 
 getSearchPath :: AppPure FilePath
 getSearchPath = ask >>= \FuseSearchOptions{..} ->
-  return $ joinPath [optMountPath, optSearchDir]
+  return $ joinPath [optMountPath optFsOpts, optSearchDir]
 
 startFs :: App FsHandle
 startFs = do
@@ -134,7 +141,7 @@ startFs = do
 
 stopFs :: FsHandle -> App ()
 stopFs FsHandle{..} = do
-  mountPath <- reader optMountPath
+  mountPath <- reader (optMountPath . optFsOpts)
   liftIO $ callProcess "fusermount" $ ["-u", mountPath]
   debug $ "unmounted " ++ mountPath
   -- for a clean shutdown, we have to finish reading from the pipe
