@@ -559,16 +559,16 @@ readwriteIterate :: ParOptions -> ReaderWriterOptions -> Filesystem ->
 readwriteIterate opts@ParOptions{..} cmdOpts fs ctr iters =
   let readOp = rwRead opts cmdOpts fs
       writeOp = rwWrite opts cmdOpts fs ctr 0 in
-    if optN == 0 then do
-      writeTimes <- replicateM iters $ timeIt writeOp
-      return $ RawReadWriteResults { readTimings=[]
-                                   , writeTimings=writeTimes}
-    else
-      if optOnlyReads cmdOpts then do
+    if optOnlyReads cmdOpts then do
         m_reads <- runInThreads optN iters $ timeIt readOp
         readTimes <- takeMVar m_reads
         return $ RawReadWriteResults { readTimings=readTimes
                                      , writeTimings=[]}
+    else
+      if optN == 0 then do
+        writeTimes <- replicateM iters $ timeIt writeOp
+        return $ RawReadWriteResults { readTimings=[]
+                                     , writeTimings=writeTimes}
       else do
         m_reads <- runInThreads optN iters $ timeIt readOp
         write_thread <- repeatTillTerminated $ timeIt writeOp
