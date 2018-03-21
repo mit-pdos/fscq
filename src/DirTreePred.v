@@ -92,7 +92,7 @@ Set Implicit Arguments.
     match e with
     | TreeFile inum f =>
       exists cache,
-      inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
+      inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
     | TreeDir inum s => tree_dir_names_pred ibxp inum s * dirlist_pred (tree_pred ibxp) s
     end)%pred.
 
@@ -103,7 +103,7 @@ Set Implicit Arguments.
       match e with
       | TreeFile inum f =>
         exists cache,
-        inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
+        inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
       | TreeDir inum s => tree_dir_names_pred ibxp inum s *
                           dirlist_pred_except (tree_pred ibxp) (tree_pred_except ibxp suffix) fn s
       end
@@ -113,7 +113,7 @@ Set Implicit Arguments.
   Fixpoint dirtree_update_inode t inum off v :=
     match t with
     | TreeFile inum' f => if (addr_eq_dec inum inum') then
-          let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) in (TreeFile inum f')
+          let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f) in (TreeFile inum f')
           else (TreeFile inum' f)
     | TreeDir inum' ents =>
       TreeDir inum' (dirlist_update (fun t' => dirtree_update_inode t' inum off v) ents)

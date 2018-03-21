@@ -1113,7 +1113,7 @@ Qed.
     - indrep_n_tree_bound.
     - rewrite indrep_n_helper_valid by omega.
       cancel.
-    - apply BALLOC.Alloc.can_access_repeat_public_selN.
+    - apply can_access_repeat_public_selN.
     - rewrite listmatch_isolate with (i := off / (NIndirect ^ S indlvl))
         by indrep_n_tree_bound.
       rewrite selN_combine by indrep_n_tree_bound.

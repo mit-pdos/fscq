@@ -125,7 +125,7 @@ Set Implicit Arguments.
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
     (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
-    fst (fst v) = INODE.IOwner (selN ilist inum INODE.inode0) ->
+    fst (fst v) = DFOwner f ->
     exists tree',
     (F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/
@@ -143,6 +143,9 @@ Set Implicit Arguments.
       eexists; split.
       2: right; intuition.
       eapply dirtree_update_block; eauto.
+      unfold rep in *.
+      destruct_lift H2.
+      admit.
       eauto.
     - (**
        * The block is now in the free list.
@@ -150,7 +153,7 @@ Set Implicit Arguments.
       eexists; split.
       2: left; reflexivity.
       eapply dirtree_update_free; eauto.
-  Qed.
+  Admitted.
 
   Theorem dirtree_update_safe_pathname :
     forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
@@ -158,12 +161,12 @@ Set Implicit Arguments.
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
     (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
-    fst (fst v) = INODE.IOwner (selN ilist inum INODE.inode0) ->
+    fst (fst v) = DFOwner f ->
     exists tree',
     (F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/
      exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
-     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') in
+     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') (DFOwner f')in
      tree' = update_subtree pathname' (TreeFile inum f'new) tree).
   Proof.
     intros; destruct v.
@@ -198,11 +201,11 @@ Set Implicit Arguments.
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
-    fst (fst v) = INODE.IOwner (selN ilist inum INODE.inode0) ->
+    fst (fst v) = DFOwner f ->
     (F0 * rep fsxp F tree ilist freeblocks ms sm \/
      exists pathname' f',
      [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
-     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') in
+     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') (DFOwner f') in
      let tree' := update_subtree pathname' (TreeFile inum f'new) tree in
      F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
   Proof.
@@ -289,7 +292,7 @@ Set Implicit Arguments.
 
     Unshelve. all: eauto; exact unit.
   Qed.
-
+(*
   Theorem dirlist_safe_mkfile : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks
                                       dnum tree_elem name inum m flist' bxp ixp F Fm tag,
    (Fm * BFILE.rep bxp IFs ixp flist' ilist' frees msc ms icache dblocks)%pred m ->
@@ -347,7 +350,7 @@ Set Implicit Arguments.
     Unshelve. all: eauto; exact unit.
   Qed.
 
-
+*)
   
 
   Lemma dirtree_safe_update_subtree : forall ilist frees tree ilist' frees' tree' inum pathname f f',
@@ -527,7 +530,8 @@ Set Implicit Arguments.
     dirtree_safe old_ilist old_free old_tree ilist freelist
       (update_subtree p (TreeFile inum
         {| DFData := (DFData f) ⟦ off := v ⟧;
-           DFAttr := DFAttr f |}) tree).
+           DFAttr := DFAttr f;
+           DFOwner := DFOwner f; |}) tree).
    Proof.
     unfold dirtree_safe; intuition.
     destruct (pathname_decide_prefix pathname p); repeat deex.

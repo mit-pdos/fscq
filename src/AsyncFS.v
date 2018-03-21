@@ -844,7 +844,7 @@ Module AFS.
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} file_get_attr fsxp inum mscs.
-  Proof.
+  Proof. Admitted. (*
     unfold file_get_attr; intros.
     step.
     lightstep.
@@ -883,7 +883,7 @@ Module AFS.
     Unshelve.
     all: eauto.
   Qed.
-
+*)
   Hint Extern 1 ({{_|_}} Bind (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
   Theorem file_get_sz_ok :
@@ -903,7 +903,7 @@ Module AFS.
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} file_get_sz fsxp inum mscs.
-  Proof.
+  Proof. Admitted. (*
     unfold file_get_sz; intros.
     safestep.
     eauto.
@@ -917,7 +917,7 @@ Module AFS.
     or_r; cancel.
     inversion H12; simpl; auto.
   Qed.
-
+*)
   Hint Extern 1 ({{_|_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
 
   Ltac xcrash_solve :=
@@ -997,7 +997,7 @@ Module AFS.
     CRASH:bm', hm',
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
     >} read_fblock fsxp inum off mscs.
-  Proof.
+  Proof. Admitted. (*
     unfold read_fblock; intros.
     step.
     lightstep.
@@ -1059,10 +1059,96 @@ Module AFS.
     apply LOG.notxn_idempred.
     Unshelve. all: eauto. exact BFILE.bfile0.
   Qed.
-
+*)
 
   Hint Extern 1 ({{_|_}} Bind (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
 
+    Ltac latest_rewrite := unfold latest, pushd; simpl.
+
+    Theorem update_fblock_d_ok :
+      forall fsxp inum off v mscs pr,
+      {< ds sm Fm Ftop tree pathname f Fd vs frees ilist,
+    PERM:pr   
+    PRE:bm, hm,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+      [[[ (DFData f) ::: (Fd * off |-> vs) ]]] 
+    POST:bm', hm', RET:^(mscs', ok)
+      ([[ isError ok ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
+       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]]) \/       
+     ([[ ok = OK tt ]] *
+       exists tree' f' ds' bn,
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm bm' hm' *
+       [[ ds' = dsupd ds bn ((DFOwner f, v), vsmerge vs) ]] *
+       [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+       (* spec about files on the latest diskset *)
+       [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs' sm) ]]] *
+       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+       [[[ (DFData f') ::: (Fd * off |-> ((DFOwner f, v), vsmerge vs)) ]]] *
+       [[ DFAttr f' = DFAttr f ]] *
+       [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
+                       ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]])
+    XCRASH:bm', hm',
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm' \/
+       exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn ((DFOwner f, v), vsmerge vs)) sm bm' hm'
+   >} update_fblock_d fsxp inum off v mscs.
+  Proof. Admitted. (*
+    unfold update_fblock_d; intros.
+    step.
+    step.
+    prestep.
+    (* extract dset_match from (rep ds), this is useful for proving crash condition *)
+    rewrite LOG.active_dset_match_pimpl at 1.
+    norm. cancel.
+    xcrash_solve.
+    intuition.
+    latest_rewrite.
+    pred_apply; cancel.
+    eauto.
+    eauto.
+    safestep.
+    step.
+    step.
+    cancel.
+    xcrash_solve.
+
+    - xform_normr; cancel.
+      or_r; xform_normr; cancel.
+
+      unfold BFILE.diskset_was in *; intuition subst.
+      rewrite LOG.intact_idempred; cancel.
+      eauto.
+
+    - cancel.
+      repeat xcrash_rewrite.
+      xform_norm.
+      rewrite LOG.recover_any_idempred.
+      or_l; cancel.
+      rewrite LOG.recover_any_idempred.
+      or_r; cancel; xform_normr; cancel.
+
+    - cancel.
+      repeat xcrash_rewrite.
+      xform_norm; cancel.
+      rewrite LOG.notxn_intact, LOG.intact_idempred.
+      xform_normr; cancel.
+    Unshelve.
+      all: easy.
+  Qed.
+*)
+  Hint Extern 1 ({{_|_}} Bind (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
+(*
   Theorem file_set_attr_ok :
     forall fsxp inum attr mscs pr,
   {< ds sm pathname Fm Ftop tree f ilist frees,
@@ -1196,83 +1282,6 @@ Module AFS.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
-
-
-  Ltac latest_rewrite := unfold latest, pushd; simpl.
-
-  Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
-    {< ds sm Fm Ftop tree pathname f Fd vs frees ilist,
-    PRE:hm
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
-      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-      [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm' RET:^(mscs')
-      exists tree' f' ds' bn,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm hm' *
-       [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
-       [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-       (* spec about files on the latest diskset *)
-       [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs' sm) ]]] *
-       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-       [[[ (DFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
-       [[ DFAttr f' = DFAttr f ]] *
-       [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
-                       ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
-    XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm hm' \/
-       exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) sm hm'
-   >} update_fblock_d fsxp inum off v mscs.
-  Proof.
-    unfold update_fblock_d; intros.
-    step.
-    step.
-    prestep.
-    (* extract dset_match from (rep ds), this is useful for proving crash condition *)
-    rewrite LOG.active_dset_match_pimpl at 1.
-    norm. cancel.
-    xcrash_solve.
-    intuition.
-    latest_rewrite.
-    pred_apply; cancel.
-    eauto.
-    eauto.
-    safestep.
-    step.
-    step.
-    cancel.
-    xcrash_solve.
-
-    - xform_normr; cancel.
-      or_r; xform_normr; cancel.
-
-      unfold BFILE.diskset_was in *; intuition subst.
-      rewrite LOG.intact_idempred; cancel.
-      eauto.
-
-    - cancel.
-      repeat xcrash_rewrite.
-      xform_norm.
-      rewrite LOG.recover_any_idempred.
-      or_l; cancel.
-      rewrite LOG.recover_any_idempred.
-      or_r; cancel; xform_normr; cancel.
-
-    - cancel.
-      repeat xcrash_rewrite.
-      xform_norm; cancel.
-      rewrite LOG.notxn_intact, LOG.intact_idempred.
-      xform_normr; cancel.
-    Unshelve.
-      all: easy.
-  Qed.
-
-  Hint Extern 1 ({{_}} Bind (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
 
 
   Theorem file_sync_ok: forall fsxp inum mscs,
@@ -1598,7 +1607,7 @@ Module AFS.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
-
+*)
 End AFS.
 
 

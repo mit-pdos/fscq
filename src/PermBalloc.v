@@ -1632,7 +1632,7 @@ Module BmapAllocCache (Sig : AllocSig).
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep; intros.
-    safestep.
+    lightstep.
     eassign Fm; cancel.
     auto.
     step.
@@ -2007,7 +2007,6 @@ Module BALLOC.
     rewrite listpred_isolate with (i := 0) in Hx, Hs by (rewrite skipn_length; omega).
     rewrite skipn_selN, Nat.add_0_r in Hx, Hs.
 
-    (*** extract the exis from |->? *)
     apply sep_star_reorder_helper in Hx.
     apply pimpl_exists_r_star_r in Hx; destruct Hx as [ [? ?] ?].
     destruct_lift Hs.

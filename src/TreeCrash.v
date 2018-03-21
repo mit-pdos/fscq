@@ -31,8 +31,8 @@ Module DTCrash.
 
   Definition file_crash (f f' : dirfile) : Prop :=
     exists c c',
-    BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) c)
-                     (BFILE.mk_bfile (DFData f') (DFAttr f') c').
+    BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) c)
+                     (BFILE.mk_bfile (DFData f') (DFAttr f') (DFOwner f') c').
 
   Inductive tree_crash : dirtree -> dirtree -> Prop :=
     | TCFile : forall inum f f',
@@ -148,7 +148,7 @@ Module DTCrash.
       setoid_rewrite flist_crash_xform_ptsto.
       setoid_rewrite flist_crash_xform_lift_empty.
       norml. destruct f'. cancel.
-      instantiate (t' := TreeFile inum (mk_dirfile _ _)). cbn. cancel.
+      instantiate (t' := TreeFile inum (mk_dirfile _ _ _)). cbn. cancel.
       econstructor; eauto.
       unfold file_crash. do 2 eexists. eauto.
     - rewrite flist_crash_xform_sep_star.
@@ -372,7 +372,7 @@ Module DTCrash.
   Proof.
     induction tree using dirtree_ind2; intros.
     edestruct file_crash_exists as [ [] H].
-    eexists (TreeFile _ (mk_dirfile _ _)).
+    eexists (TreeFile _ (mk_dirfile _ _ _)).
     econstructor; cbn. unfold file_crash. do 2 eexists. eauto.
     induction tree_ents.
     eexists; constructor; eauto. constructor.
@@ -546,12 +546,12 @@ Module DTCrash.
     unfold file_crash, synced_dirfile; intros.
     repeat deex.
     edestruct BFILE.file_crash_synced; eauto.
-    pose proof (BFILE.fsynced_synced_file (BFILE.mk_bfile (DFData f) (DFAttr f) c)).
+    pose proof (BFILE.fsynced_synced_file (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) c)).
     unfold BFILE.synced_file in H0; simpl in *.
-    eauto.
-
+    eauto. simpl in *.
     destruct f'; simpl in *.
     subst; eauto.
+    eauto.
   Qed.
 
   Lemma dirfile_crash_exists : forall f, exists f',

@@ -156,7 +156,7 @@ Import ListNotations.
     tree_names_distinct tree ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     off < length (DFData f) ->
-    let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) in
+    let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f) in
     dirtree_update_inode tree inum off v =
     update_subtree pathname (TreeFile inum f') tree.
   Proof.
@@ -229,14 +229,16 @@ Import ListNotations.
     clear H1.
     induction tree using dirtree_ind2; simpl.
     cancel.
-    unfold tree_dir_names_pred. cancel. clear H4.
+    unfold tree_dir_names_pred. cancel. clear H5.
     induction tree_ents; simpl.
     - cancel.
     - inversion H0.
       destruct a.
-      rewrite H3; simpl.
+      simpl in H3.
       rewrite ListPred.listpred_app.
-      rewrite IHtree_ents; eauto.
+      rewrite <- H4; simpl; cancel.
+      rewrite <- H2; eauto.
+      cancel.
   Qed.
 
 
@@ -1627,11 +1629,27 @@ Import ListNotations.
           inversion H; constructor; eauto.
   Qed.
 
+  Lemma owner_match:
+      forall pathname tree fsxp inum f F Ff  sm ixp flist ilist frees cms mscache icache dblocks m,
+      find_subtree pathname tree = Some (TreeFile inum f) ->
+      (F  * BFILE.rep (FSXPBlockAlloc fsxp) sm ixp flist ilist frees cms mscache icache dblocks)%pred (list2nmem m) ->
+      (Ff ✶ tree_pred fsxp tree)%pred (list2nmem flist) ->
+      DFOwner f = BFILE.BFOwner (selN flist inum BFILE.bfile0).
+    Proof.
+      intros.
+      rewrite subtree_extract in H1; eauto.
+      unfold tree_pred in H1.
+      destruct_lift H1.
+      erewrite <- list2nmem_sel; simpl; eauto; simpl; eauto.
+    Qed.
+
+
+  
   Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms inum off v bn m f sm,
     (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    fst (fst v) = INODE.IOwner (selN ilist inum INODE.inode0) ->
+    fst (fst v) = DFOwner f ->
     (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
@@ -1639,7 +1657,23 @@ Import ListNotations.
     apply rep_tree_inodes_distinct in H as Hinodes.
     unfold rep in *.
     destruct_lift H.
-    eapply pimpl_apply; [ | eapply BFILE.rep_safe_used; eauto; pred_apply; cancel ].
+
+    eapply pimpl_apply; [ | eapply BFILE.rep_safe_used; eauto].
+    2: eassign (F0 *
+                IAlloc.rep BFILE.freepred fsxp dummy0 dummy1
+                {|
+                  IAlloc.Alloc.MSLog := SDIR.MSLL ms;
+                  IAlloc.Alloc.MSCache := SDIR.MSIAllocC ms |})%pred;
+    pred_apply; cancel.
+    
+    2: simpl; eapply owner_match with (m:=m)(flist := dummy); eauto; pred_apply; cancel.
+    2: eassign (F0 *
+                IAlloc.rep BFILE.freepred fsxp dummy0 dummy1
+                {|
+                  IAlloc.Alloc.MSLog := SDIR.MSLL ms;
+                  IAlloc.Alloc.MSCache := SDIR.MSIAllocC ms |})%pred;
+    cancel.
+    2: eassign (inode_tags_public dummy tree * dummy1 * F)%pred; cancel.
     cancel.
 
     rewrite subtree_extract in H4; eauto.
@@ -1651,6 +1685,8 @@ Import ListNotations.
     eapply pimpl_apply in H2. eapply list2nmem_sel with (i := inum) in H2. 2: cancel.
     rewrite <- H2.
     cancel.
+    
+    admit.
 
     simpl in *.
     destruct_lift H4'.
@@ -1665,9 +1701,15 @@ Import ListNotations.
 
     eapply BFILE.block_belong_to_file_bfdata_length; eauto.
     eapply pimpl_apply; [ | apply H ]. cancel.
+    eassign (F0 *
+                IAlloc.rep BFILE.freepred fsxp dummy0 dummy1
+                {|
+                  IAlloc.Alloc.MSLog := SDIR.MSLL ms;
+                  IAlloc.Alloc.MSCache := SDIR.MSIAllocC ms |})%pred;
+    cancel.
 
     inversion H2. subst. simpl. congruence.
-  Qed.
+  Admitted.
 
 
   Theorem tree_inodes_pathname_exists : forall tree inum,

@@ -91,11 +91,11 @@ Module DIR.
   Definition rep f dmap :=
     exists delist,
     (Dent.rep f (repeat Public (length (Dent.Defs.ipack delist))) delist)%pred (list2nmem (BFILE.BFData f)) /\
-    listpred dmatch delist dmap.
+    listpred dmatch delist dmap /\
+    BFILE.BFOwner f = Public.
 
   Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees f ms sm : (@pred _ addr_eq_dec valuset) :=
     (exists flist,
-    [[ INODE.IOwner (selN ilist inum INODE.inode0) = Public ]] *
     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) ]]] *
     [[[ flist ::: Fi * inum |-> f ]]] *
     [[ rep f dmap ]])%pred.
@@ -517,7 +517,7 @@ Module DIR.
     unfold lookup, ifind_lookup_f, rep_macro, rep.
     safestep.
     unfold Dent.RA.RAData; eauto.
-    
+
     safestep.
     safestep.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.

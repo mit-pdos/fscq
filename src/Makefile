@@ -25,7 +25,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      PermDir PermDirName PermDirCache \
 	      DirTreePath DirTreeDef DirTreePred DirTreeRep \
 	      DirTreeNames DirTreeInodes DirTreeSafe DirTree \
-	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock
+	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock \
+	      AsyncFS
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
@@ -122,7 +123,7 @@ $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
 $(VS_VIO): coqbuild/Makefile.coq
-	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq ) #quick was here
+	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick ) #quick was here
 	@touch coqbuild/*.vio
 
 coq: $(VS_VIO)
