@@ -48,11 +48,6 @@ instance Options ScanDirOptions where
     simpleOption "dir" "/"
       "root directory to scan from"
 
-getFileSize :: FuseOperations Integer -> FilePath -> IO FileOffset
-getFileSize fs p = do
-  s <- getResult p =<< fuseGetFileStat fs p
-  return $ statFileSize s
-
 shuffleList :: [a] -> IO [a]
 shuffleList xs = shuffle' xs (length xs) <$> getStdGen
 
@@ -460,18 +455,6 @@ createDirOp :: ParOptions -> WriteOptions -> Filesystem ->
 createDirOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \name -> do
   let fname = writeDir ++ "/" ++ name
   checkError fname $ fuseCreateDirectory fuseOps fname ownerModes
-
-zeroBlock :: BS.ByteString
-zeroBlock = BS.pack (replicate 4096 0)
-
--- returns inum of created file
-createSmallFile :: Filesystem -> FilePath -> IO Integer
-createSmallFile Filesystem{fuseOps=fs} fname = do
-  checkError fname $ fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
-  inum <- getResult fname =<< fuseOpen fs fname ReadOnly defaultFileFlags
-  bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
-  when (bytes < 4096) (error $ "failed to initialize " ++ fname)
-  return inum
 
 writeFilePrepare :: ParOptions -> WriteOptions -> Filesystem ->
                     IO [(FilePath, Integer)]

@@ -57,7 +57,8 @@ HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs \
 	hslib/Interpreter.hs hslib/ConcurInterp.hs \
 	hslib/FscqFs.hs hslib/CfscqFs.hs hslib/GenericFs.hs \
 	hslib/Benchmarking.hs \
-	hslib/DbenchScript.hs hslib/DbenchExecute.hs hslib/ParallelSearch.hs
+	hslib/DbenchScript.hs hslib/DbenchExecute.hs hslib/ParallelSearch.hs \
+	hslib/MailServer.hs
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
 		   ocamlfuse/Unix_util.ml \

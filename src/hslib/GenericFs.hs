@@ -1,11 +1,15 @@
 module GenericFs where
 
-import Data.IORef
-import Data.List (dropWhileEnd)
-import Fuse
-import System.Posix.Types
-import System.Posix.User
-import Timings
+import           Control.Monad (when)
+import qualified Data.ByteString as BS
+import           Data.IORef
+import           Data.List (dropWhileEnd)
+import           Fuse
+import           System.Posix.Files (ownerModes)
+import           System.Posix.IO (defaultFileFlags)
+import           System.Posix.Types
+import           System.Posix.User
+import           Timings
 
 getFuseIds :: IO (UserID, GroupID)
 getFuseIds = do
@@ -94,3 +98,20 @@ findFiles fs p = do
       directories = onlyDirectories paths
   recursive <- concat <$> mapM (findFiles fs) directories
   return $ files ++ recursive
+
+getFileSize :: FuseOperations Integer -> FilePath -> IO FileOffset
+getFileSize fs p = do
+  s <- getResult p =<< fuseGetFileStat fs p
+  return $ statFileSize s
+
+zeroBlock :: BS.ByteString
+zeroBlock = BS.pack (replicate 4096 0)
+
+-- returns inum of created file
+createSmallFile :: Filesystem -> FilePath -> IO Integer
+createSmallFile Filesystem{fuseOps=fs} fname = do
+  checkError fname $ fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
+  inum <- getResult fname =<< fuseOpen fs fname ReadOnly defaultFileFlags
+  bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
+  when (bytes < 4096) (error $ "failed to initialize " ++ fname)
+  return inum
