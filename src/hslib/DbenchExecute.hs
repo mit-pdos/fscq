@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module DbenchExecute where
 
 import           Control.Monad.State
@@ -14,26 +15,26 @@ import           System.Posix.IO
 import           System.Posix.Time
 
 type HandlePaths = Map.Map Handle String
-type HandleInums = Map.Map Handle Integer
+type HandleInums fh = Map.Map Handle fh
 
-data DbenchState =
+data DbenchState fh =
   DbenchState { handlePaths :: HandlePaths
-              , handleInums :: HandleInums }
+              , handleInums :: HandleInums fh }
 
-addHandle :: Handle -> String -> StateT DbenchState IO ()
+addHandle :: Handle -> String -> StateT (DbenchState fh) IO ()
 addHandle h p = modify' (\s -> s{handlePaths=Map.insert h p (handlePaths s)})
 
-addInum :: Handle -> Integer -> StateT DbenchState IO ()
+addInum :: Handle -> fh -> StateT (DbenchState fh) IO ()
 addInum h inum = modify' (\s -> s{handleInums=Map.insert h inum (handleInums s)})
 
-getFilePath :: Handle -> StateT DbenchState IO String
+getFilePath :: Handle -> StateT (DbenchState fh) IO String
 getFilePath h = do
   mp <- gets (Map.lookup h . handlePaths)
   case mp of
     Just p -> return p
     Nothing -> liftIO $ ioError (userError $ "unknown handle " ++ show h)
 
-getFile :: FuseOperations Integer -> Handle -> StateT DbenchState IO (String, Integer)
+getFile :: FuseOperations fh -> Handle -> StateT (DbenchState fh) IO (String, fh)
 getFile fs h = do
   p <- getFilePath h
   mh <- gets (Map.lookup h . handleInums)
@@ -89,9 +90,9 @@ zeroBytestring len
   | len <= 65536 = BS.take len largeBytestring
   | otherwise = BS.pack (replicate len 0)
 
-runCommand :: FuseOperations Integer -> Command -> StateT DbenchState IO ()
+runCommand :: forall fh. FuseOperations fh -> Command -> StateT (DbenchState fh) IO ()
 runCommand fs c = run c
-  where run :: Command -> StateT DbenchState IO ()
+  where run :: Command -> StateT (DbenchState fh) IO ()
         run (CreateX (Path p) createOptions _createDisposition h _s) = {-# SCC "createx" #-} do
           addHandle h p
           liftIO $ if hasFileDirectoryFile createOptions then
@@ -153,7 +154,7 @@ runCommand fs c = run c
           _ <- liftIO $ fuseGetFileSystemStats fs "/"
           return ()
 
-runScript :: FuseOperations Integer -> Script -> IO ()
+runScript :: FuseOperations fh -> Script -> IO ()
 runScript fs s = evalStateT (mapM_ (runCommand fs) s) (DbenchState Map.empty Map.empty)
 
 prefixScript :: String -> Script -> Script

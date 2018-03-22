@@ -102,7 +102,7 @@ doFScall s p = do
     CFS.TryAgain _ -> error $ "system call loop failed?"
     CFS.SyscallFailed -> error $ "system call failed"
 
-initCfscq :: String -> Bool -> IO (UserID, GroupID) -> IO Filesystem
+initCfscq :: String -> Bool -> IO (UserID, GroupID) -> IO (Filesystem HT)
 initCfscq disk_fn silent getIds = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of

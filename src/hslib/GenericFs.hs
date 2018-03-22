@@ -20,8 +20,8 @@ getProcessIds :: IO (UserID, GroupID)
 getProcessIds = do
   (,) <$> getRealUserID <*> getRealGroupID
 
-data Filesystem =
-  Filesystem { fuseOps :: FuseOperations Integer
+data Filesystem fh =
+  Filesystem { fuseOps :: FuseOperations fh
              , timings :: IORef Timings }
 
 getResult :: String -> Either Errno a -> IO a
@@ -99,7 +99,7 @@ findFiles fs p = do
   recursive <- concat <$> mapM (findFiles fs) directories
   return $ files ++ recursive
 
-getFileSize :: FuseOperations Integer -> FilePath -> IO FileOffset
+getFileSize :: FuseOperations fh -> FilePath -> IO FileOffset
 getFileSize fs p = do
   s <- getResult p =<< fuseGetFileStat fs p
   return $ statFileSize s
@@ -108,7 +108,7 @@ zeroBlock :: BS.ByteString
 zeroBlock = BS.pack (replicate 4096 0)
 
 -- returns inum of created file
-createSmallFile :: Filesystem -> FilePath -> IO Integer
+createSmallFile :: Filesystem fh -> FilePath -> IO fh
 createSmallFile Filesystem{fuseOps=fs} fname = do
   checkError fname $ fuseCreateDevice fs fname RegularFile ownerModes (CDev 0)
   inum <- getResult fname =<< fuseOpen fs fname ReadOnly defaultFileFlags

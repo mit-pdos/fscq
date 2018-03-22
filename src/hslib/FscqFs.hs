@@ -90,7 +90,7 @@ doFScall ds ref f = do
   -- elapsed <- elapsedTime start
   return r
 
-initFscq :: String -> Bool -> IO (UserID, GroupID) -> IO Filesystem
+initFscq :: String -> Bool -> IO (UserID, GroupID) -> IO (Filesystem HT)
 initFscq disk_fn silent getIds = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of
