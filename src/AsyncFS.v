@@ -992,8 +992,8 @@ Module AFS.
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           (([[ isError ok ]] * [[ r = $0 ]]) \/
-           ([[ ok = OK tt ]] * [[ r = snd (fst vs) ]]))
+           (([[ isError ok ]] * [[ r = $0 ]] * [[ ~can_access pr (DFOwner f) ]]) \/
+           ([[ ok = OK tt ]] * [[ r = snd (fst vs) ]] * [[ can_access pr (DFOwner f) ]]))
     CRASH:bm', hm',
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
     >} read_fblock fsxp inum off mscs.
@@ -1075,14 +1075,14 @@ Module AFS.
       [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
       [[[ (DFData f) ::: (Fd * off |-> vs) ]]] 
     POST:bm', hm', RET:^(mscs', ok)
-      ([[ isError ok ]] *
+      ([[ isError ok ]] * [[ ~can_access pr (DFOwner f) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
        [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
        [[ MSCache mscs' = MSCache mscs ]] *
        [[ MSAllocC mscs' = MSAllocC mscs ]] *
        [[ MSIAllocC mscs' = MSIAllocC mscs ]]) \/       
-     ([[ ok = OK tt ]] *
+     ([[ ok = OK tt ]] * [[ can_access pr (DFOwner f) ]] *
        exists tree' f' ds' bn,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm bm' hm' *
        [[ ds' = dsupd ds bn ((DFOwner f, v), vsmerge vs) ]] *
