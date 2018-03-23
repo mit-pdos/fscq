@@ -426,10 +426,10 @@ Module AFS.
       let^ (ams, b) <- DIRTREE.read fsxp inum off ams;;
       b <- Unseal b;;
       ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), b, OK tt)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (b, OK tt))
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), $0, Err ENOPERMIT)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), ($0, Err ENOPERMIT))
   }.
 
   Definition file_truncate fsxp inum sz ams :=
@@ -988,7 +988,7 @@ Module AFS.
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
-    POST:bm', hm', RET:^(mscs', r, ok)
+    POST:bm', hm', RET:^(mscs', rok) let r:= fst rok in let ok:= snd rok in 
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *

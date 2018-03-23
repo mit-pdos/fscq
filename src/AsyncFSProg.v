@@ -40,15 +40,16 @@ Notation MSAlloc := BFILE.MSAlloc.
 Notation MSDBlocks := BFILE.MSDBlocks.
 
 
+
  Lemma read_post:
-    forall Fr Fm Ftop pathname f Fd ds sm tree mscs fsxp ilist frees d bm hm pr off vs inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (block * (res unit * unit)))),
+    forall Fr Fm Ftop pathname f Fd ds sm tree mscs fsxp ilist frees d bm hm pr off vs inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (block * res unit * unit))),
   (Fr * [[ sync_invariant Fr ]] *
    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
    [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
    [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
    [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
   exec pr tr d bm hm (read_fblock fsxp inum off mscs) (Finished d' bm' hm' rx) tr' ->
-  let mscs':= fst rx in let r := fst (snd rx) in let ok := fst (snd (snd rx)) in
+  let mscs':= fst rx in let r := fst (fst (snd rx)) in let ok := snd (fst (snd rx)) in
        (Fr * [[ sync_invariant Fr ]] *
        (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
@@ -68,15 +69,15 @@ Notation MSDBlocks := BFILE.MSDBlocks.
     inv_exec_perm.
     simpl in *.
     destruct_lift H2.
-    eassign (fun d0 bm0 hm0 (rx: (BFILE.memstate * (block * (res unit * unit)))) =>
-     let a:= fst rx in let a0:= fst (snd rx) in let a1:= fst (snd (snd rx)) in
+    eassign (fun d0 bm0 hm0 (rx: (BFILE.memstate * (block * res unit * unit))) =>
+     let a:= fst rx in let a1:= fst (fst (snd rx)) in let b:= snd (fst (snd rx)) in
     (Fr ✶ (((LOG.rep (FSXPLog fsxp) (SB.rep fsxp) 
                    (LOG.NoTxn ds) (MSLL a) sm bm0 hm0
                  ✶ 【 ds !!
                    ‣‣ Fm ✶ rep fsxp Ftop tree ilist (frees_1, frees_2) a sm 】)
                 ✶ ⟦⟦ MSAlloc a = MSAlloc mscs ⟧⟧)
-               ✶ (⟦⟦ isError a1 ⟧⟧ ✶ ⟦⟦ a0 = $ (0) ⟧⟧ * [[ ~can_access pr (DFOwner f) ]]
-                  ⋁ ⟦⟦ a1 = OK tt ⟧⟧ ✶ ⟦⟦ a0 = snd (fst vs) ⟧⟧ * [[ can_access pr (DFOwner f) ]])))%pred d0).
+               ✶ (⟦⟦ isError b ⟧⟧ ✶ ⟦⟦ a1 = $ (0) ⟧⟧ * [[ ~can_access pr (DFOwner f) ]]
+                  ⋁ ⟦⟦ b = OK tt ⟧⟧ ✶ ⟦⟦ a1 = snd (fst vs) ⟧⟧ * [[ can_access pr (DFOwner f) ]])))%pred d0).
     left; repeat eexists; simpl in *; eauto.
     pred_apply; cancel.
     or_l; cancel.
@@ -205,52 +206,60 @@ Notation MSDBlocks := BFILE.MSDBlocks.
     inversion H1.
   Qed.
 
-
-
 (** Safety **)
 
+(** 
+(** this axioms may simplify tree equivalence after execution proofs *)
 Axiom one_tag_per_user:
   forall pr t t',
     t <> Public ->
     t' <> Public ->
-    t <> t' ->
     can_access pr t ->
-    ~can_access pr t'.
+    can_access pr t' ->
+    t = t'.
 
-Inductive fprog_basic : Type -> Type :=
+Axiom one_user_per_tag:
+  forall pr pr' t,
+    t <> Public ->
+    can_access pr t ->
+    can_access pr' t ->
+    pr = pr'.
+*)
+
+Inductive fbasic : Type -> Type :=
 | FRead : fs_xparams ->
           INODE.IRec.Cache.key ->
           addr ->
-          fprog_basic (block * res unit)
+          fbasic (block * res unit)
 
 | FWrite : fs_xparams ->
            INODE.IRec.Cache.key ->
            addr ->
            block ->
-           fprog_basic (res unit).
+           fbasic (res unit).
 
 Inductive fprog : Type -> Type :=
-| FBasic : forall T, fprog_basic T -> fprog T
-| FBind: forall T T', fprog T  -> (T -> fprog_basic T') -> fprog T'.
+| FBasic : forall T, fbasic T -> fprog T
+| FBind: forall T T', fprog T  -> (T -> fbasic T') -> fprog T'.
 
-Inductive fexec_basic:
+Inductive exec_fbasic:
   forall T, perm -> trace -> tagged_disk ->
        block_mem -> hashmap -> BFILE.memstate ->
-       fprog_basic T ->  result -> BFILE.memstate -> trace -> Prop :=
+       fbasic T ->  result -> BFILE.memstate -> trace -> Prop :=
 | FExecRead    :
     forall pr d bm hm tr tr' fsxp inum off (ams ams': BFILE.memstate)
-      (b: block) (ok: res unit) d' bm' hm',
+      (r: block * res unit) d' bm' hm',
       exec pr tr d bm hm (read_fblock fsxp inum off ams)
-           (Finished d' bm' hm' ^(ams', b, ok)) tr' ->
-      fexec_basic pr tr d bm hm ams (FRead fsxp inum off)
-            (Finished d' bm' hm' (b, ok)) ams' tr'
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (FRead fsxp inum off)
+            (Finished d' bm' hm' r) ams' tr'
                    
 | FExecWrite   :
     forall pr d bm hm tr d' bm' hm' tr' fsxp
       inum off v (ams ams': BFILE.memstate) (ok: res unit),
       exec pr tr d bm hm (update_fblock_d fsxp inum off v ams)
            (Finished d' bm' hm' ^(ams', ok)) tr' ->
-      fexec_basic pr tr d bm hm ams (FWrite fsxp inum off v)
+      exec_fbasic pr tr d bm hm ams (FWrite fsxp inum off v)
             (Finished d' bm' hm' ok) ams' tr'.
 
 
@@ -259,19 +268,19 @@ Inductive fexec:
        block_mem -> hashmap -> BFILE.memstate ->
        fprog T ->  result -> BFILE.memstate -> trace -> Prop :=
 | FExecBasic    :
-    forall T (p :fprog_basic T) pr d bm hm tr tr' (ams ams': BFILE.memstate)
+    forall T (p :fbasic T) pr d bm hm tr tr' (ams ams': BFILE.memstate)
      out,
-      fexec_basic pr tr d bm hm ams p out ams' tr' ->
+      exec_fbasic pr tr d bm hm ams p out ams' tr' ->
       fexec pr tr d bm hm ams (FBasic p) out ams' tr'
                    
 | FExecBind :
-    forall T T' pr (p1 : fprog T) (p2: T -> fprog_basic T') d bm hm d'
+    forall T T' pr (p1 : fprog T) (p2: T -> fbasic T') d bm hm d'
       bm' hm' v r tr tr' tr'' ams ams' ams'',
                fexec pr tr d bm hm ams p1 (Finished d' bm' hm' v) ams' tr' ->
-               fexec_basic pr tr' d' bm' hm' ams' (p2 v) r ams'' tr'' ->
+               exec_fbasic pr tr' d' bm' hm' ams' (p2 v) r ams'' tr'' ->
                fexec pr tr d bm hm ams (FBind p1 p2) r ams'' tr''
 
-| FCrashBind : forall T T' pr (p1 : fprog T) (p2: T -> fprog_basic T') d d' bm bm' hm hm' tr tr' r ams ams',
+| FCrashBind : forall T T' pr (p1 : fprog T) (p2: T -> fbasic T') d d' bm bm' hm hm' tr tr' r ams ams',
                 fexec pr tr d bm hm ams p1 r ams' tr' ->
                 r = (Crashed d' bm' hm') ->
                 fexec pr tr d bm hm ams (FBind p1 p2) r ams' tr'.
@@ -279,13 +288,10 @@ Inductive fexec:
 Fixpoint filter tag tree:=
   match tree with
   | TreeFile inum f =>
-    if tag_dec Public (DFOwner f) then
+    if tag_dec tag (DFOwner f) then
       TreeFile inum f
     else
-      if tag_dec tag (DFOwner f) then
-        TreeFile inum f
-      else
-        TreeFile inum (mk_dirfile nil INODE.iattr0 (DFOwner f))
+      TreeFile inum (mk_dirfile nil INODE.iattr0 (DFOwner f))
   | TreeDir inum ents =>
     TreeDir inum (map (fun st => (fst st, filter tag (snd st))) ents)
   end.
@@ -293,38 +299,165 @@ Fixpoint filter tag tree:=
 Definition equivalent_for tag tree1 tree2:=
   filter tag tree1 = filter tag tree2.
 
+Definition public_equivalent tree1 tree2:=
+  equivalent_for Public tree1 tree2.
+
 Definition same_except tag tree1 tree2:=
   forall tag', tag' <> tag -> equivalent_for tag' tree1 tree2.
 
+Definition fbasic_to_prog {T} mscs (fp: fbasic T): prog (BFILE.memstate * (T * unit)) :=
+  match fp with
+  | FRead fsxp inum off => read_fblock fsxp inum off mscs
+  | FWrite fsxp inum off v => update_fblock_d fsxp inum off v mscs
+  end.
 
-Definition permission_secure_f {T} d bm hm mscs pr (p: fprog T) :=
+Fixpoint fprog_to_prog {T} mscs (fp: fprog T): prog (BFILE.memstate * (T * unit)) :=
+  match fp with
+  | FBasic p => fbasic_to_prog mscs p
+  | FBind p bp => x <- (fprog_to_prog mscs p);; (fbasic_to_prog (fst x) (bp (fst (snd x))))
+  end.
+
+Definition permission_secure_fbasic {T} d bm hm mscs pr (p: fbasic T) :=
+  forall tr tr' r mscs' ,
+    exec_fbasic pr tr d bm hm mscs p r mscs' (tr'++tr) ->
+    trace_secure pr tr'.
+
+Definition permission_secure_fprog {T} d bm hm mscs pr (p: fprog T) :=
   forall tr tr' r mscs' ,
     fexec pr tr d bm hm mscs p r mscs' (tr'++tr) ->
     trace_secure pr tr'.
 
-(*
-Theorem permission_secure_f_same_except:
-  forall T (p: fprog T) tag Fr Fm Ftop ds sm tree1 tree2 mscs fsxp ilist frees pr d1 bm hm d2,
+Theorem ps_fbasic2prog:
+  forall T (fp: fbasic T) d bm hm mscs pr,
+    permission_secure d bm hm pr (fbasic_to_prog mscs fp) ->
+    permission_secure_fbasic d bm hm mscs pr fp.
+Proof.
+  unfold permission_secure_fbasic, permission_secure; intros.
+  inversion H0; subst; sigT_eq; clear H0; eauto.
+Qed.
+
+Theorem ps_fbasic2fprog:
+  forall T (fp: fbasic T) d bm hm mscs pr,
+    permission_secure_fbasic d bm hm mscs pr fp ->
+    permission_secure_fprog d bm hm mscs pr (FBasic fp).
+Proof.
+  unfold permission_secure_fbasic, permission_secure_fprog; intros.
+  inversion H0; subst; sigT_eq; clear H0; eauto.
+Qed.
+
+Lemma trace_app_fbasic:
+  forall T (fp: fbasic T) tr d bm hm mscs pr out mscs' tr',
+    exec_fbasic pr tr d bm hm mscs fp out mscs' tr' ->
+    exists tr'', tr' = tr''++tr.
+Proof.
+  intros;
+  inversion H; subst; sigT_eq;
+  denote exec as Hx; apply trace_app in Hx; auto.
+Qed.
+
+Lemma trace_app_fprog:
+  forall T (fp: fprog T) tr d bm hm mscs pr out mscs' tr',
+    fexec pr tr d bm hm mscs fp out mscs' tr' ->
+    exists tr'', tr' = tr''++tr.
+Proof.
+  induction fp; intros.
+  inversion H; subst; repeat sigT_eq;
+  denote exec_fbasic as Hx; apply trace_app_fbasic in Hx; auto.
+  inversion H; subst; repeat sigT_eq.
+  specialize IHfp with (1:= H13).
+  denote exec_fbasic as Hx; apply trace_app_fbasic in Hx; auto.
+  cleanup; eexists; rewrite app_assoc; eauto.
+  specialize IHfp with (1:= H13); auto.
+Qed.
+  
+Theorem ps_fprog_bind:
+  forall T T' (p: fprog T) (fp: T -> fbasic T') d bm hm mscs pr,
+    permission_secure_fprog d bm hm mscs pr p ->
+    (forall tr d' bm' hm' r mscs' tr',
+       fexec pr tr d bm hm mscs p (Finished d' bm' hm' r) mscs' tr' ->
+       permission_secure_fbasic d' bm' hm' mscs' pr (fp r)) ->
+    permission_secure_fprog d bm hm mscs pr (FBind p fp).
+Proof.
+  unfold permission_secure_fbasic, permission_secure_fprog; intros.
+  inversion H1; subst; repeat sigT_eq; clear H1; eauto.
+  specialize H0 with (1:= H15).
+  apply trace_app_fprog in H15 as Hx; cleanup.
+  apply trace_app_fbasic in H16 as Hx; cleanup.
+  specialize H with (1:=H15).
+  rewrite <- app_assoc in H16; specialize H0 with (1:=H16).
+  apply trace_secure_app; eauto.  
+Qed.
+
+
+(**
+Theorem ps_fprog2prog:
+  forall T (fp: fprog T) d bm hm mscs pr,
+    permission_secure d bm hm pr (fprog_to_prog mscs fp) ->
+    permission_secure_fprog d bm hm mscs pr fp.
+Proof.
+  induction fp; intros.
+  apply ps_fbasic2fprog.
+  simpl in H.
+  apply ps_fbasic2prog; auto.
+  simpl in H.
+  unfold permission_secure_fprog, permission_secure in *; intros.
+
+  inversion H0; subst; repeat sigT_eq; clear H0; eauto.
+Abort.
+
+(* this direction requires crashes *)
+Theorem ps_prog2fb:
+  forall T (fp: fbasic T) d bm hm mscs pr,
+    permission_secure_fbasic d bm hm mscs pr fp ->
+    permission_secure d bm hm pr (fbasic_to_prog mscs fp).
+    
+Proof.
+  unfold permission_secure_fbasic, permission_secure; intros.
+  destruct fp; simpl in *; eapply H; econstructor; eauto.
+Qed.
+*)
+
+
+Theorem permission_secure_fbasic_equivalent:
+  forall T (p: fbasic T) tag Fr Fm Ftop ds sm tree1 tree2 mscs fsxp ilist frees pr d1 bm hm d2,
     (Fr *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
      [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]])%pred d1 ->
     (Fr *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
      [[[ ds!! ::: (Fm * rep fsxp Ftop tree2 ilist frees mscs sm)]]])%pred d2 ->
-    permission_secure_f d1 bm hm mscs pr p ->
+    permission_secure_fbasic d1 bm hm mscs pr p ->
     can_access pr tag ->
     tag <> Public ->
     equivalent_for tag tree1 tree2 ->
-    permission_secure_f d2 bm hm mscs pr p.
+    permission_secure_fbasic d2 bm hm mscs pr p.
 Proof.
-  induction p; simpl; intros.
-  admit.
-  unfold permission_secure_f; 
-  inversion H6; subst; sigT_eq.
-*)
+  intros.
+  apply ps_fbasic2prog.
+Abort.
 
 
-
+(** Problem is, our rep invariants are not unique. Therefore given rep invariants applied to the same thisk, I can't conclude that trees are the same. 
+Without that, I don't know how can I address to the tree that represents post-execution disk. *)
+Theorem write_same_except_secure:
+  forall Fr Fm Ftop ds sm tree1 tree2 mscs mscs1 mscs2 fsxp ilist frees pr off v1 v2 inum tr d bm hm d1 bm1 hm1 d2 bm2 hm2 tr1 (r1 r2: res unit) tr2 tag,
+  exec_fbasic pr tr d bm hm mscs (FWrite fsxp inum off v1) (Finished d1 bm1 hm1 r1) mscs1 tr1 ->
+  exec_fbasic pr tr d bm hm mscs (FWrite fsxp inum off v2) (Finished d2 bm2 hm2 r2) mscs2 tr2 ->
+    (Fr * [[ sync_invariant Fr ]] *
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]])%pred d1 ->
+    (Fr *
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+     [[[ ds!! ::: (Fm * rep fsxp Ftop tree2 ilist frees mscs sm)]]])%pred d2 ->
+    permission_secure_fbasic d bm hm mscs pr (FWrite fsxp inum off v1) ->
+    permission_secure_fbasic d bm hm mscs pr (FWrite fsxp inum off v2) ->
+    can_access pr tag ->
+    tag <> Public ->
+    same_except tag tree1 tree2.
+Proof.
+  unfold same_except, permission_secure_fbasic,
+  trace_secure, op_secure; intros.
+Abort.
 
 
 
@@ -388,27 +521,14 @@ Proof.
     unfold equivalent_for, filter in *.
     destruct f; simpl in *.
     cleanup; simpl in *.
-    destruct t; subst.
-    {
-      destruct tree2; simpl in *; intuition.
-      destruct d; simpl in *.
-      destruct (DFOwner).
-      cleanup; auto.
-      inversion H; subst; intuition.
-      inversion H.
-    }
-
-    {
-      destruct (tag_dec (Private o) (Private o)); try congruence.
-      destruct tree2; simpl in *; intuition.
-      destruct d; simpl in *.
-      destruct (DFOwner).
-      cleanup; auto.
-      destruct (Nat.eq_dec o o0); subst; simpl in *.
-      inversion H; subst; intuition.
-      inversion H; subst; intuition.
-      inversion H.
-    }
+    destruct (tag_dec t t); try congruence.
+    
+    destruct tree2; simpl in *; intuition.
+    destruct d; simpl in *.
+    destruct (tag_dec t DFOwner).
+    cleanup; auto.
+    inversion H; subst; intuition.
+    inversion H.
   }
   {
     destruct tree1; try solve [ simpl in *; congruence].
@@ -416,7 +536,6 @@ Proof.
     {
       simpl in *.
       unfold equivalent_for, filter in H.
-      destruct (tag_dec Public (DFOwner d)); try congruence.
       destruct (tag_dec t (DFOwner d)); try congruence.
     }
     {
@@ -454,129 +573,10 @@ Proof.
   }
 Qed.
 
-
-
-
-(*
-Definition corr2' (T: Type) pr pre post crash (p: prog T):=
-  forall d bm hm tr tr' out,
-    pre bm hm d
-  -> exec pr tr d bm hm p out tr'
-  -> ((exists d' bm' hm' (v: T), out = Finished d' bm' hm' v /\
-                  post bm' hm' v d') \/
-      (exists d' bm' hm', out = Crashed d' bm' hm' /\ crash bm' hm' d')).
-
-Lemma corr2_transform':
-  forall T (p: prog T) pr pre post crash,
-   corr2 pr pre p ->
-   corr2' pr (pre post crash) (fun bm hm r d => post d bm hm r) crash p.
-Proof.
-  unfold corr2, corr2'; intros.
-  edestruct H with (d:= d).
-  eauto.
-  eauto.
-  eauto.
-Qed.
-
-Lemma exec_out_destruct:
-  forall T (p:prog T) pr tr d bm hm tr' out,
-    exec pr tr d bm hm p out tr' ->
-    (exists d' bm' hm' (r:T), out = Finished d' bm' hm' r) \/
-    (exists d' bm' hm',  out = Crashed d' bm' hm').
-Proof.
-  induction 1; intros.
-  all: eauto; try solve [(left; repeat eexists; eauto)];
-  try solve [(right; repeat eexists; eauto)].
-Qed.
-
-Lemma corr2'_ret_noop:
-  forall T (p: prog T) pre post crash pr,
-    corr2' pr pre post crash (x <- p;; Ret x) ->
-    corr2' pr pre post crash p.
-Proof.
-  unfold corr2'; intros.
-  eapply exec_out_destruct in H0 as Hx.
-  intuition; cleanup.
-  eapply H; eauto.
-  repeat econstructor; eauto.
-  eapply H; eauto.
-  eapply CrashBind; eauto.
-Qed.
-
-Lemma desugar_write:
-  forall T (p: prog T) pre post crash pr,
-    {< (ds : diskset) (sm : @Mem.mem addr addr_eq_dec bool)
-       (Fm : @pred addr addr_eq_dec valuset)
-       (Ftop : @pred addr Nat.eq_dec BFILE.bfile) 
-       (tree : dirtree) (pathname : list String.string) 
-       (f : dirfile) (Fd : @pred addr Nat.eq_dec datatype) 
-       (vs : datatype) (frees : list addr * list addr)
-       (ilist : list INODE.inode),
-   PERM: pr
-   PRE: bm, hm, pre
-   POST: bm', hm', post                       
-   CRASH: bm', hm', crash
-   >} p ->
-  corr2' pr (fun _ _ => pre) (fun _ _ r => post emp r) (fun _ _ => crash) p.
-Proof.
-  intros.
-  eapply corr2_transform' with
-      (post:= fun d (_:block_mem) (_:hashmap) r => post emp r d)
-      (crash:= fun _ _ d => crash d) in H.
-  apply corr2'_ret_noop in H.
-  unfold corr2' in *; intros.
-  eapply H; eauto.
-  pred_apply; cancel.
-  unfold corr2; intros.
-  inv_exec_perm.
-  destruct_lift H2.
-  split; eauto.
-  left; repeat eexists; eauto.
-  unfold permission_secure; intros.
-  inv_exec_perm.
-  cleanup; auto.
-  unfold trace_secure; eauto.
-  cancel.
-  Unshelve.
-  all: eauto.
-  all: try exact nil.
-  all: try repeat constructor.
-  exact emp.
-  exact $0.
-Qed.
-
-Lemma exis_merge:
-  forall A B AT AEQ V (P: @pred AT AEQ V),
-    A ->
-    B ->
-    exis (fun a:A => exis (fun b:B => P)) =p=> exis (fun (ab: A*B) => P).
-Proof.
-  intros.
-  cancel.
-  Unshelve.
-  all: eauto.
-Qed.
-
-Lemma extract_post_condition_finished:
-  forall T (p: prog T) (pre: block_mem -> hashmap -> pred) post crash tr d bm hm pr d' bm' hm' r tr',
-    exec pr tr d bm hm p (Finished d' bm' hm' r) tr' ->
-    corr2' pr pre post crash p ->
-    pre bm hm d ->
-    post bm' hm' r d'.
-  Proof.
-    unfold corr2'; intros.
-    edestruct H0 with (d:= d); eauto.
-    cleanup.
-    sigT_eq; eauto.
-    cleanup.
-    inversion H2.
-  Qed.
- *)
-
 Lemma read_equivalent_exec:
   forall Fr Fm Ftop pathname f Fd ds sm tree1 tree2 mscs mscs1 mscs2 fsxp ilist frees pr off vs inum tr d1 bm hm d1' bm1 hm1 d2 d2' bm2 hm2 tr1 (r1 r2: block * res unit) tr2,
-  fexec_basic pr tr d1 bm hm mscs (FRead fsxp inum off) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
-  fexec_basic pr tr d2 bm hm mscs (FRead fsxp inum off) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
+  exec_fbasic pr tr d1 bm hm mscs (FRead fsxp inum off) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
+  exec_fbasic pr tr d2 bm hm mscs (FRead fsxp inum off) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
   (Fr * [[ sync_invariant Fr ]] *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]] *
@@ -630,8 +630,8 @@ Admitted.
   
 Lemma write_equivalent_exec:
   forall Fr Fm Ftop pathname f Fd ds sm tree1 tree2 mscs mscs1 mscs2 fsxp ilist frees pr off vs v inum tr d1 bm hm d1' bm1 hm1 d2 d2' bm2 hm2 tr1 (r1 r2: res unit) tr2,
-  fexec_basic pr tr d1 bm hm mscs (FWrite fsxp inum off v) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
-  fexec_basic pr tr d2 bm hm mscs (FWrite fsxp inum off v) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
+  exec_fbasic pr tr d1 bm hm mscs (FWrite fsxp inum off v) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
+  exec_fbasic pr tr d2 bm hm mscs (FWrite fsxp inum off v) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
   (Fr * [[ sync_invariant Fr ]] *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]] *
