@@ -1494,6 +1494,60 @@ Qed.
   Local Hint Extern 1 (LOG.rep _ _ _ ?ms _ _ _ =p=> LOG.rep _ _ _ (MSLL ?e) _ _ _ ) => assignms.
   Local Opaque Nat.div.
 
+  Lemma grow_treeseq_ilist_safe:
+    forall (ilist: list INODE.inode) ilist' inum a,
+      inum < Datatypes.length ilist ->
+      (arrayN_ex (ptsto (V:=INODE.inode)) ilist inum
+                 ✶ inum
+                 |-> {|
+                   INODE.IBlocks := INODE.IBlocks (selN ilist inum INODE.inode0) ++ [$ (a)];
+                   INODE.IAttr := INODE.IAttr (selN ilist inum INODE.inode0);
+                   INODE.IOwner := INODE.IOwner (selN ilist inum INODE.inode0) |})%pred (list2nmem ilist') ->
+      treeseq_ilist_safe inum ilist ilist'.
+  Proof.
+    intros.
+    unfold treeseq_ilist_safe, block_belong_to_file.
+    apply arrayN_except_upd in H0 as Hselupd; auto.
+    apply list2nmem_array_eq in Hselupd; subst.
+    split. 
+    intros.
+    split.
+    erewrite selN_updN_eq; simpl.
+    erewrite app_length.
+    omega.
+    simplen'.
+    intuition.
+    erewrite selN_updN_eq; simpl.
+    erewrite selN_app; eauto.
+    simplen'.
+    intros.
+    erewrite selN_updN_ne; eauto.
+  Qed.
+
+  Lemma synced_list_map_fst_map : forall (vsl : list valuset),
+                                    synced_list (map fst vsl) = map (fun x => (fst x, nil)) vsl.
+  Proof.
+    unfold synced_list; induction vsl; simpl; auto.
+    f_equal; auto.
+  Qed.
+
+  Lemma handles_valid_empty:
+    forall bm, handles_valid bm nil.
+  Proof.
+    unfold handles_valid; intros; apply Forall_nil.
+  Qed.
+
+  Lemma in_synced_list:
+    forall l a,
+      In a l ->
+      In (a, []) (synced_list l).
+  Proof.
+    unfold synced_list; induction l; intuition; simpl in *.
+    inversion H; subst.
+    left; eauto.
+    right; eauto.
+  Qed.
+
 
    (** crash and recovery *)
 
@@ -1610,6 +1664,7 @@ Qed.
     rewrite crash_xform_ptsto.
     cancel.
   Qed.
+  
 (*
   Lemma xform_file_match : forall f ino,
     crash_xform (file_match f ino) =p=> 
@@ -2545,34 +2600,6 @@ Qed.
     all: try split; auto using nil, tt.
   Qed.
 *)
-  Lemma grow_treeseq_ilist_safe: forall (ilist: list INODE.inode) ilist' inum a,
-    inum < Datatypes.length ilist ->
-    (arrayN_ex (ptsto (V:=INODE.inode)) ilist inum
-     ✶ inum
-       |-> {|
-           INODE.IBlocks := INODE.IBlocks (selN ilist inum INODE.inode0) ++ [$ (a)];
-           INODE.IAttr := INODE.IAttr (selN ilist inum INODE.inode0);
-           INODE.IOwner := INODE.IOwner (selN ilist inum INODE.inode0) |})%pred (list2nmem ilist') ->
-    treeseq_ilist_safe inum ilist ilist'.
-  Proof.
-    intros.
-    unfold treeseq_ilist_safe, block_belong_to_file.
-    apply arrayN_except_upd in H0 as Hselupd; auto.
-    apply list2nmem_array_eq in Hselupd; subst.
-    split. 
-    intros.
-    split.
-    erewrite selN_updN_eq; simpl.
-    erewrite app_length.
-    omega.
-    simplen'.
-    intuition.
-    erewrite selN_updN_eq; simpl.
-    erewrite selN_app; eauto.
-    simplen'.
-    intros.
-    erewrite selN_updN_ne; eauto.
-  Qed.
 
 
   Theorem grow_ok : 
@@ -3059,14 +3086,6 @@ Qed.
     all: try easy.
   Admitted.
 *)
-
-  Lemma synced_list_map_fst_map : forall (vsl : list valuset),
-    synced_list (map fst vsl) = map (fun x => (fst x, nil)) vsl.
-  Proof.
-    unfold synced_list; induction vsl; simpl; auto.
-    f_equal; auto.
-  Qed.
-
   
   Theorem datasync_ok :
     forall lxp bxp ixp inum ms pr,
@@ -3159,12 +3178,12 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (dwrite _ _ _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
- Hint Extern 1 ({{_|_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
-   Hint Extern 0 (okToUnify (rep _ _ _ _ _ _ _ _ _ _) (rep _ _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _ _ _ _ _ _) (rep _ _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
 
 
   Theorem read_array_ok :
@@ -3262,13 +3281,6 @@ Qed.
 *)
   Hint Extern 1 ({{_|_}} Bind (read_array _ _ _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write_array _ _ _ _ _ _ _) _) => apply write_array_ok : prog.
-
-
-Lemma handles_valid_empty:
-  forall bm, handles_valid bm nil.
-Proof.
-  unfold handles_valid; intros; apply Forall_nil.
-Qed.
          
   Theorem read_range_ok :
     forall lxp bxp ixp inum a nr ms pr,
@@ -3441,17 +3453,6 @@ Qed.
 
   Hint Extern 1 ({{_|_}} Bind (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
   (* Hint Extern 1 ({{_}} Bind (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog. *)
-
-Lemma in_synced_list:
-  forall l a,
-    In a l ->
-    In (a, []) (synced_list l).
-Proof.
-  unfold synced_list; induction l; intuition; simpl in *.
-  inversion H; subst.
-  left; eauto.
-  right; eauto.
-Qed.
 
  Theorem grown_ok :
     forall lxp bxp ixp inum hl ms pr,

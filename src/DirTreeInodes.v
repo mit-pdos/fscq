@@ -229,16 +229,15 @@ Import ListNotations.
     clear H1.
     induction tree using dirtree_ind2; simpl.
     cancel.
-    unfold tree_dir_names_pred. cancel. clear H5.
+    unfold tree_dir_names_pred. cancel. clear H4.
     induction tree_ents; simpl.
     - cancel.
     - inversion H0.
       destruct a.
       simpl in H3.
       rewrite ListPred.listpred_app.
-      rewrite <- H4; simpl; cancel.
-      rewrite <- H2; eauto.
-      cancel.
+      rewrite <- H3; simpl; cancel.
+      rewrite <- H1; eauto.
   Qed.
 
 
@@ -1667,13 +1666,6 @@ Import ListNotations.
     pred_apply; cancel.
     
     2: simpl; eapply owner_match with (m:=m)(flist := dummy); eauto; pred_apply; cancel.
-    2: eassign (F0 *
-                IAlloc.rep BFILE.freepred fsxp dummy0 dummy1
-                {|
-                  IAlloc.Alloc.MSLog := SDIR.MSLL ms;
-                  IAlloc.Alloc.MSCache := SDIR.MSIAllocC ms |})%pred;
-    cancel.
-    2: eassign (inode_tags_public dummy tree * dummy1 * F)%pred; cancel.
     cancel.
 
     rewrite subtree_extract in H4; eauto.
@@ -1685,8 +1677,6 @@ Import ListNotations.
     eapply pimpl_apply in H2. eapply list2nmem_sel with (i := inum) in H2. 2: cancel.
     rewrite <- H2.
     cancel.
-    
-    admit.
 
     simpl in *.
     destruct_lift H4'.
@@ -1701,15 +1691,8 @@ Import ListNotations.
 
     eapply BFILE.block_belong_to_file_bfdata_length; eauto.
     eapply pimpl_apply; [ | apply H ]. cancel.
-    eassign (F0 *
-                IAlloc.rep BFILE.freepred fsxp dummy0 dummy1
-                {|
-                  IAlloc.Alloc.MSLog := SDIR.MSLL ms;
-                  IAlloc.Alloc.MSCache := SDIR.MSIAllocC ms |})%pred;
-    cancel.
-
     inversion H2. subst. simpl. congruence.
-  Admitted.
+  Qed.
 
 
   Theorem tree_inodes_pathname_exists : forall tree inum,

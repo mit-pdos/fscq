@@ -183,7 +183,7 @@ Module AFS.
      CRASH:bm', hm',
        any
      >!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
-  Proof. Admitted. (*
+  Proof. 
     unfold mkfs.
     safestep.
 
@@ -286,9 +286,6 @@ Module AFS.
     unfold BFILE.freepred in *. subst.
     apply DirTreePred.SDIR.bfile0_empty.
     apply emp_empty_mem.
-    rewrite repeat_selN; auto.
-    unfold INODE.IOwner, INODE.inode0, INODE.iattr0, INODE.AOwner; simpl.
-    setoid_rewrite <- encode_public; apply encode_decode.
     eapply Forall_repeat.
     eauto.
     all: try solve [rewrite <- H1; cancel; eauto; apply pimpl_any].
@@ -346,8 +343,6 @@ Module AFS.
     all: try easy.
     try exact valuset0.
   Qed.
-*)
-  
 
   
   Definition recover cachesize :=
@@ -373,16 +368,15 @@ Module AFS.
     If (bool_dec p true) {
        let^ (ams, attr) <- DIRTREE.getattr fsxp inum ams;;
        ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
-       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), attr, OK tt)
+       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (attr, OK tt))
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), INODE.iattr0, Err ENOPERMIT)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (INODE.iattr0, Err ENOPERMIT))
     }.
 
   Definition file_get_sz fsxp inum ams :=
-    let^ (ams, attr, ok) <- file_get_attr fsxp inum ams;;
-    Ret ^(ams, INODE.ABytes attr, ok).
-              
+    let^ (ams, r) <- file_get_attr fsxp inum ams;;
+    Ret ^(ams, (INODE.ABytes (fst r), snd r)).              
 
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
@@ -481,10 +475,10 @@ Module AFS.
       h <- Seal t v;;
       ams <- DIRTREE.write fsxp inum off h ams;;
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), ok, OK tt)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (ok, OK tt))
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), false, Err ENOPERMIT)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (false, Err ENOPERMIT))
     }.
 
   (* sync only data blocks of a file. *)
@@ -563,7 +557,6 @@ Module AFS.
         end
     end.
 
-
   (* User can purge all the subtree even without permission? *)   
   Definition delete fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
@@ -605,16 +598,16 @@ Module AFS.
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync fsxp ams :=
     ams <- DIRTREE.sync fsxp ams;;
-    Ret ^(ams).
+    Ret ^(ams, OK tt).
 
   Definition tree_sync_noop fsxp ams :=
     ams <- DIRTREE.sync_noop fsxp ams;;
-    Ret ^(ams).
+    Ret ^(ams, OK tt).
 
   Definition umount fsxp ams :=
     ams <- DIRTREE.sync fsxp ams;;
     ms <- LOG.sync_cache (FSXPLog fsxp) (MSLL ams);;
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams))).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), OK tt).
 
   Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
@@ -624,7 +617,7 @@ Module AFS.
      *)
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;;
     (* Ret ^(mscs, free_blocks, free_inodes).  *)
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), 0, 0).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (0, 0)).
 
   (* Recover theorems *)
 
@@ -647,7 +640,7 @@ Module AFS.
      XCRASH:bm', hm',
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds bm' hm'
      >} recover cachesize.
-  Proof. Admitted. (*
+  Proof. 
     unfold recover, LOG.after_crash; intros.
     eapply pimpl_ok2; monad_simpl.
     eapply PermCacheSec.init_recover_ok.
@@ -764,7 +757,7 @@ Module AFS.
     eauto.
     Unshelve. all: eauto.
   Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (recover _) _) => apply recover_ok : prog.
 
  (* 
@@ -797,15 +790,14 @@ Module AFS.
   POST:bm', hm', RET:^(mscs',r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
          [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-         [[ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]] *
-         (([[ r = true ]] *
-           [[ can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)) ]]) \/
-          ([[ r = false ]] *
-           [[ ~can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)) ]]))
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ MSCache mscs' = MSCache mscs ]] *
+         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} authenticate fsxp inum mscs.
-  Proof. Admitted. (*
+  Proof. 
     intros; unfold authenticate.
     lightstep.
     simpl.

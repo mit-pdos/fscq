@@ -40,6 +40,12 @@ Notation MSAlloc := BFILE.MSAlloc.
 Notation MSDBlocks := BFILE.MSDBlocks.
 
 
+Definition sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm:=
+  (Fr * [[ sync_invariant Fr ]] *
+   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]])%pred.
+
+
 
  Lemma read_post:
     forall Fr Fm Ftop pathname f Fd ds sm tree mscs fsxp ilist frees d bm hm pr off vs inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (block * res unit * unit))),

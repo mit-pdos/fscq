@@ -119,7 +119,7 @@ Set Implicit Arguments.
       erewrite <- find_subtree_update_subtree_oob'; eauto.
   Qed.
 
-
+(*
   Theorem dirtree_update_safe_inum : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
@@ -215,7 +215,7 @@ Set Implicit Arguments.
     eapply pimpl_apply; try eassumption. cancel.
     eapply pimpl_apply; try eassumption. cancel.
   Qed.
-
+*)
   (**
    * Helpers for proving [dirlist_safe] in postconditions.
    *)
@@ -292,13 +292,13 @@ Set Implicit Arguments.
 
     Unshelve. all: eauto; exact unit.
   Qed.
-(*
+
   Theorem dirlist_safe_mkfile : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks
                                       dnum tree_elem name inum m flist' bxp ixp F Fm tag,
    (Fm * BFILE.rep bxp IFs ixp flist' ilist' frees msc ms icache dblocks)%pred m ->
    (F * inum |-> {| BFILE.BFData := [];
-                    BFILE.BFAttr := (INODE.iattr_upd INODE.iattr0
-                    (INODE.UOwner (encode_tag tag)));
+                    BFILE.BFAttr := INODE.iattr0;
+                    BFILE.BFOwner := tag;
                     BFILE.BFCache:= None |} )%pred (list2nmem flist') ->
     BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
     tree_names_distinct (TreeDir dnum tree_elem) ->
@@ -306,8 +306,8 @@ Set Implicit Arguments.
     dirtree_safe ilist  freeblocks (TreeDir dnum tree_elem)
                  ilist' freeblocks' (TreeDir dnum (tree_elem ++
                         [(name, TreeFile inum {| DFData := [];
-                                                 DFAttr := (INODE.iattr_upd INODE.iattr0
-                                                 (INODE.UOwner (encode_tag tag)))|} )])).
+                                                 DFAttr := INODE.iattr0;
+                                                 DFOwner := tag|} )])).
   Proof.
     unfold dirtree_safe, BFILE.ilist_safe; intuition.
     denote (forall _, _ ) as Hx; denote (BFILE.block_belong_to_file) as Hy.
@@ -350,8 +350,6 @@ Set Implicit Arguments.
     Unshelve. all: eauto; exact unit.
   Qed.
 
-*)
-  
 
   Lemma dirtree_safe_update_subtree : forall ilist frees tree ilist' frees' tree' inum pathname f f',
     dirtree_safe ilist frees tree ilist' frees' tree' ->
