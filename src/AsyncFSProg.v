@@ -23,6 +23,7 @@ Require Import DirTreeRep.
 Require Import DirTreePred.
 Require Import DirTreeInodes.
 Require Import DirTreeSafe.
+Require Import DirTreeNames.
 Require Import AsyncFS.
 
 Set Implicit Arguments.
@@ -216,30 +217,32 @@ Axiom one_tag_per_user:
     can_access pr t ->
     ~can_access pr t'.
 
-Inductive fprog : Type -> Type :=
+Inductive fprog_basic : Type -> Type :=
 | FRead : fs_xparams ->
           INODE.IRec.Cache.key ->
           addr ->
-          fprog (block * res unit)
+          fprog_basic (block * res unit)
 
 | FWrite : fs_xparams ->
            INODE.IRec.Cache.key ->
            addr ->
            block ->
-           fprog (res unit)
+           fprog_basic (res unit).
 
-| FBind: forall T T', fprog T  -> (T -> fprog T') -> fprog T'.
+Inductive fprog : Type -> Type :=
+| FBasic : forall T, fprog_basic T -> fprog T
+| FBind: forall T T', fprog T  -> (T -> fprog_basic T') -> fprog T'.
 
-Inductive fexec:
+Inductive fexec_basic:
   forall T, perm -> trace -> tagged_disk ->
        block_mem -> hashmap -> BFILE.memstate ->
-       fprog T ->  result -> BFILE.memstate -> trace -> Prop :=
+       fprog_basic T ->  result -> BFILE.memstate -> trace -> Prop :=
 | FExecRead    :
     forall pr d bm hm tr tr' fsxp inum off (ams ams': BFILE.memstate)
       (b: block) (ok: res unit) d' bm' hm',
       exec pr tr d bm hm (read_fblock fsxp inum off ams)
            (Finished d' bm' hm' ^(ams', b, ok)) tr' ->
-      fexec pr tr d bm hm ams (FRead fsxp inum off)
+      fexec_basic pr tr d bm hm ams (FRead fsxp inum off)
             (Finished d' bm' hm' (b, ok)) ams' tr'
                    
 | FExecWrite   :
@@ -247,17 +250,28 @@ Inductive fexec:
       inum off v (ams ams': BFILE.memstate) (ok: res unit),
       exec pr tr d bm hm (update_fblock_d fsxp inum off v ams)
            (Finished d' bm' hm' ^(ams', ok)) tr' ->
-      fexec pr tr d bm hm ams (FWrite fsxp inum off v)
-            (Finished d' bm' hm' ok) ams' tr'
+      fexec_basic pr tr d bm hm ams (FWrite fsxp inum off v)
+            (Finished d' bm' hm' ok) ams' tr'.
+
+
+Inductive fexec:
+  forall T, perm -> trace -> tagged_disk ->
+       block_mem -> hashmap -> BFILE.memstate ->
+       fprog T ->  result -> BFILE.memstate -> trace -> Prop :=
+| FExecBasic    :
+    forall T (p :fprog_basic T) pr d bm hm tr tr' (ams ams': BFILE.memstate)
+     out,
+      fexec_basic pr tr d bm hm ams p out ams' tr' ->
+      fexec pr tr d bm hm ams (FBasic p) out ams' tr'
                    
 | FExecBind :
-    forall T T' pr (p1 : fprog T) (p2: T -> fprog T') d bm hm d'
+    forall T T' pr (p1 : fprog T) (p2: T -> fprog_basic T') d bm hm d'
       bm' hm' v r tr tr' tr'' ams ams' ams'',
                fexec pr tr d bm hm ams p1 (Finished d' bm' hm' v) ams' tr' ->
-               fexec pr tr' d' bm' hm' ams' (p2 v) r ams'' tr'' ->
+               fexec_basic pr tr' d' bm' hm' ams' (p2 v) r ams'' tr'' ->
                fexec pr tr d bm hm ams (FBind p1 p2) r ams'' tr''
 
-| FCrashBind : forall T T' pr (p1 : fprog T) (p2: T -> fprog T') d d' bm bm' hm hm' tr tr' r ams ams',
+| FCrashBind : forall T T' pr (p1 : fprog T) (p2: T -> fprog_basic T') d d' bm bm' hm hm' tr tr' r ams ams',
                 fexec pr tr d bm hm ams p1 r ams' tr' ->
                 r = (Crashed d' bm' hm') ->
                 fexec pr tr d bm hm ams (FBind p1 p2) r ams' tr'.
@@ -280,10 +294,38 @@ Definition equivalent_for tag tree1 tree2:=
   filter tag tree1 = filter tag tree2.
 
 Definition same_except tag tree1 tree2:=
-  forall tag', tag' <> tag -> filter tag' tree1 = filter tag' tree2.
+  forall tag', tag' <> tag -> equivalent_for tag' tree1 tree2.
 
 
-Import DirTreeNames.
+Definition permission_secure_f {T} d bm hm mscs pr (p: fprog T) :=
+  forall tr tr' r mscs' ,
+    fexec pr tr d bm hm mscs p r mscs' (tr'++tr) ->
+    trace_secure pr tr'.
+
+(*
+Theorem permission_secure_f_same_except:
+  forall T (p: fprog T) tag Fr Fm Ftop ds sm tree1 tree2 mscs fsxp ilist frees pr d1 bm hm d2,
+    (Fr *
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+     [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]])%pred d1 ->
+    (Fr *
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+     [[[ ds!! ::: (Fm * rep fsxp Ftop tree2 ilist frees mscs sm)]]])%pred d2 ->
+    permission_secure_f d1 bm hm mscs pr p ->
+    can_access pr tag ->
+    tag <> Public ->
+    equivalent_for tag tree1 tree2 ->
+    permission_secure_f d2 bm hm mscs pr p.
+Proof.
+  induction p; simpl; intros.
+  admit.
+  unfold permission_secure_f; 
+  inversion H6; subst; sigT_eq.
+*)
+
+
+
+
 
 
 Lemma map_app_exists:
@@ -533,8 +575,8 @@ Lemma extract_post_condition_finished:
 
 Lemma read_equivalent_exec:
   forall Fr Fm Ftop pathname f Fd ds sm tree1 tree2 mscs mscs1 mscs2 fsxp ilist frees pr off vs inum tr d1 bm hm d1' bm1 hm1 d2 d2' bm2 hm2 tr1 (r1 r2: block * res unit) tr2,
-  fexec pr tr d1 bm hm mscs (FRead fsxp inum off) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
-  fexec pr tr d2 bm hm mscs (FRead fsxp inum off) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
+  fexec_basic pr tr d1 bm hm mscs (FRead fsxp inum off) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
+  fexec_basic pr tr d2 bm hm mscs (FRead fsxp inum off) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
   (Fr * [[ sync_invariant Fr ]] *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]] *
@@ -588,8 +630,8 @@ Admitted.
   
 Lemma write_equivalent_exec:
   forall Fr Fm Ftop pathname f Fd ds sm tree1 tree2 mscs mscs1 mscs2 fsxp ilist frees pr off vs v inum tr d1 bm hm d1' bm1 hm1 d2 d2' bm2 hm2 tr1 (r1 r2: res unit) tr2,
-  fexec pr tr d1 bm hm mscs (FWrite fsxp inum off v) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
-  fexec pr tr d2 bm hm mscs (FWrite fsxp inum off v) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
+  fexec_basic pr tr d1 bm hm mscs (FWrite fsxp inum off v) (Finished d1' bm1 hm1 r1) mscs1 tr1 ->
+  fexec_basic pr tr d2 bm hm mscs (FWrite fsxp inum off v) (Finished d2' bm2 hm2 r2) mscs2 tr2 ->
   (Fr * [[ sync_invariant Fr ]] *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]] *
@@ -633,3 +675,4 @@ Proof.
   destruct_lift H0; intuition.
   destruct_lift H0; intuition.
 Admitted.
+
