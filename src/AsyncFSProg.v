@@ -133,6 +133,7 @@ Notation MSDBlocks := BFILE.MSDBlocks.
        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
        [[[ (DFData f') ::: (Fd * off |-> ((DFOwner f, v), vsmerge vs)) ]]] *
        [[ DFAttr f' = DFAttr f ]] *
+       [[ DFOwner f' = DFOwner f ]] *
        [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                        ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]])))%pred d'.
   Proof.
@@ -163,7 +164,7 @@ Notation MSDBlocks := BFILE.MSDBlocks.
              ✶ (exists
                   (tree' : dirtree) (f' : dirfile) (ds' : diskset) 
                 (bn : addr),
-                  ((((((((((LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
+                  (((((((((((LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
                               (LOG.NoTxn ds') (MSLL a) sm bm0 hm0
                             ✶ ⟦⟦ ds' = dsupd ds bn (DFOwner f, v, vsmerge vs)
                               ⟧⟧)
@@ -179,7 +180,7 @@ Notation MSDBlocks := BFILE.MSDBlocks.
                      ✶ ⟦⟦ tree' =
                           update_subtree pathname (TreeFile inum f') tree ⟧⟧)
                     ✶ 【 DFData f' ‣‣ Fd ✶ off |-> (DFOwner f, v, vsmerge vs) 】)
-                   ✶ ⟦⟦ DFAttr f' = DFAttr f ⟧⟧)
+                   ✶ ⟦⟦ DFAttr f' = DFAttr f ⟧⟧) * [[ DFOwner f' = DFOwner f ]])
                   ✶ ⟦⟦ dirtree_safe ilist
                          (BFILE.pick_balloc (frees_1, frees_2) (MSAlloc a))
                          tree ilist
@@ -304,6 +305,9 @@ Definition public_equivalent tree1 tree2:=
 
 Definition same_except tag tree1 tree2:=
   forall tag', tag' <> tag -> equivalent_for tag' tree1 tree2.
+
+Definition same_except_nonpublic tag tree1 tree2:=
+  forall tag', tag'<> Public -> tag' <> tag -> equivalent_for tag' tree1 tree2.
 
 Definition fbasic_to_prog {T} mscs (fp: fbasic T): prog (BFILE.memstate * (T * unit)) :=
   match fp with
@@ -437,27 +441,148 @@ Proof.
 Abort.
 
 
-(** Problem is, our rep invariants are not unique. Therefore given rep invariants applied to the same thisk, I can't conclude that trees are the same. 
-Without that, I don't know how can I address to the tree that represents post-execution disk. *)
+Lemma equivalent_update_nt:
+  forall pathname tree tag f1 f2 inum,
+    tag <> (DFOwner f1) ->
+    (DFOwner f1) = (DFOwner f2) ->
+    tree_names_distinct tree ->
+    equivalent_for tag (update_subtree pathname (TreeFile inum f1) tree)
+                   (update_subtree pathname (TreeFile inum f2) tree).
+Proof.
+  induction pathname; intros.
+  unfold equivalent_for; simpl; intros.
+  destruct (tag_dec tag (DFOwner f1)); try congruence.
+  destruct (tag_dec tag (DFOwner f2)); try congruence.
+  destruct tree.
+  unfold equivalent_for in *; simpl; auto.
+  
+  replace (a::pathname) with ([a]++pathname) by (simpl; auto).
+  destruct (find_subtree [a] (TreeDir n l)) eqn:D.
+  repeat erewrite update_subtree_app; eauto.
+  simpl in D; apply find_subtree_helper_in in D as Hx; cleanup.
+  simpl.
+  repeat rewrite map_app; simpl.
+  destruct (String.string_dec a a); try congruence.
+  inversion H1; subst.
+  rewrite map_app in H5; simpl in H5;
+  apply NoDup_remove_2 in H5; intuition.
+  repeat rewrite update_subtree_notfound; intuition.
+  unfold equivalent_for in *; simpl; auto.
+  repeat rewrite map_app; simpl.
+  erewrite IHpathname; eauto.
+  rewrite map_app in H4; apply forall_app_l in H4; inversion H4; auto.
+
+  eapply find_subtree_app_none in D.
+  repeat erewrite update_subtree_path_notfound; eauto.
+  unfold equivalent_for in *; simpl; auto.
+Qed.
+
 Theorem write_same_except_secure:
-  forall Fr Fm Ftop ds sm tree1 tree2 mscs mscs1 mscs2 fsxp ilist frees pr off v1 v2 inum tr d bm hm d1 bm1 hm1 d2 bm2 hm2 tr1 (r1 r2: res unit) tr2 tag,
+  forall Fr Fm Fd Ftop ds sm pathname f tree vs mscs mscs1 mscs2 fsxp ilist frees pr off v1 v2 inum tr d bm hm d1 bm1 hm1 d2 bm2 hm2 tr1 (r1 r2: res unit) tr2,
   exec_fbasic pr tr d bm hm mscs (FWrite fsxp inum off v1) (Finished d1 bm1 hm1 r1) mscs1 tr1 ->
   exec_fbasic pr tr d bm hm mscs (FWrite fsxp inum off v2) (Finished d2 bm2 hm2 r2) mscs2 tr2 ->
-    (Fr * [[ sync_invariant Fr ]] *
+  (Fr * [[ sync_invariant Fr ]] *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-      [[[ ds!! ::: (Fm * rep fsxp Ftop tree1 ilist frees mscs sm)]]])%pred d1 ->
-    (Fr *
-     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-     [[[ ds!! ::: (Fm * rep fsxp Ftop tree2 ilist frees mscs sm)]]])%pred d2 ->
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+      [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
     permission_secure_fbasic d bm hm mscs pr (FWrite fsxp inum off v1) ->
     permission_secure_fbasic d bm hm mscs pr (FWrite fsxp inum off v2) ->
-    can_access pr tag ->
-    tag <> Public ->
-    same_except tag tree1 tree2.
+    can_access pr (DFOwner f) ->
+    (DFOwner f) <> Public ->
+    exists tree1 fsxp1 ds1 sm1 ilist1 frees1 tree2 fsxp2 ds2 sm2 ilist2 frees2,
+    (Fr *
+     LOG.rep (FSXPLog fsxp1) (SB.rep fsxp1) (LOG.NoTxn ds1) (MSLL mscs1) sm1 bm1 hm1 *
+      [[[ ds1!! ::: (Fm * rep fsxp1 Ftop tree1 ilist1 frees1 mscs1 sm1)]]])%pred d1 /\
+    (Fr *
+     LOG.rep (FSXPLog fsxp2) (SB.rep fsxp2) (LOG.NoTxn ds2) (MSLL mscs2) sm2 bm2 hm2 *
+     [[[ ds2!! ::: (Fm * rep fsxp2 Ftop tree2 ilist2 frees2 mscs2 sm2)]]])%pred d2 /\
+    same_except (DFOwner f) tree1 tree2.
 Proof.
-  unfold same_except, permission_secure_fbasic,
-  trace_secure, op_secure; intros.
-Abort.
+  intros.
+  inversion H; subst; sigT_eq; clear H.
+  inversion H0; subst; sigT_eq; clear H0.
+  pose proof (write_post _ H1 H22) as Hspec1.
+  pose proof (write_post _ H1 H21) as Hspec2.
+  apply sep_star_or_distr in Hspec1.
+  apply pimpl_or_apply in Hspec1.
+  intuition.
+  destruct_lift H; intuition.
+  apply sep_star_or_distr in Hspec2.
+  apply pimpl_or_apply in Hspec2.
+  intuition.
+  destruct_lift H0; intuition.
+  
+  destruct_lift H; intuition.
+  destruct_lift H0; intuition.
+  do 12 eexists.
+  split.
+  pred_apply; cancel; eauto.
+  split.
+  pred_apply; cancel; eauto.
+  unfold same_except; intros.
+  eapply equivalent_update_nt; cleanup; eauto.
+  destruct_lift H1; eapply rep_tree_names_distinct; eauto.
+Qed.
+
+
+Theorem write_same_except_secure':
+  forall Fr Fm Fd Ftop ds sm pathname f tree vs mscs mscs1 mscs2 fsxp ilist frees pr off v1 v2 inum tr d bm hm d1 bm1 hm1 d2 bm2 hm2 tr1 (r1 r2: res unit) tr2,
+  exec_fbasic pr tr d bm hm mscs (FWrite fsxp inum off v1) (Finished d1 bm1 hm1 r1) mscs1 tr1 ->
+  exec_fbasic pr tr d bm hm mscs (FWrite fsxp inum off v2) (Finished d2 bm2 hm2 r2) mscs2 tr2 ->
+  (Fr * [[ sync_invariant Fr ]] *
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+      [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
+    exists tree1 fsxp1 ds1 sm1 ilist1 frees1 tree2 fsxp2 ds2 sm2 ilist2 frees2,
+    (Fr *
+     LOG.rep (FSXPLog fsxp1) (SB.rep fsxp1) (LOG.NoTxn ds1) (MSLL mscs1) sm1 bm1 hm1 *
+      [[[ ds1!! ::: (Fm * rep fsxp1 Ftop tree1 ilist1 frees1 mscs1 sm1)]]])%pred d1 /\
+    (Fr *
+     LOG.rep (FSXPLog fsxp2) (SB.rep fsxp2) (LOG.NoTxn ds2) (MSLL mscs2) sm2 bm2 hm2 *
+     [[[ ds2!! ::: (Fm * rep fsxp2 Ftop tree2 ilist2 frees2 mscs2 sm2)]]])%pred d2 /\
+    same_except (DFOwner f) tree1 tree2.
+Proof.
+  intros.
+  inversion H; subst; sigT_eq; clear H.
+  inversion H0; subst; sigT_eq; clear H0.
+  pose proof (write_post _ H1 H18) as Hspec1.
+  pose proof (write_post _ H1 H17) as Hspec2.
+  apply sep_star_or_distr in Hspec1.
+  apply pimpl_or_apply in Hspec1.
+  intuition.
+  destruct_lift H; intuition.
+  apply sep_star_or_distr in Hspec2.
+  apply pimpl_or_apply in Hspec2.
+  intuition.
+  destruct_lift H2; intuition.
+  do 12 eexists.
+  split.
+  clear H12.
+  pred_apply; safecancel.
+  split.
+  pred_apply; cancel; eauto.
+  unfold same_except, equivalent_for; eauto.
+
+  destruct_lift H2; intuition.
+
+  destruct_lift H; intuition.
+  apply sep_star_or_distr in Hspec2.
+  apply pimpl_or_apply in Hspec2.
+  intuition.
+  destruct_lift H2; intuition.
+  destruct_lift H2; intuition.
+  do 12 eexists.
+  split.
+  pred_apply; cancel; eauto.
+  split.
+  pred_apply; cancel; eauto.
+  unfold same_except; intros.
+  eapply equivalent_update_nt; cleanup; eauto.
+  destruct_lift H1; eapply rep_tree_names_distinct; eauto.
+Qed.
+
 
 
 

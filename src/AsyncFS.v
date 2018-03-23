@@ -1096,6 +1096,7 @@ Module AFS.
        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
        [[[ (DFData f') ::: (Fd * off |-> ((DFOwner f, v), vsmerge vs)) ]]] *
        [[ DFAttr f' = DFAttr f ]] *
+       [[ DFOwner f' = DFOwner f ]] *
        [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                        ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]])
     XCRASH:bm', hm',
