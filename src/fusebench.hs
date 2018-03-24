@@ -27,7 +27,7 @@ data FsOptions = FsOptions
   , optFuseOptions :: String
   , optDowncalls :: Bool }
 
-data FuseSearchOptions = FuseSearchOptions
+data FuseBenchOptions = FuseBenchOptions
   { optFsOpts :: FsOptions
   , optWarmup :: Bool
   , optN :: Int
@@ -56,8 +56,8 @@ instance Options FsOptions where
     <*> simpleOption "use-downcalls" True
         "use downcalls (opqueue) instead of C->HS upcalls"
 
-instance Options FuseSearchOptions where
-  defineOptions = pure FuseSearchOptions
+instance Options FuseBenchOptions where
+  defineOptions = pure FuseBenchOptions
     <*> defineOptions
     <*> simpleOption "warmup" True
         "warmup before timing search"
@@ -72,14 +72,14 @@ instance Options FuseSearchOptions where
     <*> simpleOption "category" ""
         "category field to use for output data"
     <*> simpleOption "verbose" False
-        "print debug messages for fusesearch"
+        "print debug messages for fusebench"
 
-type AppPure a = forall m. Monad m => ReaderT FuseSearchOptions m a
-type App a = ReaderT FuseSearchOptions IO a
+type AppPure a = forall m. Monad m => ReaderT FuseBenchOptions m a
+type App a = ReaderT FuseBenchOptions IO a
 
 optsData :: AppPure DataPoint
 optsData = do
-  FuseSearchOptions{optFsOpts=FsOptions{..}, ..} <- ask
+  FuseBenchOptions{optFsOpts=FsOptions{..}, ..} <- ask
   let rts = RtsInfo{rtsN=optFsN, rtsMinAllocMB=0}
   return $ emptyData{ pRts=rts
                     , pWarmup=optWarmup
@@ -108,7 +108,7 @@ pinProcess cpuList p = if cpuList == ""
          p{cmdspec=cmdspec'}
 
 fsProcess :: AppPure CreateProcess
-fsProcess = ask >>= \FuseSearchOptions{optFsOpts=FsOptions{..}} -> do
+fsProcess = ask >>= \FuseBenchOptions{optFsOpts=FsOptions{..}} -> do
   let binary = if optFscq then "fscq" else "cfscq"
   return $ pinProcess optFsPin $ proc binary $
     ["+RTS", "-N" ++ show optFsN, "-RTS"]
@@ -140,7 +140,7 @@ waitForPath :: FilePath -> IO ()
 waitForPath = untilM . doesPathExist
 
 getSearchPath :: AppPure FilePath
-getSearchPath = ask >>= \FuseSearchOptions{..} ->
+getSearchPath = ask >>= \FuseBenchOptions{..} ->
   return $ joinPath [optMountPath optFsOpts, optSearchDir]
 
 startFs :: App FsHandle
@@ -174,7 +174,7 @@ stopFs FsHandle{..} = do
 
 parSearch :: Int -> App ()
 parSearch par = do
-  FuseSearchOptions{..} <- ask
+  FuseBenchOptions{..} <- ask
   path <- getSearchPath
   let cp = pinProcess optAppPin $ proc "rg" $
         [ "-j", show par
@@ -188,8 +188,8 @@ parSearch par = do
 withFs :: App a -> App a
 withFs act = bracket startFs stopFs (\_ -> act)
 
-fuseSearch :: App ()
-fuseSearch = do
+fuseBench :: App ()
+fuseBench = do
   warmup <- reader optWarmup
   par <- reader optN
   t <- withFs $ do
@@ -205,23 +205,23 @@ data NoOptions = NoOptions {}
 instance Options NoOptions where
   defineOptions = pure NoOptions
 
-type FuseSearchCommand = Subcommand FuseSearchOptions (IO ())
+type FuseBenchCommand = Subcommand FuseBenchOptions (IO ())
 
 checkArgs :: [String] -> IO ()
 checkArgs args = when (length args > 0) $ do
     putStrLn "arguments are unused, pass options as flags"
     exitWith (ExitFailure 1)
 
-printHeaderCommand :: FuseSearchCommand
+printHeaderCommand :: FuseBenchCommand
 printHeaderCommand = subcommand "print-header" $ \_ NoOptions args -> do
   checkArgs args
   putStrLn . dataHeader . dataValues $ emptyData
 
-fuseSearchCommand :: FuseSearchCommand
-fuseSearchCommand = subcommand "search" $ \opts NoOptions args -> do
+fuseBenchCommand :: FuseBenchCommand
+fuseBenchCommand = subcommand "search" $ \opts NoOptions args -> do
   checkArgs args
-  runReaderT fuseSearch opts
+  runReaderT fuseBench opts
 
 main :: IO ()
 main = runSubcommand [ printHeaderCommand
-                     , fuseSearchCommand ]
+                     , fuseBenchCommand ]

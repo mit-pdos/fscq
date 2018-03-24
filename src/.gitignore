@@ -15,7 +15,7 @@ _build
 /cfscq
 /mkfs
 /parbench
-/fusesearch
+/fusebench
 /mailserver
 /translate
 /dbench
