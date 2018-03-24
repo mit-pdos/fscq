@@ -1,5 +1,5 @@
 {-# LANGUAGE Rank2Types, NamedFieldPuns #-}
-module MailServer
+module MailServerOperations
   ( Config(..)
   , randomOps
   ) where
@@ -10,6 +10,7 @@ import Data.IORef
 import System.Random
 
 import System.FilePath.Posix
+import System.Posix.Files (ownerModes)
 import System.Posix.IO (defaultFileFlags)
 
 import GenericFs
@@ -34,8 +35,12 @@ data UserState = UserState
   { lastMessage :: IORef Int
   , lastRead :: IORef Int }
 
-newUserState :: IO UserState
-newUserState = pure UserState <*> newIORef 0 <*> newIORef 0
+initUser :: Filesystem fh -> Int -> App UserState
+initUser Filesystem{fuseOps=fs} uid = do
+  dir <- userDir uid
+  liftIO $ do
+    checkError dir $ fuseCreateDirectory fs dir ownerModes
+    pure UserState <*> newIORef 0 <*> newIORef 0
 
 getFreshMessage :: UserState -> IO Int
 getFreshMessage s = do
@@ -43,13 +48,13 @@ getFreshMessage s = do
   modifyIORef' (lastMessage s) (+1)
   return m
 
-mailDeliver :: Filesystem -> UserState -> User -> App ()
+mailDeliver :: Filesystem fh -> UserState -> User -> App ()
 mailDeliver fs s uid = userDir uid >>= \d -> liftIO $ do
   m <- getFreshMessage s
   _ <- createSmallFile fs $ joinPath [d, show m]
   return ()
 
-readMessage :: Filesystem -> FilePath -> IO ()
+readMessage :: Filesystem fh -> FilePath -> IO ()
 readMessage Filesystem{fuseOps=fs} p = do
   fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
   fileSize <- getFileSize fs p
@@ -62,7 +67,7 @@ getLastRead = readIORef . lastRead
 updateLastRead :: UserState -> Int -> IO ()
 updateLastRead s = writeIORef (lastRead s)
 
-mailRead :: Filesystem -> UserState -> User -> App ()
+mailRead :: Filesystem fh -> UserState -> User -> App ()
 mailRead fs@Filesystem{fuseOps} s uid = userDir uid >>= \d -> liftIO $ do
   dnum <- getResult d =<< fuseOpenDirectory fuseOps d
   allEntries <- getResult d =<< fuseReadDirectory fuseOps d dnum
@@ -79,13 +84,13 @@ randomDecisions percTrue = do
   let nums = randomRs (0, 1.0) gen
   return $ map (< percTrue) nums
 
-doRandomOps :: Filesystem -> User -> Int -> App ()
+doRandomOps :: Filesystem fh -> User -> Int -> App ()
 doRandomOps fs uid iters = do
-  s <- liftIO newUserState
+  s <- initUser fs uid
   f <- reader readPerc
   isReads <- liftIO $ randomDecisions f
   forM_ (take iters isReads) $ \isRead ->
     if isRead then mailRead fs s uid else mailDeliver fs s uid
 
-randomOps :: Config -> Filesystem -> User -> Int -> IO ()
+randomOps :: Config -> Filesystem fh -> User -> Int -> IO ()
 randomOps c fs uid iters = runReaderT (doRandomOps fs uid iters) c

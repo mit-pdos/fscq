@@ -58,7 +58,7 @@ HSLIB_POST := hslib/ShowErrno.hs hscgen/UnixIO.hs hslib/Disk.hs \
 	hslib/FscqFs.hs hslib/CfscqFs.hs hslib/GenericFs.hs hslib/NativeFs.hs \
 	hslib/Benchmarking.hs \
 	hslib/DbenchScript.hs hslib/DbenchExecute.hs hslib/ParallelSearch.hs \
-	hslib/MailServer.hs
+	hslib/MailServerOperations.hs
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
 		   ocamlfuse/Unix_util.ml \
@@ -75,7 +75,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: vio proof clean
 
-all: cfscq fscq mkfs parbench fusesearch diskread translate hslib/dbench_spec
+all: cfscq fscq mkfs parbench fusesearch mailserver diskread translate hslib/dbench_spec
 
 -include $(OCAMLFUSE_DEP)
 
