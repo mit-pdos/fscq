@@ -1,5 +1,8 @@
 module NativeFs where
 
+import           Data.Word (Word8)
+import           Foreign.ForeignPtr
+import           Foreign.Ptr (Ptr)
 import           System.Posix
 import           UnixIO
 
@@ -34,11 +37,17 @@ nativeRead _root _p fd count off = toEither $
   B.createAndTrim (fromIntegral count) $ \ptr ->
     fromIntegral <$> pread fd ptr (fromIntegral count) off
 
+withByteString :: B.ByteString -> (Ptr Word8 -> Int -> IO a) -> IO a
+withByteString s act = do
+  let (fptr, off, len) = B.toForeignPtr s
+  withForeignPtr (plusForeignPtr fptr off) $ \ptr ->
+    act ptr len
+
 nativeWrite :: FilePath -> FilePath -> Fd -> B.ByteString -> FileOffset
           -> IO (Either Errno ByteCount)
-nativeWrite root p fd dat off = toEither $
-  -- TODO: figure out how to get Ptr from ByteString
-  undefined
+nativeWrite _root _p fd dat off = toEither $
+  withByteString dat $ \ptr len ->
+    pwrite fd ptr len off
 
 entryTypeOfStatus :: FileStatus -> EntryType
 entryTypeOfStatus s
