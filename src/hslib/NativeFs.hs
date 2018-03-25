@@ -1,13 +1,18 @@
-module NativeFs where
+module NativeFs
+  ( createNativeFs
+  ) where
 
+import           Data.IORef (newIORef)
 import           Data.Word (Word8)
 import           Foreign.ForeignPtr
 import           Foreign.Ptr (Ptr)
-import           System.Posix
-import           UnixIO
 
 import           Fuse
 import           System.FilePath.Posix (joinPath)
+import           System.Posix
+import           UnixIO
+
+import           GenericFs (Filesystem(..))
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Internal as B
@@ -107,3 +112,6 @@ nativeFuseOps d = defaultFuseOps
   , fuseGetFileStat=nativeGetFileStat d
   , fuseCreateFile=nativeCreateFile d
   , fuseCreateDirectory=nativeCreateDirectory d }
+
+createNativeFs :: FilePath -> IO (Filesystem Fd)
+createNativeFs d = Filesystem (nativeFuseOps d) <$> newIORef mempty
