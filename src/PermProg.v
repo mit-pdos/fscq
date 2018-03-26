@@ -5,6 +5,7 @@ Require Import PeanoNat.
 Require Import Nat.
 Require Import Omega.
 Require Import Word.
+Require Import PermPredCrash.
 Require Export PermAsyncDisk.
 
 Set Implicit Arguments.
@@ -135,6 +136,30 @@ Inductive exec:
                 exec pr tr d bm hm p1 r tr' ->
                 r = (Crashed d' bm' hm') ->
                 exec pr tr d bm hm (Bind p1 p2) r tr'.
+
+
+
+
+Inductive recover_outcome (TF TR: Type) :=
+  | RFinished (m: tagged_disk) (bm: block_mem) (hm: hashmap) (v: TF)
+  | RRecovered (m: tagged_disk) (bm: block_mem) (hm: hashmap) (v: TR).
+
+Inductive exec_recover (TF TR: Type)
+    : perm -> trace -> tagged_disk -> block_mem -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> trace -> Prop :=
+| XRFinished : forall pr tr tr' m bm hm p1 p2 m' bm' hm' (v: TF),
+       exec pr tr m bm hm p1 (Finished m' bm' hm' v) tr'
+    -> exec_recover pr tr m bm hm p1 p2 (RFinished TR m' bm' hm' v) tr'
+| XRCrashedFinished : forall pr tr tr' tr'' m bm hm p1 p2 m' bm' hm' m'r m'' bm'' hm'' (v: TR),
+       exec pr tr m bm hm p1 (Crashed m' bm' hm') tr'
+    -> possible_crash m' m'r
+    -> @exec_recover TR TR pr tr' m'r bm' hm' p2 p2 (RFinished TR m'' bm'' hm'' v) tr''
+    -> exec_recover pr tr m bm hm p1 p2 (RRecovered TF m'' bm'' hm'' v) tr''
+| XRCrashedRecovered : forall pr tr tr' tr'' m bm hm p1 p2 m' bm' hm' m'r m'' bm'' hm'' (v: TR),
+       exec pr tr m bm hm p1 (Crashed m' bm' hm') tr'
+    -> possible_crash m' m'r
+    -> @exec_recover TR TR pr tr' m'r bm' hm' p2 p2 (RRecovered TR m'' bm'' hm'' v) tr''
+    -> exec_recover pr tr m bm hm p1 p2 (RRecovered TF m'' bm'' hm'' v) tr''.
+
 
 Notation "p1 :; p2" := (Bind p1 (fun _: unit => p2))
                               (at level 60, right associativity).

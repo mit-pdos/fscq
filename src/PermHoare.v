@@ -253,6 +253,160 @@ Proof.
 Qed.
 
 
+Definition corr3 (TF TR: Type) pr (pre: block_mem -> hashmap -> donecond TF -> donecond TR -> pred) (p1: prog TF) (p2: prog TR) :=
+  forall done crashdone m tr bm hm out tr',
+    pre bm hm done crashdone m
+  -> exec_recover pr tr m bm hm p1 p2 out tr'
+  -> ((exists m' bm' hm' v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
+    (exists m' bm' hm' v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))
+\/ trace_secure pr tr'.
+
+Notation "{{ pr | pre }} p1 >> p2" := (corr3 pr pre%pred p1 p2)
+  (at level 0, p1 at level 60, p2 at level 60).
+
+Definition forall_helper T (p : T -> Prop) :=
+  forall v, p v.
+
+Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'REC' : bm_rec , hm_rec ,  crash >>} p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   exists idemcrash,
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3 pr%pred
+   (fun bm hm done_ crashdone_ =>
+     exists F_,
+     F_ * pre *
+     [[ sync_invariant F_ ]] *
+     [[ crash_xform F_ =p=> F_ ]] *
+     [[ forall r_,
+        {{ pr | fun bm' hm' done'_ crash'_ => post F_ r_ *
+          [[ exists l, hashmap_subset l hm hm' ]] *
+          [[ done'_ = done_ ]] *
+          [[ bm c= bm' ]] *
+          [[ forall bm_crash hm_crash,
+            crash'_ bm_crash hm_crash
+            * [[ exists l, hashmap_subset l hm hm_crash ]]
+            * [[ bm c= bm_crash ]]
+            =p=> F_ * idemcrash bm_crash hm_crash ]]
+        }} rxOK r_ ]] *
+     [[ forall r_,
+        {{ pr | fun bm_rec hm_rec done'_ crash'_ => crash F_ r_ *
+          [[ exists l, hashmap_subset l hm hm_rec ]] *
+          [[ done'_ = crashdone_ ]] *
+          [[ bm c= bm_rec ]] *
+          [[ forall bm_crash hm_crash,
+            crash'_ bm_crash hm_crash
+            * [[ exists l, hashmap_subset l hm hm_crash ]]
+            * [[ bm c= bm_crash ]]
+            =p=> F_ * idemcrash bm_crash hm_crash ]]
+        }} rxREC r_ ]]
+   )%pred
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   hm at level 0, hm' at level 0, bm_rec at level 0, hm_rec at level 0,
+   post at level 1, crash at level 1).
+
+Notation "{X<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'REC' : bm_rec , hm_rec , crash >>X} p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3 pr%pred
+   (fun bm hm done_ crashdone_ =>
+     exists F_,
+     F_ * pre *
+     [[ sync_invariant F_ ]] *
+     [[ crash_xform F_ =p=> F_ ]] *
+     [[ forall r_,
+        {{ pr | fun bm' hm' done'_ crash'_ => post F_ r_ *
+          [[ exists l, hashmap_subset l hm hm' ]] *
+          [[ done'_ = done_ ]] *
+          [[ bm c= bm' ]]
+        }} rxOK r_ ]] *
+     [[ forall r_,
+        {{ pr | fun bm_rec hm_rec done'_ crash'_ => crash F_ r_ *
+          [[ exists l, hashmap_subset l hm hm_rec ]] *
+          [[ done'_ = crashdone_ ]] *
+          [[ bm c= bm_rec ]]
+        }} rxREC r_ ]]
+   )%pred
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   hm at level 0, hm' at level 0, bm_rec at level 0, hm_rec at level 0,
+   post at level 1, crash at level 1).
+
+
+Theorem pimpl_ok3:
+  forall TF TR pr pre pre' (p: prog TF) (r: prog TR),
+  {{pr | pre'}} p >> r ->
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> pre' vm hm done crashdone) ->
+  {{pr|pre}} p >> r.
+Proof.
+  unfold corr3; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
+
+Theorem pimpl_ok3_cont :
+  forall TF TR pr pre pre' A (k : A -> prog TF) x y (r: prog TR),
+  {{pr|pre'}} k y >> r ->
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> pre' vm hm done crashdone) ->
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> exists F, F * [[x = y]]) ->
+  {{pr|pre}} k x >> r.
+Proof.
+  unfold corr3, pimpl; intros.
+  edestruct H1; eauto.
+  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
+  unfold lift in *; subst; eauto.
+  firstorder.
+Qed.
+
+
+Theorem pimpl_pre3:
+  forall TF TR pr pre pre' (p: prog TF) (r: prog TR),
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> [{{pr|pre' vm hm done crashdone}} p >> r])
+  -> (forall vm hm done crashdone, pre vm hm done crashdone =p=> pre' vm hm done crashdone vm hm done crashdone)
+  -> {{pr|pre}} p >> r.
+Proof.
+  unfold corr3; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
+
+Theorem pre_false3:
+  forall TF TR pr pre (p: prog TF) (r: prog TR),
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> [False])
+  -> {{pr| pre }} p >> r.
+Proof.
+  unfold corr3; intros; exfalso.
+  eapply H; eauto.
+Qed.
+
+
+Theorem corr3_exists:
+  forall T RF RR pr pre (p: prog RF) (r: prog RR),
+  (forall (a:T), {{ pr|fun vm hm done crashdone => pre vm hm done crashdone a }} p >> r)
+  -> {{ pr|fun vm hm done crashdone => exists a:T, pre vm hm done crashdone a }} p >> r.
+Proof.
+  unfold corr3; intros.
+  destruct H0.
+  eapply H; eauto.
+Qed.
+
+
+Theorem corr3_forall: forall T RF RR pr pre (p: prog RF) (r: prog RR),
+  {{ pr|fun vm hm done crashdone => exists a:T, pre vm hm done crashdone a }} p >> r
+  -> forall (a:T), {{ pr|fun vm hm done crashdone => pre vm hm done crashdone a }} p >> r.
+Proof.
+  unfold corr3; intros.
+  eapply H; eauto.
+  exists a; eauto.
+Qed.
+
+
 Ltac monad_simpl_one :=
   match goal with
   | [ |- corr2 _ _ (Bind (Bind _ _) _) ] =>
