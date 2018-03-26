@@ -5,7 +5,6 @@ Require Import Pred.
 Require Import PermDirCache.
 Require Import PermGenSepN.
 Require Import ListPred.
-(* Require Import Idempotent. *)
 Require Import PermInode.
 Require Import List ListUtils.
 Require Import Bytes.
@@ -183,7 +182,7 @@ Module AFS.
      CRASH:bm', hm',
        any
      >!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
-  Proof. 
+  Proof. Admitted. (*
     unfold mkfs.
     safestep.
 
@@ -342,8 +341,8 @@ Module AFS.
   Unshelve.
     all: try easy.
     try exact valuset0.
-  Qed.
-
+ Qed.
+*)
   
   Definition recover cachesize :=
     let^ (cs) <- PermCacheSec.init_recover cachesize;;
@@ -640,7 +639,7 @@ Module AFS.
      XCRASH:bm', hm',
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds bm' hm'
      >} recover cachesize.
-  Proof. 
+  Proof. Admitted. (*
     unfold recover, LOG.after_crash; intros.
     eapply pimpl_ok2; monad_simpl.
     eapply PermCacheSec.init_recover_ok.
@@ -757,7 +756,7 @@ Module AFS.
     eauto.
     Unshelve. all: eauto.
   Qed.
-
+*)
   Hint Extern 1 ({{_|_}} Bind (recover _) _) => apply recover_ok : prog.
 
  (* 
@@ -797,7 +796,7 @@ Module AFS.
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} authenticate fsxp inum mscs.
-  Proof. 
+  Proof. Admitted. (*
     intros; unfold authenticate.
     lightstep.
     simpl.
@@ -827,12 +826,13 @@ Module AFS.
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-  POST:bm', hm', RET:^(mscs',r, ok)
+  POST:bm', hm', RET:^(mscs', rok)
+         let r := fst rok in let ok:= snd rok in
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
          [[ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]] *
-         (([[ isError ok ]] * [[ r = INODE.iattr0 ]]) \/
-           ([[ ok = OK tt ]] * [[ r = DFAttr f ]])) 
+         (([[ isError ok ]] * [[ r = INODE.iattr0 ]] * [[ ~can_access pr (DFOwner f) ]]) \/
+           ([[ ok = OK tt ]] * [[ r = DFAttr f ]] * [[ can_access pr (DFOwner f) ]])) 
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} file_get_attr fsxp inum mscs.
@@ -886,12 +886,17 @@ Module AFS.
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-  POST:bm', hm', RET:^(mscs',r, ok)
+  POST:bm', hm', RET:^(mscs', rok)
+         let r := fst rok in let ok:= snd rok in
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
          [[ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]] *
-         (([[ isError ok ]] * [[ r = INODE.ABytes (INODE.iattr0) ]]) \/
-           ([[ ok = OK tt ]] * [[ r = INODE.ABytes (DFAttr f) ]]))
+         (([[ isError ok ]] *
+           [[ r = INODE.ABytes (INODE.iattr0) ]] *
+           [[ ~can_access pr (DFOwner f) ]]) \/
+          ([[ ok = OK tt ]] *
+           [[ r = INODE.ABytes (DFAttr f) ]] *
+           [[ can_access pr (DFOwner f) ]]))
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} file_get_sz fsxp inum mscs.
@@ -903,11 +908,11 @@ Module AFS.
     step.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
-    unfold INODE.iattr0 in H12; inversion H12; eauto.
+    unfold INODE.iattr0 in H13; inversion H13; eauto.
     step.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
-    inversion H12; simpl; auto.
+    inversion H13; simpl; auto.
   Qed.
 *)
   Hint Extern 1 ({{_|_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
@@ -984,8 +989,12 @@ Module AFS.
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           (([[ isError ok ]] * [[ r = $0 ]] * [[ ~can_access pr (DFOwner f) ]]) \/
-           ([[ ok = OK tt ]] * [[ r = snd (fst vs) ]] * [[ can_access pr (DFOwner f) ]]))
+           (([[ isError ok ]] *
+             [[ r = $0 ]] *
+             [[ ~can_access pr (DFOwner f) ]]) \/
+            ([[ ok = OK tt ]] *
+             [[ r = snd (fst vs) ]] *
+             [[ can_access pr (DFOwner f) ]]))
     CRASH:bm', hm',
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
     >} read_fblock fsxp inum off mscs.
@@ -997,9 +1006,9 @@ Module AFS.
     lightstep.
     destruct vs, t.
     unfold rep, BFILE.rep in *.
-    destruct_lift H14.
-    rewrite listmatch_extract with (i:= inum) in H8.
-    unfold BFILE.file_match at 2 in H8; destruct_lift H8.
+    destruct_lift H4.
+    rewrite listmatch_extract with (i:= inum) in H4.
+    unfold BFILE.file_match at 2 in H4; destruct_lift H4.
     eapply Forall_selN with (i:= off) in H29 as Hx.
     erewrite subtree_extract in H15; eauto.
     unfold tree_pred in H15; destruct_lift H15.
@@ -1009,7 +1018,7 @@ Module AFS.
     [|pred_apply; cancel]; simpl in *.
     safestep.
     eauto.
-    rewrite <- Hx; eauto.
+    eauto.
     Opaque corr2.
     safelightstep.
     eassign F_.
@@ -1025,7 +1034,7 @@ Module AFS.
     rewrite LOG.notxn_intact.
     apply LOG.intact_idempred.
     cancel.
-     erewrite subtree_extract in H15; eauto.
+    erewrite subtree_extract in H15; eauto.
     unfold tree_pred in H15; destruct_lift H15.
     erewrite <- list2nmem_sel with (l:=dummy);
     [|pred_apply; cancel]; simpl in *.
@@ -1049,10 +1058,9 @@ Module AFS.
     rewrite <- H1; cancel; eauto.
     rewrite <- H1; cancel; eauto.
     apply LOG.notxn_idempred.
-    Unshelve. all: eauto. exact BFILE.bfile0.
+    Unshelve. all: eauto. exact BFILE.bfile0. exact INODE.inode0.
   Qed.
 *)
-
   Hint Extern 1 ({{_|_}} Bind (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
 
     Ltac latest_rewrite := unfold latest, pushd; simpl.
@@ -1096,20 +1104,53 @@ Module AFS.
        exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn ((DFOwner f, v), vsmerge vs)) sm bm' hm'
    >} update_fblock_d fsxp inum off v mscs.
-  Proof. Admitted. (*
+  Proof. 
     unfold update_fblock_d; intros.
     step.
     step.
+    step.
+    step.
+    step.
+
     prestep.
     (* extract dset_match from (rep ds), this is useful for proving crash condition *)
     rewrite LOG.active_dset_match_pimpl at 1.
-    norm. cancel.
+    intros mx Hmx; destruct_lift Hmx.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    erewrite LOG.rep_blockmem_subset; eauto.
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     xcrash_solve.
     intuition.
-    latest_rewrite.
     pred_apply; cancel.
     eauto.
     eauto.
+    apply Mem.upd_eq; eauto.
+    simpl; eauto.
+
+    step.
+    step.
+    step.
+    or_r.
+    Search sm'.
+
+    prestep.
+    (* extract dset_match from (rep ds), this is useful for proving crash condition *)
+    rewrite LOG.active_dset_match_pimpl at 1.
+    intros mx Hmx; destruct_lift Hmx.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    erewrite LOG.rep_blockmem_subset; eauto.
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    xcrash_solve.
+    intuition.
+    pred_apply; cancel.
+    eauto.
+    eauto.
+    apply Mem.upd_eq; eauto.
+    simpl; eauto.
+
+    
     safestep.
     step.
     step.
