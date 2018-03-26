@@ -34,6 +34,12 @@ runInThread act = do
     putMVar m v
   return m
 
+runInParallel :: Int -> (Int -> IO a) -> IO ()
+runInParallel par act = do
+  mvs <- mapM (runInThread . act) [0..par-1]
+  mapM_ takeMVar mvs
+  return ()
+
 timeAsync :: IO a -> IO (MVar Double)
 timeAsync act = do
   start <- getTime Monotonic

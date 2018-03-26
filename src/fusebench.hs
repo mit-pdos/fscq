@@ -12,6 +12,8 @@ import System.IO
 import Benchmarking
 import BenchmarkingData
 import DataSet
+import MailServerOperations
+import NativeFs
 
 import Options
 import System.Directory
@@ -210,6 +212,31 @@ searchBench cmdOpts = do
   liftIO $ reportData [p{pElapsedMicros=t}]
   return ()
 
+data MailServerOptions = MailServerOptions
+  { optMailConfig :: Config
+  , optIters :: Int }
+
+instance Options MailServerOptions where
+  defineOptions = pure MailServerOptions
+    <*> defineOptions
+    <*> simpleOption "iters" 100
+        "number of read/deliver operations to perform per user"
+
+mailServer :: MailServerOptions -> App ()
+mailServer MailServerOptions{..} = do
+  FuseBenchOptions{optFsOpts=FsOptions{optMountPath}, ..} <- ask
+  liftIO $ do
+    fs <- createNativeFs optMountPath
+    runInParallel optN $ randomOps optMailConfig fs optIters
+
+mailServerBench :: MailServerOptions -> App ()
+mailServerBench cmdOpts = do
+  t <- withFs $ do
+    timeIt $ mailServer cmdOpts
+  p <- optsData
+  liftIO $ reportData [p{pElapsedMicros=t}]
+  return ()
+
 data NoOptions = NoOptions {}
 
 instance Options NoOptions where
@@ -232,6 +259,12 @@ searchBenchCommand = subcommand "search" $ \opts cmdOpts args -> do
   checkArgs args
   runReaderT (searchBench cmdOpts) opts
 
+mailServerCommand :: FuseBenchCommand
+mailServerCommand = subcommand "mail-server" $ \opts cmdOpts args -> do
+  checkArgs args
+  runReaderT (mailServerBench cmdOpts) opts
+
 main :: IO ()
 main = runSubcommand [ printHeaderCommand
-                     , searchBenchCommand ]
+                     , searchBenchCommand
+                     , mailServerCommand ]

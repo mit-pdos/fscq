@@ -7,6 +7,7 @@ module MailServerOperations
 import Control.Monad (when)
 import Control.Monad.Reader
 import Data.IORef
+import Options
 import System.Random
 
 import System.FilePath.Posix
@@ -20,6 +21,15 @@ data Config = Config
   { readPerc :: Double
   , waitTimeMicros :: Int
   , mailboxDir :: FilePath }
+
+instance Options Config where
+  defineOptions = pure Config
+    <*> simpleOption "read-perc" 0.5
+        "fraction of operations that should be reads"
+    <*> simpleOption "wait-micros" 0
+        "time to wait between operations (in microseconds)"
+    <*> simpleOption "dir" "/mailboxes"
+        "(initially empty) directory to store user mailboxes"
 
 type AppPure a = forall m. Monad m => ReaderT Config m a
 type App a = ReaderT Config IO a
@@ -92,5 +102,5 @@ doRandomOps fs uid iters = do
   forM_ (take iters isReads) $ \isRead ->
     if isRead then mailRead fs s uid else mailDeliver fs s uid
 
-randomOps :: Config -> Filesystem fh -> User -> Int -> IO ()
-randomOps c fs uid iters = runReaderT (doRandomOps fs uid iters) c
+randomOps :: Config -> Filesystem fh -> Int -> User -> IO ()
+randomOps c fs iters uid = runReaderT (doRandomOps fs uid iters) c
