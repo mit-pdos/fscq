@@ -1,4 +1,5 @@
-{-# LANGUAGE RecordWildCards, Rank2Types #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
+{-# LANGUAGE Rank2Types #-}
 module Main where
 
 import Control.Monad.Catch (bracket)
@@ -32,10 +33,12 @@ data FuseBenchOptions = FuseBenchOptions
   , optWarmup :: Bool
   , optN :: Int
   , optAppPin :: String
-  , optSearchDir :: FilePath
-  , optSearchQuery :: String
   , optCategory :: String
   , optVerbose :: Bool }
+
+data SearchOptions = SearchOptions
+  { optSearchDir :: FilePath
+  , optSearchQuery :: String }
 
 instance Options FsOptions where
   defineOptions = pure FsOptions
@@ -65,14 +68,17 @@ instance Options FuseBenchOptions where
         "parallelism to use in ripgrep"
     <*> simpleOption "app-pin" ""
         "cpu list to pin app to"
-    <*> simpleOption "dir" "search-benchmarks/coq"
-        "directory to search in"
-    <*> simpleOption "query" "dependency graph"
-        "string to search for"
     <*> simpleOption "category" ""
         "category field to use for output data"
     <*> simpleOption "verbose" False
         "print debug messages for fusebench"
+
+instance Options SearchOptions where
+  defineOptions = pure SearchOptions
+    <*> simpleOption "dir" "search-benchmarks/coq"
+        "directory to search in"
+    <*> simpleOption "query" "dependency graph"
+        "string to search for"
 
 type AppPure a = forall m. Monad m => ReaderT FuseBenchOptions m a
 type App a = ReaderT FuseBenchOptions IO a
@@ -139,27 +145,26 @@ hReadTill h p = untilM $ p <$> hGetLine h
 waitForPath :: FilePath -> IO ()
 waitForPath = untilM . doesPathExist
 
-getSearchPath :: AppPure FilePath
-getSearchPath = ask >>= \FuseBenchOptions{..} ->
-  return $ joinPath [optMountPath optFsOpts, optSearchDir]
+getMountPath :: App FilePath
+getMountPath = reader $ optMountPath . optFsOpts
 
 startFs :: App FsHandle
 startFs = do
   cp <- fsProcess
   debugProc cp
+  mountPath <- getMountPath
   (_, Just hout, _, ph) <- liftIO $ createProcess
     cp{ std_in=NoStream
       , std_out=CreatePipe }
   liftIO $ hSetBinaryMode hout True
   liftIO $ hReadTill hout ("Starting file system" `isPrefixOf`)
-  search <- getSearchPath
-  liftIO $ waitForPath search
+  liftIO $ waitForPath $ joinPath [mountPath, "small"]
   debug "==> started file system"
   return $ FsHandle ph hout
 
 stopFs :: FsHandle -> App ()
 stopFs FsHandle{..} = do
-  mountPath <- reader (optMountPath . optFsOpts)
+  mountPath <- getMountPath
   liftIO $ callProcess "fusermount" $ ["-u", mountPath]
   debug $ "unmounted " ++ mountPath
   -- for a clean shutdown, we have to finish reading from the pipe
@@ -172,30 +177,35 @@ stopFs FsHandle{..} = do
       hPutStrLn stderr "filesystem terminated badly"
       exitWith e
 
-parSearch :: Int -> App ()
-parSearch par = do
-  FuseBenchOptions{..} <- ask
-  path <- getSearchPath
-  let cp = pinProcess optAppPin $ proc "rg" $
+runBenchProcess :: CreateProcess -> App ()
+runBenchProcess cp = do
+  FuseBenchOptions{optAppPin} <- ask
+  let cp_pin = pinProcess optAppPin cp
+  debugProc cp_pin
+  _ <- liftIO $ readCreateProcess cp_pin ""
+  return ()
+
+parSearch :: SearchOptions -> Int -> App ()
+parSearch SearchOptions{..} par = do
+  mountPath <- getMountPath
+  let path = joinPath [mountPath, optSearchDir]
+  runBenchProcess $ proc "rg" $
         [ "-j", show par
         , "-u", "-c"
         , optSearchQuery
         , path ]
-  debugProc cp
-  _ <- liftIO $ readCreateProcess cp ""
-  return ()
 
 withFs :: App a -> App a
 withFs act = bracket startFs stopFs (\_ -> act)
 
-fuseBench :: App ()
-fuseBench = do
+searchBench :: SearchOptions -> App ()
+searchBench cmdOpts = do
   warmup <- reader optWarmup
   par <- reader optN
   t <- withFs $ do
-    when warmup $ parSearch 2
+    when warmup $ parSearch cmdOpts 2
     debug "==> warmup done"
-    timeIt $ parSearch par
+    timeIt $ parSearch cmdOpts par
   p <- optsData
   liftIO $ reportData [p{pElapsedMicros=t}]
   return ()
@@ -217,11 +227,11 @@ printHeaderCommand = subcommand "print-header" $ \_ NoOptions args -> do
   checkArgs args
   putStrLn . dataHeader . dataValues $ emptyData
 
-fuseBenchCommand :: FuseBenchCommand
-fuseBenchCommand = subcommand "search" $ \opts NoOptions args -> do
+searchBenchCommand :: FuseBenchCommand
+searchBenchCommand = subcommand "search" $ \opts cmdOpts args -> do
   checkArgs args
-  runReaderT fuseBench opts
+  runReaderT (searchBench cmdOpts) opts
 
 main :: IO ()
 main = runSubcommand [ printHeaderCommand
-                     , fuseBenchCommand ]
+                     , searchBenchCommand ]
