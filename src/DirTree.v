@@ -265,8 +265,11 @@ Module DIRTREE.
     POST:bm', hm', RET:^(mscs',r)
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
            [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm ]]] *
-           [[ MSCache mscs' = MSCache mscs ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSDBlocks mscs' = MSDBlocks mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
            [[ r = DFOwner f ]]
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
@@ -284,9 +287,9 @@ Module DIRTREE.
     pred_apply; cancel.
 
     step.
-    step; msalloc_eq.
+    step.
     erewrite LOG.rep_hashmap_subset; eauto.
-    cancel.
+    msalloc_eq; cancel.
     rewrite <- subtree_fold by eauto. pred_apply; cancel.
     rewrite<- H2; cancel; eauto.
   Qed.
