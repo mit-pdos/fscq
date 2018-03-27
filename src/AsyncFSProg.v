@@ -39,7 +39,7 @@ Notation MSICache := BFILE.MSICache.
 Notation MSAlloc := BFILE.MSAlloc.
 Notation MSDBlocks := BFILE.MSDBlocks.
 
-
+(*
 Definition sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm:=
   (Fr * [[ sync_invariant Fr ]] *
    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
@@ -212,7 +212,7 @@ Definition sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm:=
     destruct_lift H; eauto.
     inversion H1.
   Qed.
-
+*)
 (** Safety **)
 
 (** 
@@ -231,19 +231,182 @@ Axiom one_user_per_tag:
     can_access pr t ->
     can_access pr' t ->
     pr = pr'.
-*)
+ *)
+
+ 
+  (* User can purge all the subtree even without permission? *)   
+  Definition delete fsxp dnum name ams :=
+    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
+    let^ (ams', ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));;
+    match ok with
+    | OK _ =>
+       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
+       match ok with
+       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
+       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
+       end
+    | Err e =>
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');;
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
+    end.
+           
+  Definition lookup fsxp dnum names ams :=
+    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
+    let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));;
+    ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), r).
+
+  
+  Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
+    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
+    let^ (ams', r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));;
+    match r with
+    | OK _ =>
+      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
+      match ok with
+      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
+      | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
+      end
+    | Err e =>
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');;
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
+    end.
+
+  (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
+  Definition tree_sync fsxp ams :=
+    ams <- DIRTREE.sync fsxp ams;;
+    Ret ^(ams, OK tt).
+
+  Definition tree_sync_noop fsxp ams :=
+    ams <- DIRTREE.sync_noop fsxp ams;;
+    Ret ^(ams, OK tt).
+
+  Definition umount fsxp ams :=
+    ams <- DIRTREE.sync fsxp ams;;
+    ms <- LOG.sync_cache (FSXPLog fsxp) (MSLL ams);;
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), OK tt).
+
+  Definition statfs fsxp ams :=
+    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
+    (*
+    let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
+    let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+     *)
+    ms <- LOG.commit_ro (FSXPLog fsxp) ms;;
+    (* Ret ^(mscs, free_blocks, free_inodes).  *)
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (0, 0)).
 
 Inductive fbasic : Type -> Type :=
-| FRead : fs_xparams ->
-          INODE.IRec.Cache.key ->
-          addr ->
-          fbasic (block * res unit)
+| file_get_attr_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    fbasic (Rec.data (Rec.field_type
+           (Rec.FE [("owner", Rec.WordF 8);
+                    ("unused", Rec.WordF 16)]
+                     "attr" INODE.attrtype)) *
+            res unit)
+                           
+| file_set_attr_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    INODE.iattrin ->
+    fbasic (res unit)
 
-| FWrite : fs_xparams ->
-           INODE.IRec.Cache.key ->
-           addr ->
-           block ->
-           fbasic (res unit).
+| file_get_sz_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    fbasic (word 64 * res unit)
+
+| file_set_sz_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    word 64 ->
+    fbasic (res unit)
+                         
+| read_fblock_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    addr ->
+    fbasic (block * res unit)
+
+| update_fblock_d_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    addr ->
+    block ->
+    fbasic (res unit)
+
+| update_fblock_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    addr ->
+    block ->
+    fbasic (bool * res unit)
+
+| file_truncate_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    addr ->
+    fbasic (res unit)
+
+| file_sync_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    fbasic (res unit)
+
+| readdir_f :
+    fs_xparams ->
+    INODE.IRec.Cache.key ->
+    fbasic (list (String.string * (addr * bool)))
+
+| mkdir_f :
+    fs_xparams ->
+    BFcache.key ->
+    Dcache.key ->
+    fbasic (res addr)
+
+| mksock_f :
+    fs_xparams ->
+    BFcache.key ->
+    Dcache.key ->
+    tag ->
+    fbasic (res INODE.IRec.Cache.key)
+
+| create_f :
+    fs_xparams ->
+    BFcache.key ->
+    Dcache.key ->
+    tag ->
+    fbasic (res addr)
+           
+| delete_f :
+    fs_xparams ->
+    BFcache.key ->
+    Dcache.key ->
+    fbasic (res unit)
+
+| lookup_f :
+    fs_xparams ->
+    addr ->
+    list String.string ->
+    fbasic (res (BFcache.key * bool))
+           
+| rename_f :
+    fs_xparams ->
+    addr ->
+    list String.string ->
+    Dcache.key ->
+    list String.string ->
+    Dcache.key ->
+    fbasic (res unit)
+
+| tree_sync_f :
+    fs_xparams ->
+    fbasic (res unit)
+
+| tree_sync_noop_f :
+    fs_xparams ->
+    fbasic (res unit).
 
 Inductive fprog : Type -> Type :=
 | FBasic : forall T, fbasic T -> fprog T
