@@ -1894,7 +1894,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} getowner lxp ixp inum ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold getowner, rep.
     safestep.
     sepauto.
@@ -1914,7 +1914,7 @@ Qed.
     exact INODE.inode0.
     exact bfile0.
   Qed.
-*)
+
   Theorem setowner_ok :
     forall lxp bxps ixp inum tag ms pr,
     {< F Fm Ff m0 sm m flist ilist allocc frees f,
@@ -1939,7 +1939,7 @@ Qed.
            [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} setowner lxp ixp inum tag ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold setowner, rep.
     step.
     sepauto.
@@ -2015,7 +2015,7 @@ Qed.
    all: eauto.
    exact INODE.inode0.
 Qed.   
-*)
+
   Theorem shuffle_allocs_ok :
     forall lxp bxps ms cms pr,
     {< F Fm Fs m0 sm m frees,
@@ -2034,7 +2034,7 @@ Qed.
            [[ (Fs * BALLOCC.smrep (fst frees') * BALLOCC.smrep (snd frees'))%pred sm ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} shuffle_allocs lxp bxps ms cms.
-  Proof. Admitted. (*
+  Proof. 
     unfold shuffle_allocs.
     intros.
     eapply pimpl_ok2.
@@ -2076,7 +2076,7 @@ Qed.
     unfold false_pred; cancel.
     Unshelve. exact tt. all: eauto.
   Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (shuffle_allocs _ _ _ _) _) => apply shuffle_allocs_ok : prog.
 
   Local Hint Resolve INODE.IRec.Defs.items_per_val_gt_0 INODE.IRec.Defs.items_per_val_not_0 valulen_gt_0.
@@ -2120,7 +2120,7 @@ Qed.
                          arrayN (@ptsto _ _ _) 0 dl =p=> freeinode_pred ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} init lxp bxps ibxp ixp ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold init, rep, smrep.
 
     (* BALLOC.init_nofree *)
@@ -2228,7 +2228,7 @@ Qed.
     all: rewrite <- H1; cancel; eauto.
     Unshelve. all: eauto.
   Qed.
-*)
+
   Theorem getlen_ok :
     forall lxp bxps ixp inum ms pr,
     {< F Fm Fi m0 sm m f flist ilist allocc frees,
@@ -2249,7 +2249,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} getlen lxp ixp inum ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold getlen, rep.
     safestep.
     sepauto.
@@ -2267,7 +2267,7 @@ Qed.
     rewrite <- H1; cancel; eauto.
     Unshelve. all: eauto.
   Qed.
-*)                
+             
 
   Theorem getattrs_ok :
     forall lxp bxp ixp inum ms pr,
@@ -2289,7 +2289,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} getattrs lxp ixp inum ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold getattrs, rep.
     safestep.
     sepauto.
@@ -2306,7 +2306,7 @@ Qed.
     exact bfile0.
     exact attr0.
   Qed.
-*)
+
   Theorem setattrs_ok :
     forall lxp bxps ixp inum a ms pr,
     {< F Fm Ff m0 sm m flist ilist allocc frees f,
@@ -2329,7 +2329,7 @@ Qed.
            [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} setattrs lxp ixp inum a ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold setattrs, rep.
     safestep.
     sepauto.
@@ -2379,7 +2379,7 @@ Qed.
       rewrite selN_updN_ne; auto.
     - cancel.
   Qed.
-*)
+
   Theorem updattr_ok :
     forall lxp bxps ixp inum kv ms pr,
     {< F Fm Fi m0 sm m flist ilist frees allocc f,
@@ -2400,7 +2400,7 @@ Qed.
               ilist_safe ilist free ilist' free ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} updattr lxp ixp inum kv ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold updattr, rep.
     step.
     sepauto.
@@ -2439,7 +2439,7 @@ Qed.
       all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
     - cancel.
   Qed.
-*)
+
   Theorem read_ok :
     forall lxp bxp ixp inum off ms pr,
     {< F Fm Fi Fd m0 sm m flist ilist frees allocc f vs,
@@ -2460,7 +2460,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} read lxp ixp inum off ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold read, rep.
     prestep.
     intros m Hm; destruct_lift Hm.
@@ -2506,7 +2506,7 @@ Qed.
     
     Unshelve. all: eauto.
   Qed.
-*)
+
 
   Theorem write_ok :
     forall lxp bxp ixp inum off h ms pr,
@@ -2533,7 +2533,7 @@ Qed.
            [[ MSDBlocks ms = MSDBlocks ms' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} write lxp ixp inum off h ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold write, rep.
     lightstep.
     extract; seprewrite; subst.
@@ -2599,7 +2599,6 @@ Qed.
     all: try solve [exact bfile0 | exact INODE.inode0].
     all: try split; auto using nil, tt.
   Qed.
-*)
 
 
   Theorem grow_ok : 
@@ -2630,7 +2629,7 @@ Qed.
               INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} grow lxp bxp ixp inum h ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold grow.
     prestep; norml.
 
@@ -2750,7 +2749,7 @@ Qed.
     rewrite <- H1; cancel; eauto.
     Unshelve. all: easy.
   Qed.
-*)
+
   Local Hint Extern 0 (okToUnify (listmatch _ _ ?a) (listmatch _ _ ?a)) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (listmatch _ ?a _) (listmatch _ ?a _)) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (listmatch _ _ (?f _ _)) (listmatch _ _ (?f _ _))) => constructor : okToUnify.
@@ -2780,7 +2779,7 @@ Qed.
               = INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} shrink lxp bxp ixp inum nr ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold shrink.
     prestep; norml; unfold stars; simpl.
     denote rep as Hr.
@@ -2920,7 +2919,6 @@ Qed.
     all : try easy.
     all : solve [ exact bfile0 | intros; exact emp | exact nil].
   Admitted.
-*)
 
   Theorem sync_ok :
     forall lxp ixp ms pr,
@@ -2939,14 +2937,14 @@ Qed.
     XCRASH:bm', hm',
       LOG.recover_any lxp F ds sm bm' hm'
     >} sync lxp ixp ms.
-  Proof. Admitted. (* 
+  Proof.  
     unfold sync, rep.
     step.
     step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto.
   Qed.
-*)
+
   Theorem sync_noop_ok :
     forall lxp ixp ms pr,
     {< F sm ds,
@@ -2964,14 +2962,14 @@ Qed.
     XCRASH:bm', hm',
       LOG.recover_any lxp F ds sm bm' hm'
     >} sync_noop lxp ixp ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold sync_noop, rep.
     step.
     step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto.
   Qed.
-*)
+
   Theorem dwrite_ok :
     forall lxp bxp ixp inum off h ms pr,
     {< F Fm Fi Fd sm ds flist ilist frees allocc f v vs,
@@ -3003,7 +3001,7 @@ Qed.
            exists bn, [[ block_belong_to_file ilist bn inum off ]] *
            LOG.recover_any lxp F (dsupd ds bn (v, vsmerge vs)) (Mem.upd sm bn false) bm' hm'
     >} dwrite lxp ixp inum off h ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold dwrite.
     prestep.
     intros m Hm; destruct_lift Hm.
@@ -3085,7 +3083,7 @@ Qed.
     Unshelve.
     all: try easy.
   Admitted.
-*)
+
   
   Theorem datasync_ok :
     forall lxp bxp ixp inum ms pr,
@@ -3208,7 +3206,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} read_array lxp ixp inum a i ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold read_array.
     prestep.
     intros m Hm.
@@ -3233,7 +3231,7 @@ Qed.
     eauto.
     intros; exact emp.
   Qed.
-*)
+
 
   Theorem write_array_ok :
     forall lxp bxp ixp inum a i h ms pr,
@@ -3260,7 +3258,7 @@ Qed.
            [[ MSDBlocks ms = MSDBlocks ms' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} write_array lxp ixp inum a i h ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold write_array.
     lightstep.
     
@@ -3278,7 +3276,7 @@ Qed.
     intros; exact emp.
     exact nil.
    Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (read_array _ _ _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write_array _ _ _ _ _ _ _) _) => apply write_array_ok : prog.
          
@@ -3306,7 +3304,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} read_range lxp ixp inum a nr ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold read_range.
     safestep.
     apply handles_valid_empty.
@@ -3354,7 +3352,7 @@ Qed.
   Unshelve.
     all: eauto; try exact tt; intros; try exact emp; try exact tagged_block0.
   Qed.
-*)
+
 (*
   (* like read_range, but stops when cond is true *)
   Definition read_cond A lxp ixp inum (vfold : A -> valu -> A)
@@ -3485,7 +3483,7 @@ Qed.
               INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} grown lxp bxp ixp inum hl ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold grown; intros.
     prestep.
     intros m Hm; destruct_lift Hm.
@@ -3577,7 +3575,7 @@ Qed.
     cancel.
     Unshelve. all: eauto; try exact tt; try exact tagged_block0.
   Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (grown _ _ _ _ _ _) _) => apply grown_ok : prog.
 
   Theorem truncate_ok :
@@ -3607,7 +3605,7 @@ Qed.
            listmatch (fun i i' => [[INODE.IOwner i = INODE.IOwner i']]) ilist ilist'
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} truncate lxp bxp ixp inum sz tag ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold truncate; intros.
     prestep.
     intros m Hm; destruct_lift Hm.
@@ -3719,7 +3717,7 @@ Qed.
       Unshelve.
       all: eauto.
   Qed.
-*)
+
   Theorem reset_ok :
     forall lxp bxp ixp inum ms pr,
     {< F Fm Fi m0 sm m flist ilist frees f,
@@ -3743,7 +3741,7 @@ Qed.
               INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} reset lxp bxp ixp inum ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold reset; intros.
     prestep.
     intros m Hm; destruct_lift Hm.
@@ -3821,7 +3819,7 @@ Qed.
     all : try easy; exact INODE.inode0.
     (* all : solve [ exact bfile0 | intros; exact emp | exact nil]. *)
   Admitted.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (truncate _ _ _ _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (reset _ _ _ _ _) _) => apply reset_ok : prog.
 
@@ -3840,14 +3838,14 @@ Qed.
       (* TODO prove smrep on recovery *)
     CRASH:bm', hm', LOG.rep lxp F (LOG.NoTxn ds) ms sm bm' hm'
     >} recover ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold recover; intros.
     step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto.
     unfold MSinitial; simpl; intuition eauto.
   Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (recover _ ) _) => apply recover_ok : prog.
 
   Theorem cache_get_ok :
@@ -3864,7 +3862,7 @@ Qed.
            [[ r = BFCache f ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} cache_get inum ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold cache_get, rep; intros.
     prestep.
     intros m Hm.
@@ -3879,7 +3877,7 @@ Qed.
     eapply bfcache_find; eauto.
     cancel.
   Qed.
-*)
+
   
   Theorem cache_put_ok :
     forall inum ms c pr,
@@ -3902,7 +3900,7 @@ Qed.
            [[ MSLL ms = MSLL ms' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} cache_put inum c ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold cache_put, rep; intros.
     prestep.
     intros m Hm.
@@ -3935,7 +3933,7 @@ Qed.
   Unshelve.
     all: exact INODE.inode0.
   Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (cache_get _ _) _) => apply cache_get_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (cache_put _ _ _) _) => apply cache_put_ok : prog.
 
