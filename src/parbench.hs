@@ -26,6 +26,7 @@ import           DbenchScript (parseScriptFile)
 import           FscqFs
 import           Fuse
 import           GenericFs
+import           NativeFs
 import           ParallelSearch
 import           System.Posix.Files (ownerModes)
 import           System.Posix.IO (defaultFileFlags)
@@ -131,10 +132,26 @@ replicateInParallel par act = do
   ms <- mapM (runInThread . act) [0..par-1]
   mapM takeMVar ms
 
+-- TODO: copied from fusebench.hs
+data FsSystem = Fscq | Cfscq | Ext4
+  deriving (Bounded, Enum)
+
+instance Show FsSystem where
+  show s = case s of
+             Fscq -> "fscq"
+             Cfscq -> "cfscq"
+             Ext4 -> "ext4"
+
+fsOption :: String -> DefineOptions FsSystem
+fsOption flag = defineOption (optionType_enum "system") $ \o -> o
+    { optionLongFlags=[flag]
+    , optionDefault=Cfscq
+    , optionDescription="file system to use (cfscq|fscq|ext4)" }
+
 data ParOptions = ParOptions
   { optVerbose :: Bool
   , optShowDebug :: Bool
-  , optFscq :: Bool
+  , optSystem :: FsSystem
   , optDiskImg :: FilePath
   , optReps :: Int
   , optIters :: Int
@@ -148,8 +165,7 @@ instance Options ParOptions where
         "print debug statements for parbench itself"
     <*> simpleOption "debug" False
         "print debug statements from (C)FSCQ"
-    <*> simpleOption "fscq" False
-        "run sequential FSCQ"
+    <*> fsOption "system"
     <*> simpleOption "img" "disk.img"
          "path to FSCQ disk image"
     <*> simpleOption "reps" 1
@@ -170,7 +186,7 @@ optsData ParOptions{..} = do
   return $ emptyData{ pRts=rts
                     , pReps=optReps
                     , pWarmup=optWarmup
-                    , pSystem=if optFscq then "fscq" else "cfscq"
+                    , pSystem=show optSystem
                     , pPar=optN }
 
 logVerbose :: ParOptions -> String -> IO ()
@@ -242,10 +258,14 @@ reportTimings ParOptions{..} fs = when optShowDebug $ do
 
 withFs :: ParOptions -> (forall fh. Filesystem fh -> IO a) -> IO a
 withFs opts@ParOptions{..} act =
-  let initFs = if optFscq then initFscq else initCfscq in
-    do
-      fs <- initFs optDiskImg True getProcessIds
+  case optSystem of
+    Fscq -> do
+      fs <- initFscq optDiskImg True getProcessIds
       act fs <* reportTimings opts fs
+    Cfscq -> do
+      fs <- initCfscq optDiskImg True getProcessIds
+      act fs <* reportTimings opts fs
+    Ext4 -> withExt4 act
 
 clearTimings :: Filesystem fh -> IO ()
 clearTimings fs = writeIORef (timings fs) emptyTimings

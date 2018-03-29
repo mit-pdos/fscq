@@ -32,15 +32,6 @@ run() {
 
 info_system() {
     info "> $system"
-    case $system in
-        fscq)
-            is_fscq=true ;;
-        cfscq)
-            is_fscq=false ;;
-        *)
-            echo "invalid system $system" >&2
-            exit 1
-    esac
 }
 
 parse_disk() {
@@ -65,7 +56,7 @@ syscalls() {
 		info_system
 		for par in $(seq 1 12); do
 			info "  > n=$par"
-			args=( $par "--img=/tmp/disk.img" "--target-ms=500" "--fscq=$is_fscq" )
+			args=( $par "--img=/tmp/disk.img" "--target-ms=500" "--system=$system" )
 			run ""            "${args[@]}" statfs --reps=1000
 			run ""            "${args[@]}" stat   --reps=10
 			run ""            "${args[@]}" open   --reps=10
@@ -91,7 +82,7 @@ io_concur() {
 				for disk in "mem" "ssd" "hdd"; do
 					parse_disk
 					runbasic "$disk" +RTS -qa -N$capabilities -RTS \
-						--n=$par --fscq=$is_fscq --img=$img \
+						--n=$par --fscq=$system --img=$img \
 						io-concur --reps=25000
 				done
 			done
@@ -107,7 +98,7 @@ dbench() {
 		info_system
 		for disk in "mem" "ssd"; do
 			parse_disk
-			run "$disk" 1 --img="$img" --fscq=$is_fscq \
+			run "$disk" 1 --img="$img" --fscq=$system \
 				dbench --script $HOME/dbench/loadfiles/client.txt
 		done
 	done
@@ -120,9 +111,9 @@ parsearch() {
 		info_system
 		for par in $(seq 1 12); do
 			info "  > n=$par"
-			run "warmup" $par --img=/tmp/disk.img --fscq=$is_fscq \
+			run "warmup" $par --img=/tmp/disk.img --fscq=$system \
 				par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
-			run "mem" $par --img=/tmp/disk.img --fscq=$is_fscq --warmup=false \
+			run "mem" $par --img=/tmp/disk.img --fscq=$system --warmup=false \
 				par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
 		done
 	done
@@ -162,7 +153,7 @@ ripgrep() {
         info_system
         for par in $(seq 1 12); do
             info "  > n=$par"
-            args=( --n=$par --app-pin="0-$((par-1))" --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$is_fscq
+            args=( --n=$par --app-pin="0-$((par-1))" --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$system
                  --dir 'search-benchmarks/coq/core0' search )
             fusesearch "${args[@]}" --fs-N=1  \
                 | addfield "seq_fs"

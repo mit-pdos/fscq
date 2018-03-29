@@ -1,11 +1,13 @@
 module NativeFs
   ( createNativeFs
+  , withExt4
   ) where
 
 import           Data.IORef (newIORef)
 import           Data.Word (Word8)
 import           Foreign.ForeignPtr
 import           Foreign.Ptr (Ptr)
+import           System.Process
 
 import           Fuse
 import           System.FilePath.Posix (joinPath)
@@ -115,3 +117,18 @@ nativeFuseOps d = defaultFuseOps
 
 createNativeFs :: FilePath -> IO (Filesystem Fd)
 createNativeFs d = Filesystem (nativeFuseOps d) <$> newIORef mempty
+
+initExt4 :: IO (Filesystem Fd)
+initExt4 = let mntPath = "/tmp/fscq" in do
+  callProcess "sudo" $ ["mount-ext4.sh", mntPath]
+  createNativeFs mntPath
+
+closeExt4 :: IO ()
+closeExt4 = do
+  callProcess "sudo" $ ["umount", "/tmp/fscq"]
+  return ()
+
+withExt4 :: (Filesystem Fd -> IO a) -> IO a
+withExt4 act = do
+  fs <- initExt4
+  act fs <* closeExt4
