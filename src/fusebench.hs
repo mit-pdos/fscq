@@ -2,8 +2,9 @@
 {-# LANGUAGE Rank2Types #-}
 module Main where
 
-import Control.Monad.Catch (bracket)
+import Control.Concurrent (threadDelay)
 import Control.Monad (when)
+import Control.Monad.Catch (bracket)
 import Control.Monad.Reader
 import Data.List (isPrefixOf)
 import System.Exit
@@ -183,13 +184,24 @@ startFs = do
   debug "==> started file system"
   return $ FsHandle ph hout
 
+retryProcess :: Int -> FilePath -> [String] -> IO ()
+retryProcess 0 _   _    = error "cannot try process 0 times"
+retryProcess tries bin args = go tries
+  where go 0 = callProcess bin args
+        go n =  do
+          (_, _, _, h) <- createProcess (proc bin args)
+          ret <- waitForProcess h
+          if ret == ExitSuccess
+            then return ()
+            else threadDelay 100000 >> go (n-1)
+
 stopFs :: FsHandle -> App ()
 stopFs FsHandle{..} = do
   mountPath <- getMountPath
   fs <- reader (optSystem . optFsOpts)
   liftIO $ case fs of
-             Fscq -> callProcess "fusermount" ["-u", mountPath]
-             Cfscq -> callProcess "fusermount" ["-u", mountPath]
+             Fscq -> retryProcess 5 "fusermount" ["-u", mountPath]
+             Cfscq -> retryProcess 5 "fusermount" ["-u", mountPath]
              Ext4 -> callProcess "sudo" ["umount", mountPath]
   debug $ "unmounted " ++ mountPath
   -- for a clean shutdown, we have to finish reading from the pipe
