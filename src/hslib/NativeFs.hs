@@ -10,7 +10,7 @@ import           Foreign.Ptr (Ptr)
 import           System.Process
 
 import           Fuse
-import           System.FilePath.Posix (joinPath)
+import           System.FilePath.Posix (makeRelative, joinPath)
 import           System.Posix
 import           UnixIO
 
@@ -21,7 +21,7 @@ import qualified Data.ByteString.Internal as B
 --import qualified Data.ByteString.Unsafe   as B
 
 join :: FilePath -> FilePath -> FilePath
-join p1 p2 = joinPath [p1, p2]
+join p1 p2 = joinPath [p1, makeRelative p2]
 
 -- TODO: catch exceptions and return them as errors
 toEither :: IO a -> IO (Either Errno a)

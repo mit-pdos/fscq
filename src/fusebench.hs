@@ -248,6 +248,7 @@ instance Options MailServerOptions where
 mailServer :: MailServerOptions -> App ()
 mailServer MailServerOptions{..} = do
   FuseBenchOptions{optFsOpts=FsOptions{optMountPath}, ..} <- ask
+  debug $ "==> running mail server through native FS at " ++ optMountPath
   liftIO $ do
     fs <- createNativeFs optMountPath
     runInParallel optN $ randomOps optMailConfig fs optIters
