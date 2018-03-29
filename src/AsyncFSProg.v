@@ -24,7 +24,7 @@ Require Import DirTreePred.
 Require Import DirTreeInodes.
 Require Import DirTreeSafe.
 Require Import DirTreeNames.
-Require Import AsyncFS.
+Require Import AsyncFS AsyncFSPost.
 
 Set Implicit Arguments.
 Import DirTree.
@@ -39,180 +39,7 @@ Notation MSICache := BFILE.MSICache.
 Notation MSAlloc := BFILE.MSAlloc.
 Notation MSDBlocks := BFILE.MSDBlocks.
 
-(*
-Definition sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm:=
-  (Fr * [[ sync_invariant Fr ]] *
-   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]])%pred.
 
-
-
- Lemma read_post:
-    forall Fr Fm Ftop pathname f Fd ds sm tree mscs fsxp ilist frees d bm hm pr off vs inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (block * res unit * unit))),
-  (Fr * [[ sync_invariant Fr ]] *
-   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-   [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-   [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
-  exec pr tr d bm hm (read_fblock fsxp inum off mscs) (Finished d' bm' hm' rx) tr' ->
-  let mscs':= fst rx in let r := fst (fst (snd rx)) in let ok := snd (fst (snd rx)) in
-       (Fr * [[ sync_invariant Fr ]] *
-       (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
-           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           (([[ isError ok ]] * [[ r = $0 ]] * [[ ~can_access pr (DFOwner f) ]]) \/
-           ([[ ok = OK tt ]] * [[ r = snd (fst vs) ]] * [[ can_access pr (DFOwner f) ]]))))%pred d'.
-  Proof.
-    unfold corr2; intros.
-    pose proof (@read_fblock_ok fsxp inum off mscs pr) as Hok.
-    specialize (Hok _ (fun r => Ret r)).
-    unfold corr2 in *.
-    edestruct Hok with (d:= d).
-    pred_apply; cancel.
-    eassign Fm; cancel.
-    eauto.
-    eauto.
-    inv_exec_perm.
-    simpl in *.
-    destruct_lift H2.
-    eassign (fun d0 bm0 hm0 (rx: (BFILE.memstate * (block * res unit * unit))) =>
-     let a:= fst rx in let a1:= fst (fst (snd rx)) in let b:= snd (fst (snd rx)) in
-    (Fr ✶ (((LOG.rep (FSXPLog fsxp) (SB.rep fsxp) 
-                   (LOG.NoTxn ds) (MSLL a) sm bm0 hm0
-                 ✶ 【 ds !!
-                   ‣‣ Fm ✶ rep fsxp Ftop tree ilist (frees_1, frees_2) a sm 】)
-                ✶ ⟦⟦ MSAlloc a = MSAlloc mscs ⟧⟧)
-               ✶ (⟦⟦ isError b ⟧⟧ ✶ ⟦⟦ a1 = $ (0) ⟧⟧ * [[ ~can_access pr (DFOwner f) ]]
-                  ⋁ ⟦⟦ b = OK tt ⟧⟧ ✶ ⟦⟦ a1 = snd (fst vs) ⟧⟧ * [[ can_access pr (DFOwner f) ]])))%pred d0).
-    left; repeat eexists; simpl in *; eauto.
-    pred_apply; cancel.
-    or_l; cancel.
-    or_r; cancel.
-    unfold permission_secure; intros.
-    inv_exec_perm.
-    cleanup; auto.
-    unfold trace_secure; eauto.
-    eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
-    intros; simpl; auto.
-    econstructor; eauto.
-    econstructor.
-    simpl in *.
-    destruct rx, p, p.
-    intuition; cleanup.
-    sigT_eq; eauto.
-    destruct_lift H; subst.
-    pred_apply; cancel.
-    or_l; cancel.
-    or_r; cancel.
-    inversion H1.
-  Qed.
-
-
-  Lemma write_post:
-    forall Fr Fm Ftop pathname f Fd ds sm tree mscs fsxp ilist frees d bm hm pr off vs v inum tr d' bm' hm' tr' (r: (BFILE.memstate * (res unit * unit))),
-  (Fr * [[ sync_invariant Fr ]] *
-   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-   [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-   [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
-  exec pr tr d bm hm (update_fblock_d fsxp inum off v mscs) (Finished d' bm' hm' r) tr' ->
-  let (mscs', ok') := r in let (ok, _) := ok' in
-       (Fr * [[ sync_invariant Fr ]] *
-       (([[ isError ok ]] * [[ ~can_access pr (DFOwner f) ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]]) \/       
-     ([[ ok = OK tt ]] * [[ can_access pr (DFOwner f) ]] *
-       exists tree' f' ds' bn,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm bm' hm' *
-       [[ ds' = dsupd ds bn ((DFOwner f, v), vsmerge vs) ]] *
-       [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-       (* spec about files on the latest diskset *)
-       [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs' sm) ]]] *
-       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-       [[[ (DFData f') ::: (Fd * off |-> ((DFOwner f, v), vsmerge vs)) ]]] *
-       [[ DFAttr f' = DFAttr f ]] *
-       [[ DFOwner f' = DFOwner f ]] *
-       [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
-                       ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]])))%pred d'.
-  Proof.
-    unfold corr2; intros.
-    pose proof (@update_fblock_d_ok fsxp inum off v mscs pr) as Hok.
-    specialize (Hok _ (fun r => Ret r)).
-    unfold corr2 in *.
-    edestruct Hok with (d:= d).
-    pred_apply; cancel.
-    eassign Fm; cancel.
-    eauto.
-    eauto.
-    inv_exec_perm.
-    destruct_lift H2.
-    eassign (fun d0 bm0 hm0 (r: (BFILE.memstate * (res unit * unit))) =>
-      let (a, ok') := r in let (a0, _) := ok' in
-     (Fr
-        ✶ (((((((⟦⟦ isError a0 ⟧⟧ ✶ ⟦⟦ can_access pr (DFOwner f) -> False ⟧⟧)
-                ✶ LOG.rep (FSXPLog fsxp) (SB.rep fsxp) 
-                    (LOG.NoTxn ds) (MSLL a) sm bm0 hm0)
-               ✶ 【 ds !!
-                 ‣‣ Fm ✶ rep fsxp Ftop tree ilist (frees_1, frees_2) a sm 】)
-              ✶ ⟦⟦ MSAlloc a = MSAlloc mscs ⟧⟧)
-             ✶ ⟦⟦ MSCache a = MSCache mscs ⟧⟧)
-            ✶ ⟦⟦ MSAllocC a = MSAllocC mscs ⟧⟧)
-           ✶ ⟦⟦ MSIAllocC a = MSIAllocC mscs ⟧⟧
-           ⋁ (⟦⟦ a0 = OK tt ⟧⟧ ✶ ⟦⟦ can_access pr (DFOwner f) ⟧⟧)
-             ✶ (exists
-                  (tree' : dirtree) (f' : dirfile) (ds' : diskset) 
-                (bn : addr),
-                  (((((((((((LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-                              (LOG.NoTxn ds') (MSLL a) sm bm0 hm0
-                            ✶ ⟦⟦ ds' = dsupd ds bn (DFOwner f, v, vsmerge vs)
-                              ⟧⟧)
-                           ✶ ⟦⟦ BFILE.block_belong_to_file ilist bn inum off ⟧⟧)
-                          ✶ ⟦⟦ MSAlloc a = MSAlloc mscs ⟧⟧)
-                         ✶ ⟦⟦ MSCache a = MSCache mscs ⟧⟧)
-                        ✶ ⟦⟦ MSAllocC a = MSAllocC mscs ⟧⟧)
-                       ✶ ⟦⟦ MSIAllocC a = MSIAllocC mscs ⟧⟧)
-                      ✶ 【 ds' !!
-                        ‣‣ Fm
-                           ✶ rep fsxp Ftop tree' ilist (frees_1, frees_2) a sm
-                        】)
-                     ✶ ⟦⟦ tree' =
-                          update_subtree pathname (TreeFile inum f') tree ⟧⟧)
-                    ✶ 【 DFData f' ‣‣ Fd ✶ off |-> (DFOwner f, v, vsmerge vs) 】)
-                   ✶ ⟦⟦ DFAttr f' = DFAttr f ⟧⟧) * [[ DFOwner f' = DFOwner f ]])
-                  ✶ ⟦⟦ dirtree_safe ilist
-                         (BFILE.pick_balloc (frees_1, frees_2) (MSAlloc a))
-                         tree ilist
-                         (BFILE.pick_balloc (frees_1, frees_2) (MSAlloc a))
-                         tree' ⟧⟧)))%pred d0).
-    left; repeat eexists; simpl in *; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm.
-    cleanup; auto.
-    unfold trace_secure; eauto.
-    eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
-    intros; simpl; auto.
-    econstructor; eauto.
-    econstructor.
-    simpl in *.
-    destruct r, p.
-    intuition; cleanup.
-    sigT_eq; eauto.
-    pred_apply; cancel.
-    or_l; cancel.
-    destruct_lift H; eauto.
-    or_r; cancel.
-    destruct_lift H; eauto.
-    inversion H1.
-  Qed.
-*)
 (** Safety **)
 
 (** 
@@ -232,69 +59,6 @@ Axiom one_user_per_tag:
     can_access pr' t ->
     pr = pr'.
  *)
-
- 
-  (* User can purge all the subtree even without permission? *)   
-  Definition delete fsxp dnum name ams :=
-    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
-    let^ (ams', ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));;
-    match ok with
-    | OK _ =>
-       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
-       match ok with
-       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
-       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
-       end
-    | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
-    end.
-           
-  Definition lookup fsxp dnum names ams :=
-    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
-    let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));;
-    ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), r).
-
-  
-  Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
-    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
-    let^ (ams', r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));;
-    match r with
-    | OK _ =>
-      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
-      match ok with
-      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
-      | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
-      end
-    | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
-    end.
-
-  (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
-  Definition tree_sync fsxp ams :=
-    ams <- DIRTREE.sync fsxp ams;;
-    Ret ^(ams, OK tt).
-
-  Definition tree_sync_noop fsxp ams :=
-    ams <- DIRTREE.sync_noop fsxp ams;;
-    Ret ^(ams, OK tt).
-
-  Definition umount fsxp ams :=
-    ams <- DIRTREE.sync fsxp ams;;
-    ms <- LOG.sync_cache (FSXPLog fsxp) (MSLL ams);;
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), OK tt).
-
-  Definition statfs fsxp ams :=
-    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
-    (*
-    let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
-    let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
-     *)
-    ms <- LOG.commit_ro (FSXPLog fsxp) ms;;
-    (* Ret ^(mscs, free_blocks, free_inodes).  *)
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (0, 0)).
 
 Inductive fbasic : Type -> Type :=
 | file_get_attr_f :
@@ -335,14 +99,14 @@ Inductive fbasic : Type -> Type :=
     addr ->
     block ->
     fbasic (res unit)
-
+(*
 | update_fblock_f :
     fs_xparams ->
     INODE.IRec.Cache.key ->
     addr ->
     block ->
     fbasic (bool * res unit)
-
+*)
 | file_truncate_f :
     fs_xparams ->
     INODE.IRec.Cache.key ->
@@ -358,7 +122,7 @@ Inductive fbasic : Type -> Type :=
     fs_xparams ->
     INODE.IRec.Cache.key ->
     fbasic (list (String.string * (addr * bool)))
-
+(*
 | mkdir_f :
     fs_xparams ->
     BFcache.key ->
@@ -371,7 +135,7 @@ Inductive fbasic : Type -> Type :=
     Dcache.key ->
     tag ->
     fbasic (res INODE.IRec.Cache.key)
-
+*)
 | create_f :
     fs_xparams ->
     BFcache.key ->
@@ -410,7 +174,7 @@ Inductive fbasic : Type -> Type :=
 
 Inductive fprog : Type -> Type :=
 | FBasic : forall T, fbasic T -> fprog T
-| FBind: forall T T', fprog T  -> (T -> fbasic T') -> fprog T'.
+| FBind: forall T T', fbasic T  -> (T -> fprog T') -> fprog T'.
 
 Inductive exec_fbasic:
   forall T, perm -> trace -> tagged_disk ->
@@ -421,7 +185,39 @@ Inductive exec_fbasic:
       (r: block * res unit) d' bm' hm',
       exec pr tr d bm hm (read_fblock fsxp inum off ams)
            (Finished d' bm' hm' ^(ams', r)) tr' ->
-      exec_fbasic pr tr d bm hm ams (FRead fsxp inum off)
+      exec_fbasic pr tr d bm hm ams (read_fblock_f fsxp inum off)
+                  (Finished d' bm' hm' r) ams' tr'
+                  
+| FExecSetAttr    :
+    forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
+      attr (r: res unit) d' bm' hm',
+      exec pr tr d bm hm (file_set_attr fsxp inum attr ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (file_set_attr_f fsxp inum attr)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecGetAttr    :
+    forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
+      (r: INODE.iattr * res unit) d' bm' hm',
+      exec pr tr d bm hm (file_get_attr fsxp inum ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (file_get_attr_f fsxp inum)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecSetSz    :
+    forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
+      sz (r: res unit) d' bm' hm',
+      exec pr tr d bm hm (file_set_sz fsxp inum sz ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (file_set_sz_f fsxp inum sz)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecGetSz    :
+    forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
+      (r: word 64 * res unit) d' bm' hm',
+      exec pr tr d bm hm (file_get_sz fsxp inum ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (file_get_sz_f fsxp inum)
             (Finished d' bm' hm' r) ams' tr'
                    
 | FExecWrite   :
@@ -429,8 +225,80 @@ Inductive exec_fbasic:
       inum off v (ams ams': BFILE.memstate) (ok: res unit),
       exec pr tr d bm hm (update_fblock_d fsxp inum off v ams)
            (Finished d' bm' hm' ^(ams', ok)) tr' ->
-      exec_fbasic pr tr d bm hm ams (FWrite fsxp inum off v)
-            (Finished d' bm' hm' ok) ams' tr'.
+      exec_fbasic pr tr d bm hm ams (update_fblock_d_f fsxp inum off v)
+                  (Finished d' bm' hm' ok) ams' tr'
+
+| FExecTruncate    :
+    forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
+      sz (r: res unit) d' bm' hm',
+      exec pr tr d bm hm (file_truncate fsxp inum sz ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (file_truncate_f fsxp inum sz)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecFileSync    :
+    forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
+      (r: res unit) d' bm' hm',
+      exec pr tr d bm hm (file_sync fsxp inum ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (file_sync_f fsxp inum)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecReaddir    :
+    forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
+      (r: list (String.string * (addr * bool))) d' bm' hm',
+      exec pr tr d bm hm (readdir fsxp inum ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (readdir_f fsxp inum)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecCreate    :
+    forall pr d bm hm tr tr' fsxp dnum (ams ams': BFILE.memstate)
+      (r: res addr) name tag d' bm' hm',
+      exec pr tr d bm hm (create fsxp dnum name tag ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (create_f fsxp dnum name tag)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecDelete    :
+    forall pr d bm hm tr tr' fsxp dnum (ams ams': BFILE.memstate)
+      (r: res addr) name d' bm' hm',
+      exec pr tr d bm hm (delete fsxp dnum name ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (delete_f fsxp dnum name)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecLookup    :
+    forall pr d bm hm tr tr' fsxp dnum (ams ams': BFILE.memstate)
+      (r: res (BFcache.key * bool)) fnlist d' bm' hm',
+      exec pr tr d bm hm (lookup fsxp dnum fnlist ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (lookup_f fsxp dnum fnlist)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecRename    :
+    forall pr d bm hm tr tr' fsxp dnum (ams ams': BFILE.memstate)
+      (r: res unit) srcpath srcname dstpath dstname d' bm' hm',
+      exec pr tr d bm hm (rename fsxp dnum srcpath srcname dstpath dstname ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (rename_f fsxp dnum srcpath srcname dstpath dstname)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecTreeSync    :
+    forall pr d bm hm tr tr' fsxp (ams ams': BFILE.memstate)
+      (r: res unit) d' bm' hm',
+      exec pr tr d bm hm (tree_sync fsxp ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (tree_sync_f fsxp)
+                  (Finished d' bm' hm' r) ams' tr'
+
+| FExecTreeSyncNoop    :
+    forall pr d bm hm tr tr' fsxp (ams ams': BFILE.memstate)
+      (r: res unit) d' bm' hm',
+      exec pr tr d bm hm (tree_sync_noop fsxp ams)
+           (Finished d' bm' hm' ^(ams', r)) tr' ->
+      exec_fbasic pr tr d bm hm ams (tree_sync_noop_f fsxp)
+                  (Finished d' bm' hm' r) ams' tr'.
 
 
 Inductive fexec:
@@ -444,14 +312,14 @@ Inductive fexec:
       fexec pr tr d bm hm ams (FBasic p) out ams' tr'
                    
 | FExecBind :
-    forall T T' pr (p1 : fprog T) (p2: T -> fbasic T') d bm hm d'
+    forall T T' pr (p1 : fbasic T) (p2: T -> fprog T') d bm hm d'
       bm' hm' v r tr tr' tr'' ams ams' ams'',
-               fexec pr tr d bm hm ams p1 (Finished d' bm' hm' v) ams' tr' ->
-               exec_fbasic pr tr' d' bm' hm' ams' (p2 v) r ams'' tr'' ->
+               exec_fbasic pr tr d bm hm ams p1 (Finished d' bm' hm' v) ams' tr' ->
+               fexec pr tr' d' bm' hm' ams' (p2 v) r ams'' tr'' ->
                fexec pr tr d bm hm ams (FBind p1 p2) r ams'' tr''
 
-| FCrashBind : forall T T' pr (p1 : fprog T) (p2: T -> fbasic T') d d' bm bm' hm hm' tr tr' r ams ams',
-                fexec pr tr d bm hm ams p1 r ams' tr' ->
+| FCrashBind : forall T T' pr (p1 : fbasic T) (p2: T -> fprog T') d d' bm bm' hm hm' tr tr' r ams ams',
+                exec_fbasic pr tr d bm hm ams p1 r ams' tr' ->
                 r = (Crashed d' bm' hm') ->
                 fexec pr tr d bm hm ams (FBind p1 p2) r ams' tr'.
 
