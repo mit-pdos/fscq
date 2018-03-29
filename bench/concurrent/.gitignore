@@ -8,6 +8,7 @@
 *.prof
 perf.data
 disk.img
+disk-ext4.img
 *-disk.img
 /data.tsv
 /data.tsv.xz
