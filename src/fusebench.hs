@@ -261,6 +261,7 @@ mailServerFlags MailServerOptions{..} = do
   return $ configFlags optMailConfig ++
     [ "--iters", show optIters
     , "--par", show optN
+    , "+RTS", "-N" ++ show optN, "-RTS"
     , "--disk-path", optMountPath ]
 
 mailServer :: MailServerOptions -> App Double
