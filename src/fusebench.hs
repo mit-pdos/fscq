@@ -20,10 +20,25 @@ import System.Directory
 import System.FilePath.Posix (joinPath)
 import System.Process
 
+data FsSystem = Fscq | Cfscq | Ext4
+  deriving (Bounded, Enum)
+
+instance Show FsSystem where
+  show s = case s of
+             Fscq -> "fscq"
+             Cfscq -> "cfscq"
+             Ext4 -> "ext4"
+
+fsOption :: String -> DefineOptions FsSystem
+fsOption flag = defineOption (optionType_enum "system") $ \o -> o
+    { optionLongFlags=[flag]
+    , optionDefault=Cfscq
+    , optionDescription="file system to use (cfscq|fscq|ext4)" }
+
 data FsOptions = FsOptions
   { optDiskImg :: FilePath
   , optMountPath :: FilePath
-  , optFscq :: Bool
+  , optSystem :: FsSystem
   , optRtsFlags :: String
   , optFsN :: Int
   , optFsPin :: String
@@ -48,8 +63,7 @@ instance Options FsOptions where
         "disk image to mount"
     <*> simpleOption "mount" "/tmp/fscq"
         "directory to mount FSCQ at"
-    <*> simpleOption "fscq" False
-        "use FSCQ instead of CFSCQ"
+    <*> fsOption "system"
     <*> simpleOption "rts-flags" ""
         "RTS flags to pass to FSCQ binary"
     <*> simpleOption "fs-N" 1
@@ -91,7 +105,7 @@ optsData = do
   let rts = RtsInfo{rtsN=optFsN, rtsMinAllocMB=0}
   return $ emptyData{ pRts=rts
                     , pWarmup=optWarmup
-                    , pSystem=if optFscq then "fscq" else "cfscq"
+                    , pSystem=show optSystem
                     , pPar=optN
                     , pIters=1
                     , pReps=1
@@ -116,15 +130,20 @@ pinProcess cpuList p = if cpuList == ""
          p{cmdspec=cmdspec'}
 
 fsProcess :: AppPure CreateProcess
-fsProcess = ask >>= \FuseBenchOptions{optFsOpts=FsOptions{..}} -> do
-  let binary = if optFscq then "fscq" else "cfscq"
-  return $ pinProcess optFsPin $ proc binary $
-    ["+RTS", "-N" ++ show optFsN, "-RTS"]
-    ++ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
-    ++ ["--use-downcalls=" ++ if optDowncalls then "true" else "false"]
-    ++ [optDiskImg, optMountPath]
-    ++ ["--", "-f"]
-    ++ if optFuseOptions == "" then [] else ["-o", optFuseOptions]
+fsProcess = ask >>= \FuseBenchOptions{optFsOpts=FsOptions{..}} ->
+  let fscqLikeProcess binary =
+        return $ pinProcess optFsPin $ proc binary $
+        ["+RTS", "-N" ++ show optFsN, "-RTS"]
+        ++ ["+RTS"] ++ splitArgs optRtsFlags ++ ["-RTS"]
+        ++ ["--use-downcalls=" ++ if optDowncalls then "true" else "false"]
+        ++ [optDiskImg, optMountPath]
+        ++ ["--", "-f"]
+        ++ if optFuseOptions == "" then [] else ["-o", optFuseOptions] in
+  case optSystem of
+    Fscq -> fscqLikeProcess "fscq"
+    Cfscq -> fscqLikeProcess "cfscq"
+    Ext4 -> return $ proc "sudo" $
+      ["mount-ext4.sh", optMountPath]
 
 debugProc :: CreateProcess -> App ()
 debugProc cp = do
@@ -167,7 +186,11 @@ startFs = do
 stopFs :: FsHandle -> App ()
 stopFs FsHandle{..} = do
   mountPath <- getMountPath
-  liftIO $ callProcess "fusermount" $ ["-u", mountPath]
+  fs <- reader (optSystem . optFsOpts)
+  liftIO $ case fs of
+             Fscq -> callProcess "fusermount" ["-u", mountPath]
+             Cfscq -> callProcess "fusermount" ["-u", mountPath]
+             Ext4 -> callProcess "sudo" ["umount", mountPath]
   debug $ "unmounted " ++ mountPath
   -- for a clean shutdown, we have to finish reading from the pipe
   _ <- liftIO $ hGetContents procStdout
