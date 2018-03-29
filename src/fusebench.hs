@@ -110,7 +110,6 @@ optsData = do
                     , pPar=optN
                     , pIters=1
                     , pReps=1
-                    , pBenchName="ripgrep"
                     , pBenchCategory=optCategory }
 
 debug :: String -> App ()
@@ -244,7 +243,8 @@ searchBench cmdOpts = do
     debug "==> warmup done"
     timeIt $ parSearch cmdOpts par
   p <- optsData
-  liftIO $ reportData [p{pElapsedMicros=t}]
+  liftIO $ reportData [p{ pElapsedMicros=t
+                        , pBenchName="ripgrep" }]
   return ()
 
 data MailServerOptions = MailServerOptions
@@ -270,7 +270,8 @@ mailServerBench cmdOpts = do
   t <- withFs $ do
     timeIt $ mailServer cmdOpts
   p <- optsData
-  liftIO $ reportData [p{pElapsedMicros=t}]
+  liftIO $ reportData [p{ pElapsedMicros=t
+                        , pBenchName="mail-server" }]
   return ()
 
 data NoOptions = NoOptions {}
