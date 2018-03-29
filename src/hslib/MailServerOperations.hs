@@ -2,6 +2,7 @@
 module MailServerOperations
   ( Config(..)
   , randomOps
+  , cleanup
   ) where
 
 import Control.Monad (when)
@@ -105,5 +106,18 @@ doRandomOps fs uid iters = do
   forM_ (take iters isReads) $ \isRead ->
     if isRead then mailRead fs s uid else mailDeliver fs s uid
 
+emptyMailboxes :: Filesystem fh -> App ()
+emptyMailboxes Filesystem{fuseOps=fs} = reader mailboxDir >>= \dir -> liftIO $ do
+  dnum <- getResult dir =<< fuseOpenDirectory fs dir
+  allEntries <- getResult dir =<< fuseReadDirectory fs dir dnum
+  let entries = filterDots allEntries
+      names = map fst entries
+  forM_ names $ \n ->
+    delTree fs (dir `pathJoin` n)
+  closeFile fs dir dnum
+
 randomOps :: Config -> Filesystem fh -> Int -> User -> IO ()
 randomOps c fs iters uid = runReaderT (doRandomOps fs uid iters) c
+
+cleanup :: Config -> Filesystem fh -> IO ()
+cleanup c fs = runReaderT (emptyMailboxes fs) c

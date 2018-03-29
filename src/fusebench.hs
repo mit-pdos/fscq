@@ -257,18 +257,19 @@ instance Options MailServerOptions where
     <*> simpleOption "iters" 100
         "number of read/deliver operations to perform per user"
 
-mailServer :: MailServerOptions -> App ()
+mailServer :: MailServerOptions -> App Double
 mailServer MailServerOptions{..} = do
   FuseBenchOptions{optFsOpts=FsOptions{optMountPath}, ..} <- ask
   debug $ "==> running mail server through native FS at " ++ optMountPath
   liftIO $ do
     fs <- createNativeFs optMountPath
-    runInParallel optN $ randomOps optMailConfig fs optIters
+    t <- timeIt $ runInParallel optN $ randomOps optMailConfig fs optIters
+    cleanup optMailConfig fs
+    return t
 
 mailServerBench :: MailServerOptions -> App ()
 mailServerBench cmdOpts = do
-  t <- withFs $ do
-    timeIt $ mailServer cmdOpts
+  t <- withFs $ mailServer cmdOpts
   p <- optsData
   liftIO $ reportData [p{ pElapsedMicros=t
                         , pBenchName="mail-server" }]
