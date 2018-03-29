@@ -17,7 +17,7 @@ import NativeFs
 
 import Options
 import System.Directory
-import System.FilePath.Posix (joinPath)
+import System.FilePath.Posix (makeRelative, joinPath)
 import System.Process
 
 data FsSystem = Fscq | Cfscq | Ext4
@@ -213,7 +213,7 @@ runBenchProcess cp = do
 parSearch :: SearchOptions -> Int -> App ()
 parSearch SearchOptions{..} par = do
   mountPath <- getMountPath
-  let path = joinPath [mountPath, optSearchDir]
+  let path = joinPath [mountPath, makeRelative "/" optSearchDir]
   runBenchProcess $ proc "rg" $
         [ "-j", show par
         , "-u", "-c"
