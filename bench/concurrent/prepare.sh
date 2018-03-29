@@ -5,18 +5,44 @@ set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 img="$1"
+system="$2"
 mnt=/tmp/fscq
 
 if [ -z "$img" ]; then
-  echo "Usage: $0 <disk.img>"
+  echo "Usage: $0 <disk.img> [system]"
   exit 1
 fi
 
+if [ -z "$system" ]; then
+    system=fscq
+fi
+case $system in
+    fscq)
+    ;;
+    ext4)
+    ;;
+    *)
+        echo "system must be ext4 or fscq"
+        exit 1
+        ;;
+esac
+
 SRC_DIR="$SCRIPT_DIR/../../src"
 
-"$SRC_DIR/mkfs" --data-bitmaps 24 --inode-bitmaps 16 "$img"
-"$SRC_DIR/fscq" --use-downcalls=false $img "$mnt" -- -f &
-sleep 1
+case $system in
+    fscq)
+        "$SRC_DIR/mkfs" --data-bitmaps 24 --inode-bitmaps 16 "$img"
+        "$SRC_DIR/fscq" --use-downcalls=false $img "$mnt" -- -f &
+        sleep 1
+        ;;
+    ext4)
+        rm -f "$img"
+        mkfs.ext4 -E root_owner "$img" 4G
+        sudo /home/tej/fscq/bench/concurrent/mount-ext4.sh "$mnt"
+        echo "mounted"
+        sleep 1
+        ;;
+esac
 
 mkdir -p "$mnt/large-dir/dir1"
 mkdir -p "$mnt/large-dir/dir2"
@@ -75,12 +101,23 @@ mkdir "$mnt/mailboxes"
 
 echo "syncing"
 for file in $mnt/**; do
+  if [ "$(basename $file)" = "lost+found" ]; then
+      continue
+  fi
   sync $file
 done
 
 echo "unmounting"
-fusermount -u "$mnt"
+case $system in
+    fscq)
+        fusermount -u "$mnt"
 
-while pgrep "^fscq$" >/dev/null; do
-  sleep 1
-done
+        while pgrep "^fscq$" >/dev/null; do
+            sleep 1
+        done
+        ;;
+
+    ext4)
+        sudo umount "$mnt"
+        ;;
+esac
