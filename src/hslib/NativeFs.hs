@@ -53,6 +53,12 @@ nativeOpenDir root p = toEither $ do
   debug "open" root p
   openFd (root `join` p) ReadOnly Nothing defaultFileFlags
 
+-- called exactly once per Fd (unlike flush)
+nativeRelease :: FilePath -> FilePath -> Fd -> IO ()
+nativeRelease _root _p fd = do
+  debug "release (close)" _root _p
+  closeFd fd
+
 nativeRead :: FilePath -> FilePath -> Fd -> ByteCount -> FileOffset ->
               IO (Either Errno B.ByteString)
 nativeRead _root _p fd count off = toEither $ do
@@ -142,6 +148,7 @@ nativeFuseOps :: FilePath -> FuseOperations Fd
 nativeFuseOps d = defaultFuseOps
   { fuseOpen=nativeOpen d
   , fuseOpenDirectory=nativeOpenDir d
+  , fuseRelease=nativeRelease d
   , fuseRead=nativeRead d
   , fuseWrite=nativeWrite d
   , fuseReadDirectory=nativeReadDirectory d

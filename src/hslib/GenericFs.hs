@@ -76,6 +76,7 @@ delTree fs = go
               mapM_ (fuseRemoveLink fs) files
               mapM_ go directories
               _ <- checkError p $ fuseRemoveDirectory fs p
+              closeFile fs p dnum
               return ()
 
 traverseDirectory :: FuseOperations fh -> FilePath -> IO [(FilePath, FileStat)]
@@ -86,6 +87,7 @@ traverseDirectory fs p = do
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       directories = onlyDirectories paths
   recursive <- concat <$> mapM (traverseDirectory fs) directories
+  closeFile fs p dnum
   return $ paths ++ recursive
 
 findFiles :: FuseOperations fh -> FilePath -> IO [FilePath]
@@ -97,12 +99,16 @@ findFiles fs p = do
       files = onlyFiles paths
       directories = onlyDirectories paths
   recursive <- concat <$> mapM (findFiles fs) directories
+  closeFile fs p dnum
   return $ files ++ recursive
 
 getFileSize :: FuseOperations fh -> FilePath -> IO FileOffset
 getFileSize fs p = do
   s <- getResult p =<< fuseGetFileStat fs p
   return $ statFileSize s
+
+closeFile :: FuseOperations fh -> FilePath -> fh -> IO ()
+closeFile fs p fh = fuseRelease fs p fh
 
 zeroBlock :: BS.ByteString
 zeroBlock = BS.pack (replicate 4096 0)
@@ -112,5 +118,6 @@ createSmallFile :: Filesystem fh -> FilePath -> IO fh
 createSmallFile Filesystem{fuseOps=fs} fname = do
   inum <- getResult fname =<< fuseCreateFile fs fname ownerModes ReadWrite defaultFileFlags
   bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
+  closeFile fs fname inum
   when (bytes < 4096) (error $ "failed to initialize " ++ fname)
   return inum
