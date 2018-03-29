@@ -7,6 +7,7 @@ import           Data.IORef (newIORef)
 import           Data.Word (Word8)
 import           Foreign.ForeignPtr
 import           Foreign.Ptr (Ptr)
+import           System.IO (hPutStrLn, stderr)
 import           System.Process
 
 import           Fuse
@@ -19,6 +20,14 @@ import           GenericFs (Filesystem(..))
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Internal as B
 --import qualified Data.ByteString.Unsafe   as B
+
+verbose :: Bool
+verbose = False
+
+debug :: String -> FilePath -> FilePath -> IO ()
+debug s root p = if verbose
+  then hPutStrLn stderr (s ++ " " ++ root `join` p)
+  else return ()
 
 join :: FilePath -> FilePath -> FilePath
 join p1 p2 = joinPath [p1, makeRelative "/" p2]
@@ -35,12 +44,14 @@ toErrno act = do
              Right _ -> eOK
 
 nativeOpen :: FilePath -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno Fd)
-nativeOpen root p mode flags = toEither $
+nativeOpen root p mode flags = toEither $ do
+  debug "open" root p
   openFd (root `join` p) mode Nothing flags
 
 nativeRead :: FilePath -> FilePath -> Fd -> ByteCount -> FileOffset ->
               IO (Either Errno B.ByteString)
-nativeRead _root _p fd count off = toEither $
+nativeRead _root _p fd count off = toEither $ do
+  debug "read" _root _p
   B.createAndTrim (fromIntegral count) $ \ptr ->
     fromIntegral <$> pread fd ptr (fromIntegral count) off
 
@@ -52,7 +63,8 @@ withByteString s act = do
 
 nativeWrite :: FilePath -> FilePath -> Fd -> B.ByteString -> FileOffset
           -> IO (Either Errno ByteCount)
-nativeWrite _root _p fd dat off = toEither $
+nativeWrite _root _p fd dat off = toEither $ do
+  debug "write" _root _p
   withByteString dat $ \ptr len ->
     pwrite fd ptr len off
 
@@ -80,6 +92,7 @@ fileStatusToFileStat s =
 
 nativeReadDirectory :: FilePath -> FilePath -> Fd -> IO (Either Errno [(FilePath, FileStat)])
 nativeReadDirectory root p _fd = toEither $ do
+  debug "readdir" root p
   st <- openDirStream (root `join` p)
   paths <- loop st
   closeDirStream st
@@ -94,15 +107,18 @@ nativeReadDirectory root p _fd = toEither $ do
           return (p, fileStatusToFileStat s)
 
 nativeGetFileStat :: FilePath -> FilePath -> IO (Either Errno FileStat)
-nativeGetFileStat root p = toEither $
+nativeGetFileStat root p = toEither $ do
+  debug "stat" root p
   fileStatusToFileStat <$> getFileStatus (root `join` p)
 
 nativeCreateFile :: FilePath -> FilePath -> FileMode -> OpenMode -> OpenFileFlags -> IO (Either Errno Fd)
 nativeCreateFile root p perm mode flags = toEither $ do
+  debug "createFile" root p
   openFd (root `join` p) mode (Just perm) flags
 
 nativeCreateDirectory :: FilePath -> FilePath -> FileMode -> IO Errno
 nativeCreateDirectory root p mode = toErrno $ do
+  debug "createDir" root p
   createDirectory (root `join` p) mode
 
 nativeFuseOps :: FilePath -> FuseOperations Fd
