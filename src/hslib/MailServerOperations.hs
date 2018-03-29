@@ -114,6 +114,7 @@ emptyMailboxes Filesystem{fuseOps=fs} = reader mailboxDir >>= \dir -> liftIO $ d
       names = map fst entries
   forM_ names $ \n ->
     delTree fs (dir `pathJoin` n)
+  _ <- fuseSynchronizeDirectory fs dir dnum FullSync
   closeFile fs dir dnum
 
 randomOps :: Config -> Filesystem fh -> Int -> User -> IO ()

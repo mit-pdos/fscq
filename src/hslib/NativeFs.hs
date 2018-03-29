@@ -137,6 +137,11 @@ nativeUnlink root p = toErrno $ do
   debug "unlink" root p
   removeLink (root `join` p)
 
+nativeRemoveDirectory :: FilePath -> FilePath -> IO Errno
+nativeRemoveDirectory root p = toErrno $ do
+  debug "removeDir" root p
+  removeDirectory (root `join` p)
+
 nativeSync :: FilePath -> FilePath -> Fd -> SyncType -> IO Errno
 nativeSync _root _p fd syncType  = toErrno $ do
   debug "sync" _root _p
@@ -156,7 +161,7 @@ nativeFuseOps d = defaultFuseOps
   , fuseCreateFile=nativeCreateFile d
   , fuseCreateDirectory=nativeCreateDirectory d
   , fuseRemoveLink=nativeUnlink d
-  , fuseRemoveDirectory=nativeUnlink d
+  , fuseRemoveDirectory=nativeRemoveDirectory d
   , fuseSynchronizeFile=nativeSync d
   , fuseSynchronizeDirectory=nativeSync d }
 

@@ -75,8 +75,8 @@ delTree fs = go
                   directories = onlyDirectories paths
               mapM_ (fuseRemoveLink fs) files
               mapM_ go directories
-              _ <- checkError p $ fuseRemoveDirectory fs p
               closeFile fs p dnum
+              checkError p $ fuseRemoveDirectory fs p
               return ()
 
 traverseDirectory :: FuseOperations fh -> FilePath -> IO [(FilePath, FileStat)]
