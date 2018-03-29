@@ -71,6 +71,7 @@ for core in $(seq 0 11); do
 done
 
 mkdir "$mnt/empty-dir"
+mkdir "$mnt/mailboxes"
 
 echo "syncing"
 for file in $mnt/**; do
