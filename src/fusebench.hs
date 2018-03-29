@@ -70,7 +70,7 @@ instance Options FsOptions where
         "number of capabilities for FS"
     <*> simpleOption "fs-pin" ""
         "cpu list to pin filesystem to"
-    <*> simpleOption "fuse-opts" ""
+    <*> simpleOption "fuse-opts" "attr_timeout=0,entry_timeout=0"
         "options to pass to FUSE library via -o"
     <*> simpleOption "use-downcalls" True
         "use downcalls (opqueue) instead of C->HS upcalls"
