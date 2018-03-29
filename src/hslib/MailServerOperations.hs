@@ -70,6 +70,7 @@ readMessage Filesystem{fuseOps=fs} p = do
   fileSize <- getFileSize fs p
   forM_ [0,4096..fileSize] $ \off ->
     fuseRead fs p fh 4096 off
+  fuseRelease fs p fh
 
 getLastRead :: UserState -> IO Int
 getLastRead = readIORef . lastRead
@@ -88,6 +89,7 @@ mailRead fs@Filesystem{fuseOps} s uid = userDir uid >>= \d -> liftIO $ do
     when ( fname /= "." && fname /= ".." && mId > lastId) $ do
       readMessage fs $ joinPath [d, p]
       updateLastRead s mId
+  fuseRelease fuseOps d dnum
 
 randomDecisions :: Double -> IO [Bool]
 randomDecisions percTrue = do
