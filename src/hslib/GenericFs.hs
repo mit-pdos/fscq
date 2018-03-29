@@ -110,7 +110,7 @@ zeroBlock = BS.pack (replicate 4096 0)
 -- returns inum of created file
 createSmallFile :: Filesystem fh -> FilePath -> IO fh
 createSmallFile Filesystem{fuseOps=fs} fname = do
-  inum <- getResult fname =<< fuseCreateFile fs fname ownerModes ReadOnly defaultFileFlags
+  inum <- getResult fname =<< fuseCreateFile fs fname ownerModes ReadWrite defaultFileFlags
   bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
   when (bytes < 4096) (error $ "failed to initialize " ++ fname)
   return inum
