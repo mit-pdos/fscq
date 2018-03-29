@@ -48,6 +48,11 @@ nativeOpen root p mode flags = toEither $ do
   debug "open" root p
   openFd (root `join` p) mode Nothing flags
 
+nativeOpenDir :: FilePath -> FilePath -> IO (Either Errno Fd)
+nativeOpenDir root p = toEither $ do
+  debug "open" root p
+  openFd (root `join` p) ReadOnly Nothing defaultFileFlags
+
 nativeRead :: FilePath -> FilePath -> Fd -> ByteCount -> FileOffset ->
               IO (Either Errno B.ByteString)
 nativeRead _root _p fd count off = toEither $ do
@@ -121,15 +126,32 @@ nativeCreateDirectory root p mode = toErrno $ do
   debug "createDir" root p
   createDirectory (root `join` p) mode
 
+nativeUnlink :: FilePath -> FilePath -> IO Errno
+nativeUnlink root p = toErrno $ do
+  debug "unlink" root p
+  removeLink (root `join` p)
+
+nativeSync :: FilePath -> FilePath -> Fd -> SyncType -> IO Errno
+nativeSync _root _p fd syncType  = toErrno $ do
+  debug "sync" _root _p
+  case syncType of
+    FullSync -> fileSynchronise fd
+    DataSync -> fileSynchroniseDataOnly fd
+
 nativeFuseOps :: FilePath -> FuseOperations Fd
 nativeFuseOps d = defaultFuseOps
   { fuseOpen=nativeOpen d
+  , fuseOpenDirectory=nativeOpenDir d
   , fuseRead=nativeRead d
   , fuseWrite=nativeWrite d
   , fuseReadDirectory=nativeReadDirectory d
   , fuseGetFileStat=nativeGetFileStat d
   , fuseCreateFile=nativeCreateFile d
-  , fuseCreateDirectory=nativeCreateDirectory d }
+  , fuseCreateDirectory=nativeCreateDirectory d
+  , fuseRemoveLink=nativeUnlink d
+  , fuseRemoveDirectory=nativeUnlink d
+  , fuseSynchronizeFile=nativeSync d
+  , fuseSynchronizeDirectory=nativeSync d }
 
 createNativeFs :: FilePath -> IO (Filesystem Fd)
 createNativeFs d = Filesystem (nativeFuseOps d) <$> newIORef mempty
