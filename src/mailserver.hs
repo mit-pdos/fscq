@@ -6,9 +6,6 @@ import MailServerOperations
 import NativeFs
 import Options
 
-import Control.Concurrent.MVar (takeMVar)
-import Control.Monad (forM)
-
 data MailServerOptions = MailServerOptions
   { optConfig :: Config
   , optIters :: Int
@@ -28,7 +25,9 @@ instance Options MailServerOptions where
 app :: MailServerOptions -> IO ()
 app MailServerOptions{..} = do
   fs <- createNativeFs optDiskPath
-  runInParallel optNumUsers $ randomOps optConfig fs optIters
+  t <- timeIt $ runInParallel optNumUsers $ randomOps optConfig fs optIters
+  cleanup optConfig fs
+  print t
 
 main :: IO ()
 main = runCommand $ \opts _args ->

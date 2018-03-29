@@ -1,6 +1,8 @@
-{-# LANGUAGE Rank2Types, NamedFieldPuns #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 module MailServerOperations
   ( Config(..)
+  , configFlags
   , randomOps
   , cleanup
   ) where
@@ -31,6 +33,12 @@ instance Options Config where
         "time to wait between operations (in microseconds)"
     <*> simpleOption "dir" "/mailboxes"
         "(initially empty) directory to store user mailboxes"
+
+configFlags :: Config -> [String]
+configFlags Config{..} =
+  [ "--read-perc", show readPerc
+  , "--wait-micros", show waitTimeMicros
+  , "--dir", mailboxDir ]
 
 type AppPure a = forall m. Monad m => ReaderT Config m a
 type App a = ReaderT Config IO a

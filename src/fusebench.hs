@@ -14,7 +14,6 @@ import Benchmarking
 import BenchmarkingData
 import DataSet
 import MailServerOperations
-import NativeFs
 
 import Options
 import System.Directory
@@ -213,19 +212,18 @@ stopFs FsHandle{..} = do
       hPutStrLn stderr "filesystem terminated badly"
       exitWith e
 
-runBenchProcess :: CreateProcess -> App ()
+runBenchProcess :: CreateProcess -> App String
 runBenchProcess cp = do
   FuseBenchOptions{optAppPin} <- ask
   let cp_pin = pinProcess optAppPin cp
   debugProc cp_pin
-  _ <- liftIO $ readCreateProcess cp_pin ""
-  return ()
+  liftIO $ readCreateProcess cp_pin ""
 
-parSearch :: SearchOptions -> Int -> App ()
+parSearch :: SearchOptions -> Int -> App Double
 parSearch SearchOptions{..} par = do
   mountPath <- getMountPath
   let path = joinPath [mountPath, makeRelative "/" optSearchDir]
-  runBenchProcess $ proc "rg" $
+  timeIt $ runBenchProcess $ proc "rg" $
         [ "-j", show par
         , "-u", "-c"
         , optSearchQuery
@@ -239,9 +237,9 @@ searchBench cmdOpts = do
   warmup <- reader optWarmup
   par <- reader optN
   t <- withFs $ do
-    when warmup $ parSearch cmdOpts 2
+    when warmup $ void $ parSearch cmdOpts 2
     debug "==> warmup done"
-    timeIt $ parSearch cmdOpts par
+    parSearch cmdOpts par
   p <- optsData
   liftIO $ reportData [p{ pElapsedMicros=t
                         , pBenchName="ripgrep" }]
@@ -257,15 +255,18 @@ instance Options MailServerOptions where
     <*> simpleOption "iters" 100
         "number of read/deliver operations to perform per user"
 
+mailServerFlags :: MailServerOptions -> AppPure [String]
+mailServerFlags MailServerOptions{..} = do
+  FuseBenchOptions{optN, optFsOpts=FsOptions{optMountPath}} <- ask
+  return $ configFlags optMailConfig ++
+    [ "--iters", show optIters
+    , "--par", show optN
+    , "--disk-path", optMountPath ]
+
 mailServer :: MailServerOptions -> App Double
-mailServer MailServerOptions{..} = do
-  FuseBenchOptions{optFsOpts=FsOptions{optMountPath}, ..} <- ask
-  debug $ "==> running mail server through native FS at " ++ optMountPath
-  liftIO $ do
-    fs <- createNativeFs optMountPath
-    t <- timeIt $ runInParallel optN $ randomOps optMailConfig fs optIters
-    cleanup optMailConfig fs
-    return t
+mailServer cmdOpts = do
+  args <- mailServerFlags cmdOpts
+  read <$> (runBenchProcess $ proc "mailserver" args)
 
 mailServerBench :: MailServerOptions -> App ()
 mailServerBench cmdOpts = do
