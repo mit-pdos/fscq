@@ -103,13 +103,13 @@ nativeReadDirectory root p _fd = toEither $ do
   closeDirStream st
   mapM getStat paths
   where loop st = do
-          p <- readDirStream st
-          if p == ""
+          ent <- readDirStream st
+          if ent == ""
             then return []
-            else (p:) <$> loop st
-        getStat p = do
-          s <- getFileStatus p
-          return (p, fileStatusToFileStat s)
+            else (ent:) <$> loop st
+        getStat ent = do
+          s <- getFileStatus $ joinPath [root, makeRelative "/" p, ent]
+          return (ent, fileStatusToFileStat s)
 
 nativeGetFileStat :: FilePath -> FilePath -> IO (Either Errno FileStat)
 nativeGetFileStat root p = toEither $ do

@@ -83,9 +83,10 @@ mailRead fs@Filesystem{fuseOps} s uid = userDir uid >>= \d -> liftIO $ do
   allEntries <- getResult d =<< fuseReadDirectory fuseOps d dnum
   lastId <- getLastRead s
   forM_ allEntries $ \(p, _) -> do
-    let mId = read p
-    when (mId > lastId) $ do
-      readMessage fs p
+    let fname = takeFileName p
+    let mId = read fname
+    when ( fname /= "." && fname /= ".." && mId > lastId) $ do
+      readMessage fs $ joinPath [d, p]
       updateLastRead s mId
 
 randomDecisions :: Double -> IO [Bool]
