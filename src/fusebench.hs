@@ -21,7 +21,7 @@ import System.FilePath.Posix (makeRelative, joinPath)
 import System.Process
 
 data FsSystem = Fscq | Cfscq | Ext4
-  deriving (Bounded, Enum)
+  deriving (Eq, Bounded, Enum)
 
 instance Show FsSystem where
   show s = case s of
@@ -177,7 +177,9 @@ startFs = do
     cp{ std_in=NoStream
       , std_out=CreatePipe }
   liftIO $ hSetBinaryMode hout True
-  liftIO $ hReadTill hout ("Starting file system" `isPrefixOf`)
+  sys <- reader (optSystem . optFsOpts)
+  when (sys == Fscq || sys == Cfscq) $ liftIO $
+    hReadTill hout ("Starting file system" `isPrefixOf`)
   liftIO $ waitForPath $ joinPath [mountPath, "small"]
   debug "==> started file system"
   return $ FsHandle ph hout
@@ -200,7 +202,7 @@ stopFs FsHandle{..} = do
   liftIO $ case fs of
              Fscq -> retryProcess 5 "fusermount" ["-u", mountPath]
              Cfscq -> retryProcess 5 "fusermount" ["-u", mountPath]
-             Ext4 -> callProcess "sudo" ["umount", mountPath]
+             Ext4 -> retryProcess 5 "sudo" ["umount", mountPath]
   debug $ "unmounted " ++ mountPath
   -- for a clean shutdown, we have to finish reading from the pipe
   _ <- liftIO $ hGetContents procStdout
