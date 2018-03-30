@@ -7,6 +7,7 @@ module MailServerOperations
   , cleanup
   ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Monad (when)
 import Control.Monad.Reader
 import Data.IORef
@@ -109,10 +110,11 @@ randomDecisions percTrue = do
 doRandomOps :: Filesystem fh -> User -> Int -> App ()
 doRandomOps fs uid iters = do
   s <- initUser fs uid
-  f <- reader readPerc
-  isReads <- liftIO $ randomDecisions f
-  forM_ (take iters isReads) $ \isRead ->
+  Config{..} <- ask
+  isReads <- liftIO $ randomDecisions readPerc
+  forM_ (take iters isReads) $ \isRead -> do
     if isRead then mailRead fs s uid else mailDeliver fs s uid
+    liftIO $ threadDelay waitTimeMicros
 
 emptyMailboxes :: Filesystem fh -> App ()
 emptyMailboxes Filesystem{fuseOps=fs} = reader mailboxDir >>= \dir -> liftIO $ do
