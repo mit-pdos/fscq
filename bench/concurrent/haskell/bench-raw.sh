@@ -147,15 +147,14 @@ rw_mix() {
   done
 }
 
-ripgrep() {
-  info "ripgrep"
+fusebench() {
   for system in fscq cfscq; do
     info_system
     for par in $(seq 1 12); do
       info "  > n=$par"
       args=( --app-pin="0-$((par-1))"
              --n=$par --system=$system
-             search --dir 'search-benchmarks/coq/core0' )
+             "$@" )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
@@ -164,46 +163,35 @@ ripgrep() {
           | addfield "par_gc4"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4" \
           | addfield "par_gc"
+      if [ "$system" != "fscq" -o "$par" -lt 5 ]; then
+          gc_threads=$((par<4 ? 1 : 4))
+          fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn$gc_threads" --use-downcalls=false \
+              | addfield "upcalls_gc4"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" --use-downcalls=false | \
           addfield "upcalls_seq_gc"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
           addfield "more_mem"
     done
   done
+}
+
+ripgrep() {
+  info "ripgrep"
+  fusebench search --dir 'search-benchmarks/coq/core0'
 }
 
 mailserver() {
   info "mailserver"
-  for system in fscq cfscq; do
-    info_system
-    for par in $(seq 1 12); do
-      info "  > n=$par"
-      args=( --app-pin="0-$((par-1))"
-             --n=$par --system=$system
-             mailserver --read-perc 0.9 --iters=1000  )
-      fusebench "${args[@]}" --fs-N=1  \
-          | addfield "seq_fs"
-      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
-          | addfield "seq_gc"
-      fusebench "${args[@]}" --fs-N=4  --rts-flags="-qn4" \
-          | addfield "par_gc4"
-      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4" \
-          | addfield "par_gc"
-      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" --use-downcalls=false | \
-          addfield "upcalls_seq_gc"
-      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
-          addfield "more_mem"
-    done
-  done
+  fusebench mailserver --read-perc 0.9 --iters=1000
 }
 
 parbench print-header | addfield "description"
 
-#syscalls
-#io_concur
-#dbench
-#parsearch
-#readers_writer
-#rw_mix
-#ripgrep
+syscalls
+io_concur
+dbench
+parsearch
+readers_writer
+rw_mix
+ripgrep
 mailserver
