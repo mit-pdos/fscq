@@ -149,7 +149,7 @@ rw_mix() {
   done
 }
 
-fusebench() {
+run_fusebench() {
   for system in fscq cfscq ext4; do
     info_system
     for par in $(seq 1 $MAX_PAR); do
@@ -178,12 +178,12 @@ fusebench() {
 
 ripgrep() {
   info "ripgrep"
-  fusebench search --dir 'search-benchmarks/coq/core0'
+  run_fusebench search --dir 'search-benchmarks/coq/core0'
 }
 
 mailserver() {
   info "mailserver"
-  fusebench mailserver --read-perc 0.9 --iters=1000
+  run_fusebench mailserver --read-perc 0.9 --iters=1000
 }
 
 parbench print-header | addfield "description"
