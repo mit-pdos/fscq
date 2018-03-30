@@ -1,5 +1,7 @@
 #!/bin/bash
 
+MAX_PAR=12
+
 info() {
   echo -e "\e[34m$1\e[0m" >&2
 }
@@ -54,7 +56,7 @@ syscalls() {
   info "syscall baseline"
   for system in fscq cfscq ext4; do
     info_system
-    for par in $(seq 1 12); do
+    for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
       args=( $par "--img=/tmp/disk.img" "--target-ms=500" "--system=$system" )
       run ""            "${args[@]}" statfs --reps=1000
@@ -109,7 +111,7 @@ parsearch() {
   info "par-search"
   for system in fscq cfscq ext4; do
     info_system
-    for par in $(seq 1 12); do
+    for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
       run "warmup" $par --img=/tmp/disk.img --system=$system \
           par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
@@ -122,7 +124,7 @@ parsearch() {
 
 readers_writer() {
   info "readers-writer"
-  for par in $(seq 0 11); do
+  for par in $(seq 0 $((MAX_PAR-1))); do
     info "> n=$par"
     args=( --n=$par +RTS -qa -N$((par+1)) -RTS --img=/tmp/disk.img --system=cfscq --iters=5000 )
     runbasic "" "${args[@]}" readers-writer --reps=10 --write-reps=1
@@ -137,7 +139,7 @@ readers_writer() {
 
 rw_mix() {
   info "rw-mix"
-  for par in $(seq 1 12); do
+  for par in $(seq 1 $MAX_PAR); do
     info "> n=$par"
     args=( --n=$par +RTS -qa -N$par -RTS --img=/tmp/disk.img --system=cfscq --target-ms=1000 )
     for mix in 0.95 0.9 0.8; do
@@ -150,7 +152,7 @@ rw_mix() {
 fusebench() {
   for system in fscq cfscq ext4; do
     info_system
-    for par in $(seq 1 12); do
+    for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
       args=( --app-pin="0-$((par-1))"
              --n=$par --system=$system
