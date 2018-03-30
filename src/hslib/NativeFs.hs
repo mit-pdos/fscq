@@ -3,12 +3,15 @@ module NativeFs
   , withExt4
   ) where
 
+import           Control.Exception (tryJust)
+import           Control.Monad (guard)
 import           Control.Monad.Catch (bracket)
 import           Data.IORef (newIORef)
 import           Data.Word (Word8)
 import           Foreign.ForeignPtr
 import           Foreign.Ptr (Ptr)
 import           System.IO (hPutStrLn, stderr)
+import           System.IO.Error (isDoesNotExistError)
 import           System.Process
 
 import           Fuse
@@ -35,7 +38,11 @@ join p1 p2 = joinPath [p1, makeRelative "/" p2]
 
 -- TODO: catch exceptions and return them as errors
 toEither :: IO a -> IO (Either Errno a)
-toEither act = Right <$> act
+toEither act = do
+  mr <- tryJust (guard . isDoesNotExistError) act
+  case mr of
+    Left e -> return $ Left eNOENT
+    Right r -> return $ Right r
 
 toErrno :: IO () -> IO Errno
 toErrno act = do
