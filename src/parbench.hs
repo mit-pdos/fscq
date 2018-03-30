@@ -61,6 +61,7 @@ readEntireFile Filesystem{fuseOps=fs} msize p = do
   offsets <- shuffleList [0,4096..fileSize]
   forM_ offsets $ \off ->
     fuseRead fs p fh 4096 off
+  closeFile fs p fh
 
 catFiles :: Filesystem fh -> [(FilePath, FileStat)] -> IO ()
 catFiles fs es = forM_ es $ \(p, s) -> when (isFile s) $ do
