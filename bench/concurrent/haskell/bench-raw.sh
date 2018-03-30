@@ -48,6 +48,11 @@ parse_disk() {
       echo "invalid disk $disk" >&2
       exit 1
   esac
+  if [ -r "$img" ]; then
+     img_valid=true
+  else
+    img_valid=false
+  fi
 }
 
 # benchmarks
@@ -83,6 +88,9 @@ io_concur() {
       for capabilities in 1 2; do
         for disk in "mem" "ssd" "hdd"; do
           parse_disk
+          if [ $img_valid = false ]; then
+             continue
+          fi
           runbasic "$disk" +RTS -qa -N$capabilities -RTS \
                    --n=$par --system=$system --img=$img \
                    io-concur --reps=25000
@@ -100,6 +108,9 @@ dbench() {
     info_system
     for disk in "mem" "ssd"; do
       parse_disk
+      if [ $img_valid = false ]; then
+         continue
+      fi
       run "$disk" 1 --img="$img" --system=$system \
           dbench --script $HOME/dbench/loadfiles/client.txt
     done
