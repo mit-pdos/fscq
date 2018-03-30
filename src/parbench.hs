@@ -102,7 +102,8 @@ catFileOp _ FileOpOptions{..} fs = do
 
 openOp :: ParOptions -> FileOpOptions -> Filesystem fh -> IO ()
 openOp _ FileOpOptions{..} Filesystem{fuseOps=fs} = do
-    _ <- fuseOpen fs optFile ReadOnly defaultFileFlags
+    inum <- getResult optFile =<< fuseOpen fs optFile ReadOnly defaultFileFlags
+    closeFile fs optFile inum
     return ()
 
 data FileOffsetOpOptions =
