@@ -155,17 +155,17 @@ ripgrep() {
       info "  > n=$par"
       args=( --n=$par --app-pin="0-$((par-1))" --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$system
              --dir 'search-benchmarks/coq/core0' search )
-      fusesearch "${args[@]}" --fs-N=1  \
+      fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
-      fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qg" \
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
           | addfield "seq_gc"
-      fusesearch "${args[@]}" --fs-N=4  --rts-flags="-qn4" \
+      fusebench "${args[@]}" --fs-N=4  --rts-flags="-qn4" \
           | addfield "par_gc4"
-      fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qn4" \
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4" \
           | addfield "par_gc"
-      fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qg" --use-downcalls=false | \
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" --use-downcalls=false | \
           addfield "upcalls_seq_gc"
-      fusesearch "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
           addfield "more_mem"
     done
   done
