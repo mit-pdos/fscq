@@ -3,6 +3,7 @@ module NativeFs
   , withExt4
   ) where
 
+import           Control.Monad.Catch (bracket)
 import           Data.IORef (newIORef)
 import           Data.Word (Word8)
 import           Foreign.ForeignPtr
@@ -179,6 +180,4 @@ closeExt4 = do
   return ()
 
 withExt4 :: (Filesystem Fd -> IO a) -> IO a
-withExt4 act = do
-  fs <- initExt4
-  act fs <* closeExt4
+withExt4 act = bracket initExt4 (\_ -> closeExt4) act
