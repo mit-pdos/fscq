@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 mnt="$1"
 
 if [ "$mnt" != "/tmp/fscq" ]; then
@@ -7,5 +9,9 @@ if [ "$mnt" != "/tmp/fscq" ]; then
   exit 1
 fi
 
+if [ -e "$mnt/small" ]; then
+  umount "$mnt"
+fi
 
-mount -t ext4 /tmp/disk-ext4.img /tmp/fscq
+cp /tmp/disk-ext4.img /tmp/disk-ext4-runtime.img
+mount -t ext4 /tmp/disk-ext4-runtime.img /tmp/fscq
