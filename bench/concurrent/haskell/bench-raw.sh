@@ -82,7 +82,7 @@ io_concur() {
         for disk in "mem" "ssd" "hdd"; do
           parse_disk
           runbasic "$disk" +RTS -qa -N$capabilities -RTS \
-                   --n=$par --fscq=$system --img=$img \
+                   --n=$par --system=$system --img=$img \
                    io-concur --reps=25000
         done
       done
@@ -98,7 +98,7 @@ dbench() {
     info_system
     for disk in "mem" "ssd"; do
       parse_disk
-      run "$disk" 1 --img="$img" --fscq=$system \
+      run "$disk" 1 --img="$img" --system=$system \
           dbench --script $HOME/dbench/loadfiles/client.txt
     done
   done
@@ -111,9 +111,9 @@ parsearch() {
     info_system
     for par in $(seq 1 12); do
       info "  > n=$par"
-      run "warmup" $par --img=/tmp/disk.img --fscq=$system \
+      run "warmup" $par --img=/tmp/disk.img --system=$system \
           par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
-      run "mem" $par --img=/tmp/disk.img --fscq=$system --warmup=false \
+      run "mem" $par --img=/tmp/disk.img --system=$system --warmup=false \
           par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
     done
   done
@@ -153,7 +153,8 @@ ripgrep() {
     info_system
     for par in $(seq 1 12); do
       info "  > n=$par"
-      args=( --n=$par --app-pin="0-$((par-1))" --fuse-opts='attr_timeout=0,entry_timeout=0' --fscq=$system
+      args=( --app-pin="0-$((par-1))"
+             --n=$par --system=$system
              --dir 'search-benchmarks/coq/core0' search )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
@@ -171,6 +172,30 @@ ripgrep() {
   done
 }
 
+mailserver() {
+  info "mailserver"
+  for system in fscq cfscq; do
+    info_system
+    for par in $(seq 1 12); do
+      info "  > n=$par"
+      args=( --app-pin="0-$((par-1))"
+             --n=$par --system=$system
+             --read-perc 0.9 --iters=1000 mailserver )
+      fusebench "${args[@]}" --fs-N=1  \
+          | addfield "seq_fs"
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
+          | addfield "seq_gc"
+      fusebench "${args[@]}" --fs-N=4  --rts-flags="-qn4" \
+          | addfield "par_gc4"
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4" \
+          | addfield "par_gc"
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" --use-downcalls=false | \
+          addfield "upcalls_seq_gc"
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
+          addfield "more_mem"
+    done
+}
+
 parbench print-header | addfield "description"
 
 #syscalls
@@ -179,4 +204,5 @@ parbench print-header | addfield "description"
 #parsearch
 #readers_writer
 #rw_mix
-ripgrep
+#ripgrep
+mailserver
