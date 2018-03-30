@@ -167,10 +167,9 @@ fusebench() {
           gc_threads=$((par<4 ? 1 : 4))
           fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn$gc_threads" --use-downcalls=false \
               | addfield "upcalls_gc4"
-      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" --use-downcalls=false | \
-          addfield "upcalls_seq_gc"
-      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
-          addfield "more_mem"
+      fi
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" \
+          | addfield "more_mem"
     done
   done
 }
