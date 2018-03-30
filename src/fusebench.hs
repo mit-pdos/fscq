@@ -274,7 +274,7 @@ mailServerBench cmdOpts = do
   t <- withFs $ mailServer cmdOpts
   p <- optsData
   liftIO $ reportData [p{ pElapsedMicros=t
-                        , pBenchName="mail-server" }]
+                        , pBenchName="mailserver" }]
   return ()
 
 data NoOptions = NoOptions {}
@@ -300,7 +300,7 @@ searchBenchCommand = subcommand "search" $ \opts cmdOpts args -> do
   runReaderT (searchBench cmdOpts) opts
 
 mailServerCommand :: FuseBenchCommand
-mailServerCommand = subcommand "mail-server" $ \opts cmdOpts args -> do
+mailServerCommand = subcommand "mailserver" $ \opts cmdOpts args -> do
   checkArgs args
   runReaderT (mailServerBench cmdOpts) opts
 

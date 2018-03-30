@@ -180,7 +180,7 @@ mailserver() {
       info "  > n=$par"
       args=( --app-pin="0-$((par-1))"
              --n=$par --system=$system
-             mail-server --read-perc 0.9 --iters=1000  )
+             mailserver --read-perc 0.9 --iters=1000  )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
