@@ -10,7 +10,6 @@ import           Foreign.C.Error
 import           Fuse
 import           GenericFs
 import           System.Posix.Files (unionFileModes, stdFileMode, ownerExecuteMode)
-import           System.Posix.Types (CDev(..))
 import           System.Posix.IO
 import           System.Posix.Time
 
@@ -97,9 +96,10 @@ runCommand fs c = run c
           addHandle h p
           liftIO $ if hasFileDirectoryFile createOptions then
             void $ fuseCreateDirectory fs p (unionFileModes stdFileMode ownerExecuteMode)
-          else
-            void $ fuseCreateDevice fs p RegularFile stdFileMode (CDev 0)
-          return ()
+          else do
+            inum <- getResult p =<< fuseCreateFile fs p stdFileMode ReadWrite defaultFileFlags
+            closeFile fs p inum
+            return ()
         run (ReadX h off len _expectedLen _s) = {-# SCC "readx" #-}do
           (p, inum) <- getFile fs h
           -- TODO: check read size
@@ -145,7 +145,7 @@ runCommand fs c = run c
         run (LockX _h _off _level _s) = return ()
         run (UnlockX _h _off _level _s) = return ()
         run (Mkdir (Path p) _s) = do
-          _ <- liftIO $ fuseCreateDirectory fs p stdFileMode
+          _ <- liftIO $ fuseCreateDirectory fs p (unionFileModes stdFileMode ownerExecuteMode)
           return ()
         run (Deltree (Path p) _s) = do
           _ <- liftIO $ delTree fs p
