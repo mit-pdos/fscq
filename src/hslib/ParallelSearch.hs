@@ -12,8 +12,8 @@ import           System.Posix.IO (defaultFileFlags)
 
 parForFiles :: FuseOperations fh -> (FilePath -> IO a) -> FilePath -> IO [a]
 parForFiles fs act p = do
-  dnum <- getResult p =<< fuseOpenDirectory fs p
-  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  allEntries <- getDirectoryContents fs p
+  closeFile fs p dnum
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       files = onlyFiles paths
@@ -28,6 +28,7 @@ readEntireFile :: FuseOperations fh -> FilePath -> IO BS.ByteString
 readEntireFile fs p = do
   fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
   go fh 0
+  closeFile fs p fh
     where chunkSize :: Num a => a
           chunkSize = 4096
           go fh off = do
@@ -58,8 +59,7 @@ parallelSearch fs par needle = parAtRoot fs par search
 
 parAtRoot :: FuseOperations fh -> Int -> (FilePath -> IO a) -> FilePath -> IO [a]
 parAtRoot fs par act p = setNumCapabilities par >> do
-  dnum <- getResult p =<< fuseOpenDirectory fs p
-  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  allEntries <- getDirectoryContents fs p
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       files = onlyFiles paths
@@ -77,8 +77,7 @@ runAtRoot fs act p = do
 
 parallelSearchAtRoot :: FuseOperations fh -> Int -> BS.ByteString -> FilePath -> IO [(FilePath, Int)]
 parallelSearchAtRoot fs par needle p = do
-  dnum <- getResult p =<< fuseOpenDirectory fs p
-  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  allEntries <- getDirectoryContents fs p
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       directories = take par (onlyDirectories paths)

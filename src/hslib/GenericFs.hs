@@ -79,27 +79,30 @@ delTree fs = go
               checkError p $ fuseRemoveDirectory fs p
               return ()
 
-traverseDirectory :: FuseOperations fh -> FilePath -> IO [(FilePath, FileStat)]
-traverseDirectory fs p = do
+getDirectoryContents :: FuseOperations fh -> FilePath -> IO [(FilePath, FileStat)]
+getDirectoryContents fs p = do
   dnum <- getResult p =<< fuseOpenDirectory fs p
   allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  closeFile fs p dnum
+  return allEntries
+
+traverseDirectory :: FuseOperations fh -> FilePath -> IO [(FilePath, FileStat)]
+traverseDirectory fs p = do
+  allEntries <- getDirectoryContents fs p
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       directories = onlyDirectories paths
   recursive <- concat <$> mapM (traverseDirectory fs) directories
-  closeFile fs p dnum
   return $ paths ++ recursive
 
 findFiles :: FuseOperations fh -> FilePath -> IO [FilePath]
 findFiles fs p = do
-  dnum <- getResult p =<< fuseOpenDirectory fs p
-  allEntries <- getResult p =<< fuseReadDirectory fs p dnum
+  allEntries <- getDirectoryContents fs p
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       files = onlyFiles paths
       directories = onlyDirectories paths
   recursive <- concat <$> mapM (findFiles fs) directories
-  closeFile fs p dnum
   return $ files ++ recursive
 
 getFileSize :: FuseOperations fh -> FilePath -> IO FileOffset
@@ -118,7 +121,5 @@ createSmallFile :: Filesystem fh -> FilePath -> IO fh
 createSmallFile Filesystem{fuseOps=fs} fname = do
   inum <- getResult fname =<< fuseCreateFile fs fname ownerModes ReadWrite defaultFileFlags
   bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
-  -- TODO: caller gets the handle, so it should be closing the file
-  closeFile fs fname inum
   when (bytes < 4096) (error $ "failed to initialize " ++ fname)
   return inum

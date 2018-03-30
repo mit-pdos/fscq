@@ -10,7 +10,7 @@ if [ "$mnt" != "/tmp/fscq" ]; then
 fi
 
 if [ -e "$mnt/small" ]; then
-  umount "$mnt"
+  umount -f "$mnt"
 fi
 
 cp /tmp/disk-ext4.img /tmp/disk-ext4-runtime.img

@@ -513,6 +513,7 @@ writeFilePrepare :: forall fh. ParOptions -> WriteOptions -> Filesystem fh ->
 writeFilePrepare ParOptions{..} WriteOptions{..} fs = do
   forM [0..optN-1] $ \tid -> do
     let fname = uniqueName tid 0
+    -- TODO: this file needs to be closed when the benchmark is done
     inum <- createSmallFile fs fname
     return (fname, inum)
 

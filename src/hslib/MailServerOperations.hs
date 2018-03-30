@@ -71,7 +71,9 @@ getFreshMessage s = do
 mailDeliver :: Filesystem fh -> UserState -> User -> App ()
 mailDeliver fs s uid = userDir uid >>= \d -> liftIO $ do
   m <- getFreshMessage s
-  _ <- createSmallFile fs $ joinPath [d, show m]
+  let p = joinPath [d, show m]
+  inum <- createSmallFile fs p
+  closeFile (fuseOps fs) p inum
   return ()
 
 readMessage :: Filesystem fh -> FilePath -> IO ()

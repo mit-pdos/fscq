@@ -202,7 +202,7 @@ stopFs FsHandle{..} = do
   liftIO $ case fs of
              Fscq -> retryProcess 5 "fusermount" ["-u", mountPath]
              Cfscq -> retryProcess 5 "fusermount" ["-u", mountPath]
-             Ext4 -> retryProcess 5 "sudo" ["umount", mountPath]
+             Ext4 -> retryProcess 5 "sudo" ["umount", "-f", mountPath]
   debug $ "unmounted " ++ mountPath
   -- for a clean shutdown, we have to finish reading from the pipe
   _ <- liftIO $ hGetContents procStdout
