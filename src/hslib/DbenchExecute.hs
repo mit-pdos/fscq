@@ -40,7 +40,7 @@ getFile fs h = do
   case mh of
     Just inum -> return (p, inum)
     Nothing -> do
-      r <- liftIO $ fuseOpen fs p ReadOnly defaultFileFlags
+      r <- liftIO $ fuseOpen fs p ReadWrite defaultFileFlags
       case r of
         Left e -> liftIO $ ioError (errnoToIOError p e Nothing Nothing)
         Right inum -> do
@@ -110,9 +110,12 @@ runCommand fs c = run c
           -- TODO: check written bytes
           _ <- liftIO $ fuseWrite fs p inum (zeroBytestring len) (fromIntegral off)
           return ()
-        run (Close _h _s) = return ()
+        run (Close h _s) = {-# SCC "close" #-} do
+          (p, inum) <- getFile fs h
+          liftIO $ closeFile fs p inum
+          return ()
         run (QueryPath (Path p) _ _s) = {-# SCC "querypath" #-} do
-          _ <- liftIO $ fuseOpen fs p ReadOnly defaultFileFlags
+          _ <- liftIO $ fuseGetFileStat fs p
           return ()
         run (QueryFile h _level _s) = {-# SCC "queryfile" #-} do
           p <- getFilePath h
