@@ -52,7 +52,7 @@ parse_disk() {
 
 syscalls() {
   info "syscall baseline"
-  for system in fscq cfscq; do
+  for system in fscq cfscq ext4; do
     info_system
     for par in $(seq 1 12); do
       info "  > n=$par"
@@ -94,7 +94,7 @@ io_concur() {
 
 dbench() {
   info "dbench"
-  for system in fscq cfscq; do
+  for system in fscq cfscq ext4; do
     info_system
     for disk in "mem" "ssd"; do
       parse_disk
@@ -107,7 +107,7 @@ dbench() {
 
 parsearch() {
   info "par-search"
-  for system in fscq cfscq; do
+  for system in fscq cfscq ext4; do
     info_system
     for par in $(seq 1 12); do
       info "  > n=$par"
@@ -124,7 +124,7 @@ readers_writer() {
   info "readers-writer"
   for par in $(seq 0 11); do
     info "> n=$par"
-    args=( --n=$par +RTS -qa -N$((par+1)) -RTS --img=/tmp/disk.img --fscq=false --iters=5000 )
+    args=( --n=$par +RTS -qa -N$((par+1)) -RTS --img=/tmp/disk.img --system=cfscq --iters=5000 )
     runbasic "" "${args[@]}" readers-writer --reps=10 --write-reps=1
     if [ $par -eq 0 ]; then
         runbasic "" "${args[@]}" \
@@ -139,7 +139,7 @@ rw_mix() {
   info "rw-mix"
   for par in $(seq 1 12); do
     info "> n=$par"
-    args=( --n=$par +RTS -qa -N$par -RTS --img=/tmp/disk.img --fscq=false --target-ms=1000 )
+    args=( --n=$par +RTS -qa -N$par -RTS --img=/tmp/disk.img --system=cfscq --target-ms=1000 )
     for mix in 0.95 0.9 0.8; do
       runbasic "mix-$mix" "${args[@]}" \
                rw-mix --reps=10 --write-reps=1 --read-perc=$mix
@@ -148,7 +148,7 @@ rw_mix() {
 }
 
 fusebench() {
-  for system in fscq cfscq; do
+  for system in fscq cfscq ext4; do
     info_system
     for par in $(seq 1 12); do
       info "  > n=$par"
