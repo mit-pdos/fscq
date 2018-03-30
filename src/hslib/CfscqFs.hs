@@ -139,6 +139,7 @@ fscqFSOps :: IO (UserID, GroupID) -> String -> DiskState -> FSrunner -> I.Concur
 fscqFSOps getIds fn ds fr s fsP = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat getIds fr fsP
   , fuseOpen = fscqOpen fr fsP
+  , fuseCreateFile = fscqCreateFile fr fsP
   , fuseCreateDevice = fscqCreate fr fsP
   , fuseCreateDirectory = fscqCreateDir fr fsP
   , fuseRemoveLink = fscqUnlink fr fsP
@@ -331,6 +332,27 @@ fscqOpen _ _ _ _ _ = return $ Left eIO
 splitDirsFile :: String -> ([String], String)
 splitDirsFile path = (init parts, last parts)
   where parts = splitDirectories path
+
+fscqCreateFile :: FSrunner -> FsParams -> FilePath -> FileMode -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqCreateFile fr fsP (_:path) _ _ _
+  | (path == "stats") || (path == "sync") = return $ Left eEXIST
+  | otherwise = do
+  debugStart "CREATEFILE" path
+  (dirparts, filename) <- return $ splitDirsFile path
+  (rd, ()) <- fr $ CFS.lookup fsP dirparts
+  debugMore rd
+  case rd of
+    Errno.Err e -> return $ Left $ errnoToPosix e
+    Errno.OK (dnum, isdir)
+      | isdir -> do
+        (r, ()) <- fr $ CFS.create fsP dnum filename
+        debugMore r
+        case r of
+          Errno.Err e -> return $ Left $ errnoToPosix e
+          Errno.OK inum -> return $ Right inum
+      | otherwise -> return $ Left eNOTDIR
+fscqCreateFile _ _ _ _ _ _ = return $ Left eOPNOTSUPP
+
 
 fscqCreate :: FSrunner -> FsParams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr fsP (_:path) entrytype _ _ = do
