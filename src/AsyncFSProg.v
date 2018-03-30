@@ -63,10 +63,10 @@ Inductive fbasic : Type -> Type :=
 | file_get_attr_f :
     INODE.IRec.Cache.key ->
     fbasic (Rec.data (Rec.field_type
-           (Rec.FE [("owner", Rec.WordF 8);
-                    ("unused", Rec.WordF 16)]
-                     "attr" INODE.attrtype)) *
-            res unit)
+            (Rec.FE [("owner", Rec.WordF 8);
+                     ("unused", Rec.WordF 16)]
+                    "attr" INODE.attrtype)) *
+           res unit)
                            
 | file_set_attr_f :
     INODE.IRec.Cache.key ->
@@ -179,7 +179,11 @@ Inductive exec_fbasic:
 
 | FExecGetAttr    :
     forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
-      (r: INODE.iattr * res unit) d' bm' hm',
+      (r: Rec.data
+          (Rec.field_type
+          (Rec.FE [("owner", Rec.WordF 8);
+                   ("unused", Rec.WordF 16)]
+                  "attr" INODE.attrtype)) * res unit) d' bm' hm',
       exec pr tr d bm hm (file_get_attr fsxp inum ams)
            (Finished d' bm' hm' ^(ams', r)) tr' ->
       exec_fbasic pr tr d bm hm fsxp ams (file_get_attr_f inum)
@@ -243,7 +247,7 @@ Inductive exec_fbasic:
 
 | FExecDelete    :
     forall pr d bm hm tr tr' fsxp dnum (ams ams': BFILE.memstate)
-      (r: res addr) name d' bm' hm',
+      (r: res unit) name d' bm' hm',
       exec pr tr d bm hm (delete fsxp dnum name ams)
            (Finished d' bm' hm' ^(ams', r)) tr' ->
       exec_fbasic pr tr d bm hm fsxp ams (delete_f dnum name)
