@@ -155,7 +155,7 @@ ripgrep() {
       info "  > n=$par"
       args=( --app-pin="0-$((par-1))"
              --n=$par --system=$system
-             --dir 'search-benchmarks/coq/core0' search )
+             search --dir 'search-benchmarks/coq/core0' )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
@@ -180,7 +180,7 @@ mailserver() {
       info "  > n=$par"
       args=( --app-pin="0-$((par-1))"
              --n=$par --system=$system
-             --read-perc 0.9 --iters=1000 mailserver )
+             mail-server --read-perc 0.9 --iters=1000  )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
@@ -194,6 +194,7 @@ mailserver() {
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" | \
           addfield "more_mem"
     done
+  done
 }
 
 parbench print-header | addfield "description"
