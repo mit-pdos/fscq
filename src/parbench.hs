@@ -30,7 +30,7 @@ import           NativeFs
 import           ParallelSearch
 import           System.Posix.Files (ownerModes)
 import           System.Posix.IO (defaultFileFlags)
-import           System.Posix.Types (FileOffset, CDev(..))
+import           System.Posix.Types (FileOffset)
 import           Timings
 
 import           System.Mem (performMajorGC)
@@ -496,7 +496,9 @@ createOp :: ParOptions -> WriteOptions -> Filesystem fh ->
             UniqueCtr -> ThreadNum -> IO ()
 createOp _ WriteOptions{..} Filesystem{fuseOps} = genericCounterOp $ \name -> do
   let fname = writeDir ++ "/" ++ name
-  checkError fname $ fuseCreateDevice fuseOps fname RegularFile ownerModes (CDev 0)
+  inum <- getResult fname =<< fuseCreateFile fuseOps fname ownerModes ReadWrite defaultFileFlags
+  closeFile fuseOps fname inum
+  return ()
 
 createDirOp :: ParOptions -> WriteOptions -> Filesystem fh ->
                UniqueCtr -> ThreadNum -> IO ()

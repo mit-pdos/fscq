@@ -118,6 +118,7 @@ createSmallFile :: Filesystem fh -> FilePath -> IO fh
 createSmallFile Filesystem{fuseOps=fs} fname = do
   inum <- getResult fname =<< fuseCreateFile fs fname ownerModes ReadWrite defaultFileFlags
   bytes <- getResult fname =<< fuseWrite fs fname inum zeroBlock 0
+  -- TODO: caller gets the handle, so it should be closing the file
   closeFile fs fname inum
   when (bytes < 4096) (error $ "failed to initialize " ++ fname)
   return inum
