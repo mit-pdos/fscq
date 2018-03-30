@@ -13,7 +13,6 @@ import           System.Posix.IO (defaultFileFlags)
 parForFiles :: FuseOperations fh -> (FilePath -> IO a) -> FilePath -> IO [a]
 parForFiles fs act p = do
   allEntries <- getDirectoryContents fs p
-  closeFile fs p dnum
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
       files = onlyFiles paths
@@ -27,8 +26,9 @@ parForFiles fs act p = do
 readEntireFile :: FuseOperations fh -> FilePath -> IO BS.ByteString
 readEntireFile fs p = do
   fh <- getResult p =<< fuseOpen fs p ReadOnly defaultFileFlags
-  go fh 0
+  contents <- go fh 0
   closeFile fs p fh
+  return contents
     where chunkSize :: Num a => a
           chunkSize = 4096
           go fh off = do
