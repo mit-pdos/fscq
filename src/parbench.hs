@@ -240,8 +240,8 @@ parallelTimeForIters par act iters =
     then replicateM iters (timeIt . act $ tid)
     else replicateM_ iters (act tid) >> return [])
 
-parallelBench :: ParOptions -> IO b -> (b -> ThreadNum -> IO a) -> IO [DataPoint]
-parallelBench opts@ParOptions{..} prepare act = do
+parallelBench :: ParOptions -> IO b -> (b -> ThreadNum -> IO a) -> (b -> IO ()) -> IO [DataPoint]
+parallelBench opts@ParOptions{..} prepare act cleanup = do
   setup <- prepare
   when optWarmup $ do
     forM_ [0..optN-1] (act setup)
@@ -249,6 +249,7 @@ parallelBench opts@ParOptions{..} prepare act = do
   performMajorGC
   micros <- pickAndRunIters opts $
     parallelTimeForIters optN $ replicateM_ optReps . (act setup)
+  cleanup setup
   p <- optsData opts
   return $ map (\t -> p{ pIters=length micros
                        , pElapsedMicros=t }) micros
@@ -291,6 +292,7 @@ benchmarkWithSetup name prepare act = benchCommand name $ \opts cmdOpts fs ->
   parallelBench opts
     (clearTimings fs >> prepare opts cmdOpts fs)
     (\setup thread -> act opts cmdOpts fs setup thread)
+    (\_ -> return ())
 
 benchmarkWithInode :: Options subcmdOpts =>
                       String ->
@@ -303,6 +305,7 @@ benchmarkWithInode name prepare act = benchCommand name $ \opts cmdOpts fs ->
   parallelBench opts
     (clearTimings fs >> prepare opts cmdOpts fs)
     (\setup thread -> act opts cmdOpts fs setup thread)
+    (\inum -> closeFile (fuseOps fs) "(unknown)" inum)
 
 simpleBenchmarkWithInode :: Options subcmdOpts =>
                       String ->
@@ -805,6 +808,7 @@ main = do
                     parallelBench opts
                     (clearTimings fs >> writeFilePrepare opts cmdOpts fs)
                     (\setup thread -> writeFileOp opts cmdOpts fs setup thread)
+                    (\files -> mapM_ (closeFile (fuseOps fs) "(unknown)" . snd) files)
                 , ioConcurCommand
                 , parSearchCommand
                 , dbenchCommand
