@@ -194,7 +194,7 @@ ripgrep() {
 
 mailserver() {
   info "mailserver"
-  run_fusebench mailserver --read-perc 0.9 --iters=1000
+  run_fusebench mailserver --read-perc 0.9 --iters=1000 --users=24
 }
 
 parbench print-header | addfield "description"

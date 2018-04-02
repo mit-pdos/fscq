@@ -17,7 +17,7 @@ instance Options MailServerOptions where
     <*> defineOptions
     <*> simpleOption "iters" 100
         "number of operations to run per user"
-    <*> simpleOption "par" 1
+    <*> simpleOption "users" 1
         "number of users to run concurrently"
     <*> simpleOption "disk-path" "/tmp/fscq"
         "file system mount path"
