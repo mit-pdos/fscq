@@ -72,7 +72,7 @@ instance Options FsOptions where
         "cpu list to pin filesystem to"
     <*> simpleOption "fuse-opts" "attr_timeout=0,entry_timeout=0"
         "options to pass to FUSE library via -o"
-    <*> simpleOption "use-downcalls" True
+    <*> simpleOption "use-downcalls" False
         "use downcalls (opqueue) instead of C->HS upcalls"
 
 instance Options FuseBenchOptions where

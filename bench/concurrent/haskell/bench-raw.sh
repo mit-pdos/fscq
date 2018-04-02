@@ -170,17 +170,15 @@ run_fusebench() {
              "$@" )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
-      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
-          | addfield "seq_gc"
       fusebench "${args[@]}" --fs-N=4  --rts-flags="-qn4" \
           | addfield "par_gc4"
+      if [ "$system" = "fscq" -a "$par" -gt 4 ]; then
+          continue
+      fi
+      fusebench "${args[@]}" --fs-N=10 --rts-flags="-qg" \
+          | addfield "seq_gc"
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4" \
           | addfield "par_gc"
-      if [ "$system" != "fscq" -o "$par" -lt 5 ]; then
-          gc_threads=$((par<4 ? 1 : 4))
-          fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn$gc_threads" --use-downcalls=false \
-              | addfield "upcalls_gc4"
-      fi
       fusebench "${args[@]}" --fs-N=10 --rts-flags="-qn4 -A512m" \
           | addfield "more_mem"
     done
