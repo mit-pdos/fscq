@@ -1053,4 +1053,171 @@ Proof.
     inversion H1.
 Qed.
 
+ Lemma authenticate_post:
+    forall Fr Fm Ftop pathname f dx ds sm tree mscs fsxp ilist frees d bm hm pr inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (bool * unit))),
+      
+      (Fr * [[ sync_invariant Fr ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds dx) (MSLL mscs) sm bm hm *
+       [[[ dx ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
+       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
+  
+  exec pr tr d bm hm (authenticate fsxp inum mscs)
+       (Finished d' bm' hm' rx) tr' ->
+  let mscs':= fst rx in
+  let r := fst (snd rx) in
+  (Fr * [[ sync_invariant Fr ]] *
+   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds dx) (MSLL mscs') sm bm' hm' *
+   [[[ dx ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
+   [[ MSAlloc mscs' = MSAlloc mscs ]] *
+   [[ MSCache mscs' = MSCache mscs ]] *
+   [[ MSAllocC mscs' = MSAllocC mscs ]] *
+   [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+   [[ MSDBlocks mscs' = MSDBlocks mscs ]] *
+   (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+    ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]])))%pred d'.
+  Proof.
+    unfold sys_rep, corr2; intros.
+    pose proof (@authenticate_ok fsxp inum mscs pr) as Hok.
+    specialize (Hok _ (fun r => Ret r)).
+    unfold corr2 in *.
+    edestruct Hok with (d:= d).
+    pred_apply; cancel.
+    eauto.
+    eauto.
+    inv_exec_perm.
+    simpl in *.
+    destruct_lift H1.
+    eassign (fun d0 bm0 hm0 (rx: (BFILE.memstate * (bool * unit))) =>
+               let a:= fst rx in
+               let a1:= fst (snd rx) in
+               (Fr
+         ✶ LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds dx) (MSLL a) sm bm0 hm0 *
+   [[[ dx ::: (Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) a sm) ]]] *
+   [[ MSAlloc a = MSAlloc mscs ]] *
+   [[ MSCache a = MSCache mscs ]] *
+   [[ MSAllocC a = MSAllocC mscs ]] *
+   [[ MSIAllocC a = MSIAllocC mscs ]] *
+   [[ MSDBlocks a = MSDBlocks mscs ]] *
+   (([[ a1 = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+    ([[ a1 = false ]] * [[ ~can_access pr (DFOwner f) ]])))%pred d0).
+    left; repeat eexists; simpl in *; eauto.
+    pred_apply; cancel.
+    or_l; cancel.
+    or_r; cancel.
+    unfold permission_secure; intros.
+    inv_exec_perm.
+    cleanup; auto.
+    unfold trace_secure; eauto.
+    eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
+    intros; simpl; auto.
+    econstructor; eauto.
+    econstructor.
+    simpl in *.
+    destruct rx, p.
+    intuition; cleanup.
+    sigT_eq; eauto.
+    destruct_lift H; subst.
+    pred_apply; cancel.
+    or_l; cancel.
+    or_r; cancel.
+    inversion H1.
+  Qed.
 
+
+
+  Lemma LOG_begin_post:
+    forall Fr ds sm mscs fsxp d bm hm pr tr d' bm' hm' tr' (rx: LOG.mstate * cachestate),
+      
+  (Fr * [[ sync_invariant Fr ]] *
+   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm)%pred d ->
+  
+  exec pr tr d bm hm (LOG.begin (FSXPLog fsxp) (MSLL mscs))
+       (Finished d' bm' hm' rx) tr' ->
+  (Fr * [[ sync_invariant Fr ]] *
+   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) rx sm bm' hm' *
+  [[ LOG.readOnly (MSLL mscs) rx ]])%pred d'.
+  Proof.
+     unfold sys_rep, corr2; intros.
+    pose proof (@LOG.begin_ok (FSXPLog fsxp) (MSLL mscs) pr) as Hok.
+    specialize (Hok _ (fun r => Ret r)).
+    unfold corr2 in *.
+    edestruct Hok with (d:= d).
+    pred_apply; cancel.
+    eauto.
+    eauto.
+    inv_exec_perm.
+    simpl in *.
+    destruct_lift H1.
+    eassign (fun d0 bm0 hm0 (rx: LOG.mstate * cachestate) =>
+               let a:= fst rx in
+               let b:= snd rx in
+               (Fr
+        ✶ LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds !!) 
+            (a, b) sm bm0 hm0 * [[ LOG.readOnly (MSLL mscs) (a, b) ]] )%pred d0).
+    left; repeat eexists; simpl in *; eauto.
+    pred_apply; cancel.
+    unfold permission_secure; intros.
+    inv_exec_perm.
+    cleanup; auto.
+    unfold trace_secure; eauto.
+    eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
+    intros; simpl; auto.
+    econstructor; eauto.
+    econstructor.
+    simpl in *.
+    destruct rx.
+    intuition; cleanup.
+    sigT_eq; eauto.
+    destruct_lift H; subst.
+    pred_apply; cancel.
+    inversion H1.
+  Qed.
+
+
+  Lemma maybe_evict_post:
+    forall Fr d dx cs bm hm pr tr d' bm' hm' tr' cs',
+      (Fr * [[ sync_invariant Fr ]] * PermCacheDef.rep cs dx bm)%pred d ->
+      exec pr tr d bm hm (maybe_evict cs)
+           (Finished d' bm' hm' cs') tr' ->
+      (Fr * [[ sync_invariant Fr ]] *
+       PermCacheDef.rep cs' dx bm' *
+      [[ forall a, MapUtils.AddrMap.Map.find a (CSMap cs) = None ->
+              MapUtils.AddrMap.Map.find a (CSMap cs') = None ]] *                 
+      [[ MapUtils.AddrMap.Map.cardinal (CSMap cs') < CSMaxCount cs' ]])%pred d'.
+    Proof.
+      intros.
+      pose proof (@maybe_evict_ok cs pr) as Hok.
+      specialize (Hok _ (fun r => Ret r)).
+      unfold corr2 in *.
+      edestruct Hok with (d:= d).
+      pred_apply; cancel.
+      eauto.
+      eauto.
+      inv_exec_perm.
+      simpl in *.
+      destruct_lift H1.
+      eassign (fun d0 (bm0: block_mem) (hm0:hashmap) cs' =>
+                 (Fr * PermCacheDef.rep cs' dx bm0 *
+                 [[ forall a, MapUtils.AddrMap.Map.find a (CSMap cs) = None ->
+                         MapUtils.AddrMap.Map.find a (CSMap cs') = None ]] *                 
+                 [[ MapUtils.AddrMap.Map.cardinal (CSMap cs') < CSMaxCount cs' ]])%pred d0).
+      left; repeat eexists; simpl in *; eauto.
+      pred_apply; cancel.
+      unfold permission_secure; intros.
+      inv_exec_perm.
+      cleanup; auto.
+      unfold trace_secure; eauto.
+      eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
+      intros; simpl; auto.
+      econstructor; eauto.
+      econstructor.
+      simpl in *.
+      intuition; cleanup.
+      sigT_eq; eauto.
+      destruct_lift H; subst.
+      pred_apply; cancel.
+      inversion H1.
+    Qed.
+
+
+    

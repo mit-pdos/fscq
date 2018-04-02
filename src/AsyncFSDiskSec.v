@@ -23,10 +23,13 @@ Require Import DirTreePred.
 Require Import DirTreeInodes.
 Require Import DirTreeSafe.
 Require Import DirTreeNames.
+Require Import DirTree.
 Require Import AsyncFS AsyncFSPost AsyncFSProg.
+Require Import FMapAVL.
+Require Import FMapFacts.
+
 
 Set Implicit Arguments.
-Import DirTree.
 Import DIRTREE.
 Import AFS.
 Import ListNotations.
@@ -97,8 +100,7 @@ Fixpoint only_reads_permitted {T} pr (p: prog T) d bm hm:=
   | _ => True
   end.
 
-(** Non-deterministic handle return bites us in here **)
-Theorem exec_equivalent:
+Theorem exec_equivalent_finished:
   forall T (p: prog T) pr tr d1 d2 bm hm d1' bm' hm' tr' (r: T),
     exec pr tr d1 bm hm p (Finished d1' bm' hm' r) tr' ->
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
@@ -164,6 +166,401 @@ Proof.
     eexists; split; [econstructor; eauto|]; eauto.
   }
 Qed.
+
+Theorem exec_equivalent_crashed:
+  forall T (p: prog T) pr tr d1 d2 bm hm d1' bm' hm' tr',
+    exec pr tr d1 bm hm p (Crashed d1' bm' hm') tr' ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    only_reads_permitted pr p d1 bm hm ->
+    exists d2', exec pr tr d2 bm hm p (Crashed d2' bm' hm') tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
+Proof.
+  induction p; intros;  
+  inv_exec_perm; cleanup;
+  try solve [ eexists; split; [econstructor; eauto|]; eauto ].
+  { (** Bind **)
+    inversion H2.
+    intuition.
+    { (** p Crashed **)
+      specialize IHp with (1:=H5)(2:=H1)(3:=H3); cleanup.
+      eexists; split.
+      eapply CrashBind; eauto.
+      eauto.
+    }
+    { (** p0 crashed **)
+      cleanup.
+      specialize H4 with (1:=H0).
+      eapply exec_equivalent_finished in H0; eauto; cleanup.
+      specialize H with (1:=H5)(2:=H6)(3:=H4); cleanup.
+      eexists; split.
+      econstructor; eauto.
+      eauto.
+    }
+  }
+Qed.
+
+
+
+
+Theorem exec_equivalent:
+  forall T (p: prog T) pr tr d1 d2 bm hm (out: @result T) tr',
+    exec pr tr d1 bm hm p out tr' ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    only_reads_permitted pr p d1 bm hm ->
+    (exists d1' bm' hm' (r: T), out = Finished d1' bm' hm' r /\
+     exists d2', exec pr tr d2 bm hm p (Finished d2' bm' hm' r) tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')) \/
+    (exists d1' bm' hm', out = Crashed d1' bm' hm' /\
+     exists d2', exec pr tr d2 bm hm p (Crashed d2' bm' hm') tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')).
+Proof.
+  intros.
+  destruct out.
+  left; do 4 eexists; split; eauto.
+  eapply exec_equivalent_finished; eauto.
+  right; do 3 eexists; split; eauto.
+  eapply exec_equivalent_crashed; eauto.
+Qed.
+
+
+
+Theorem exec_equivalent_rfinished:
+  forall T T' (p1: prog T) (p2: prog T') pr tr d1 d2 bm hm d1' bm' hm' tr' (r: T),
+    exec_recover pr tr d1 bm hm p1 p2 (RFinished T' d1' bm' hm' r) tr' ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    only_reads_permitted pr p1 d1 bm hm ->
+    exists d2', exec_recover pr tr d2 bm hm p1 p2 (RFinished T' d2' bm' hm' r) tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
+Proof.
+  intros.
+  inversion H; subst.
+  eapply exec_equivalent_finished in H14; eauto; cleanup.
+  exists x; split; eauto.
+  econstructor; eauto.
+Qed.
+
+Fixpoint index {T} (EQ:forall (x y:T), {x=y}+{x<>y}) (item: T) (list: list T) :=
+  match list with
+  |nil => 0
+  |h::tl => if EQ item h then
+             0
+           else
+             S(index EQ item tl)
+  end.
+   
+Lemma index_app_l:
+  forall T EQ l1 l2 (t:T),
+    In t l1 ->
+    index EQ t (l1++l2) = index EQ t l1.
+Proof.
+  induction l1; intros.
+  inversion H.
+  destruct H; subst; simpl in *.
+  destruct (EQ t t); try congruence.
+  destruct (EQ t a); subst; eauto.
+Qed.
+
+Lemma index_in_lt:
+  forall T EQ l (t:T),
+    In t l -> index EQ t l < length l.
+Proof.
+  induction l; intros.
+  inversion H.
+  destruct H; subst; simpl.
+  destruct (EQ t t); try congruence; try omega.
+  destruct (EQ t a); subst; eauto; try omega.
+  specialize IHl with (1:=H); omega.
+Qed.
+
+Lemma index_in_selN:
+  forall T EQ l (t:T) def,
+    In t l -> selN l (index EQ t l) def = t.
+Proof.
+  induction l; intros; inversion H; subst.
+  simpl; auto.
+  destruct (EQ t t); try congruence; auto.
+  simpl.
+  destruct (EQ t a); subst; eauto.
+Qed.
+
+
+
+Lemma possible_crash_equivalent:
+  forall d1 cd1 d2 pr,
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    possible_crash d1 cd1 ->
+    exists cd2, possible_crash d2 cd2 /\
+    (forall tag, can_access pr tag -> equivalent_for tag cd1 cd2).
+Proof.
+  unfold equivalent_for, possible_crash; intros.
+  exists(fun i => match cd1 i with
+          | Some (v, []) =>
+            match d1 i with
+            | Some vs1 =>
+              match d2 i with
+              | Some vs2 =>
+                Some (selN (vsmerge vs2)
+                       (index tagged_block_dec v (vsmerge vs1))
+                        tagged_block0, [])
+              | _ => None (** Not reachable **)
+              end
+            | _ => None (** Not reachable **)
+            end
+          | _ => None
+          end); split; intros.
+  {
+    specialize (H0 a); intuition.
+    specialize H with (1:= can_access_public pr) as Hx;
+    specialize (Hx a); intuition; cleanup; try congruence.
+    left; auto.
+    cleanup.
+    specialize H with (1:= can_access_public pr) as Hx;
+    specialize (Hx a); intuition; cleanup; try congruence.
+    right; do 2 eexists; eauto.
+    repeat split; eauto.
+    apply in_selN.
+    apply forall2_length in H5; setoid_rewrite <- H5.
+    eapply index_in_lt; eauto.
+  }
+
+  {
+    specialize (H0 a); intuition.
+    cleanup; left; eauto.
+    cleanup.
+    specialize H with (1:=H1) as Hx;
+    specialize (Hx a); intuition; cleanup; try congruence.
+    right; do 2 eexists; eauto.
+    repeat split; eauto.
+    eapply forall2_selN with
+        (n:= (index tagged_block_dec x0 (vsmerge x1))) in H6.
+    constructor; eauto.
+    erewrite index_in_selN in H6; eauto.
+    simpl; auto.
+    eapply index_in_lt; eauto.
+
+    
+    eapply forall2_selN with
+        (n:= (index tagged_block_dec x0 (vsmerge x1))) in H7.
+    constructor; eauto.
+    erewrite index_in_selN in H7; eauto.
+    simpl; auto.
+    eapply index_in_lt; eauto.
+  }
+  
+  Unshelve.
+  all: exact tagged_block0.
+Qed.
+
+
+
+Theorem exec_equivalent_recover:
+  forall T T' (p1: prog T) (p2: prog T') pr tr d1 bm hm tr' out,
+    exec_recover pr tr d1 bm hm p1 p2 out tr' ->
+    only_reads_permitted pr p1 d1 bm hm ->
+    (forall tr d1 bm hm d1' bm' hm' tr' cd1',
+       exec pr tr d1 bm hm p1 (Crashed d1' bm' hm') tr' ->
+       possible_crash d1' cd1' ->
+       only_reads_permitted pr p2 cd1' bm' hm') ->
+    (forall tr d1 bm hm d1' bm' hm' tr' cd1',
+       exec pr tr d1 bm hm p2 (Crashed d1' bm' hm') tr' ->
+       possible_crash d1' cd1' ->
+       only_reads_permitted pr p2 cd1' bm' hm') ->
+    forall d2,
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    (exists d1' bm' hm' r, out = RFinished T' d1' bm' hm' r /\
+     exists d2', exec_recover pr tr d2 bm hm p1 p2 (RFinished T' d2' bm' hm' r) tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')) \/
+    (exists d1' bm' hm' r, out = RRecovered T d1' bm' hm' r /\
+     exists d2', exec_recover pr tr d2 bm hm p1 p2 (RRecovered T d2' bm' hm' r) tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')).
+Proof.
+  induction 1; intros.
+  { (** p1 Finished **)
+    eapply exec_equivalent_finished in H; eauto; cleanup.
+    left; do 4 eexists; split; eauto.
+    exists x; split; eauto.
+    econstructor; eauto.
+  }
+  { (** p1 Crashed then p2 Finished **)
+    clear IHexec_recover.
+    right; do 4 eexists; split; eauto.
+    specialize H3 with (1:=H)(2:=H0).
+    eapply exec_equivalent_crashed in H; eauto; cleanup.
+    eapply possible_crash_equivalent in H6 as Hx; eauto; cleanup.
+    inversion H1; subst.
+    eapply exec_equivalent_finished in H21 as Hp2; eauto; cleanup.
+    eexists; split; eauto.
+    econstructor; eauto.
+    econstructor; eauto.
+  }
+  { (** p1 Crashed then p2 Crashed **)
+    right; do 4 eexists; split; eauto.
+    specialize H3 with (1:=H)(2:=H0).
+    specialize IHexec_recover with (1:=H3)(2:=H4)(3:=H4).
+    eapply exec_equivalent_crashed in H; eauto; cleanup.
+    eapply possible_crash_equivalent in H6 as Hx; eauto; cleanup.
+    specialize IHexec_recover with (1:=H8).
+    intuition; cleanup; try congruence.
+    inversion H9; subst; clear H9.
+    eexists; split; eauto.
+    eapply XRCrashedRecovered; eauto.
+  }
+Qed.
+
+
+Lemma LOG_begin_orp:
+  forall pr a b d bm hm,
+    only_reads_permitted pr (LOG.begin a b) d bm hm.
+Proof.
+  intros.
+  Transparent LOG.begin.
+  unfold LOG.begin; simpl; auto.
+Qed.
+
+Lemma writeback_orp:
+  forall pr a b d bm hm,
+    only_reads_permitted pr (writeback a b) d bm hm.
+Proof.
+  unfold writeback; simpl; intros.
+  destruct (MapUtils.AddrMap.Map.find a (CSMap b)); simpl; auto.
+  destruct p; simpl; auto.
+  destruct b0; simpl; auto.
+Qed.
+
+Hint Resolve LOG_begin_orp writeback_orp.
+
+Lemma maybe_evict_orp:
+  forall pr a d bm hm,
+    only_reads_permitted pr (maybe_evict a) d bm hm.
+Proof.
+  unfold maybe_evict; simpl; intros.
+  destruct (lt_dec (CSCount a) (CSMaxCount a)); simpl; auto.
+  destruct (MapUtils.AddrMap.Map.find 0 (CSMap a)); simpl; auto.
+  intuition; simpl.
+  destruct (MapUtils.AddrMap.Map.find 0 (CSMap r)); simpl; auto.
+  destruct (MapUtils.AddrMap.Map.elements (CSMap a)); simpl; auto.
+  destruct p; simpl; auto.
+  intuition.
+  destruct (MapUtils.AddrMap.Map.find k (CSMap r)); simpl; auto.
+Qed.
+
+Hint Resolve maybe_evict_orp.
+
+
+
+Lemma PermCacheDef_read_orp:
+  forall Fr pr a cs dx d bm hm v,
+    (Fr * [[ sync_invariant Fr ]] * PermCacheDef.rep cs dx bm)%pred d ->
+    can_access pr (fst (fst v)) ->
+    dx a = Some v ->
+    only_reads_permitted pr (PermCacheDef.read a cs) d bm hm.
+Proof.
+  intros; unfold PermCacheDef.read; simpl.
+  destruct (MapUtils.AddrMap.Map.find a (CSMap cs)) eqn:D; simpl; auto.
+  destruct p; simpl; auto.
+  intuition; simpl.   
+  pose proof (maybe_evict_post H H2) as Hspec.
+  destruct_lift Hspec.
+  specialize H8 with (1:=D).
+  unfold PermCacheDef.rep in *.
+  rewrite mem_pred_extract in H4; eauto.
+  unfold cachepred at 2 in H4.
+  rewrite H8 in H4.
+  repeat rewrite sep_star_assoc in H4.
+  apply sep_star_assoc in H4.
+  apply sep_star_assoc in H4.
+  apply sep_star_assoc in H4.
+  eapply ptsto_subset_valid' in H4.
+  simpl in *; cleanup; eauto.
+Qed.
+
+
+
+Lemma MLog_read_orp:
+  forall vs F pr d bm hm Fr a ms na xp ds,
+    (Fr * [[ sync_invariant Fr ]] *
+     exists raw, PermCacheDef.rep (snd ms) raw bm *
+     [[ (F * MLog.rep xp (MLog.Synced na ds) (fst ms) bm hm)%pred raw ]] *
+     [[[ ds ::: exists F', (F' * a |-> vs) ]]])%pred d ->
+    can_access pr (fst (fst vs)) ->
+    only_reads_permitted pr (MLog.read xp a ms) d bm hm.
+Proof.
+  intros; unfold MLog.read.
+  destruct (MapUtils.AddrMap.Map.find a (MLog.MSInLog ms)) eqn:D; simpl; auto.
+  intuition.
+  destruct_lift H.
+  denote MLog.rep as Hx; unfold MLog.rep, MLog.synced_rep in Hx.
+  destruct_lift Hx.
+  unfold LogReplay.map_replay in *.
+  eapply map_find_In_elements_none in D.
+  cleanup.
+  eapply LogReplay.replay_disk_none_selN in D.
+  2: pred_apply' H5; cancel.
+  apply sep_star_comm in H1.
+  apply sep_star_assoc in H1.
+  eapply arrayN_selN_subset in H1.
+  cleanup.
+  eapply PermCacheDef_read_orp; eauto.
+  pred_apply; cancel.
+  setoid_rewrite H3.
+  rewrite minus_plus.
+  rewrite D; simpl; auto.
+  omega.
+  apply list2nmem_inbound in H5.
+  rewrite LogReplay.replay_disk_length in H5.
+  omega.
+  Unshelve.
+  exact valuset0.
+Qed.
+
+Lemma GLog_read_orp:
+    forall vs F pr d bm hm Fr a ms xp ds,
+    (Fr * [[ sync_invariant Fr ]] *
+     exists raw, PermCacheDef.rep (snd ms) raw bm *
+     [[ (F * GLog.rep xp (GLog.Cached ds) (fst ms) bm hm)%pred raw ]] *
+     [[[ ds!! ::: exists F', (F' * a |-> vs) ]]])%pred d ->
+    can_access pr (fst (fst vs)) ->
+    only_reads_permitted pr (GLog.read xp a ms) d bm hm.
+  Proof.
+    intros; unfold GLog.read.
+    destruct (MapUtils.AddrMap.Map.find a (GLog.MSVMap (fst ms))) eqn:D.
+    simpl; auto.
+    simpl; intuition.
+    denote GLog.rep as Hx.
+    unfold GLog.rep in Hx; destruct_lift Hx.
+    eapply list2nmem_inbound in H5 as Hlen.
+    erewrite <- GLog.latest_effective in H5; eauto.
+    eapply GLog.diskset_vmap_find_none in D as Hx; eauto.
+    erewrite GLog.dset_match_nthd_effective_fst in H2; eauto.
+    eapply MLog_read_orp; eauto.
+    pred_apply; cancel.
+    eexists.
+    apply list2nmem_array_pick.
+    eapply GLog.diskset_ptsto_bound_effective; eauto.
+    erewrite <- GLog.latest_effective; eauto.
+    setoid_rewrite Hx; simpl; auto.
+  Qed.
+
+
+Lemma LOG_read_orp:
+  forall pr d bm hm lxp a Fr ds sm ms Ftop vs,
+    (Fr * [[ sync_invariant Fr ]] *
+     LOG.rep lxp Ftop (LOG.ActiveTxn ds ds !!) ms sm bm hm *
+     [[[ ds!! ::: exists F', (F' * a |-> vs) ]]])%pred d ->
+    can_access pr (fst (fst vs)) ->
+    only_reads_permitted pr (LOG.read lxp a ms) d bm hm.
+Proof.
+  intros; unfold LOG.read.
+  destruct (MapUtils.AddrMap.Map.find a (LOG.MSTxn (fst ms))) eqn:D.
+  simpl; auto.
+  simpl; auto; intuition.
+  denote LOG.rep as Hx.
+  unfold LOG.rep, LOG.rep_inner in Hx. destruct_lift Hx.
+  eapply GLog_read_orp; eauto.
+  pred_apply; cancel.
+  simpl; auto.
+Qed.
+  
 
 Definition fbasic_to_prog {T} fsxp ams (fp: fbasic T): prog (BFILE.memstate * (T * unit)) :=
   match fp with
@@ -261,760 +658,3 @@ Proof.
   inversion H19.
 Qed.
 
-
- Lemma authenticate_post:
-    forall Fr Fm Ftop pathname f dx ds sm tree mscs fsxp ilist frees d bm hm pr inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (bool * unit))),
-      
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds dx) (MSLL mscs) sm bm hm *
-       [[[ dx ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-  
-  exec pr tr d bm hm (authenticate fsxp inum mscs)
-       (Finished d' bm' hm' rx) tr' ->
-  let mscs':= fst rx in
-  let r := fst (snd rx) in
-  (Fr * [[ sync_invariant Fr ]] *
-   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds dx) (MSLL mscs') sm bm' hm' *
-   [[[ dx ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-   [[ MSAlloc mscs' = MSAlloc mscs ]] *
-   [[ MSCache mscs' = MSCache mscs ]] *
-   [[ MSAllocC mscs' = MSAllocC mscs ]] *
-   [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-   [[ MSDBlocks mscs' = MSDBlocks mscs ]] *
-   (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
-    ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]])))%pred d'.
-  Proof.
-    unfold sys_rep, corr2; intros.
-    pose proof (@authenticate_ok fsxp inum mscs pr) as Hok.
-    specialize (Hok _ (fun r => Ret r)).
-    unfold corr2 in *.
-    edestruct Hok with (d:= d).
-    pred_apply; cancel.
-    eauto.
-    eauto.
-    inv_exec_perm.
-    simpl in *.
-    destruct_lift H1.
-    eassign (fun d0 bm0 hm0 (rx: (BFILE.memstate * (bool * unit))) =>
-               let a:= fst rx in
-               let a1:= fst (snd rx) in
-               (Fr
-         ✶ LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds dx) (MSLL a) sm bm0 hm0 *
-   [[[ dx ::: (Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) a sm) ]]] *
-   [[ MSAlloc a = MSAlloc mscs ]] *
-   [[ MSCache a = MSCache mscs ]] *
-   [[ MSAllocC a = MSAllocC mscs ]] *
-   [[ MSIAllocC a = MSIAllocC mscs ]] *
-   [[ MSDBlocks a = MSDBlocks mscs ]] *
-   (([[ a1 = true ]] * [[ can_access pr (DFOwner f) ]]) \/
-    ([[ a1 = false ]] * [[ ~can_access pr (DFOwner f) ]])))%pred d0).
-    left; repeat eexists; simpl in *; eauto.
-    pred_apply; cancel.
-    or_l; cancel.
-    or_r; cancel.
-    unfold permission_secure; intros.
-    inv_exec_perm.
-    cleanup; auto.
-    unfold trace_secure; eauto.
-    eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
-    intros; simpl; auto.
-    econstructor; eauto.
-    econstructor.
-    simpl in *.
-    destruct rx, p.
-    intuition; cleanup.
-    sigT_eq; eauto.
-    destruct_lift H; subst.
-    pred_apply; cancel.
-    or_l; cancel.
-    or_r; cancel.
-    inversion H1.
-  Qed.
-
-
-
-  Lemma LOG_begin_post:
-    forall Fr ds sm mscs fsxp d bm hm pr tr d' bm' hm' tr' (rx: LOG.mstate * cachestate),
-      
-  (Fr * [[ sync_invariant Fr ]] *
-   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm)%pred d ->
-  
-  exec pr tr d bm hm (LOG.begin (FSXPLog fsxp) (MSLL mscs))
-       (Finished d' bm' hm' rx) tr' ->
-  (Fr * [[ sync_invariant Fr ]] *
-   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) rx sm bm' hm' *
-  [[ LOG.readOnly (MSLL mscs) rx ]])%pred d'.
-  Proof.
-     unfold sys_rep, corr2; intros.
-    pose proof (@LOG.begin_ok (FSXPLog fsxp) (MSLL mscs) pr) as Hok.
-    specialize (Hok _ (fun r => Ret r)).
-    unfold corr2 in *.
-    edestruct Hok with (d:= d).
-    pred_apply; cancel.
-    eauto.
-    eauto.
-    inv_exec_perm.
-    simpl in *.
-    destruct_lift H1.
-    eassign (fun d0 bm0 hm0 (rx: LOG.mstate * cachestate) =>
-               let a:= fst rx in
-               let b:= snd rx in
-               (Fr
-        ✶ LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds !!) 
-            (a, b) sm bm0 hm0 * [[ LOG.readOnly (MSLL mscs) (a, b) ]] )%pred d0).
-    left; repeat eexists; simpl in *; eauto.
-    pred_apply; cancel.
-    unfold permission_secure; intros.
-    inv_exec_perm.
-    cleanup; auto.
-    unfold trace_secure; eauto.
-    eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
-    intros; simpl; auto.
-    econstructor; eauto.
-    econstructor.
-    simpl in *.
-    destruct rx.
-    intuition; cleanup.
-    sigT_eq; eauto.
-    destruct_lift H; subst.
-    pred_apply; cancel.
-    inversion H1.
-  Qed.
-
-
-Require Import FMapAVL.
-Require Import FMapFacts.
-Import AddrMap.
-Import Map MapFacts.
-
-Lemma maybe_evict_post:
-    forall Fr d dx cs bm hm pr tr d' bm' hm' tr' cs',
-      (Fr * [[ sync_invariant Fr ]] * PermCacheDef.rep cs dx bm)%pred d ->
-      exec pr tr d bm hm (maybe_evict cs)
-           (Finished d' bm' hm' cs') tr' ->
-      (Fr * [[ sync_invariant Fr ]] *
-       PermCacheDef.rep cs' dx bm' *
-      [[ forall a, find a (CSMap cs) = None ->
-              find a (CSMap cs') = None ]] *                 
-      [[ cardinal (CSMap cs') < CSMaxCount cs' ]])%pred d'.
-    Proof.
-      intros.
-      pose proof (@maybe_evict_ok cs pr) as Hok.
-      specialize (Hok _ (fun r => Ret r)).
-      unfold corr2 in *.
-      edestruct Hok with (d:= d).
-      pred_apply; cancel.
-      eauto.
-      eauto.
-      inv_exec_perm.
-      simpl in *.
-      destruct_lift H1.
-      eassign (fun d0 (bm0: block_mem) (hm0:hashmap) cs' =>
-                 (Fr * PermCacheDef.rep cs' dx bm0 *
-                 [[ forall a, find a (CSMap cs) = None ->
-                         find a (CSMap cs') = None ]] *                 
-                 [[ cardinal (CSMap cs') < CSMaxCount cs' ]])%pred d0).
-      left; repeat eexists; simpl in *; eauto.
-      pred_apply; cancel.
-      unfold permission_secure; intros.
-      inv_exec_perm.
-      cleanup; auto.
-      unfold trace_secure; eauto.
-      eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
-      intros; simpl; auto.
-      econstructor; eauto.
-      econstructor.
-      simpl in *.
-      intuition; cleanup.
-      sigT_eq; eauto.
-      destruct_lift H; subst.
-      pred_apply; cancel.
-      inversion H1.
-    Qed.
-
-Lemma LOG_begin_orp:
-  forall pr a b d bm hm,
-    only_reads_permitted pr (LOG.begin a b) d bm hm.
-Proof.
-  intros.
-  Transparent LOG.begin.
-  unfold LOG.begin; simpl; auto.
-Qed.
-
-Lemma writeback_orp:
-  forall pr a b d bm hm,
-    only_reads_permitted pr (writeback a b) d bm hm.
-Proof.
-  unfold writeback; simpl; intros.
-  destruct (MapUtils.AddrMap.Map.find a (CSMap b)); simpl; auto.
-  destruct p; simpl; auto.
-  destruct b0; simpl; auto.
-Qed.
-
-Hint Resolve LOG_begin_orp writeback_orp.
-
-Lemma maybe_evict_orp:
-  forall pr a d bm hm,
-    only_reads_permitted pr (maybe_evict a) d bm hm.
-Proof.
-  unfold maybe_evict; simpl; intros.
-  destruct (lt_dec (CSCount a) (CSMaxCount a)); simpl; auto.
-  destruct (MapUtils.AddrMap.Map.find 0 (CSMap a)); simpl; auto.
-  intuition; simpl.
-  destruct (MapUtils.AddrMap.Map.find 0 (CSMap r)); simpl; auto.
-  destruct (MapUtils.AddrMap.Map.elements (CSMap a)); simpl; auto.
-  destruct p; simpl; auto.
-  intuition.
-  destruct (MapUtils.AddrMap.Map.find k (CSMap r)); simpl; auto.
-Qed.
-
-Hint Resolve maybe_evict_orp.
-
-Lemma PermCacheDef_read_orp:
-    forall Fr pr a cs dx d bm hm v,
-      (Fr * [[ sync_invariant Fr ]] * PermCacheDef.rep cs dx bm)%pred d ->
-      can_access pr (fst (fst v)) ->
-      dx a = Some v ->
-      only_reads_permitted pr (PermCacheDef.read a cs) d bm hm.
-  Proof.
-    intros; unfold PermCacheDef.read; simpl.
-    destruct (MapUtils.AddrMap.Map.find a (CSMap cs)) eqn:D; simpl; auto.
-    destruct p; simpl; auto.
-    intuition; simpl.   
-    pose proof (maybe_evict_post H H2) as Hspec.
-    destruct_lift Hspec.
-    specialize H8 with (1:=D).
-    unfold PermCacheDef.rep in *.
-    rewrite mem_pred_extract in H4; eauto.
-    unfold cachepred at 2 in H4.
-    rewrite H8 in H4.
-    repeat rewrite sep_star_assoc in H4.
-    apply sep_star_assoc in H4.
-    apply sep_star_assoc in H4.
-    apply sep_star_assoc in H4.
-    eapply ptsto_subset_valid' in H4.
-    simpl in *; cleanup; eauto.
-  Qed.
-
-  
-
-  Lemma getowner_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      only_reads_permitted pr (getowner fsxp inum mscs) d bm hm.
-  Proof.
-    intros; unfold getowner.
-
-  Lemma BFILE_getowner_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      only_reads_permitted pr (BFILE.getowner (FSXPLog fsxp) (FSXPInode fsxp) inum mscs) d bm hm.
-  Proof.
-    intros; unfold BFILE.getowner.
-
-
-  Lemma INODE_getowner_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      only_reads_permitted pr (INODE.getowner (FSXPLog fsxp) (FSXPInode fsxp) inum (MSICache mscs) (MSLL mscs)) d bm hm.
-  Proof.
-    intros; unfold INODE.getowner.
-
-
-
-  Lemma INODE_IRec_get_array_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      only_reads_permitted pr (INODE.IRec.get_array (FSXPLog fsxp) (FSXPInode fsxp) inum (MSICache mscs) (MSLL mscs)) d bm hm.
-  Proof.
-    intros; unfold INODE.IRec.get_array.
-
-   Lemma INODE_IRec_get_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      only_reads_permitted pr (INODE.IRec.get (FSXPLog fsxp) (FSXPInode fsxp) inum (MSICache mscs) (MSLL mscs)) d bm hm.
-  Proof.
-    intros; unfold INODE.IRec.get.
-    destruct (INODE.IRec.Cache.find inum (MSICache mscs)) eqn:D;
-    setoid_rewrite D.
-    simpl; auto.
-
-  Lemma INODE_IRec_LRA_get_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      INODE.IRec.Cache.find inum (MSICache mscs) = None ->
-      only_reads_permitted pr (INODE.IRec.LRA.get (FSXPLog fsxp) (FSXPInode fsxp) inum (MSLL mscs)) d bm hm.
-  Proof.
-    intros; unfold INODE.IRec.LRA.get.
-
- Lemma LOG_read_array_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      INODE.IRec.Cache.find inum (MSICache mscs) = None ->
-      only_reads_permitted pr (LOG.read_array (FSXPLog fsxp) (INODE.IRecSig.RAStart (FSXPInode fsxp))
-       (inum / INODE.IRecSig.items_per_val) (MSLL mscs)) d bm hm.
-  Proof.
-    intros; unfold LOG.read_array.
-    simpl; intuition.
-    destruct_lift H.
-    denote LOG.rep as Hx.
-    unfold LOG.rep, LOG.rep_inner, GLog.rep, MLog.rep, MLog.synced_rep in Hx. destruct_lift Hx.
-    assert (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-            inum / INODE.IRecSig.items_per_val < length dummy1).
-    destruct fsxp; simpl in *.
-
-    denote rep as Hx.
-    unfold rep, FSXPBlockAlloc in Hx; destruct_lift Hx; simpl in *.
-    denote BFILE.rep as Hx. unfold BFILE.rep in Hx.
-    destruct_lift Hx.
-    denote INODE.rep as Hx. unfold INODE.rep, INODE.IRec.rep, INODE.IRec.LRA.rep in Hx.
-    destruct_lift Hx.
-    destruct mscs, MSLL, m, MSGLog; simpl in *.
-    unfold LogReplay.map_replay in *.
-    unfold LogReplay.map_valid in *.
-    Search dummy1.
-    Search MSMLog.
-    unfold PermDiskLog.rep, rep_common,
-    PermDiskLogPadded.rep, rep_inner, rep_contents in *.
-    Search dummy0.
-    Search MSTxns.
-    Search GLog.effective.
-    unfold LOG.MSLL; simpl.
-    destruct ms_1; simpl in *.
-    eapply GLog_read_orp.
-    pred_apply; cancel.
-    
-
-    Lemma MLog_read_orp:
-    forall v pr d bm hm Fr a log ds Ftop MSMLog ms_2 (MSTxns: list input_contents) dummy dx ,
-      (Fr * [[ sync_invariant Fr ]] *
-      PermCacheDef.rep ms_2 dx bm)%pred d ->
-      dx (DataStart log + a) = Some v ->
-      can_access pr (fst (fst v)) ->
-      (Ftop * MLog.rep log (MLog.Synced dummy (nthd (length (snd ds) - length MSTxns) ds)) MSMLog bm hm)%pred dx ->
-      only_reads_permitted pr  (MLog.read log a (MLog.mk_memstate MSMLog ms_2)) d bm hm.
-  Proof.
-    intros; unfold MLog.read.
-    destruct (MapUtils.AddrMap.Map.find a (MLog.MSInLog (MLog.mk_memstate MSMLog ms_2))) eqn:D.
-    simpl; auto.
-    simpl; intuition.
-    eapply PermCacheDef_read_orp; eauto.
-  Qed.
-    
-    Lemma GLog_read_orp:
-    forall v pr d bm hm Fr a log dx MSGLog ms_2 ds Ftop,
-      (Fr * [[ sync_invariant Fr ]] *
-       PermCacheDef.rep ms_2 dx bm)%pred d ->
-      dx (DataStart log + a) = Some v ->
-      can_access pr (fst (fst v)) ->
-     (Ftop ✶ GLog.rep log (GLog.Cached ds) MSGLog bm hm)%pred dx ->
-      only_reads_permitted pr (GLog.read log a (MSGLog, ms_2)) d bm hm.
-  Proof.
-    intros; unfold GLog.read.
-    destruct (MapUtils.AddrMap.Map.find a (GLog.MSVMap (fst (MSGLog, ms_2)))) eqn:D.
-    simpl; auto.
-    simpl; intuition.
-    denote GLog.rep as Hx.
-    unfold GLog.rep in Hx; destruct_lift Hx.
-    destruct MSGLog; simpl in *.
-    unfold GLog.MSLL; simpl.
-    eapply MLog_read_orp; eauto.
-  Qed.
-
-
- Lemma LOG_read_orp:
-    forall v pr d bm hm log a Fr ds sm ms Ftop,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep log Ftop (LOG.ActiveTxn ds ds !!) ms sm bm hm)%pred d ->
-      d (DataStart log + a) = Some v ->
-      can_access pr (fst (fst v)) ->
-      only_reads_permitted pr (LOG.read log a ms) d bm hm.
-  Proof.
-    intros; unfold LOG.read.
-    destruct (MapUtils.AddrMap.Map.find a (LOG.MSTxn (fst ms))) eqn:D.
-    simpl; auto.
-    simpl; auto; intuition.
-    denote LOG.rep as Hx.
-    unfold LOG.rep in Hx. destruct_lift Hx.
-    unfold LOG.MSLL; simpl.
-    destruct ms_1; simpl in *.
-    eapply GLog_read_orp.
-    pred_apply; cancel.
-    
-  
-  
-    Lemma read_array_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      INODE.IRec.Cache.find inum (MSICache mscs) = None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val) (LOG.MSTxn (fst (MSLL mscs))) =
-      None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val)
-        (GLog.MSVMap (fst (LOG.MSLL (MSLL mscs)))) = None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val)
-        (MLog.MSInLog (GLog.MSLL (LOG.MSLL (MSLL mscs)))) = None ->
-      only_reads_permitted pr (read_array (DataStart (FSXPLog fsxp))
-                                (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-                                  inum / INODE.IRecSig.items_per_val)
-                                   (MLog.MSCache (GLog.MSLL (LOG.MSLL (MSLL mscs))))) d bm hm.
-  Proof.
-    intros; unfold read_array.
-    simpl; intuition.
-    unfold LOG.rep in *.
-    destruct_lift H.
-    eapply PermCacheDef_read_orp.
-    pred_apply; cancel.
-
-    unfold LOG.rep_inner in *.
-    destruct_lift H8.
-    unfold GLog.rep in *.
-    destruct_lift H4.
-    unfold MLog.rep in *.
-    destruct_lift H4.
-    unfold PermDiskLog.rep in *.
-    destruct_lift H4.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    (*******************************************************)
-
- Lemma LOG_read_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      INODE.IRec.Cache.find inum (MSICache mscs) = None ->
-      only_reads_permitted pr (LOG.read (FSXPLog fsxp)
-       (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-        inum / INODE.IRecSig.items_per_val) (MSLL mscs)) d bm hm.
-  Proof.
-    intros; unfold LOG.read.
-    destruct (MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val) (LOG.MSTxn (fst (MSLL mscs)))) eqn:D.
-    simpl; auto.
-
-
-
-    Lemma GLog_read_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      INODE.IRec.Cache.find inum (MSICache mscs) = None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val) (LOG.MSTxn (fst (MSLL mscs))) =
-      None ->
-      only_reads_permitted pr (GLog.read (FSXPLog fsxp)
-                               (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-                                inum / INODE.IRecSig.items_per_val)
-                                 (LOG.MSLL (MSLL mscs))) d bm hm.
-  Proof.
-    intros; unfold GLog.read.
-    destruct (MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val)
-        (GLog.MSVMap (fst (LOG.MSLL (MSLL mscs))))) eqn:D.
-    simpl; auto.
-
-
-    Lemma MLog_read_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      INODE.IRec.Cache.find inum (MSICache mscs) = None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val) (LOG.MSTxn (fst (MSLL mscs))) =
-      None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val)
-        (GLog.MSVMap (fst (LOG.MSLL (MSLL mscs)))) = None ->
-      only_reads_permitted pr (MLog.read (FSXPLog fsxp)
-                                (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-                                  inum / INODE.IRecSig.items_per_val)
-                                   (GLog.MSLL (LOG.MSLL (MSLL mscs)))) d bm hm.
-  Proof.
-    intros; unfold MLog.read.
-    destruct (MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val)
-        (MLog.MSInLog (GLog.MSLL (LOG.MSLL (MSLL mscs))))) eqn:D.
-    simpl; auto.
-
-    Lemma read_array_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      INODE.IRec.Cache.find inum (MSICache mscs) = None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val) (LOG.MSTxn (fst (MSLL mscs))) =
-      None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val)
-        (GLog.MSVMap (fst (LOG.MSLL (MSLL mscs)))) = None ->
-      MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-         inum / INODE.IRecSig.items_per_val)
-        (MLog.MSInLog (GLog.MSLL (LOG.MSLL (MSLL mscs)))) = None ->
-      only_reads_permitted pr (read_array (DataStart (FSXPLog fsxp))
-                                (INODE.IRecSig.RAStart (FSXPInode fsxp) +
-                                  inum / INODE.IRecSig.items_per_val)
-                                   (MLog.MSCache (GLog.MSLL (LOG.MSLL (MSLL mscs))))) d bm hm.
-  Proof.
-    intros; unfold read_array.
-    simpl; intuition.
-    unfold LOG.rep in *.
-    destruct_lift H.
-    eapply PermCacheDef_read_orp.
-    pred_apply; cancel.
-
-    unfold LOG.rep_inner in *.
-    destruct_lift H8.
-    unfold GLog.rep in *.
-    destruct_lift H4.
-    unfold MLog.rep in *.
-    destruct_lift H4.
-    unfold PermDiskLog.rep in *.
-    destruct_lift H4.
-
-  Lemma authenticate_orp:
-    forall pr d bm hm fsxp inum mscs pathname Fr Fm ds sm Ftop tree ilist frees f,
-      (Fr * [[ sync_invariant Fr ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-               (LOG.ActiveTxn ds ds !!) (MSLL mscs) sm bm hm *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
-      only_reads_permitted pr (authenticate fsxp inum mscs) d bm hm.
-  Proof.
-    intros; unfold authenticate.
-    
-    simpl; auto.
-    intuition; simpl.
-    unfold rep, BFILE.rep in *.
-
-Lemma read_fblock_orp:
-  forall pathname f pr off vs inum Fd
-    Fr1 Fm1 Ftop1 ds1 sm1 tree1 mscs1 fsxp1 ilist1 frees1 d bm1 hm1,
-  (Fr1 * [[ sync_invariant Fr1 ]] *
-     LOG.rep (FSXPLog fsxp1) (SB.rep fsxp1) (LOG.NoTxn ds1) (MSLL mscs1) sm1 bm1 hm1 *
-      [[[ ds1!! ::: (Fm1 * rep fsxp1 Ftop1 tree1 ilist1 frees1 mscs1 sm1)]]] *
-      [[ find_subtree pathname tree1 = Some (TreeFile inum f) ]] *
-      [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
-  only_reads_permitted pr (read_fblock fsxp1 inum off mscs1) d bm1 hm1.
-Proof.  
-  unfold read_fblock; simpl.
-  intuition; simpl; auto.
-
-  assert (A: (Fr1 ✶ ⟦⟦ sync_invariant Fr1 ⟧⟧
-          ✶ LOG.rep (FSXPLog fsxp1) (SB.rep fsxp1) (LOG.NoTxn ds1) 
-          (MSLL mscs1) sm1 bm1 hm1)%pred d).
-    pred_apply; cancel.
-    pose proof (LOG_begin_post _ A H0) as Hspec1.
-
-  (((Fr1 ✶ ⟦⟦ sync_invariant Fr1 ⟧⟧)
-             ✶ LOG.rep (FSXPLog fsxp1) (SB.rep fsxp1)
-                 (LOG.ActiveTxn ds1 ds1 !!) r sm1 bm' hm')
-     ✶ ⟦⟦ LOG.readOnly (MSLL mscs1) r ⟧⟧ *
-   [[[ ds1!! ::: (Fm1 * rep fsxp1 Ftop1 tree1 ilist1 frees1 mscs1 sm1)]]] *
-      [[ find_subtree pathname tree1 = Some (TreeFile inum f) ]])%pred d'
-
-        
-  Lemma MLog_read_orp:
-    forall pr a b c d bm hm dx v Fr,
-      (Fr * [[ sync_invariant Fr ]] *
-       PermCacheDef.rep (MLog.MSCache c) dx bm)%pred d ->
-      can_access pr (fst (fst v)) ->
-      dx (DataStart a + b) = Some v ->
-      only_reads_permitted pr (MLog.read a b c) d bm hm.
-  Proof.
-    intros; unfold MLog.read; simpl; auto.
-    destruct (MapUtils.AddrMap.Map.find b (MLog.MSInLog c)); simpl; auto.
-    intuition; simpl.      
-    eapply PermCacheDef_read_orp; eauto.
-  Qed.
-    
-  Lemma INODE_IRec_get_orp:
-    forall pr a b c x y d bm hm Fr1 sm ds dx k,
-    (Fr1 * [[ sync_invariant Fr1 ]]
-     * LOG.rep a k (LOG.ActiveTxn ds dx) y sm bm hm)%pred d ->
-    only_reads_permitted pr (INODE.IRec.get a b c x y) d bm hm.
-  Proof.
-    intros; unfold INODE.IRec.get; simpl.
-    destruct (INODE.IRec.Cache.find c x) eqn:D;
-    setoid_rewrite D; simpl; auto.
-    intuition; simpl.
-
-    Lemma LOG_read_orp:
-      forall pr a b c d bm hm Fr1 k ds dx sm,
-        ((Fr1 ✶ ⟦⟦ sync_invariant Fr1 ⟧⟧) ✶ LOG.rep a k (LOG.ActiveTxn ds dx) c sm bm hm)%pred d ->
-        only_reads_permitted pr (LOG.read a b c) d bm hm.
-    Proof.
-      intros; unfold LOG.read; simpl.
-      destruct (MapUtils.AddrMap.Map.find b (LOG.MSTxn (fst c))) eqn:D; simpl; auto.
-      intuition; simpl.
-      unfold LOG.rep, LOG.rep_inner in *.
-      destruct_lift H.
-
-      Lemma GLog_read_orp:
-        forall pr a b c d bm hm dx v Fr,
-          (Fr * [[ sync_invariant Fr ]] *
-           PermCacheDef.rep (MLog.MSCache (GLog.MSLL c)) dx bm)%pred d ->
-          can_access pr (fst (fst v)) ->
-          dx (DataStart a + b) = Some v ->
-          only_reads_permitted pr (GLog.read a b c) d bm hm.
-      Proof.
-        intros; unfold GLog.read; simpl.
-        destruct (MapUtils.AddrMap.Map.find b
-                  (GLog.MSVMap (fst c))) eqn:D; simpl; auto.
-        intuition; simpl.
-
-        
-
-      eapply MLog_read_orp; eauto.
-      
-          
-    unfold maybe_evict; simpl.
-    destruct (lt_dec (CSCount (snd r)) (CSMaxCount (snd r))); simpl; eauto.
-    destruct (MapUtils.AddrMap.Map.find 0 (CSMap (snd r))); simpl; auto.
-    intuition; simpl.
-    unfold writeback; simpl.
-    destruct (MapUtils.AddrMap.Map.find 0 (CSMap (snd r))); simpl; auto.
-    destruct p; simpl; auto.
-    destruct b1; simpl; auto.
-    destruct (MapUtils.AddrMap.Map.find 0 (CSMap r0)); simpl; auto.
-    destruct (MapUtils.AddrMap.Map.elements (CSMap (snd r))); simpl; auto.
-    destruct p; auto.
-    unfold evict; simpl; auto.
-    intuition; simpl.
-    unfold writeback; simpl.
-    destruct (MapUtils.AddrMap.Map.find k (CSMap (snd r))); simpl; auto.
-    destruct p; simpl; auto.
-    destruct b1; simpl; auto.
-    destruct (MapUtils.AddrMap.Map.find k (CSMap r0)); simpl; auto.
-
-    admit. (** An Actual Goal **)
-
-  - assert (A: (Fr1 ✶ ⟦⟦ sync_invariant Fr1 ⟧⟧
-          ✶ LOG.rep (FSXPLog fsxp1) (SB.rep fsxp1) (LOG.NoTxn ds1) 
-          (MSLL mscs1) sm1 bm1 hm1)%pred d).
-    pred_apply; cancel.
-    pose proof (LOG_begin_post _ A H0) as Hspec1.
-    assert (A0: (Fr1 * [[ sync_invariant Fr1 ]]
-             * LOG.rep (FSXPLog fsxp1) (SB.rep fsxp1)
-                 (LOG.ActiveTxn ds1 ds1 !!) (MSLL {|
-            BFILE.MSAlloc := MSAlloc mscs1;
-            BFILE.MSLL := r;
-            BFILE.MSAllocC := MSAllocC mscs1;
-            BFILE.MSIAllocC := MSIAllocC mscs1;
-            BFILE.MSICache := MSICache mscs1;
-            BFILE.MSCache := MSCache mscs1;
-            BFILE.MSDBlocks := MSDBlocks mscs1 |}) sm1 bm' hm' *
-       [[[  ds1 !! ::: Fm1 * rep fsxp1 Ftop1 tree1 ilist1 (a, b) mscs1 sm1 ]]] *
-       [[ find_subtree pathname tree1 = Some (TreeFile inum f) ]])%pred d').
-    destruct_lift H.
-    pred_apply; cancel.
-    pose proof (authenticate_post _ A0 H1) as Hspec2.
-    apply sep_star_or_distr in Hspec2.
-    apply pimpl_or_apply in Hspec2.
-    intuition; simpl in *; destruct_lift H2.
-  + intuition; simpl; auto.
-      
-    unfold INODE.IRec.get; simpl; auto.
-    destruct (INODE.IRec.Cache.find inum (MSICache a0)) eqn:D;
-    setoid_rewrite D; simpl; auto.
-    intuition; simpl.
-    unfold LOG.read; simpl; auto.
-    destruct (MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp1) +
-         inum / INODE.IRecSig.items_per_val) (LOG.MSTxn (fst (MSLL a0)))); simpl; auto.
-    unfold GLog.read; simpl; auto.
-    intuition; simpl.
-    destruct (MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp1) +
-         inum / INODE.IRecSig.items_per_val)
-        (GLog.MSVMap (LOG.MSGLog (fst (MSLL a0))))); simpl; auto.
-    intuition; simpl.
-    unfold MLog.read; simpl; auto.
-    destruct (MapUtils.AddrMap.Map.find
-        (INODE.IRecSig.RAStart (FSXPInode fsxp1) +
-         inum / INODE.IRecSig.items_per_val)
-        (GLog.MSMLog (LOG.MSGLog (fst (MSLL a0))))); simpl; auto.
-    intuition; simpl.
-    unfold PermCacheDef.read; simpl; auto.
-    destruct (MapUtils.AddrMap.Map.find
-        (DataStart (FSXPLog fsxp1) +
-         (INODE.IRecSig.RAStart (FSXPInode fsxp1) +
-          inum / INODE.IRecSig.items_per_val)) (CSMap (snd (MSLL a0)))); simpl; auto.
-    destruct p; simpl; auto.
-    intuition; simpl.
-
-    
-      
-    
-    unfold maybe_evict; simpl; auto.

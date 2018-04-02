@@ -57,15 +57,15 @@ Ltac inv_exec' :=
   end.
 
 Lemma bind_sep:
-  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm hm ret tr tr',
+  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm hm (ret: result) tr tr',
     exec pr tr d bm hm (Bind p1 p2) ret tr' ->
     match ret with
     | Finished _ _ _ _ =>
     (exists tr1 r1 d1 bm1 hm1,
        exec pr tr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
        exec pr tr1 d1 bm1 hm1 (p2 r1) ret tr')
-  | Crashed _ _ _ =>
-    (exec pr tr d bm hm p1 ret tr' \/
+  | Crashed d' bm' hm' =>
+    (exec pr tr d bm hm p1 (Crashed d' bm' hm') tr' \/
      (exists tr1 r1 d1 bm1 hm1,
         exec pr tr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
         exec pr tr1 d1 bm1 hm1 (p2 r1) ret tr'))

@@ -160,7 +160,7 @@ Inductive fprog : Type -> Type :=
 Inductive exec_fbasic:
   forall T, perm -> trace -> tagged_disk ->
        block_mem -> hashmap -> fs_xparams -> BFILE.memstate ->
-       fbasic T ->  result -> BFILE.memstate -> trace -> Prop :=
+       fbasic T ->  @result T -> BFILE.memstate -> trace -> Prop :=
 | FExecRead    :
     forall pr d bm hm tr tr' fsxp inum off (ams ams': BFILE.memstate)
       (r: block * res unit) d' bm' hm',
@@ -289,7 +289,7 @@ Inductive exec_fbasic:
 Inductive fexec:
   forall T, perm -> trace -> tagged_disk ->
        block_mem -> hashmap -> fs_xparams -> BFILE.memstate ->
-       fprog T ->  result -> BFILE.memstate -> trace -> Prop :=
+       fprog T ->  @result T -> BFILE.memstate -> trace -> Prop :=
 | FExecBasic    :
     forall T (p :fbasic T) pr fsxp d bm hm tr tr' (ams ams': BFILE.memstate)
      out,
@@ -303,8 +303,7 @@ Inductive fexec:
                fexec pr tr' d' bm' hm' fsxp ams' (p2 v) r ams'' tr'' ->
                fexec pr tr d bm hm fsxp ams (FBind p1 p2) r ams'' tr''
 
-| FCrashBind : forall T T' pr (p1 : fbasic T) (p2: T -> fprog T') fsxp d d' bm bm' hm hm' tr tr' r ams ams',
-                exec_fbasic pr tr d bm hm fsxp ams p1 r ams' tr' ->
-                r = (Crashed d' bm' hm') ->
-                fexec pr tr d bm hm fsxp ams (FBind p1 p2) r ams' tr'.
+| FCrashBind : forall T T' pr (p1 : fbasic T) (p2: T -> fprog T') fsxp d d' bm bm' hm hm' tr tr' ams ams',
+                exec_fbasic pr tr d bm hm fsxp ams p1 (Crashed d' bm' hm') ams' tr' ->
+                fexec pr tr d bm hm fsxp ams (FBind p1 p2) (Crashed d' bm' hm') ams' tr'.
 
