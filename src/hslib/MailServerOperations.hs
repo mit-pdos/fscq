@@ -138,6 +138,8 @@ initializeMailboxes_ fs numUsers numMessages = forM_ [0..numUsers-1] $ \uid ->
   local (\c -> c{readPerc=0.0}) $ do
     c <- doRandomOps fs uid numMessages
     mailRead fs c uid
+    -- TODO: should pass the user state on to randomOps so that subsequent
+    -- deliver operations work
 
 initializeMailboxes :: Config -> Filesystem fh -> Int -> Int -> IO ()
 initializeMailboxes c fs numUsers numMessages =
