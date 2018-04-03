@@ -28,7 +28,7 @@ run() {
   local par="$1"
   shift
 
-  runbasic "$desc" --n=$par +RTS -qa -N$par -RTS "$@"
+  runbasic "$desc" --n=$par +RTS -N$par -qa -RTS "$@"
 }
 
 
@@ -49,7 +49,7 @@ parse_disk() {
       exit 1
   esac
   if [ -r "$img" ]; then
-     img_valid=true
+    img_valid=true
   else
     img_valid=false
   fi
@@ -196,6 +196,18 @@ mailserver() {
   run_fusebench mailserver --init-messages 50 --read-perc 1.0 --iters=10 --users=24
 }
 
+mailserver_parbench() {
+  info "mailserver-parbench"
+  for system in fscq cfscq; do
+    info_system
+    for par in $(seq 1 $MAX_PAR); do
+      info "  > n=$par"
+      run "parbench" $par mailserver --read-perc 1.0 \
+          --init-messages 250 --reps=100 +RTS -qn6 -RTS
+    done
+  done
+}
+
 parbench print-header | addfield "description"
 
 syscalls
@@ -206,3 +218,4 @@ readers_writer
 rw_mix
 ripgrep
 mailserver
+mailserver_parbench
