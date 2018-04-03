@@ -183,7 +183,7 @@ initExt4 = let mntPath = "/tmp/fscq" in do
 
 closeExt4 :: IO ()
 closeExt4 = do
-  callProcess "sudo" $ ["umount", "/tmp/fscq"]
+  callProcess "sudo" $ ["dangerously", "umount", "/tmp/fscq"]
   return ()
 
 withExt4 :: (Filesystem Fd -> IO a) -> IO a
