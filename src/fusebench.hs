@@ -142,7 +142,7 @@ fsProcess = ask >>= \FuseBenchOptions{optFsOpts=FsOptions{..}} ->
     Fscq -> fscqLikeProcess "fscq"
     Cfscq -> fscqLikeProcess "cfscq"
     Ext4 -> return $ proc "sudo" $
-      ["mount-ext4.sh", optMountPath]
+      ["dangerously", "mount-ext4.sh", optMountPath]
 
 debugProc :: CreateProcess -> App ()
 debugProc cp = do
@@ -202,7 +202,7 @@ stopFs FsHandle{..} = do
   liftIO $ case fs of
              Fscq -> retryProcess 5 "fusermount" ["-u", mountPath]
              Cfscq -> retryProcess 5 "fusermount" ["-u", mountPath]
-             Ext4 -> retryProcess 5 "sudo" ["umount", "-f", mountPath]
+             Ext4 -> retryProcess 5 "sudo" ["dangerously", "umount", "-f", mountPath]
   debug $ "unmounted " ++ mountPath
   -- for a clean shutdown, we have to finish reading from the pipe
   _ <- liftIO $ hGetContents procStdout
