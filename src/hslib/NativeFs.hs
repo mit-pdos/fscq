@@ -178,7 +178,7 @@ createNativeFs d = Filesystem (nativeFuseOps d) <$> newIORef mempty
 
 initExt4 :: IO (Filesystem Fd)
 initExt4 = let mntPath = "/tmp/fscq" in do
-  callProcess "sudo" $ ["mount-ext4.sh", mntPath]
+  callProcess "sudo" $ ["dangerously", "mount-ext4.sh", mntPath]
   createNativeFs mntPath
 
 closeExt4 :: IO ()

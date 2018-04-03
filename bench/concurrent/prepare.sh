@@ -38,7 +38,7 @@ case $system in
     ext4)
         rm -f "$img"
         mkfs.ext4 -E root_owner "$img" 4G
-        sudo /home/tej/fscq/bench/concurrent/mount-ext4.sh "$mnt"
+        sudo dangerously /home/tej/fscq/bench/concurrent/mount-ext4.sh "$mnt"
         echo "mounted"
         sleep 1
         ;;
