@@ -359,7 +359,50 @@ Proof.
   pred_apply; cancel.
 Abort.
 
+Lemma PermDiskLogHdr_read_orp:
+  forall Fr F pr cs dx d bm hm xp n,
+    (Fr * [[ sync_invariant Fr ]] * PermCacheDef.rep cs dx bm *
+    [[ (F * PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced n))%pred dx ]])%pred d ->
+    only_reads_permitted pr (PermDiskLogHdr.read xp cs) d bm hm.
+Proof.
+  intros; unfold PermDiskLogHdr.read.
+  apply bind_orp; intros; [|simpl; intuition].
+  unfold PermDiskLogHdr.rep in H.
+  destruct_lift H.
+  apply ptsto_subset_valid' in H1; cleanup.
+  simpl in *.
+  eapply PermCacheDef_read_orp; eauto.
+  pred_apply; cancel.
+  simpl; auto.
+Qed.
 
+Lemma GLog_submit_orp:
+  forall pr d bm hm a b c,
+    only_reads_permitted pr (GLog.submit a b c) d bm hm.
+Proof.
+  intros; unfold GLog.submit.
+  apply if_orp; intros; simpl; auto.
+Qed.
+
+Hint Resolve GLog_submit_orp.
+
+
+Lemma foreach_orp:
+  forall  (ITEM : Type) (lst : list ITEM)
+       (L : Type) (G : Type) (f : ITEM -> L -> prog L)        
+       (nocrash : G -> list ITEM -> L -> block_mem -> hashmap -> rawpred)
+       (crashed : G -> block_mem -> hashmap -> rawpred) (l : L) d bm hm pr,
+    (forall a lst', lst = a::lst' -> only_reads_permitted pr (f a l) d bm hm) ->
+    (forall i j l d bm hm d' bm' hm' r tr tr',
+       exec pr tr d bm hm (f i l) (Finished d' bm' hm' r) tr' ->
+       only_reads_permitted pr (f j r) d' bm' hm') ->
+    only_reads_permitted pr (ForEach_ f lst nocrash crashed l) d bm hm.
+Proof.
+  induction lst; intros.
+  simpl; auto.
+  simpl.
+  split; intros; eauto.
+Qed.
 
 Lemma LOG_commit_orp:
   forall pr d bm hm lxp Fr ds dx sm ms Ftop,
@@ -369,11 +412,8 @@ Lemma LOG_commit_orp:
 Proof.
   Transparent LOG.commit.
   intros; unfold LOG.commit.
-  apply bind_orp; intros.
-  { (** GLog.submit **)
-    unfold GLog.submit.
-    apply if_orp; intros; simpl; auto.
-  }
+  apply bind_orp; intros; auto.
+  (** extract GLog.submit postcondition **)
   apply if_orp; intros; simpl; intuition.
   { (** GLog.flushall **)
     unfold GLog.flushall.
@@ -383,15 +423,15 @@ Proof.
       unfold MLog.flush.
       apply if_orp; intros; [simpl; intuition|].
       apply bind_orp; intros.
-      { (** avail **)
+      { (** PermDiskLog.avail **)
         unfold avail.
         apply bind_orp; intros; [|simpl; auto].
         unfold PermDiskLogPadded.avail.
         apply bind_orp; intros; [|simpl; auto].
-        { (** PermDiskLogHdr.read **)
-          unfold PermDiskLogHdr.read; simpl; intuition.
-          admit. (** Reading header so it is public **)
-        }
+        denote LOG.rep as Hx; unfold LOG.rep, LOG.rep_inner,
+        GLog.rep, MLog.rep, PermDiskLog.rep,
+        PermDiskLogPadded.rep, rep_inner in Hx.
+        admit. (** Reading header so it is public **)
         destruct r1, p, p, p, p, p0, p1; simpl; auto.
       }
       apply bind_orp; intros.
@@ -413,7 +453,8 @@ Proof.
          (GLog.MSMLog (fst (fst r)))) (S i) (0, 0)))
         (CSMap r3)) eqn:D; setoid_rewrite D; simpl; auto.
         apply bind_orp; intros.
-        admit. (** sync_vecs_now: contains ForEach loop but no reads **)
+        simpl; intuition.
+        apply foreach_orp; intros; simpl; intuition.
         apply bind_orp; intros; [|simpl; auto].
         { (** LOG.trunc **)
           unfold trunc.
@@ -430,7 +471,7 @@ Proof.
       { (** MLog.flush_noapply **)
         unfold MLog.flush_noapply.
         apply bind_orp; intros; [|apply if_orp; intros; simpl; auto].
-        { (** extend **)
+        { (** PermDiskLog.extend **)
           unfold extend.
           apply bind_orp; intros; [|simpl; auto].
           unfold PermDiskLogPadded.extend.
@@ -442,9 +483,11 @@ Proof.
           simpl; intuition.
           apply forn_orp; intros; simpl; intuition.
           apply bind_orp; intros.
-          admit. (** hash_list_handle: contains ForEach loop but no reads **)
+          simpl; intuition.
+          apply foreach_orp; intros; simpl; intuition.
           apply bind_orp; intros.
-          admit. (** hash_list_handle: contains loop but no reads **)
+          simpl; intuition.
+          apply foreach_orp; intros; simpl; intuition.
           apply bind_orp; intros.
           simpl; intuition.
           apply forn_orp; intros; simpl; intuition.
@@ -486,7 +529,10 @@ Proof.
     { (** GLog.flushall_nomerge **)
       unfold GLog.flushall_nomerge.
       apply bind_orp; intros; [|simpl; auto].
-      admit. (** Loop with MLog.flush **)
+      simpl; intuition.
+      apply forn_orp; intros; simpl; intuition.
+      admit. (** MLog.flush **)
+      admit. (** MLog.flush **)
     }
   }
 Admitted.
