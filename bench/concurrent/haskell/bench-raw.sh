@@ -202,10 +202,12 @@ mailserver_parbench() {
     info_system
     for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
+      setup_cores $par
       run "parbench" $par mailserver --read-perc 1.0 \
           --init-messages 250 --reps=100 +RTS -qn6 -RTS
     done
   done
+  sudo dangerously enablecores
 }
 
 parbench print-header | addfield "description"
