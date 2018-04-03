@@ -751,7 +751,6 @@ runMailServer opts MailServerOptions{..} fs = do
   cleanupMailboxes optMailConfig fs
   p <- optsData opts
   return $ [ p{ pElapsedMicros=t
-              , pBenchName="mailserver"
               , pWarmup=True -- TODO: should support disabling this
               , pIters=1 } ]
 
