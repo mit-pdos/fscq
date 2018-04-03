@@ -60,7 +60,7 @@ initUser :: Filesystem fh -> Int -> App UserState
 initUser Filesystem{fuseOps=fs} uid = do
   dir <- userDir uid
   liftIO $ do
-    checkError dir $ fuseCreateDirectory fs dir ownerModes
+    _ <- fuseCreateDirectory fs dir ownerModes
     pure UserState <*> newIORef 0 <*> newIORef 0
 
 getFreshMessage :: UserState -> IO Int
