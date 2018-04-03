@@ -744,7 +744,7 @@ instance Options MailServerOptions where
 
 runMailServer :: ParOptions -> MailServerOptions -> Filesystem fh ->
                  IO [DataPoint]
-runMailServer opts cmdOpts@MailServerOptions{..} fs = do
+runMailServer opts MailServerOptions{..} fs = do
   initializeMailboxes optMailConfig fs optMailNumUsers optMailInitialMessages
   t <- timeIt $ runInParallel optMailNumUsers $
     randomOps optMailConfig fs (optReps opts)
