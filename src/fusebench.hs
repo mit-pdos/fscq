@@ -250,6 +250,7 @@ searchBench cmdOpts = do
 data MailServerOptions = MailServerOptions
   { optMailConfig :: Config
   , optNumUsers :: Int
+  , optInitialMessages :: Int
   , optIters :: Int }
 
 instance Options MailServerOptions where
@@ -257,6 +258,8 @@ instance Options MailServerOptions where
     <*> defineOptions
     <*> simpleOption "users" 1
         "number of users to run concurrently"
+    <*> simpleOption "init-messages" 0
+        "number of messages to initialize mailboxes to"
     <*> simpleOption "iters" 100
         "number of read/deliver operations to perform per user"
 
@@ -265,6 +268,7 @@ mailServerFlags MailServerOptions{..} = do
   FuseBenchOptions{optN, optFsOpts=FsOptions{optMountPath}} <- ask
   return $ configFlags optMailConfig ++
     [ "--iters", show optIters
+    , "--init-messages", show optInitialMessages
     , "--users", show optNumUsers
     , "+RTS", "-N" ++ show optN, "-RTS"
     , "--disk-path", optMountPath ]

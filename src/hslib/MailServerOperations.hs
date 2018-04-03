@@ -4,6 +4,7 @@ module MailServerOperations
   ( Config(..)
   , configFlags
   , randomOps
+  , initializeMailboxes
   , cleanup
   ) where
 
@@ -98,7 +99,9 @@ mailRead fs@Filesystem{fuseOps} s uid = userDir uid >>= \d -> liftIO $ do
   forM_ allEntries $ \(p, _) -> do
     let fname = takeFileName p
     let mId = read fname
-    when ( fname /= "." && fname /= ".." && mId > lastId) $ do
+    when ( fname /= "." && fname /= ".." &&
+           -- always read the last 10 messages
+           mId > lastId-10) $ do
       readMessage fs $ joinPath [d, p]
       updateLastRead s mId
   fuseRelease fuseOps d dnum
@@ -128,6 +131,14 @@ emptyMailboxes Filesystem{fuseOps=fs} = reader mailboxDir >>= \dir -> liftIO $ d
     delTree fs (dir `pathJoin` n)
   _ <- fuseSynchronizeDirectory fs dir dnum FullSync
   closeFile fs dir dnum
+
+initializeMailboxes_ :: Filesystem fh -> Int -> Int -> App ()
+initializeMailboxes_ fs numUsers numMessages = forM_ [0..numUsers-1] $ \uid ->
+  local (\c -> c{readPerc=0.0}) (doRandomOps fs uid numMessages)
+
+initializeMailboxes :: Config -> Filesystem fh -> Int -> Int -> IO ()
+initializeMailboxes c fs numUsers numMessages =
+  runReaderT (initializeMailboxes_ fs numUsers numMessages) c
 
 randomOps :: Config -> Filesystem fh -> Int -> User -> IO ()
 randomOps c fs iters uid = runReaderT (doRandomOps fs uid iters) c
