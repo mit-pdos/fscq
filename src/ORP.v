@@ -53,6 +53,33 @@ Proof.
   split; eauto.
 Qed.
 
+Lemma if_orp:
+  forall P Q T (p1 p2: prog T) d bm hm pr (cond: {P}+{Q}),
+    (forall l, cond = left l -> only_reads_permitted pr p1 d bm hm) ->
+    (forall r, cond = right r -> only_reads_permitted pr p2 d bm hm) ->
+    only_reads_permitted pr (If cond {p1} else {p2}) d bm hm.
+Proof.
+  intros; unfold If_.
+  destruct cond eqn:D; simpl; eauto.
+Qed.
+
+Lemma forn_orp:
+  forall  n (L : Type) (G : Type) (f : nat -> L -> prog L)
+      i (nocrash : G -> nat -> L -> block_mem -> hashmap -> rawpred)
+      (crashed : G -> block_mem -> hashmap -> rawpred) (l : L) pr d bm hm,
+    only_reads_permitted pr (f i l) d bm hm ->
+    (forall i l d bm hm d' bm' hm' r tr tr',
+       exec pr tr d bm hm (f i l) (Finished d' bm' hm' r) tr' ->
+       only_reads_permitted pr (f (S i) r) d' bm' hm') ->
+    only_reads_permitted pr (ForN_ f i n nocrash crashed l) d bm hm.
+Proof.
+  induction n; intros.
+  simpl; auto.
+  simpl.
+  split; intros; eauto.
+Qed.
+
+
 
 Lemma LOG_begin_orp:
   forall pr a b d bm hm,
@@ -331,3 +358,136 @@ Proof.
   eapply INODE_getbnum_orp; eauto.
   pred_apply; cancel.
 Abort.
+
+
+
+Lemma LOG_commit_orp:
+  forall pr d bm hm lxp Fr ds dx sm ms Ftop,
+    (Fr * [[ sync_invariant Fr ]] *
+     LOG.rep lxp Ftop (LOG.ActiveTxn ds dx) ms sm bm hm)%pred d ->
+    only_reads_permitted pr (LOG.commit lxp ms) d bm hm.
+Proof.
+  Transparent LOG.commit.
+  intros; unfold LOG.commit.
+  apply bind_orp; intros.
+  { (** GLog.submit **)
+    unfold GLog.submit.
+    apply if_orp; intros; simpl; auto.
+  }
+  apply if_orp; intros; simpl; intuition.
+  { (** GLog.flushall **)
+    unfold GLog.flushall.
+    apply if_orp; intros.
+    apply bind_orp; simpl; auto.
+    { (** MLog.flush **)
+      unfold MLog.flush.
+      apply if_orp; intros; [simpl; intuition|].
+      apply bind_orp; intros.
+      { (** avail **)
+        unfold avail.
+        apply bind_orp; intros; [|simpl; auto].
+        unfold PermDiskLogPadded.avail.
+        apply bind_orp; intros; [|simpl; auto].
+        { (** PermDiskLogHdr.read **)
+          unfold PermDiskLogHdr.read; simpl; intuition.
+          admit. (** Reading header so it is public **)
+        }
+        destruct r1, p, p, p, p, p0, p1; simpl; auto.
+      }
+      apply bind_orp; intros.
+      apply if_orp; intros; [|simpl; intuition].
+      apply bind_orp; intros; [|simpl; auto].
+      { (** MLog.apply **)
+        unfold MLog.apply.
+        apply bind_orp; intros.
+        simpl; intuition.
+        apply forn_orp; intros; simpl; intuition.
+        destruct (MapUtils.AddrMap.Map.find
+        (DataStart lxp +
+         fst (selN (MapUtils.AddrMap.Map.elements
+         (GLog.MSMLog (fst (fst r)))) 0 (0, 0)))
+        (CSMap r2)) eqn:D; setoid_rewrite D; simpl; auto.
+        destruct (MapUtils.AddrMap.Map.find
+        (DataStart lxp +
+         fst (selN (MapUtils.AddrMap.Map.elements
+         (GLog.MSMLog (fst (fst r)))) (S i) (0, 0)))
+        (CSMap r3)) eqn:D; setoid_rewrite D; simpl; auto.
+        apply bind_orp; intros.
+        admit. (** sync_vecs_now: contains ForEach loop but no reads **)
+        apply bind_orp; intros; [|simpl; auto].
+        { (** LOG.trunc **)
+          unfold trunc.
+          apply bind_orp; intros; [|simpl; auto].
+          unfold PermDiskLogPadded.trunc.
+          apply bind_orp; intros; [|simpl; intuition].
+          admit. (** Reading header so it is public **)
+          destruct r4, p, p, p, p, p0, p1; simpl; intuition.
+          destruct (MapUtils.AddrMap.Map.find (LAHdr lxp) (CSMap r6));
+          simpl; auto.
+        }
+      }
+      apply bind_orp; intros; [|simpl; auto].
+      { (** MLog.flush_noapply **)
+        unfold MLog.flush_noapply.
+        apply bind_orp; intros; [|apply if_orp; intros; simpl; auto].
+        { (** extend **)
+          unfold extend.
+          apply bind_orp; intros; [|simpl; auto].
+          unfold PermDiskLogPadded.extend.
+          apply bind_orp; intros; [|simpl; auto].
+          admit. (** Reading header so it is public **)
+          destruct r3, p, p, p, p, p0, p1; simpl; intuition.
+          apply if_orp; intros.
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply forn_orp; intros; simpl; intuition.
+          apply bind_orp; intros.
+          admit. (** hash_list_handle: contains ForEach loop but no reads **)
+          apply bind_orp; intros.
+          admit. (** hash_list_handle: contains loop but no reads **)
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply forn_orp; intros; simpl; intuition.
+          destruct (MapUtils.AddrMap.Map.find
+                      (DescSig.RAStart lxp + n1 + 0) (CSMap r6));
+          simpl; auto.
+          destruct (MapUtils.AddrMap.Map.find
+                      (DescSig.RAStart lxp + n1 + S i) (CSMap r7));
+          simpl; auto.
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply forn_orp; intros; simpl; intuition.
+          destruct (MapUtils.AddrMap.Map.find
+                      (DataSig.RAStart lxp + n2 + 0) (CSMap r7));
+          simpl; auto.
+          destruct (MapUtils.AddrMap.Map.find
+                      (DataSig.RAStart lxp + n2 + S i) (CSMap r8));
+          simpl; auto.
+          apply bind_orp; intros.
+          simpl; intuition.
+          destruct (MapUtils.AddrMap.Map.find (LAHdr lxp) (CSMap r9));
+          simpl; auto.
+          apply bind_orp; intros.
+          simpl; auto.
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply forn_orp; intros; simpl; intuition.
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply forn_orp; intros; simpl; intuition.
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply bind_orp; intros; simpl; auto.
+          simpl; auto.
+        }
+      }
+    }
+    apply bind_orp; intros; [|simpl; auto].
+    { (** GLog.flushall_nomerge **)
+      unfold GLog.flushall_nomerge.
+      apply bind_orp; intros; [|simpl; auto].
+      admit. (** Loop with MLog.flush **)
+    }
+  }
+Admitted.
+
