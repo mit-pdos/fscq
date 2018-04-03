@@ -169,7 +169,7 @@ instance Options ParOptions where
     <*> simpleOption "debug" False
         "print debug statements from (C)FSCQ"
     <*> fsOption "system"
-    <*> simpleOption "img" "disk.img"
+    <*> simpleOption "img" "/tmp/disk.img"
          "path to FSCQ disk image"
     <*> simpleOption "reps" 1
          "number of repetitions to run per data point"
