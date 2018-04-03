@@ -9,7 +9,7 @@ module MailServerOperations
   ) where
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (when)
+import Control.Monad (when, void)
 import Control.Monad.Reader
 import Data.IORef
 import Options
@@ -112,7 +112,7 @@ randomDecisions percTrue = do
   let nums = randomRs (0, 1.0) gen
   return $ map (< percTrue) nums
 
-doRandomOps :: Filesystem fh -> User -> Int -> App ()
+doRandomOps :: Filesystem fh -> User -> Int -> App UserState
 doRandomOps fs uid iters = do
   s <- initUser fs uid
   Config{..} <- ask
@@ -120,6 +120,7 @@ doRandomOps fs uid iters = do
   forM_ (take iters isReads) $ \isRead -> do
     if isRead then mailRead fs s uid else mailDeliver fs s uid
     liftIO $ threadDelay waitTimeMicros
+  return s
 
 emptyMailboxes :: Filesystem fh -> App ()
 emptyMailboxes Filesystem{fuseOps=fs} = reader mailboxDir >>= \dir -> liftIO $ do
@@ -134,14 +135,17 @@ emptyMailboxes Filesystem{fuseOps=fs} = reader mailboxDir >>= \dir -> liftIO $ d
 
 initializeMailboxes_ :: Filesystem fh -> Int -> Int -> App ()
 initializeMailboxes_ fs numUsers numMessages = forM_ [0..numUsers-1] $ \uid ->
-  local (\c -> c{readPerc=0.0}) (doRandomOps fs uid numMessages)
+  local (\c -> c{readPerc=0.0}) $ do
+    c <- doRandomOps fs uid numMessages
+    mailRead fs c uid
 
 initializeMailboxes :: Config -> Filesystem fh -> Int -> Int -> IO ()
 initializeMailboxes c fs numUsers numMessages =
   runReaderT (initializeMailboxes_ fs numUsers numMessages) c
 
 randomOps :: Config -> Filesystem fh -> Int -> User -> IO ()
-randomOps c fs iters uid = runReaderT (doRandomOps fs uid iters) c
+randomOps c fs iters uid =
+  runReaderT (void $ doRandomOps fs uid iters) c
 
 cleanup :: Config -> Filesystem fh -> IO ()
 cleanup c fs = runReaderT (emptyMailboxes fs) c
