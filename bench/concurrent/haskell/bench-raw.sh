@@ -31,7 +31,6 @@ run() {
   runbasic "$desc" --n=$par +RTS -N$par -qa -RTS "$@"
 }
 
-
 info_system() {
   info "> $system"
 }
@@ -55,6 +54,20 @@ parse_disk() {
   fi
 }
 
+setup_cores() {
+  par="$1"
+  cores=""
+  for core in $(seq 0 2 $(( (par-1)*2 ))); do
+    cores="$cores,$core"
+  done
+  sudo dangerously enablecores -c "$cores"
+}
+
+# TODO: set this as an exit handler
+restore_cores() {
+  sudo dangerously enablecores
+}
+
 # benchmarks
 
 syscalls() {
@@ -63,6 +76,7 @@ syscalls() {
     info_system
     for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
+      setup_cores $par
       args=( $par "--img=/tmp/disk.img" "--target-ms=500" "--system=$system" )
       run ""            "${args[@]}" statfs --reps=1000
       run ""            "${args[@]}" stat   --reps=10
@@ -77,6 +91,7 @@ syscalls() {
       run ""            "${args[@]}" write
     done
   done
+  restore_cores
   sep
 }
 
@@ -124,12 +139,14 @@ parsearch() {
     info_system
     for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
+      setup_cores $par
       run "warmup" $par --img=/tmp/disk.img --system=$system \
           par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
       run "mem" $par --img=/tmp/disk.img --system=$system --warmup=false \
           par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
     done
   done
+  restore_cores
   sep
 }
 
@@ -137,6 +154,7 @@ readers_writer() {
   info "readers-writer"
   for par in $(seq 0 $((MAX_PAR-1))); do
     info "> n=$par"
+    setup_cores $((par+1))
     args=( --n=$par +RTS -qa -N$((par+1)) -RTS --img=/tmp/disk.img --system=cfscq --iters=5000 )
     runbasic "" "${args[@]}" readers-writer --reps=10 --write-reps=1
     if [ $par -eq 0 ]; then
@@ -145,6 +163,7 @@ readers_writer() {
                  readers-writer --reps=10 --write-reps=1 --only-reads
     fi
   done
+  restore_cores
   sep
 }
 
@@ -152,21 +171,15 @@ rw_mix() {
   info "rw-mix"
   for par in $(seq 1 $MAX_PAR); do
     info "> n=$par"
+    setup_cores $par
     args=( --n=$par +RTS -qa -N$par -RTS --img=/tmp/disk.img --system=cfscq --target-ms=1000 )
     for mix in 0.95 0.9 0.8; do
       runbasic "mix-$mix" "${args[@]}" \
                rw-mix --reps=10 --write-reps=1 --read-perc=$mix
     done
   done
-}
-
-setup_cores() {
-  par="$1"
-  cores=""
-  for core in $(seq 0 2 $(( (par-1)*2 ))); do
-    cores="$cores,$core"
-  done
-  sudo dangerously enablecores -c "$cores"
+  restore_cores
+  sep
 }
 
 run_fusebench() {
@@ -183,7 +196,8 @@ run_fusebench() {
           | addfield "par_gc4"
     done
   done
-  sudo dangerously enablecores
+  restore_cores
+  sep
 }
 
 ripgrep() {
