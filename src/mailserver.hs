@@ -30,7 +30,7 @@ app MailServerOptions{..} = do
   fs <- createNativeFs optDiskPath
   initializeMailboxes optConfig fs optNumUsers optInitialMessages
   t <- timeIt $ runInParallel optNumUsers $ randomOps optConfig fs optIters
-  cleanup optConfig fs
+  cleanupMailboxes optConfig fs
   print t
 
 main :: IO ()

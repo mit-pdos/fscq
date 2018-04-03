@@ -26,6 +26,7 @@ import           DbenchScript (parseScriptFile)
 import           FscqFs
 import           Fuse
 import           GenericFs
+import           MailServerOperations
 import           NativeFs
 import           ParallelSearch
 import           System.Posix.Files (ownerModes)
@@ -729,61 +730,30 @@ readWriteMixCommand = benchCommand "rw-mix" $ \opts cmdOpts fs ->
   runReadWriteMix opts cmdOpts fs
 
 data MailServerOptions = MailServerOptions
-  { optMailReaderWriter :: ReaderWriterOptions
-  , optMailReadPercentage :: Double
-  , optMailMailboxDir :: FilePath
-  , optMailNumUsers :: Int }
+  { optMailConfig :: Config
+  , optMailNumUsers :: Int
+  , optMailInitialMessages :: Int }
 
 instance Options MailServerOptions where
   defineOptions = pure MailServerOptions
     <*> defineOptions
-    <*> simpleOption "read-perc" 0.5
-        "percentage of mail reads to issue"
-    <*> simpleOption "mailbox-dir" "/mailboxes"
-        "directory where users' mailboxes should be stored"
-    <*> simpleOption "num-users" 1
-        "number of users to create and use"
-
-userMailDir :: FilePath -> Int -> FilePath
-userMailDir mailboxDir uid = mailboxDir ++ "/" ++ "user" ++ show uid
-
-mailInit :: MailServerOptions -> Filesystem fh -> IO ()
-mailInit MailServerOptions{..} Filesystem{fuseOps=fs} =
-  forM_ [1..optMailNumUsers] $ \uid ->
-    let userDir = userMailDir optMailMailboxDir uid in
-      checkError userDir $ fuseCreateDirectory fs userDir ownerModes
-
-mailRead :: MailServerOptions -> Filesystem fh -> Int -> IO ()
-mailRead MailServerOptions{..} Filesystem{fuseOps=fs} uid =
-  let userDir = userMailDir optMailMailboxDir uid in do
-    dnum <- getResult userDir =<< fuseOpen fs userDir ReadOnly defaultFileFlags
-    _ <- fuseReadDirectory fs userDir dnum
-    return ()
-
-mailDeliver :: MailServerOptions -> Filesystem fh -> Int -> UniqueCtr -> ThreadNum -> IO ()
-mailDeliver MailServerOptions{..} fs uid ctr tid =
-  let userDir = userMailDir optMailMailboxDir uid in do
-  genericCounterOp
-    (\name ->
-       let tmpname = optRWWriteDir optMailReaderWriter ++ "/" ++ name
-           fname = userDir ++ "/" ++ name in do
-         _ <- createSmallFile fs tmpname
-         checkError fname $ fuseRename (fuseOps fs) tmpname fname
-         return ()) ctr tid
+    <*> simpleOption "users" 1
+        "number of user threads to create"
+    <*> simpleOption "init-messages" 0
+        "number of messages to initialize before workload"
 
 runMailServer :: ParOptions -> MailServerOptions -> Filesystem fh ->
                  IO [DataPoint]
 runMailServer opts cmdOpts@MailServerOptions{..} fs = do
-  -- TODO: need to thread random user IDs through to mailRead and mailDeliver
-  let readOp = mailRead cmdOpts fs 1
-      writeOp = mailDeliver cmdOpts fs 1
-  mailInit cmdOpts fs
-  ctr <- warmupReadWrite opts readOp writeOp
-  performMajorGC
-  raw <- pickAndRunIters opts $
-    parRandomReadWrites opts optMailReadPercentage readOp (writeOp ctr)
-  ps <- rwMixData opts optMailReaderWriter raw
-  return ps
+  initializeMailboxes optMailConfig fs optMailNumUsers optMailInitialMessages
+  t <- timeIt $ runInParallel optMailNumUsers $
+    randomOps optMailConfig fs (optReps opts)
+  cleanupMailboxes optMailConfig fs
+  p <- optsData opts
+  return $ [ p{ pElapsedMicros=t
+              , pBenchName="mailserver"
+              , pWarmup=True -- TODO: should support disabling this
+              , pIters=1 } ]
 
 mailServerCommand :: Parcommand ()
 mailServerCommand = benchCommand "mailserver" $ \opts cmdOpts fs ->

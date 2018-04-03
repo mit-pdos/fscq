@@ -5,7 +5,7 @@ module MailServerOperations
   , configFlags
   , randomOps
   , initializeMailboxes
-  , cleanup
+  , cleanupMailboxes
   ) where
 
 import Control.Concurrent (threadDelay)
@@ -147,5 +147,5 @@ randomOps :: Config -> Filesystem fh -> Int -> User -> IO ()
 randomOps c fs iters uid =
   runReaderT (void $ doRandomOps fs uid iters) c
 
-cleanup :: Config -> Filesystem fh -> IO ()
-cleanup c fs = runReaderT (emptyMailboxes fs) c
+cleanupMailboxes :: Config -> Filesystem fh -> IO ()
+cleanupMailboxes c fs = runReaderT (emptyMailboxes fs) c
