@@ -160,13 +160,22 @@ rw_mix() {
   done
 }
 
+setup_cores() {
+  par="$1"
+  cores=""
+  for core in $(seq 0 2 $(( (par-1)*2 ))); do
+    cores="$cores,$core"
+  done
+  sudo dangerously enablecores -c "$cores"
+}
+
 run_fusebench() {
   for system in fscq cfscq ext4; do
     info_system
     for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
-      args=( --app-pin="0-$((par-1))"
-             --n=$par --system=$system
+      setup_cores $par
+      args=( --n=$par --system=$system
              "$@" )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
@@ -174,6 +183,7 @@ run_fusebench() {
           | addfield "par_gc4"
     done
   done
+  sudo dangerously enablecores
 }
 
 ripgrep() {
