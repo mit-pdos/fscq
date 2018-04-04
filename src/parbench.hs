@@ -746,8 +746,10 @@ runMailServer :: ParOptions -> MailServerOptions -> Filesystem fh ->
                  IO [DataPoint]
 runMailServer opts MailServerOptions{..} fs = do
   initializeMailboxes optMailConfig fs optMailNumUsers optMailInitialMessages
+  logVerbose opts "done initializing"
   t <- timeIt $ runInParallel optMailNumUsers $
     randomOps optMailConfig fs (optReps opts)
+  logVerbose opts "cleaning mailboxes"
   cleanupMailboxes optMailConfig fs
   p <- optsData opts
   return $ [ p{ pElapsedMicros=t
