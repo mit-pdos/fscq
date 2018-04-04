@@ -752,6 +752,9 @@ runMailServer opts MailServerOptions{..} fs = do
   p <- optsData opts
   return $ [ p{ pElapsedMicros=t
               , pWarmup=True -- TODO: should support disabling this
+              -- consider the whole benchmark to be one operation since we don't
+              -- separate reads and writes
+              , pReps=1
               , pIters=1 } ]
 
 mailServerCommand :: Parcommand ()
