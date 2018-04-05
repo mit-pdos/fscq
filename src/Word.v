@@ -62,7 +62,7 @@ Fixpoint wordToN sz (w : word sz) : N :=
   match w with
     | WO => 0
     | WS false w' => 2 * wordToN w'
-    | WS true w' => Nsucc (2 * wordToN w')
+    | WS true w' => N.succ (2 * wordToN w')
   end%N.
 Arguments wordToN : simpl nomatch.
 
@@ -1115,7 +1115,7 @@ Definition wordBin (f : N -> N -> N) sz (x y : word sz) : word sz :=
 
 Definition wplus := wordBin Nplus.
 Definition wmult := wordBin Nmult.
-Definition wdiv := wordBin Ndiv.
+Definition wdiv := wordBin N.div.
 Definition wmod := wordBin Nmod.
 Definition wmult' sz (x y : word sz) : word sz := 
   split2 sz sz (NToWord (sz + sz) (Nmult (wordToN x) (wordToN y))).
@@ -2087,7 +2087,7 @@ Fixpoint wordToZ sz (w : word sz) : Z :=
 Definition wlt sz (l r : word sz) : Prop :=
   N.lt (wordToN l) (wordToN r).
 Definition wslt sz (l r : word sz) : Prop :=
-  Zlt (wordToZ l) (wordToZ r).
+  Z.lt (wordToZ l) (wordToZ r).
 
 Notation "w1 > w2" := (@wlt _ w2%word w1%word) : word_scope.
 Notation "w1 >= w2" := (~(@wlt _ w1%word w2%word)) : word_scope.
@@ -2101,7 +2101,7 @@ Notation "w1 '<s=' w2" := (~(@wslt _ w2%word w1%word)) (at level 70, w2 at next 
 
 Definition wlt_dec : forall sz (l r : word sz), {l < r} + {l >= r}.
   refine (fun sz l r => 
-    match Ncompare (wordToN l) (wordToN r) as k return Ncompare (wordToN l) (wordToN r) = k -> _ with
+    match N.compare (wordToN l) (wordToN r) as k return N.compare (wordToN l) (wordToN r) = k -> _ with
       | Lt => fun pf => left _ _
       | _ => fun pf => right _ _
     end (refl_equal _));
