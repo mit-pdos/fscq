@@ -210,20 +210,20 @@ ripgrep() {
 
 mailserver() {
   info "mailserver"
-  run_fusebench mailserver --init-messages 50 --read-last 10 --read-perc 1.0 --iters=10 --users=24
+  run_fusebench mailserver --init-messages 0 --read-last 0 --read-perc 0.9 --iters=100 --users=24
 }
 
 mailserver_parbench() {
   info "mailserver-parbench"
-  for system in fscq cfscq; do
+  for system in fscq cfscq ext4; do
     info_system
     for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
       setup_cores $par
       run "parbench" $par --system=$system \
-          mailserver --read-perc 1.0 --users 24 \
-          --init-messages 250 --read-last 10 --reps=100 \
-          +RTS -A32m -qn6 -RTS
+          mailserver --read-perc 0.9 --users 24 \
+          --init-messages 0 --read-last 0 --reps=1000 \
+          +RTS -qn6 -RTS
       cp ~/fscq/bench/concurrent/disk.img /tmp/
     done
   done
