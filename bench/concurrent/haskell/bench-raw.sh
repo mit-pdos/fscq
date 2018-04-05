@@ -55,11 +55,12 @@ parse_disk() {
 }
 
 setup_cores() {
-  par="$1"
-  cores=""
-  for core in $(seq 0 2 $(( (par-1)*2 ))); do
-    cores="$cores,$core"
-  done
+  local par="$1"
+  #local cores=""
+  #for core in $(seq 0 2 $(( (par-1)*2 ))); do
+  #  cores="$cores,$core"
+  #done
+  local cores=0-$((par-1))
   sudo dangerously enablecores -c "$cores"
 }
 
