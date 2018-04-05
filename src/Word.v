@@ -1249,7 +1249,7 @@ Proof.
   rewrite <- IHn; clear IHn.
   case_eq (Npow2 n); intuition.
   rewrite untimes2.
-  replace (Npos p~0) with (Ndouble (Npos p)) by reflexivity.
+  replace (Npos p~0) with (N.double (Npos p)) by reflexivity.
   apply nat_of_Ndouble.
 Qed.
 
@@ -2144,14 +2144,14 @@ Qed.
 Lemma eq_le : forall sz (a b : word sz),
   a = b -> a <= b.
 Proof.
-  intros; subst. unfold wlt, N.lt. rewrite Ncompare_refl. congruence.
+  intros; subst. unfold wlt, N.lt. rewrite N.compare_refl. congruence.
 Qed.
 Lemma wordToN_inj : forall sz (a b : word sz),
   wordToN a = wordToN b -> a = b.
 Proof.
   induction a; intro b0; rewrite (shatter_word b0); intuition.
   destruct b; destruct (whd b0); intros; unfold wordToN in H; fold wordToN in H.
-  f_equal. eapply IHa. eapply Nsucc_inj in H.
+  f_equal. eapply IHa. eapply N.succ_inj in H.
   destruct (wordToN a); destruct (wordToN (wtl b0)); simpl in H; try congruence.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
