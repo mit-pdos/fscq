@@ -638,8 +638,7 @@ erewrite unified_byte_protobyte_len with (k:= valubytes); eauto.
 apply mult_le_compat_r.
 apply lt_le_S.
 eapply lt_le_trans with (m:= length (ByFData fy)) in H2.
-Focus 2.
-apply bytefile_unified_byte_len; eauto.
+2: apply bytefile_unified_byte_len; eauto.
 erewrite unified_byte_protobyte_len with (k:= valubytes) in H2; eauto.
 apply lt_mult_weaken in H2; auto.
 eapply proto_len; eauto.
@@ -902,10 +901,11 @@ apply Nat.lt_le_incl.
 eapply inlen_bfile with (j:= 0); eauto; try omega.
 apply valubytes_ge_O.
 
-Focus 2.
+2: {
 pred_apply.
 rewrite <- plus_n_O.
 cancel.
+}
 rewrite valubytes_is in *; omega.
 Qed.
 
@@ -1243,11 +1243,12 @@ off / valubytes < length (DFData f).
 		eapply inlen_bfile; eauto; try omega.
 		instantiate (1:= off mod valubytes); apply Nat.mod_upper_bound.
 		apply valubytes_ne_O.
-		Focus 2.
-		rewrite Nat.mul_comm.
-		rewrite <- Nat.div_mod.
-		eauto.
-		apply valubytes_ne_O.
+    2: {
+  		rewrite Nat.mul_comm.
+  		rewrite <- Nat.div_mod.
+  		eauto.
+  		apply valubytes_ne_O.
+    }
 		omega.
 	Qed.
 

@@ -3,14 +3,14 @@ Require Import Ascii String Omega OrderedTypeEx.
 
 (**** String_as_OT borrowed from Fiat *)
 
-Lemma nat_compare_eq_refl : forall x, nat_compare x x = Eq.
-  intros; apply nat_compare_eq_iff; trivial.
+Lemma nat_compare_eq_refl : forall x, Nat.compare x x = Eq.
+  intros; apply Nat.compare_eq_iff; trivial.
 Qed.
 
 Hint Rewrite <- nat_compare_lt : nat_comp_hints.
 Hint Rewrite <- nat_compare_gt : nat_comp_hints.
-Hint Rewrite    nat_compare_eq_iff : nat_comp_hints.
-Hint Rewrite <- nat_compare_eq_iff : nat_comp_hints.
+Hint Rewrite    Nat.compare_eq_iff : nat_comp_hints.
+Hint Rewrite <- Nat.compare_eq_iff : nat_comp_hints.
 Hint Rewrite    nat_compare_eq_refl : nat_comp_hints.
 
 Ltac autorewrite_nat_compare :=
@@ -18,9 +18,9 @@ Ltac autorewrite_nat_compare :=
 
 Lemma nat_compare_consistent :
   forall n0 n1,
-    { nat_compare n0 n1 = Lt /\ nat_compare n1 n0 = Gt }
-    + { nat_compare n0 n1 = Eq /\ nat_compare n1 n0 = Eq }
-    + { nat_compare n0 n1 = Gt /\ nat_compare n1 n0 = Lt }.
+    { Nat.compare n0 n1 = Lt /\ Nat.compare n1 n0 = Gt }
+    + { Nat.compare n0 n1 = Eq /\ Nat.compare n1 n0 = Eq }
+    + { Nat.compare n0 n1 = Gt /\ Nat.compare n1 n0 = Lt }.
 Proof.
   intros n0 n1;
   destruct (lt_eq_lt_dec n0 n1) as [ [_lt | _eq] | _lt ];
@@ -39,7 +39,7 @@ Module String_as_OT <: UsualOrderedType.
       | EmptyString, _           => Lt
       | _, EmptyString           => Gt
       | String char1 tail1, String char2 tail2 =>
-        match nat_compare (nat_of_ascii char1) (nat_of_ascii char2) with
+        match Nat.compare (nat_of_ascii char1) (nat_of_ascii char2) with
           | Eq => string_compare tail1 tail2
           | Lt => Lt
           | Gt => Gt
@@ -57,12 +57,12 @@ Module String_as_OT <: UsualOrderedType.
   Ltac comparisons_minicrush :=
     autorewrite_nat_compare;
     match goal with
-      | [ |- context [nat_compare ?a ?b] ] =>
+      | [ |- context [Nat.compare ?a ?b] ] =>
         let H := fresh in
         first [
-            assert (nat_compare a b = Eq) as H by (autorewrite_nat_compare; omega) |
-            assert (nat_compare a b = Lt) as H by (autorewrite_nat_compare; omega) |
-            assert (nat_compare a b = Gt) as H by (autorewrite_nat_compare; omega)
+            assert (Nat.compare a b = Eq) as H by (autorewrite_nat_compare; omega) |
+            assert (Nat.compare a b = Lt) as H by (autorewrite_nat_compare; omega) |
+            assert (Nat.compare a b = Gt) as H by (autorewrite_nat_compare; omega)
         ]; rewrite H; intuition
     end.
 

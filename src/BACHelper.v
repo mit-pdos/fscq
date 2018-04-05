@@ -1141,10 +1141,11 @@ Qed.
        apply lt_le_S.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.lt_add_lt_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1169,10 +1170,11 @@ Qed.
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.lt_add_lt_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1187,10 +1189,11 @@ Qed.
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.lt_add_lt_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1206,10 +1209,11 @@ Qed.
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.lt_add_lt_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1305,10 +1309,11 @@ Qed.
        apply lt_le_S.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.le_add_le_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1333,10 +1338,11 @@ Qed.
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.lt_add_lt_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1353,10 +1359,11 @@ Qed.
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.lt_add_lt_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1372,10 +1379,11 @@ Qed.
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply.
-       rewrite arrayN_split with (i:= length bnl * valubytes).
-       rewrite Nat.mul_add_distr_r; cancel.
+       2: {
+         rewrite <- plus_n_O; pred_apply.
+         rewrite arrayN_split with (i:= length bnl * valubytes).
+         rewrite Nat.mul_add_distr_r; cancel.
+       }
        rewrite skipn_length.
        apply Nat.lt_add_lt_sub_r; simpl.
        rewrite H2; rewrite H3; rewrite valubytes_is; omega.
@@ -1996,9 +2004,9 @@ tsupd_iter ts pathname block_off
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-      Focus 2.
-       rewrite <- plus_n_O; pred_apply; cancel.
-       
+       2: {
+         rewrite <- plus_n_O; pred_apply; cancel.
+       }
        length_rewrite_l.
        rewrite H1.
        rewrite skipn_length in H2; auto.
@@ -2016,9 +2024,9 @@ tsupd_iter ts pathname block_off
        apply Nat.lt_le_incl.
        eapply inlen_bfile with (j:= 0); eauto.
        apply valubytes_ge_O.
-       Focus 2.
-       rewrite <- plus_n_O; pred_apply; cancel.
-       
+       2: {
+         rewrite <- plus_n_O; pred_apply; cancel.
+       }
        length_rewrite_l.
        rewrite H1.
        rewrite skipn_length in H2; auto.

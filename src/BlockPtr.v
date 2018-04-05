@@ -2417,7 +2417,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
       cancel.
       prestep. norm. cancel.
       intuition auto.
-      Focus 2. {
+      2: {
         rewrite roundup_eq, minus_plus by auto.
         rewrite listmatch_extract in *.
         erewrite <- upd_range_concat_hom_small; eauto.
@@ -2428,7 +2428,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
         eassign (start / NIndirect).
         rewrite min_l by omega.
         rewrite combine_length_eq in *; omega.
-      } Unfocus.
+      }
       {
         pred_apply; cancel.
         erewrite <- updN_selN_eq with (l := combine _ _) at 2.

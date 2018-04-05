@@ -797,8 +797,7 @@ tsupd_iter ts pathname block_off
    apply Nat.lt_le_incl.
    eapply inlen_bfile with (j:= 0); eauto.
    apply valubytes_ge_O.
-   Focus 2.
-   rewrite <- plus_n_O; pred_apply; cancel.
+   2: rewrite <- plus_n_O; pred_apply; cancel.
    
    length_rewrite_l.
    rewrite H2.

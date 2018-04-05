@@ -2085,7 +2085,7 @@ Fixpoint wordToZ sz (w : word sz) : Z :=
 
 (** * Comparison Predicates and Deciders **)
 Definition wlt sz (l r : word sz) : Prop :=
-  Nlt (wordToN l) (wordToN r).
+  N.lt (wordToN l) (wordToN r).
 Definition wslt sz (l r : word sz) : Prop :=
   Zlt (wordToZ l) (wordToZ r).
 
@@ -2110,7 +2110,7 @@ Defined.
 
 Definition wslt_dec : forall sz (l r : word sz), {l <s r} + {l >s= r}.
   refine (fun sz l r => 
-    match Zcompare (wordToZ l) (wordToZ r) as c return Zcompare (wordToZ l) (wordToZ r) = c -> _ with
+    match Z.compare (wordToZ l) (wordToZ r) as c return Z.compare (wordToZ l) (wordToZ r) = c -> _ with
       | Lt => fun pf => left _ _
       | _ => fun pf => right _ _
     end (refl_equal _));
@@ -2139,12 +2139,12 @@ Qed.
 Lemma lt_le : forall sz (a b : word sz),
   a < b -> a <= b.
 Proof.
-  unfold wlt, Nlt. intros. intro. rewrite <- Ncompare_antisym in H0. rewrite H in H0. simpl in *. congruence.
+  unfold wlt, N.lt. intros. intro. rewrite <- Ncompare_antisym in H0. rewrite H in H0. simpl in *. congruence.
 Qed.
 Lemma eq_le : forall sz (a b : word sz),
   a = b -> a <= b.
 Proof.
-  intros; subst. unfold wlt, Nlt. rewrite Ncompare_refl. congruence.
+  intros; subst. unfold wlt, N.lt. rewrite Ncompare_refl. congruence.
 Qed.
 Lemma wordToN_inj : forall sz (a b : word sz),
   wordToN a = wordToN b -> a = b.
@@ -2196,7 +2196,7 @@ Lemma le_neq_lt : forall sz (a b : word sz),
   b <= a -> a <> b -> b < a.
 Proof.
   intros; destruct (wlt_dec b a); auto.
-  elimtype False. apply H0. unfold wlt, Nlt in *.
+  elimtype False. apply H0. unfold wlt, N.lt in *.
   eapply wordToN_inj. eapply Ncompare_eq_correct.
   case_eq ((wordToN a ?= wordToN b)%N); auto; try congruence.
   intros. rewrite <- Ncompare_antisym in n. rewrite H1 in n. simpl in *. congruence.
