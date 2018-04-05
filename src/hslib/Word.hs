@@ -17,7 +17,7 @@ import Foreign.ForeignPtr
 import System.IO.Unsafe
 
 data Coq_word =
-    W Integer
+    W !Integer
   | W64 !Word64
   | WBS !BS.ByteString
 
