@@ -128,6 +128,7 @@ dbench() {
       fi
       run "$disk" 1 --img="$img" --system=$system \
           dbench --script $HOME/dbench/loadfiles/client.txt
+      cp ~/fscq/bench/concurrent/disk.img /tmp/
     done
   done
   sep
@@ -192,8 +193,10 @@ run_fusebench() {
              "$@" )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
+      cp ~/fscq/bench/concurrent/disk.img /tmp/
       fusebench "${args[@]}" --fs-N=10  --rts-flags="-qn4" \
           | addfield "par_gc4"
+      cp ~/fscq/bench/concurrent/disk.img /tmp/
     done
   done
   restore_cores
@@ -221,6 +224,7 @@ mailserver_parbench() {
           mailserver --read-perc 1.0 --users 24 \
           --init-messages 250 --read-last 10 --reps=100 \
           +RTS -A32m -qn6 -RTS
+      cp ~/fscq/bench/concurrent/disk.img /tmp/
     done
   done
   sudo dangerously enablecores
