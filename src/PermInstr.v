@@ -2,6 +2,7 @@ Require Import Pred Mem Word Arith List.
 Require Import FunctionalExtensionality.
 Require Export PermSepAuto.
 
+(*
 Lemma bind_secure:
   forall T T' (p1: prog T) (p2: T -> prog T') pr d bm hm,
     permission_secure d bm hm pr p1 ->
@@ -33,21 +34,6 @@ Proof.
     specialize (H0 _ _ _ H2); cleanup.
     apply trace_secure_app; auto.
   }
-Qed.
-
-(*
-Lemma permission_drop_secure:
-  forall d bm pr1 pr2 T (p: prog T) hm,
-    permission_secure d bm hm pr1 p ->
-    permitted pr2 pr1 ->
-    (forall tr tr2 r, exec pr2 tr d bm hm p r (tr2++tr) ->
-                      exists tr1, exec pr1 tr d bm hm p r (tr1++tr) /\ trace_match tr1 tr2) ->
-    permission_secure d bm hm pr2 p.
-Proof.
-  unfold permission_secure; intros.
-  specialize (H1 _ _ _ H2); cleanup.
-  specialize (H _ _ _ H1); intuition.
-  eapply trace_secure_match; eauto.
 Qed.
 *)
 Hint Resolve HS_nil.
@@ -85,81 +71,41 @@ Proof.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     or_l; cancel.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    or_l; cancel.
-    intuition.
   }
   {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    or_r; cancel.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    intuition.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     or_r; cancel.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     or_l; cancel.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    or_l; cancel.
-    intuition.
   }
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    or_r; cancel.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    intuition.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     or_r; cancel.
   }
 Qed.
 
+
+(*
+Lemma read_return_deterministic:
+  forall pr tr d bm hm d1 bm1 hm1 r1 tr1 d2 bm2 hm2 r2 tr2 a,
+    exec pr tr d bm hm (Read a) (Finished d1 bm1 hm1 r1) tr1 ->
+    exec pr tr d bm hm (Read a) (Finished d2 bm2 hm2 r2) tr2 ->
+    r1 = r2.
+Proof.
+  intros.
+  repeat inv_exec_perm; cleanup; simpl in *.
+  destruct (handle_eq_dec r1 r2); subst; auto.
+  apply not_eq in n; intuition.
+  specialize H11 with (1:=H); cleanup; congruence.
+  specialize H10 with (1:=H); cleanup; congruence.
+Qed.
+*)
 
 Lemma read_secure:
   forall pr a,
@@ -182,19 +128,6 @@ Proof.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     apply ptsto_subset_valid' in H; cleanup; eauto.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    apply ptsto_subset_valid' in H; cleanup; eauto.
   }
   split_ors; cleanup.
   {
@@ -203,16 +136,7 @@ Proof.
     inv_exec_perm.
     apply H3.
     pred_apply; cancel; eauto.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    apply ptsto_subset_valid' in H; cleanup; eauto.
+    inv_exec_perm; cleanup; simpl; auto.
   }
   {
     split.
@@ -223,12 +147,6 @@ Proof.
     apply ptsto_subset_valid' in H; cleanup; eauto.
     split_ors; cleanup; try congruence.
     do 2 eexists; intuition eauto.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -250,7 +168,7 @@ Lemma write_secure:
      >} Write a i.
 Proof.
   unfold corr2; intros.
-   destruct_lift H; cleanup.
+  destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
   {
     edestruct H4; eauto.
@@ -259,15 +177,6 @@ Proof.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
-    
-    split; eauto.
-    
-    clear H0; eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    inv_exec_perm; cleanup; auto.
   }
   split_ors; cleanup.
   {
@@ -277,20 +186,7 @@ Proof.
     do 2 eexists; intuition eauto.
     apply H3.
     pred_apply; cancel; eauto.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x)) in H.
-    pred_apply; cancel; eauto.
-    unfold vsmerge; simpl;
-    apply ListUtils.incl_cons2; auto.
+    inv_exec_perm; cleanup; simpl; auto.
   }
   {
     split.
@@ -304,17 +200,10 @@ Proof.
     apply ListUtils.incl_cons2; auto.
     split_ors; cleanup; try congruence.
     do 2 eexists; intuition eauto.
-    
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
+    inv_exec_perm; cleanup; simpl; auto.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x4)) in H.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
@@ -340,37 +229,27 @@ Proof.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
   {
+    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
+    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.  
     split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
+    rewrite ListUtils.cons_app, app_assoc in H0.
+    cleanup.
+    apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
+    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
+    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
+    split.
+    right; do 3 eexists; intuition.
+    rewrite ListUtils.cons_app, app_assoc in H0.
+    cleanup.
+    apply trace_secure_app; simpl; auto.
   }
 Qed.
 
@@ -392,37 +271,27 @@ Proof.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
   {
+    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
+    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
+    rewrite ListUtils.cons_app, app_assoc in H0.
+    cleanup.
+    apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto; cleanup.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
+    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
+    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
+    split_ors; cleanup; try congruence.
+    split.
+    right; do 3 eexists; intuition.
+    rewrite ListUtils.cons_app, app_assoc in H0.
+    cleanup.
+    apply trace_secure_app; simpl; auto.
   }
 Qed.
 
@@ -448,35 +317,9 @@ Proof.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto; cleanup.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
@@ -506,35 +349,9 @@ Proof.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto; cleanup.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
@@ -563,35 +380,9 @@ Proof.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto; cleanup.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
@@ -620,35 +411,9 @@ Proof.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto; cleanup.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
@@ -674,33 +439,9 @@ Proof.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
   }
@@ -725,33 +466,9 @@ Proof.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    split.
-    right; do 3 eexists; intuition.
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
   }
@@ -779,21 +496,6 @@ Proof.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
-    
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1; inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-   repeat rewrite <- sep_star_assoc.
-    repeat (apply sep_star_lift_apply'; eauto).
-    apply sep_star_comm; apply emp_star_r.
-    apply sync_xform_pred_apply; auto.
   }
   split_ors; cleanup.
   {
@@ -801,18 +503,7 @@ Proof.
     right; do 3 eexists; intuition.
     inv_exec_perm.
     apply H3; pred_apply; cancel; eauto.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    repeat rewrite <- sep_star_assoc.
-    repeat (apply sep_star_lift_apply'; eauto).
-    apply sep_star_comm; apply emp_star_r.
-    apply sync_xform_pred_apply; auto.
+    inv_exec_perm; cleanup; simpl; auto.
   }
   {
     split.
@@ -824,12 +515,6 @@ Proof.
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
     split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
@@ -838,7 +523,6 @@ Proof.
     apply sync_xform_pred_apply; auto.
   }
 Qed.
-
 
 Lemma sync_secure':
   forall pr,
@@ -862,21 +546,6 @@ Proof.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
-    
-    split; auto.
-    clear H0; eapply bind_secure; intuition.  
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    
-    unfold permission_secure; intros.
-    clear H1; inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-   repeat rewrite <- sep_star_assoc.
-    repeat (apply sep_star_lift_apply'; eauto).
-    apply sep_star_comm; apply emp_star_r.
-    apply sync_xform_pred_apply; auto.
   }
   split_ors; cleanup.
   {
@@ -884,18 +553,7 @@ Proof.
     right; do 3 eexists; intuition.
     inv_exec_perm.
     apply H3; pred_apply; cancel; eauto.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    edestruct H4; eauto.
-    repeat rewrite <- sep_star_assoc.
-    repeat (apply sep_star_lift_apply'; eauto).
-    apply sep_star_comm; apply emp_star_r.
-    apply sync_xform_pred_apply; auto.
+    inv_exec_perm; cleanup; simpl; auto.
   }
   {
     split.
@@ -907,12 +565,6 @@ Proof.
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
     split_ors; cleanup; try congruence.
-    eapply bind_secure; intuition.
-    unfold permission_secure; intros.
-    inv_exec_perm; cleanup; auto.
-    simpl; eauto.
-    simpl; eauto.
-    unfold permission_secure; intros.
     inv_exec_perm; cleanup; auto.
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.

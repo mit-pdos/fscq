@@ -7,7 +7,7 @@ Require Import Omega.
 Require Import Word.
 Require Import PermPredCrash.
 Require Export PermAsyncDisk.
-
+Import ListNotations.
 Set Implicit Arguments.
 
 Definition perm := option nat. (* None can only read public blocks *)
@@ -62,6 +62,11 @@ Inductive exec:
   forall T, perm -> trace -> tagged_disk ->
        block_mem -> hashmap -> prog T ->  @result T -> trace -> Prop :=
 | ExecRead    : forall pr d bm hm a i tb tbs tr,
+                  (** I need to enforce a deterministic handle return. 
+                      Read now returns smallest empth handle.
+                      It makes things much nicer. 
+                  (forall n, n < i -> exists tb, bm n = Some tb) -> 
+                  Nevermind. False alarm. **)
                   bm i = None ->
                   d a = Some (tb, tbs) ->
                   exec pr tr d bm hm (Read a) (Finished d (upd bm i tb) hm i) tr                 

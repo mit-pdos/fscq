@@ -17,11 +17,11 @@ Definition crashcond :=  block_mem -> hashmap -> @pred addr addr_eq_dec valuset 
 Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> block_mem -> hashmap ->  @pred _ _ valuset) (p: prog T) :=
   forall d bm hm tr tr' donec crashc out,
     pre donec crashc bm hm d
-  -> exec pr tr d bm hm p out tr'
+  -> exec pr tr d bm hm p out (tr'++tr)
   -> ((exists d' bm' hm' v, out = Finished d' bm' hm' v /\
                   donec d' bm' hm' v) \/
       (exists d' bm' hm', out = Crashed d' bm' hm' /\ crashc bm' hm' d'))/\
-    permission_secure d bm hm pr p.
+    trace_secure pr tr'.
 
 Notation "{{ pr | pre }} p" := (corr2 pr pre p)
   (at level 0, p at level 60).
@@ -229,11 +229,6 @@ Proof.
   | [ H: _ ~= _ |- _ ] =>
     edestruct H; eauto
   end.
-  edestruct H; eauto.
-  intuition.
-  eapply security_equivalence; eauto.
-  cleanup.
-  eapply security_equivalence; eauto.
 Qed.
 
 Lemma corr2_or_helper:
@@ -256,10 +251,10 @@ Qed.
 Definition corr3 (TF TR: Type) pr (pre: block_mem -> hashmap -> donecond TF -> donecond TR -> pred) (p1: prog TF) (p2: prog TR) :=
   forall done crashdone m tr bm hm out tr',
     pre bm hm done crashdone m
-  -> exec_recover pr tr m bm hm p1 p2 out tr'
+  -> exec_recover pr tr m bm hm p1 p2 out (tr'++tr)
   -> ((exists m' bm' hm' v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
     (exists m' bm' hm' v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))
-\/ trace_secure pr tr'.
+/\ trace_secure pr tr'.
 
 Notation "{{ pr | pre }} p1 >> p2" := (corr3 pr pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
