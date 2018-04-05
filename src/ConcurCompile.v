@@ -1713,6 +1713,20 @@ Section ConcurCompile.
     compile_match.
   Defined.
 
+  Definition CompiledReadDir fsxp dnum ams ls c :
+    Compiled (OptFS.readdir fsxp dnum ams ls c).
+  Proof.
+    unfold OptFS.readdir, translate.
+    simpl.
+    repeat comp.
+
+    apply compile_bind; intros.
+    apply Compiled_sdir_readdir.
+
+    compile_match.
+    equiv_t exec_monad_simpl.
+  Defined.
+
   Definition CompiledReadBlock_full fsxp inum off ams ls c :
     Compiled (OptFS.read_fblock fsxp inum off ams ls c).
   Proof.

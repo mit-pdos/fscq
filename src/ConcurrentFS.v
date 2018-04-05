@@ -1433,7 +1433,7 @@ Section ConcurrentFS.
                   (fun _ tree => tree).
 
   Definition readdir dnum :=
-    retry_readonly_syscall (fun mscs => OptFS.readdir (fsxp P) dnum mscs).
+    retry_readonly_syscall (fun mscs => proj_comp (CompiledReadDir G (fsxp P) dnum mscs)).
 
   Definition tree_sync :=
     write_syscall None
