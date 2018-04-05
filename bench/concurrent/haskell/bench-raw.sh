@@ -207,7 +207,7 @@ ripgrep() {
 
 mailserver() {
   info "mailserver"
-  run_fusebench mailserver --init-messages 50 --read-perc 1.0 --iters=10 --users=24
+  run_fusebench mailserver --init-messages 50 --read-last 10 --read-perc 1.0 --iters=10 --users=24
 }
 
 mailserver_parbench() {
@@ -219,7 +219,7 @@ mailserver_parbench() {
       setup_cores $par
       run "parbench" $par --system=$system \
           mailserver --read-perc 1.0 --users 24 \
-          --init-messages 250 --reps=100 \
+          --init-messages 250 --read-last 10 --reps=100 \
           +RTS -A32m -qn6 -RTS
     done
   done

@@ -24,6 +24,7 @@ import Fuse
 
 data Config = Config
   { readPerc :: Double
+  , alwaysReadMessages :: Int
   , waitTimeMicros :: Int
   , mailboxDir :: FilePath }
 
@@ -31,6 +32,8 @@ instance Options Config where
   defineOptions = pure Config
     <*> simpleOption "read-perc" 0.5
         "fraction of operations that should be reads"
+    <*> simpleOption "read-last" 0
+        "number of recent messages to always read"
     <*> simpleOption "wait-micros" 0
         "time to wait between operations (in microseconds)"
     <*> simpleOption "dir" "/mailboxes"
@@ -39,6 +42,7 @@ instance Options Config where
 configFlags :: Config -> [String]
 configFlags Config{..} =
   [ "--read-perc", show readPerc
+  , "--read-last", show alwaysReadMessages
   , "--wait-micros", show waitTimeMicros
   , "--dir", mailboxDir ]
 
@@ -92,19 +96,22 @@ updateLastRead :: UserState -> Int -> IO ()
 updateLastRead s = writeIORef (lastRead s)
 
 mailRead :: Filesystem fh -> UserState -> User -> App ()
-mailRead fs@Filesystem{fuseOps} s uid = userDir uid >>= \d -> liftIO $ do
-  dnum <- getResult d =<< fuseOpenDirectory fuseOps d
-  allEntries <- getResult d =<< fuseReadDirectory fuseOps d dnum
-  lastId <- getLastRead s
-  forM_ allEntries $ \(p, _) -> do
-    let fname = takeFileName p
-    let mId = read fname
-    when ( fname /= "." && fname /= ".." &&
-           -- always read the last 10 messages
-           mId > lastId-10) $ do
-      readMessage fs $ joinPath [d, p]
-      updateLastRead s mId
-  fuseRelease fuseOps d dnum
+mailRead fs@Filesystem{fuseOps} s uid = do
+  d <- userDir uid
+  Config{alwaysReadMessages} <- ask
+  liftIO $ do
+    dnum <- getResult d =<< fuseOpenDirectory fuseOps d
+    allEntries <- getResult d =<< fuseReadDirectory fuseOps d dnum
+    lastId <- getLastRead s
+    forM_ allEntries $ \(p, _) -> do
+      let fname = takeFileName p
+      let mId = read fname
+      when ( fname /= "." && fname /= ".." &&
+            -- always read some messages
+            mId > lastId-alwaysReadMessages) $ do
+        readMessage fs $ joinPath [d, p]
+        updateLastRead s mId
+    fuseRelease fuseOps d dnum
 
 randomDecisions :: Double -> IO [Bool]
 randomDecisions percTrue = do
