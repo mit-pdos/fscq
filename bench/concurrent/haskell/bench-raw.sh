@@ -195,7 +195,7 @@ run_fusebench() {
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
       cp ~/fscq/bench/concurrent/disk.img /tmp/
-      fusebench "${args[@]}" --fs-N=10  --rts-flags="-qn4" \
+      fusebench "${args[@]}" --fs-N=$par  --rts-flags="-qn4" \
           | addfield "par_gc4"
       cp ~/fscq/bench/concurrent/disk.img /tmp/
     done
