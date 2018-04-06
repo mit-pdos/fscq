@@ -5,17 +5,21 @@ Require Import Pred.
 Require Import PermDirCache.
 Require Import PermGenSepN.
 Require Import ListPred.
-Require Import PermInode.
+
 Require Import List ListUtils.
 Require Import Bytes.
-Require Import DirTree.
+
 Require Import Rec.
 Require Import Arith.
 Require Import FSLayout.
 Require Import Errno.
-Require Import SuperBlock.
+
 Require Import Lia.
 Require Import FunctionalExtensionality.
+
+Require Import DirTree.
+Require Import SuperBlock.
+Require Import PermInode.
 Require Import PermBFile.
 Require Import DirTreeDef.
 Require Import DirTreeRep.
@@ -25,14 +29,15 @@ Require Import DirTreeSafe.
 Require Import DirTreeNames.
 Require Import DirTree.
 Require Import AsyncFS AsyncFSPost AsyncFSProg.
+
 Require Import FMapAVL.
 Require Import FMapFacts.
-
+Import ListNotations.
 
 Set Implicit Arguments.
 Import DIRTREE.
 Import AFS.
-Import ListNotations.
+
 
 Notation MSLL := BFILE.MSLL.
 Notation MSAllocC := BFILE.MSAllocC.
@@ -49,6 +54,16 @@ Definition equivalent_for tag (d1 d2: rawdisk) :=
        Forall2 (fun tb1 tb2 => fst tb1 = fst tb2) (vsmerge vs1) (vsmerge vs2) /\
        Forall2 (fun tb1 tb2 => fst tb1 = tag -> snd tb1 = snd tb2) (vsmerge vs1) (vsmerge vs2)).
 
+
+Definition blockmem_equivalent_for tag (bm1 bm2: block_mem) :=
+  forall a,
+    (bm1 a = None /\ bm2 a = None) \/
+    (exists v1 v2,
+       bm1 a = Some v1 /\ bm2 a = Some v2 /\
+       fst v1 = fst v2 /\
+       (fst v1 = tag -> snd v1 = snd v2)).
+
+
 Definition same_except tag (d1 d2: rawdisk) :=
   forall a,
     (d1 a = None /\ d2 a = None) \/
@@ -57,7 +72,93 @@ Definition same_except tag (d1 d2: rawdisk) :=
        Forall2 (fun tb1 tb2 => fst tb1 = fst tb2) (vsmerge vs1) (vsmerge vs2) /\
        Forall2 (fun tb1 tb2 => fst tb1 <> tag -> snd tb1 = snd tb2) (vsmerge vs1) (vsmerge vs2)).
 
+Theorem extend_exec_equivalent_finished:
+  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm d1' bm1' hm' tr' (r: T),
+    (Fr * [[ sync_invariant Fr ]] *
+    PermCacheDef.rep cs d bm *
+    [[ (F * rep xp (Synced old) hm)%pred d ]] *
+    [[ handles_valid bm (map ent_handle new) ]] *
+    [[ blocks = extract_blocks bm (map ent_handle new) ]] *
+    [[ Forall entry_valid new /\ sync_invariant F ]])%pred d1 ->
+    exec pr tr d1 bm1 hm (extend xp new cs) (Finished d1' bm1' hm' r) (tr'++tr) ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    trace_secure pr tr' ->
+    exists d2' bm2', exec pr tr d2 bm2 hm p (Finished d2' bm2' hm' r) (tr'++tr) /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
 
+
+
+
+
+
+
+
+
+
+
+
+(* I am doing something ugly in here. Type of the input 'log' has type list (addr * handle)
+   and blocks of the "real log" is sitting in the block memory *)
+Definition extend xp (log: input_contents) cs :=
+    (* Synced *)
+    let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
+    let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
+    let '(nndesc, nndata) := ((ndesc_list log), (ndata_log log)) in
+    If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
+       (* I need to seal addr blocks to write them back *)
+      ahl <- seal_all (addr_tags nndesc)
+             (DescDefs.ipack (map ent_addr log));;
+      h_addr <- hash_list_handle h_addr ahl;;
+      (* Need a special hash instruction to hash from handle *)
+      h_valu <- hash_list_handle h_valu (map ent_handle log);;
+      cs <- Desc.write_aligned xp ndesc ahl cs;;
+      (* I need handles to be supplied to me to write data blocks back *) 
+      cs <- Data.write_aligned xp ndata (map ent_handle log) cs;;
+      cs <- PermDiskLogHdr.write xp ((ndesc, ndata),
+                          (ndesc + nndesc, ndata + nndata),
+                          (h_addr, h_valu)) cs;;
+      (* Extended *)
+      cs <- PermCacheDef.begin_sync cs;;
+      cs <- Desc.sync_aligned xp ndesc nndesc cs;;
+      cs <- Data.sync_aligned xp ndata nndata cs;;
+      cs <- PermDiskLogHdr.sync xp cs;;
+      cs <- PermCacheDef.end_sync cs;;
+      (* Synced *)
+      Ret ^(cs, true)
+    } else {
+      Ret ^(cs, false)
+    }.
+
+
+
+
+Definition extend_ok :
+    forall xp (new: input_contents) cs pr,
+    {< F old d blocks,
+    PERM:pr   
+    PRE:bm, hm,
+          PermCacheDef.rep cs d bm *
+          [[ (F * rep xp (Synced old) hm)%pred d ]] *
+          [[ handles_valid bm (map ent_handle new) ]] *
+          [[ blocks = extract_blocks bm (map ent_handle new) ]] *
+          [[ Forall entry_valid new /\ sync_invariant F ]]
+    POST:bm', hm', RET: ^(cs, r) exists d',
+          PermCacheDef.rep cs d' bm' * 
+          ([[ r = true /\
+              (F * rep xp (Synced ((padded_log old) ++
+                                   (combine (map fst new) blocks))) hm')%pred d' ]] \/
+           [[ r = false /\ length ((padded_log old) ++
+                                   (combine (map fst new) blocks)) > LogLen xp /\
+             (F * rep xp (Synced old) hm')%pred d' ]])
+    XCRASH:bm'', hm_crash, exists cs' d',
+          PermCacheDef.rep cs' d' bm'' *
+          ([[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (Extended old (combine (map fst new) blocks)) hm_crash)%pred d' ]])
+    >} extend xp new cs.
+
+(*
 Definition permission_secure_fbasic {T} d bm hm fsxp mscs pr (p: fbasic T) :=
   forall tr tr' r mscs' ,
     exec_fbasic pr tr d bm hm fsxp mscs p r mscs' (tr'++tr) ->
@@ -99,6 +200,208 @@ Fixpoint only_reads_permitted {T} pr (p: prog T) d bm hm:=
                    only_reads_permitted pr (p2 r) d' bm' hm'
   | _ => True
   end.
+*)
+Axiom can_access_dec: forall pr t, {can_access pr t}+{~can_access pr t}.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ltac rewriteall :=
+  match goal with
+  | [H: ?x = ?x |- _ ] => clear H; repeat rewriteall
+  | [H: ?x = ?y, H0: ?y = ?x |- _ ] => clear H0; repeat rewriteall
+  | [H: ?x = _, H0: ?x = _ |- _ ] => rewrite H in H0; repeat rewriteall
+  | [H: ?x = _, H0: _ = ?x |- _ ] => rewrite H in H0; repeat rewriteall
+  (*| [H: ?x = _ |- context [?x] ] => rewrite H; repeat rewriteall *)
+  end.
+
+
+Ltac cleanup:= try split_match; try logic_clean; subst; try rewriteall;
+               try clear_dup; try rewrite_upd_eq;
+               try clear_dup; try some_subst;
+               try clear_trace; subst; try rewriteall.
+
+Theorem exec_equivalent_finished_blockmem:
+  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm d1' bm1' hm' tr' (r: T),
+    exec pr tr d1 bm1 hm p (Finished d1' bm1' hm' r) (tr'++tr) ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    trace_secure pr tr' ->
+    exists d2' bm2', exec pr tr d2 bm2 hm p (Finished d2' bm2' hm' r) (tr'++tr) /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
+Proof.
+  induction p; intros;  
+  inv_exec_perm; cleanup; simpl in *;
+  try solve [repeat eexists; [econstructor; eauto|eauto|eauto] ].
+  { (** Read **)
+    destruct tb.
+    specialize H1 with (1:= can_access_public pr) as Hx;
+    specialize (Hx r); intuition; cleanup; try congruence.
+    specialize H0 with (1:= can_access_public pr) as Hx;
+    specialize (Hx n); intuition; cleanup; try congruence.
+    destruct x0, t0.
+    unfold vsmerge in *; simpl in *.
+    inversion H5; inversion H6; simpl in *; subst.
+    do 2 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+    unfold blockmem_equivalent_for; intros.
+    destruct (handle_eq_dec a r); subst.
+    right.
+    repeat rewrite Mem.upd_eq; eauto.
+    do 2 eexists; eauto.
+    split; eauto.
+    split; eauto.
+    split; eauto.
+    intros.
+    simpl in *; eauto.
+    specialize H0 with (1:= H) as Hx;
+    specialize (Hx n); intuition; cleanup; try congruence.
+    unfold vsmerge in *; simpl in *.
+    inversion H10; inversion H12; simpl in *; subst.
+    eauto.
+    repeat rewrite Mem.upd_ne; eauto.
+    eapply H1; eauto.
+  }
+  { (** Write **)
+    destruct tb, tbs, t0.
+    destruct (can_access_dec pr t).
+    { (** can access **)
+      specialize H0 with (1:= can_access_public pr) as Hx;
+      specialize (Hx n); intuition; cleanup; try congruence.
+      specialize H1 with (1:= c) as Hx;
+      specialize (Hx h); intuition; cleanup; try congruence.
+      destruct x0, x1; simpl in *; cleanup.
+      do 2 eexists; split.
+      econstructor; eauto.
+      split; eauto.
+      unfold equivalent_for; intros.
+      specialize H0 with (1:= H) as Hx;
+      specialize (Hx n); destruct Hx; cleanup; try congruence.
+      destruct (handle_eq_dec a n); subst.
+      right.
+      repeat rewrite Mem.upd_eq; eauto.
+      do 2 eexists; eauto.
+      split; eauto.
+      split; eauto.
+      split.
+      unfold vsmerge in *; simpl in *; eauto.
+      unfold vsmerge in *; simpl in *; eauto.
+      repeat rewrite Mem.upd_ne; eauto.
+      eapply H0; eauto.
+    }
+    { (** can't access **)
+      specialize H0 with (1:= can_access_public pr) as Hx;
+      specialize (Hx n); intuition; cleanup; try congruence.
+      specialize H1 with (1:= can_access_public pr) as Hx;
+      specialize (Hx h); intuition; cleanup; try congruence.
+      destruct x0, x1; simpl in *; cleanup.
+      do 2 eexists; split.
+      econstructor; eauto.
+      split; eauto.
+      unfold equivalent_for; intros.
+      destruct (tag_dec t2 tag); subst; intuition.
+      specialize H0 with (1:= H) as Hx;
+      specialize (Hx n); destruct Hx; cleanup; try congruence.
+      destruct (handle_eq_dec a n); subst.
+      right.
+      repeat rewrite Mem.upd_eq; eauto.
+      do 2 eexists; eauto.
+      split; eauto.
+      split; eauto.
+      split.
+      unfold vsmerge in *; simpl in *; eauto.
+      unfold vsmerge in *; simpl in *; eauto.
+      econstructor.
+      simpl; intros; intuition.
+      eauto.
+      repeat rewrite Mem.upd_ne; eauto.
+      eapply H0; eauto.
+    }
+  }
+  { (** Seal **)
+    specialize H1 with (1:= can_access_public pr) as Hx;
+    specialize (Hx r); intuition; cleanup; try congruence.
+    do 2 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+    unfold blockmem_equivalent_for; intros.
+    destruct (handle_eq_dec a r); subst.
+    right.
+    repeat rewrite Mem.upd_eq; eauto.
+    do 2 eexists; eauto.
+    repeat rewrite Mem.upd_ne; eauto.
+    eapply H1; eauto.
+  }
+  { (** Unseal **)
+    intuition.
+    destruct tb; simpl in *.
+    specialize H1 with (1:= H) as Hx;
+    specialize (Hx h); intuition; cleanup; try congruence.
+    simpl in *; intuition; subst.
+    do 2 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+  }
+  { (** Sync **)
+    repeat eexists; [econstructor; eauto| |eauto].
+    unfold equivalent_for in *; intros.
+    specialize H0 with (1:= H) as Hx.
+    unfold sync_mem.
+    specialize (Hx a); intuition; cleanup; eauto.
+    rewrite H4, H5; eauto.
+    rewrite H3, H4; eauto.
+    destruct x, x0.
+    right; repeat eexists; eauto.
+    unfold vsmerge in *; simpl in *; eauto.
+    inversion H5; subst.
+    econstructor; eauto.
+    unfold vsmerge in *; simpl in *; eauto.
+    inversion H6; subst; auto.
+  }
+  admit. (** handle hashing **)
+  admit. (** handle hashing **)
+  { (** Bind **)
+    apply trace_app in H0 as Hx; cleanup.
+    apply trace_app in H4 as Hx; cleanup.
+    apply trace_secure_app_split in H3; cleanup.
+    specialize IHp with (1:=H0)(2:=H1)(3:=H2)(4:=H5); cleanup.
+    rewrite <- app_assoc in H4.
+    specialize H with (1:=H4)(2:=H7)(3:=H8)(4:=H3); cleanup.
+    rewrite app_assoc in H.
+    repeat eexists; [econstructor; eauto| |]; eauto.
+  }
+Admitted.
+
+
+
 
 Theorem exec_equivalent_finished:
   forall T (p: prog T) pr tr d1 d2 bm hm d1' bm' hm' tr' (r: T),

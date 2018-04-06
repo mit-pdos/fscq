@@ -537,3 +537,444 @@ Proof.
   }
 Admitted.
 
+
+Lemma recover_orp:
+  forall pr d bm hm Fr ds cachesize cs fsxp,
+    (Fr * [[ sync_invariant Fr ]] *
+    LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs bm hm *
+    [[ cachesize <> 0 ]])%pred d ->
+    only_reads_permitted pr (recover cachesize) d bm hm.
+Proof.
+  unfold LOG.after_crash, recover; intros.
+  apply bind_orp; intros.
+  { (** init_recover **)
+    simpl; intuition.
+  }
+  apply bind_orp; intros.
+  { (** SB.load **)
+    simpl; intuition.
+    destruct_lift H.
+    unfold SB.rep in H4; destruct_lift H4.
+    apply ptsto_subset_valid in H1; cleanup; simpl in *.
+    (** extract init_recover postcondition  **)
+    admit.
+  }  
+  apply if_orp; intros; [|simpl; auto].
+  apply bind_orp; intros.
+  { (** LOG.recover **)
+    unfold LOG.recover.
+    apply bind_orp; intros;  [|simpl; auto].
+    { (** GLog.recover **)
+      unfold GLog.recover.
+      apply bind_orp; intros;  [|simpl; auto].
+      { (** MLog.recover **)
+        unfold MLog.recover.
+        apply bind_orp; intros.
+        { (** PermDiskLog.recover **)
+          unfold PermDiskLog.recover.
+          apply bind_orp; intros;  [|simpl; auto].
+          unfold PermDiskLogPadded.recover.
+          apply bind_orp; intros.
+          admit. (** PermDiskLogHdr.read **)
+          destruct r1, p, p, p, p, p0, p1.
+          apply bind_orp; intros.
+          admit. (** Reads all addresses. **)
+          apply bind_orp; intros.
+          admit. (** Reads all data. This is problematic. **)
+          apply bind_orp; intros; [simpl; auto|].
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply foreach_orp; intros; simpl; intuition.
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply foreach_orp; intros; simpl; intuition.
+          apply if_orp; intros; [simpl; auto|].
+          apply bind_orp; intros.
+          admit. (** Reads all addresses. **)
+          apply bind_orp; intros.
+          admit. (** Reads all data. This is problematic. **)
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply foreach_orp; intros; simpl; intuition.
+          apply bind_orp; intros.
+          simpl; intuition.
+          apply foreach_orp; intros; simpl; intuition.
+          apply bind_orp; intros.
+          simpl; intuition.
+          destruct (MapUtils.AddrMap.Map.find
+                   (LAHdr (FSXPLog (fst (snd r0)))) (CSMap r12)); simpl; auto.
+          apply bind_orp; intros; simpl; auto.
+        }
+        apply bind_orp; intros; [|simpl; auto].
+        admit. (** Reads entire log!! **)
+      }
+    }
+  }
+  apply bind_orp; intros; [|simpl; auto].
+  { (** BFILE.recover **)
+    unfold BFILE.recover; simpl; auto.
+  }
+Admitted.  
+
+
+
+
+Lemma PermDiskLogHdr_read_post:
+    forall Fr F d dx n r xp cs bm hm pr tr d' bm' hm' tr',
+      (Fr * [[ sync_invariant Fr ]] * PermCacheDef.rep cs dx bm *
+     [[ (F * PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced n))%pred dx ]])%pred d ->
+      exec pr tr d bm hm (PermDiskLogHdr.read xp cs)
+           (Finished d' bm' hm' r) tr' ->
+      let cs := fst r in
+      let n' := fst (snd r) in
+      (Fr * [[ sync_invariant Fr ]] *
+      PermCacheDef.rep cs dx bm' *
+      [[ (F * PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced n))%pred dx ]])%pred d' /\ n' = n.
+    Proof.
+      intros.
+      pose proof (@PermDiskLogHdr.read_ok xp cs pr) as Hok.
+      specialize (Hok _ (fun r => Ret r)).
+      unfold corr2 in *.
+      edestruct Hok with (d:= d).
+      pred_apply; cancel.
+      eauto.
+      eauto.
+      inv_exec_perm.
+      simpl in *.
+      destruct_lift H1.
+      destruct_lift H2.
+      subst cs0.
+      eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: cachestate * (hdr * unit)) => let cs' := fst r in
+    let n' := fst (snd r) in
+    (Fr * PermCacheDef.rep cs' dx bm0 *
+    [[ (F * PermDiskLogHdr.rep xp (PermDiskLogHdr.Synced n'))%pred dx ]] *
+    [[ n' = n ]])%pred d0).
+      left; repeat eexists; simpl in *; eauto.
+      pred_apply; cancel.
+      unfold permission_secure; intros.
+      inv_exec_perm.
+      cleanup; auto.
+      unfold trace_secure; eauto.
+      eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
+      intros; simpl; auto.
+      econstructor; eauto.
+      econstructor.
+      simpl in *.
+      destruct H1; cleanup.
+      subst n'; subst cs0.
+      split.
+      pred_apply; cancel.
+      destruct_lift H; auto.
+      destruct_lift H3; auto.
+      inversion H1.
+    Qed.
+
+
+Theorem PermDiskLogPadded_recover_synced_equivalent:
+  forall Fr F pr tr d1 d2 bm hm d1' bm' hm' tr' r l cs xp,
+    (Fr * [[ sync_invariant Fr ]] *
+      exists d, PermCacheDef.rep cs d bm *
+      [[ (F * PermDiskLogPadded.rep xp (PermDiskLogPadded.Synced l) hm)%pred d ]] *    [[ sync_invariant F ]])%pred d1 ->
+    exec pr tr d1 bm hm (PermDiskLogPadded.recover xp cs) (Finished d1' bm' hm' r) tr' ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    exists d2', exec pr tr d2 bm hm (PermDiskLogPadded.recover xp cs) (Finished d2' bm' hm' r) tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
+Proof.
+  unfold PermDiskLogPadded.recover; intros.
+  inv_exec_perm.
+  eapply exec_equivalent_finished in H0 as Htemp; eauto.
+  Focus 2. (** orp goal **)
+    Opaque PermDiskLogHdr.read.
+    denote PermDiskLogPadded.rep as Hrep.
+    unfold PermDiskLogPadded.rep, rep_inner in Hrep.    
+    destruct_lift Hrep.
+    eapply PermDiskLogHdr_read_orp; eauto;
+    pred_apply; cancel.
+
+  apply pimpl_exists_l_star_r in H.
+  destruct H.
+  denote PermDiskLogPadded.rep as Hrep.
+  unfold PermDiskLogPadded.rep, rep_inner in Hrep.
+  destruct_lift Hrep.
+  eapply PermDiskLogHdr_read_post in H0.
+  2: pred_apply; cancel. (** precondition goal **)
+  simpl in *; cleanup.
+  inversion H5; subst; clear H H4 H5.
+  denote PermDiskLogHdr.read as Hexec.
+  denote equivalent_for as Heqiv.
+  denote PermCacheDef.rep as Hrep.
+
+  (** Desc.read_all **)
+  apply bind_sep in H2; cleanup; simpl in *.
+
+   Lemma forn_strong_orp:
+  forall n (L : Type) (G : Type) (f : nat -> L -> prog L)
+      i (nocrash : G -> nat -> L -> block_mem -> hashmap -> rawpred)
+      (crashed : G -> block_mem -> hashmap -> rawpred) (l : L) pr d bm hm g,
+    nocrash g i l bm hm d ->
+    only_reads_permitted pr (f i l) d bm hm ->
+    (forall i l d bm hm d' bm' hm' r tr tr',
+       nocrash g i l bm hm d ->
+       exec pr tr d bm hm (f i l) (Finished d' bm' hm' r) tr' ->
+       nocrash g (S i) r bm' hm' d') ->
+    (forall i l d bm hm d' bm' hm' r tr tr',
+       nocrash g i l bm hm d ->
+       exec pr tr d bm hm (f i l) (Finished d' bm' hm' r) tr' ->
+       only_reads_permitted pr (f (S i) r) d' bm' hm') ->
+    only_reads_permitted pr (ForN_ f i n nocrash crashed l) d bm hm.
+Proof.
+  induction n; intros.
+  simpl; auto.
+  simpl.
+  split; intros; eauto.
+Qed.
+
+  
+  Lemma Desc_read_all_orb:
+    forall pr d bm hm F xp tags items dx cs count,
+      (PermCacheDef.rep cs dx bm *
+      [[ length items = (count * DescSig.items_per_val)%nat /\
+         length tags = count /\
+         Forall Rec.well_formed items /\ xparams_ok xp ]] *
+      [[ (F * Desc.array_rep xp 0 (Desc.Synced tags items))%pred dx ]] *
+      [[ Forall (fun t => can_access pr t) tags ]])%pred d ->
+   only_reads_permitted pr (Desc.read_all xp count cs) d bm hm.
+  Proof.
+    unfold Desc.read_all; intros.
+    simpl; intuition.
+    unfold Desc.array_rep, Desc.synced_array in H.
+    destruct_lift H.
+    eapply forn_strong_orp; intros.
+    eassign (F, ((emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)), (dx, (combine dummy (@Desc.Defs.nils tagged_block (length dummy)), tt)))).
+    pred_apply; cancel.
+    simpl.
+    rewrite plus_0_r; eauto.
+    apply BFILE.handles_valid_empty.
+    apply bind_orp; intros; simpl; auto.
+    eapply arrayN_selN_subset with (a:=(DescSig.RAStart xp + 0)) in H3 as Hx.
+    
+apply destruct_pair_eq.
+simpl.
+()
+    
+    admit.
+    eapply PermCacheDef_read_orp.
+    Search arrayS.
+    
+     (Finished x7 x8 x9 x6) x5 ->
+exists d2,
+  exec pr x x1 x2 x3 (Desc.read_all xp (ndesc_log l) x0_1)
+     (Finished d2 x8 x9 x6) x5 /\
+  (forall tag : tag, can_access pr tag -> equivalent_for tag x7 d2).
+  Proof.
+    unfold Desc.read_all. intros.
+    unfold read_range, read_array.
+
+
+
+
+Theorem read_all_ok :
+    forall xp count cs pr,
+    {< F d tags items,
+    PERM: pr
+    PRE:bm, hm,
+      PermCacheDef.rep cs d bm *
+      [[ length items = (count * items_per_val)%nat /\
+         length tags = count /\
+         Forall Rec.well_formed items /\ xparams_ok xp ]] *
+      [[ (F * array_rep xp 0 (Synced tags items))%pred d ]]
+    POST:bm', hm',
+       RET: ^(cs, r)
+          PermCacheDef.rep cs d bm' *
+          [[ (F * array_rep xp 0 (Synced tags items))%pred d ]] *
+          [[ extract_blocks bm' r = combine tags (ipack items) ]] *
+          [[ handles_valid bm' r ]]
+    CRASH:bm'', hm'',
+      exists cs', PermCacheDef.rep cs' d bm''
+    >} read_all xp count cs.
+  Proof.
+
+
+
+
+
+  
+  Lemma Desc_read_all_equivalent:
+    forall pr x x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x0_1 dummy_1 dummy_2 dummy0_1 dummy0_2
+    l xp Fr hm F,
+    (((Fr ✶ ⟦⟦ sync_invariant Fr ⟧⟧) ✶ PermCacheDef.rep x0_1 x4 x2)
+     * [[ checksums_match l (dummy0_1, dummy0_2) hm ]]
+     * [[ xparams_ok xp ]]
+          ✶ ⟦⟦ ((rep_contents xp l ✶ F) * [[ sync_invariant F ]]
+                ✶ PermDiskLogHdr.rep xp
+                    (PermDiskLogHdr.Synced
+                       (dummy_1, dummy_2, (ndesc_log l, ndata_log l),
+                        (dummy0_1, dummy0_2)))) x4 ⟧⟧)%pred x1 ->
+    (forall tag : tag, can_access pr tag -> equivalent_for tag x1 x0) ->
+exec pr x x1 x2 x3 (Desc.read_all xp (ndesc_log l) x0_1)
+     (Finished x7 x8 x9 x6) x5 ->
+exists d2,
+  exec pr x x1 x2 x3 (Desc.read_all xp (ndesc_log l) x0_1)
+     (Finished d2 x8 x9 x6) x5 /\
+  (forall tag : tag, can_access pr tag -> equivalent_for tag x7 d2).
+  Proof.
+    unfold Desc.read_all. intros.
+    unfold read_range, read_array.
+
+
+
+
+
+
+
+
+Theorem MLog_recover_equivalent:
+  forall Fr F  d pr raw tr d1 d2 bm hm d1' bm' hm' tr' r cs xp ents,
+    (Fr * [[ sync_invariant Fr ]] *
+      PermCacheDef.rep cs raw bm *
+      [[ (F * MLog.recover_either_pred xp d ents bm hm)%pred raw ]] *
+      [[ sync_invariant F ]])%pred d1 ->
+    exec pr tr d1 bm hm (MLog.recover xp cs) (Finished d1' bm' hm' r) tr' ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    exists d2', exec pr tr d2 bm hm (MLog.recover xp cs) (Finished d2' bm' hm' r) tr' /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
+Proof.
+  unfold MLog.recover; intros.
+  inv_exec_perm.
+  unfold PermDiskLog.recover in *.
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+
+Theorem read_ok :
+ forall xp cs pr,
+ {< F d n,
+ PERM:pr
+ PRE:bm, hm,
+     PermCacheDef.rep cs d bm *
+     [[ (F * rep xp (Synced n))%pred d ]]
+ POST:bm', hm', RET: ^(cs, r)
+     PermCacheDef.rep cs d bm' *
+     [[ (F * rep xp (Synced n))%pred d ]] *
+     [[ r = n ]]
+ CRASH:bm'', hm'',
+     exists cs', PermCacheDef.rep cs' d bm''
+ >} read xp cs.
+Proof.
+
+
+
+
+
+
+
+  
+
+  
+  unfold PermDiskLog.recover in *.
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   Definition recover_ok :
+    forall xp cs pr,
+    {< F st l,
+    PERM:pr   
+    PRE:bm, hm,
+      exists d, PermCacheDef.rep cs d bm *
+          [[ (F * rep xp st hm)%pred d ]] *
+          [[ st = Synced l \/ st = Rollback l ]] *
+          [[ sync_invariant F ]]
+    POST:bm', hm', RET:cs' exists d',
+          PermCacheDef.rep cs' d' bm' *
+          [[ (F * rep xp (Synced l) hm')%pred d' ]]
+    XCRASH:bm', hm',
+          would_recover xp F l bm' hm'
+    >} recover xp cs.
+  Proof.
+
+
+
+
+
+
+
+  Definition recover xp cs :=
+    let^ (cs, header) <- PermDiskLogHdr.read xp cs;;
+    let '((prev_ndesc, prev_ndata),
+          (ndesc, ndata),
+          (addr_checksum, valu_checksum)) := header in
+    let^ (cs, wal) <- Desc.read_all xp ndesc cs;;
+    let^ (cs, vl) <- Data.read_all xp ndata cs;;
+    default_hash <- Hash default_encoding;;
+    h_addr <- hash_list_handle default_hash wal;;
+    h_valu <- hash_list_handle default_hash vl;;
+    If (weq2 addr_checksum h_addr valu_checksum h_valu) {
+      Ret cs
+    } else {
+      let^ (cs, wal) <- Desc.read_all xp prev_ndesc cs;;
+      let^ (cs, vl) <- Data.read_all xp prev_ndata cs;;
+      addr_checksum <- hash_list_handle default_hash wal;;
+      valu_checksum <- hash_list_handle default_hash vl;;
+      cs <- PermDiskLogHdr.write xp ((prev_ndesc, prev_ndata),
+                          (prev_ndesc, prev_ndata),
+                          (addr_checksum, valu_checksum)) cs;;
+      cs <- PermDiskLogHdr.sync_now xp cs;;
+      Ret cs
+    }.
+
+
+
+
+
+
+  
+
+
+
+  Theorem recover_ok:
+    forall xp cs pr,
+    {< F raw d ents,
+    PERM:pr   
+    PRE:bm, hm,
+      PermCacheDef.rep cs raw bm *
+      [[ (F * recover_either_pred xp d ents bm hm)%pred raw ]] *
+      [[ sync_invariant F ]]
+    POST:bm', hm', RET:ms' exists raw',
+      PermCacheDef.rep (MSCache ms') raw' bm' *
+      [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') bm' hm' *
+        ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
+         [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
+      ))%pred raw' ]]
+    XCRASH:bm'', hm',
+      exists cs' raw' ms', PermCacheDef.rep cs' raw' bm'' *
+      [[ (exists d', F * rep xp (Recovering d') ms' bm'' hm' *
+         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
+         [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
+        ))%pred raw' ]]
+    >} recover xp cs.
+  Proof.
