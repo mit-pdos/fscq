@@ -11,7 +11,7 @@ if len(sys.argv) > 1:
 else:
   build_name = ''
 
-email_list = 'nickolai@csail.mit.edu,kaashoek@mit.edu,dmz@mit.edu,akonradi@mit.edu,tchajed@mit.edu,atalaymertileri@gmail.com'
+email_list = 'nickolai@csail.mit.edu,kaashoek@mit.edu,tchajed@mit.edu,atalaymertileri@gmail.com'
 
 f = open("checkproofs-errors.txt", encoding="utf-8")
 
