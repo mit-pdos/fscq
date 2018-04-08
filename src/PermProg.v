@@ -51,8 +51,6 @@ Inductive prog : Type -> Type :=
 | Sync : prog unit
 | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
 | Hash2 (sz1 sz2: nat) (buf1 : word sz1) (buf2 : word sz2) : prog (word hashlen)
-| HashHandle : handle -> prog (word hashlen)
-| HashHandle2 (h:handle) (sz: nat) (buf: word sz) : prog (word hashlen)
 | Auth : tag -> prog bool
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
@@ -105,20 +103,6 @@ Inductive exec:
                 hash_safe hm h buf ->
                 hash_fwd buf = h ->
                 exec pr tr d bm hm (Hash2 buf1 buf2) (Finished d bm (upd_hashmap' hm h buf) h) tr
-                     
-| StepHashHandle : forall pr d bm hm tr tb i h,
-               bm i = Some tb ->
-               hash_safe hm h (encode tb) ->
-               hash_fwd (encode tb) = h ->
-               exec pr tr d bm hm (HashHandle i) (Finished d bm (upd_hashmap' hm h (encode tb)) h) tr
-
-| StepHashHandle2 : forall pr d bm hm tr sz i tb
-                      (buf2 : word sz) (buf : word (encoding_length + sz)) h,
-                bm i = Some tb ->
-                buf = Word.combine (encode tb) buf2 ->
-                hash_safe hm h buf ->
-                hash_fwd buf = h ->
-                exec pr tr d bm hm (HashHandle2 i buf2) (Finished d bm (upd_hashmap' hm h buf) h) tr
                     
 | ExecRet : forall T pr d bm hm (r: T) tr,
               exec pr tr d bm hm (Ret r) (Finished d bm hm r) tr

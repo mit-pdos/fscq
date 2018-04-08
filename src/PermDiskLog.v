@@ -107,9 +107,8 @@ Definition rep xp st hm :=
          [[ (F * rep xp (Synced nr l) hm)%pred d ]]
     POST:bm', hm',   RET: ^(cs, r)
          PermCacheDef.rep cs d bm' *
-         [[ extract_blocks_list bm' r = l /\
+         [[ r = l /\
             (F * rep xp (Synced nr l) hm')%pred d ]] *
-         [[ handles_valid_list bm' r ]] *
          [[ Forall entry_valid r ]]
     CRASH:bm'', hm'', exists cs',
          PermCacheDef.rep cs' d bm''*
@@ -202,7 +201,7 @@ Hint Resolve rep_hashmap_subset.
   Qed.
 
   End UnifyProof.
-
+(*
   Definition init_ok :
     forall xp cs pr,
     {< F l d,
@@ -239,7 +238,7 @@ Hint Resolve rep_hashmap_subset.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.
-
+*)
   Local Hint Resolve DescDefs.items_per_val_gt_0.
 
   Lemma extend_length_ok' : forall B (l new: @generic_contents B) def,
@@ -266,23 +265,18 @@ Hint Resolve rep_hashmap_subset.
   Qed.
 
   Lemma helper_extend_length_ok :
-    forall xp padded new F d bm hm,
+    forall xp padded new F d hm,
       length padded = roundup (length padded) DescSig.items_per_val
-      -> handles_valid bm (map snd new)
-    -> length (padded_log padded ++ combine (map fst new)(extract_blocks bm (map snd new)))  > LogLen xp
+    -> length (padded_log padded ++ new)  > LogLen xp
     -> (F * PermDiskLogPadded.rep xp (PermDiskLogPadded.Synced padded) hm)%pred d
     -> length new > LogLen xp - length padded.
   Proof.
     intros.
-    rewrite app_length in H1.
-    pose proof (rep_synced_length_ok H2).
-    generalize H3.
-    rewrite H.
-    unfold padded_log in *; rewrite <- padded_log_length with (def:= tagged_block0).
-    setoid_rewrite combine_length_eq in H1.
-    rewrite map_length in H1.
-    intro; omega.
-    apply length_map_fst_extract_blocks_eq; auto.
+    rewrite app_length in H0.
+    pose proof (rep_synced_length_ok H1).
+    unfold padded_log in *; erewrite padded_log_length in *.
+    setoid_rewrite <- H in H0.
+    omega.
   Qed.
 
   Local Hint Resolve extend_length_ok helper_extend_length_ok log_nonzero_padded_app.
@@ -314,25 +308,23 @@ Hint Resolve rep_hashmap_subset.
   Local Hint Resolve extend_navail_ok rep_synced_app_pimpl.  
 
   Definition extend_ok :
-    forall xp (new: input_contents) cs pr,
-    {< F old d nr blocks,
+    forall xp new cs pr,
+    {< F old d nr,
     PERM:pr   
     PRE:bm, hm,
               PermCacheDef.rep cs d bm *
               [[ (F * rep xp (Synced nr old) hm)%pred d ]] *
-              [[ handles_valid bm (map ent_handle new) ]] *
-              [[ blocks = extract_blocks bm (map ent_handle new) ]] *
               [[ entries_valid new /\ sync_invariant F ]]
     POST:bm', hm', RET: ^(cs, r) exists d',
               PermCacheDef.rep cs d' bm' * (
               [[ r = true /\
-                (F * rep xp (Synced (nr - (rounded (length new))) (old ++ (combine (map fst new) blocks))) hm')%pred d' ]] \/
+                (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm')%pred d' ]] \/
               [[ r = false /\ length new > nr /\
                 (F * rep xp (Synced nr old) hm')%pred d' ]])
     XCRASH:bm'', hm'', exists cs' d',
               PermCacheDef.rep cs' d' bm'' * (
               [[ (F * rep xp (Synced nr old) hm'')%pred d' ]] \/
-              [[ (F * rep xp (Extended old (combine (map fst new) blocks)) hm'')%pred d' ]])
+              [[ (F * rep xp (Extended old new) hm'')%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -346,26 +338,12 @@ Hint Resolve rep_hashmap_subset.
 
     or_l. norm; [ cancel | intuition; pred_apply; norm ].
     eassign (padded_log dummy ++
-             padded_log(combine (map fst new)
-                 (extract_blocks bm (map ent_handle new)))).
+             padded_log new).
     cancel; auto.
     rewrite rep_synced_app_pimpl.
     eapply rep_hashmap_subset; eauto.
     intuition.
-    rewrite log_nonzero_app;
-    repeat rewrite log_nonzero_padded_log.
-    unfold entries_valid in *;
-    rewrite entry_valid_vals_nonzero with (l:= combine _ _); auto.
-    apply Forall_entry_valid_combine; auto.
     all: unfold padded_log in *; auto.
-    rewrite app_length;
-    repeat rewrite padded_log_length.
-    unfold rounded.
-    setoid_rewrite combine_length_eq.
-    rewrite map_length;
-    setoid_rewrite <- H13.
-    rewrite Nat.sub_add_distr; auto.
-    apply length_map_fst_extract_blocks_eq; auto.
     solve_hashmap_subset.
 
     step.

@@ -358,68 +358,6 @@ Proof.
   }
 Qed.
 
-Theorem hashhandle_ok:
-  forall i pr,
-  {!< F tb,
-  PERM: pr
-  PRE:bm, hm,
-    F * [[ bm i = Some tb ]]
-  POST:bm', hm',
-    RET:h     F * [[ bm' = bm ]] *
-              [[ hash_safe hm h (encode tb) ]] *
-              [[ h = hash_fwd (encode tb) ]] *
-              [[ hm' = upd_hashmap' hm h (encode tb) ]]
-  CRASH:bm'', hm'',
-    false_pred (* Can't crash *)           
-  >!} HashHandle i.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-  split_ors; cleanup; inv_exec_perm.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-Qed.
-
-Theorem hashhandle2_ok:
-  forall sz (buf2 : word sz) i pr,
-  {!< F tb,
-  PERM: pr
-  PRE:bm, hm,
-    F * [[ bm i = Some tb ]]
-  POST:bm', hm',
-    RET:h     F * [[ bm' = bm ]] *
-              [[ hash_safe hm h (Word.combine (encode tb) buf2) ]] *
-              [[ h = hash_fwd (Word.combine (encode tb) buf2) ]] *
-              [[ hm' = upd_hashmap' hm h (Word.combine (encode tb) buf2) ]]
-  CRASH:bm'', hm'',
-    false_pred (* Can't crash *)           
-  >!} HashHandle2 i buf2.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-  split_ors; cleanup; inv_exec_perm.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-Qed.
-
 Lemma ret_secure:
   forall T pr (v: T),
      {!< F,
@@ -580,8 +518,6 @@ Hint Extern 1 (corr2 _ _ (Bind (Seal _ _) _)) => apply seal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Unseal _) _)) => apply unseal_secure : prog.
 Hint Extern 1 ({{_|_}} Bind (Hash _) _) => apply hash_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (Hash2 _ _) _) => apply hash2_ok : prog.
-Hint Extern 1 ({{_|_}} Bind (HashHandle _) _) => apply hashhandle_ok : prog.
-Hint Extern 1 ({{_|_}} Bind (HashHandle2 _ _) _) => apply hashhandle2_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply auth_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.

@@ -136,7 +136,7 @@ Definition sync_now xp cs :=
      Ret cs.
 
 Definition init xp cs :=
-  h <- Hash default_encoding;;
+  h <- Hash default_valu;;
     hdr <- Seal Public (hdr2val (mk_header((0, 0), (0, 0), (h, h))));;
     cs <- PermCacheDef.write (LAHdr xp) hdr cs;;
     cs <- begin_sync cs;;
@@ -309,8 +309,8 @@ Theorem init_ok :
      POST:bm', hm', RET: cs
         exists d', PermCacheDef.rep cs d' bm'*
          [[ (F * rep xp (Synced ((0, 0), (0, 0),
-                                 (hash_fwd default_encoding,
-                                  hash_fwd default_encoding))))%pred d' ]]
+                                 (hash_fwd default_valu,
+                                  hash_fwd default_valu))))%pred d' ]]
      CRASH:bm'', hm'',
         any
     >} init xp cs.

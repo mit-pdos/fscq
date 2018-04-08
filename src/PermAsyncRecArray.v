@@ -564,7 +564,7 @@ Module AsyncRecArray (RA : RASig).
     apply roundup_ge; auto.
     apply Nat.mul_le_mono_r; omega.
   Qed.
-(*
+
   Lemma array_rep_synced_app_rev :
     forall xp start na a b,
     length a = na * items_per_val ->                                
@@ -577,27 +577,23 @@ Module AsyncRecArray (RA : RASig).
     try rewrite repeat_length; auto.
     cancel.
     erewrite ipack_app by eauto.
-    (* rewrite app_length, Nat.add_assoc. *)
-    
+    rewrite app_length, Nat.add_assoc.
+    repeat rewrite <- repeat_app.
     repeat rewrite combine_app, app_length; auto.
     rewrite <- repeat_app.
     rewrite combine_app, arrayN_app. repeat setoid_rewrite combine_length_eq; auto.
-    rewrite H0; repeat rewrite ipack_length; rewrite Nat.add_assoc.
+    repeat rewrite repeat_length;
+    repeat rewrite ipack_length.
     cancel.
-    simplen.
-    erewrite ipack_app in H1; eauto; repeat rewrite app_length in *.
-    omega.
-    erewrite ipack_app in H1; eauto; repeat rewrite app_length in *.
-    rewrite H0 in H1. apply plus_reg_l in H1; auto.
-    simplen.    
+    all: try apply repeat_length.
+    repeat rewrite repeat_length; auto.
+    rewrite repeat_length; auto.
     
-    apply (@items_valid_app xp start a b H2).
+    apply (@items_valid_app xp start a b H1).
     rewrite H, divup_mul by auto.
     eapply items_valid_app3; eauto.
-    erewrite ipack_app in H1; eauto; repeat rewrite app_length in *.
-    rewrite H0 in H1. apply plus_reg_l in H1; auto.
   Qed.
-*)
+
   
        
     Theorem read_all_ok :

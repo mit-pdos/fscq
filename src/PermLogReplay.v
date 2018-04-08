@@ -47,7 +47,7 @@ Module LogReplay.
   Definition replay_mem {A} (log : @generic_contents A) init : gen_map :=
     fold_left (fun m e => Map.add (fst e) (snd e) m) log init.
 
-  Definition replay_disk (log : contents) (m : diskstate) : diskstate:=
+  Definition replay_disk (log : list (addr * tagged_block)) (m : diskstate) : diskstate:=
     fold_left (fun m' e => updN m' (fst e) (snd e, nil)) log m.
 
   Definition map_merge {T} (m1 m2 : @gen_map T) :=
@@ -737,7 +737,7 @@ Module LogReplay.
     erewrite <- MapFacts.add_neq_o; eauto.
   Qed.
 
-  Definition ents_remove a (ents : contents) := 
+  Definition ents_remove a (ents : list (addr * tagged_block)) := 
     filter (fun e => if (addr_eq_dec (fst e) a) then false else true) ents.
 
 

@@ -18,29 +18,11 @@ Definition hash_list h values :=
     [[ hash_list_rep (rev items_prefix ++ l) hash hm' ]]
   OnCrash crash
   Begin
-    hash <- Hash2 (encode item) hash;;
+    hash <- Hash2 item hash;;
     Ret ^(hash)
   Rof ^(h);;
   Ret hash.
 
-
-Definition hash_list_handle h handles :=
-  let^ (hash) <- ForEach handle handles_rest handles
-  Blockmem bm
-  Hashmap hm'
-  Ghost [ l crash ]
-  Loopvar [ hash ]
-  Invariant
-    [[ handles_valid bm handles_rest ]] *
-    exists handles_prefix,
-    [[ handles = handles_prefix ++ handles_rest ]] *
-    [[ hash_list_rep (rev (extract_blocks bm handles_prefix) ++ l) hash hm' ]]
-  OnCrash crash
-  Begin
-    hash <- HashHandle2 handle hash;;
-    Ret ^(hash)
-  Rof ^(h);;
-  Ret hash.
 
 Definition seal_all (tl: list tag) (bl: list block):=
   let^ (l) <- ForN i < length bl
@@ -172,55 +154,7 @@ Proof.
     cancel.
     Unshelve.
     exact tt.
-Qed.
-
-Theorem hash_list_handle_ok :
-  forall h handles pr,
-  {!< F l,
-  PERM:pr   
-  PRE:bm, hm,
-      F * [[ hash_list_rep l h hm ]] *
-      [[ handles_valid bm handles ]]
-  POST:bm', hm', RET:h'
-    F * [[ hash_list_rep (rev (extract_blocks bm handles) ++ l) h' hm' ]]
-  CRASH:bm'', hm'',
-    false_pred (* Can't crash *)
-  >!} hash_list_handle h handles.
-Proof.
-  unfold hash_list_handle.
-  step.
-  rewrite app_nil_l; reflexivity.
-  rewrite app_nil_l; eassumption.
-  prestep; norml.
-  unfold handles_valid, handle_valid in H5; inversion H5; cleanup.
-  cancel; eauto.
-  step.
-  step.
-
-  (* Loop invariant. *)
-  - rewrite <- cons_nil_app; eauto.
-  - rewrite extract_blocks_app; simpl; cleanup.
-    rewrite rev_unit. cbn [app].
-    eapply hash_list_rep_subset; eauto.
-    econstructor; eauto using hash_list_rep_upd.
-    eauto using hashmap_get_fwd_safe_eq.
-  - solve_hashmap_subset.
-  
-  (* Loop invariant implies post-condition. *)
-  - unfold false_pred; cancel.
-  - step.
-    step.
-    rewrite app_nil_r.
-    eapply hash_list_rep_subset; eauto.
-    erewrite extract_blocks_subset_trans; eauto.
-    eapply forall_app_r in H3; auto.
-    solve_hashmap_subset.
-  - eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred.
-    unfold false_pred; cancel.
-    Unshelve.
-    exact tt.
-Qed.
-  
+Qed. 
 
 Theorem unseal_all_ok :
     forall hl pr,
@@ -295,7 +229,6 @@ Theorem unseal_all_ok :
 Hint Extern 1 ({{_|_}} Bind (seal_all _ _) _) => apply seal_all_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (unseal_all _) _) => apply unseal_all_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (hash_list _ _) _) => apply hash_list_ok : prog.
-Hint Extern 1 ({{_|_}} Bind (hash_list_handle _ _) _) => apply hash_list_handle_ok : prog.
 
 
 

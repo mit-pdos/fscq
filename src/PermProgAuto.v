@@ -48,10 +48,6 @@ Ltac inv_exec' :=
     inv_exec'' H
   | [ H: exec _ _ _ _ _ (Hash2 _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ (HashHandle _) _ _ |- _ ] =>
-    inv_exec'' H
-  | [ H: exec _ _ _ _ _ (HashHandle2 _ _) _ _ |- _ ] =>
-    inv_exec'' H
   | [ H: exec _ _ _ _ _ (Auth _) _ _ |- _ ] =>
     inv_exec'' H
   end.
