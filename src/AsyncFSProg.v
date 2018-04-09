@@ -62,10 +62,10 @@ Axiom one_user_per_tag:
 Inductive fbasic : Type -> Type :=
 | file_get_attr_f :
     INODE.IRec.Cache.key ->
-    fbasic (res (Rec.data (Rec.field_type
+    fbasic (Rec.data (Rec.field_type
             (Rec.FE [("owner", Rec.WordF 8);
                      ("unused", Rec.WordF 16)]
-                    "attr" INODE.attrtype))))
+                    "attr" INODE.attrtype)))
 
 | file_set_attr_f :
     INODE.IRec.Cache.key ->
@@ -74,7 +74,7 @@ Inductive fbasic : Type -> Type :=
 
 | file_get_sz_f :
     INODE.IRec.Cache.key ->
-    fbasic (res (word 64))
+    fbasic (word 64)
 
 | file_set_sz_f :
     INODE.IRec.Cache.key ->

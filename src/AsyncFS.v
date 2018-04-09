@@ -363,24 +363,13 @@ Module AFS.
   Definition file_get_attr fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
-    let^ (ams, p) <- authenticate fsxp inum ams;;
-    If (bool_dec p true) {
-       let^ (ams, attr) <- DIRTREE.getattr fsxp inum ams;;
-       ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
-       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (OK attr))
-    } else {
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (Err ENOPERMIT))
-    }.
+    let^ (ams, attr) <- DIRTREE.getattr fsxp inum ams;;
+    ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), attr).
 
   Definition file_get_sz fsxp inum ams :=
     let^ (ams, r) <- file_get_attr fsxp inum ams;;
-    match r with
-    | OK x =>
-      Ret ^(ams, OK (INODE.ABytes x))
-    | Err e =>
-      Ret ^(ams, Err e)
-    end.
+    Ret ^(ams, INODE.ABytes r).
 
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
@@ -836,13 +825,11 @@ Module AFS.
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-  POST:bm', hm', RET:^(mscs', rok)
+  POST:bm', hm', RET:^(mscs', r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
          [[ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]] *
-         (([[ isError rok ]] * [[ ~can_access pr (DFOwner f) ]]) \/
-           (exists r,
-            [[ rok = OK r ]] * [[ r = DFAttr f ]] * [[ can_access pr (DFOwner f) ]])) 
+         [[ r = DFAttr f ]] * [[ can_access pr (DFOwner f) ]]
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} file_get_attr fsxp inum mscs.
@@ -895,16 +882,12 @@ Module AFS.
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-  POST:bm', hm', RET:^(mscs', rok)
+  POST:bm', hm', RET:^(mscs', r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
          [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
          [[ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]] *
-         (([[ isError rok ]] *
-           [[ ~can_access pr (DFOwner f) ]]) \/
-          (exists r,
-           [[ rok = OK r ]] *
-           [[ r = INODE.ABytes (DFAttr f) ]] *
-           [[ can_access pr (DFOwner f) ]]))
+         [[ r = INODE.ABytes (DFAttr f) ]] *
+         [[ can_access pr (DFOwner f) ]]
   CRASH:bm', hm',
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
   >} file_get_sz fsxp inum mscs.
