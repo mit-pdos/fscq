@@ -413,11 +413,11 @@ Module AFS.
       let^ (ams, b) <- DIRTREE.read fsxp inum off ams;;
       b <- Unseal b;;
       ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (b, OK tt))
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (OK b))
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), ($0, Err ENOPERMIT))
-  }.
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (Err ENOPERMIT))
+    }.
 
   Definition file_truncate fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
@@ -610,7 +610,7 @@ Module AFS.
      *)
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;;
     (* Ret ^(mscs, free_blocks, free_inodes).  *)
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), (0, 0)).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), 0, 0).
 
   (* Recover theorems *)
 
@@ -976,15 +976,14 @@ Module AFS.
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
-    POST:bm', hm', RET:^(mscs', rok) let r:= fst rok in let ok:= snd rok in 
+    POST:bm', hm', RET:^(mscs', rok)
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           (([[ isError ok ]] *
-             [[ r = $0 ]] *
+           (([[ isError rok ]] *
              [[ ~can_access pr (DFOwner f) ]]) \/
-            ([[ ok = OK tt ]] *
-             [[ r = snd (fst vs) ]] *
+            (exists r,
+             [[ rok = OK r ]] *
              [[ can_access pr (DFOwner f) ]]))
     CRASH:bm', hm',
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
