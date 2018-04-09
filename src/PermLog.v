@@ -70,7 +70,9 @@ Module LOG.
 
   Definition rep_inner xp st ms sm bm hm :=
   let '(cm, mm) := (MSTxn ms, MSGLog ms) in
-  (match st with
+  ([[ Forall (fun t : tag => t = Public)
+            (map fst (extract_blocks bm (map snd (Map.elements cm)))) ]] *  
+  match st with
     | NoTxn ds =>
       [[ Map.Empty cm ]] *
       [[ sm_ds_valid sm ds ]] *
@@ -107,6 +109,8 @@ Module LOG.
   Definition recover_any xp F ds sm bm hm :=
     (exists ms, rep xp F (FlushingTxn ds) ms sm bm hm)%pred.
 
+Hint Resolve Forall_nil.
+  
   Theorem sync_invariant_rep : forall xp F st ms sm bm hm,
     sync_invariant F ->
     sync_invariant (rep xp F st ms sm bm hm).
@@ -153,8 +157,10 @@ Module LOG.
   Proof.
     unfold intact, recover_any, rep, rep_inner; cancel.
     apply GLog.cached_recover_any.
+    eauto.
     apply handles_valid_map_empty; eauto.
     apply GLog.cached_recover_any.
+    eauto.
     eauto.
     eapply sm_ds_valid_pushd_r; eauto.
   Qed.
@@ -164,6 +170,7 @@ Module LOG.
   Proof.
     unfold intact, recover_any, rep, rep_inner; cancel.
     apply GLog.cached_recover_any.
+    eauto.
     apply handles_valid_map_empty; eauto.
   Qed.
 
@@ -214,6 +221,20 @@ Module LOG.
     erewrite GLog.rep_hashmap_subset; eauto.
   Qed.
 
+  Lemma Forall_public_subset_trans:
+    forall A bm bm' (hl: list (A * handle)),
+      Forall (fun t : tag => t = Public)
+             (map fst (extract_blocks bm (map snd hl))) ->
+      handles_valid_list bm hl ->
+      bm c= bm' ->
+      Forall (fun t : tag => t = Public)
+             (map fst (extract_blocks bm' (map snd hl))).
+  Proof.
+    unfold handles_valid_list; intros.
+    rewrite Forall_forall in *; intros; eapply H.
+    erewrite extract_blocks_subset_trans; eauto.
+  Qed.
+  
   Lemma rep_inner_blockmem_subset : forall xp ms hm sm bm bm',
     bm c= bm'
     -> forall st, rep_inner xp st ms sm bm hm
@@ -223,8 +244,11 @@ Module LOG.
     destruct st; unfold rep_inner, GLog.would_recover_any.
     cancel.
     erewrite GLog.rep_blockmem_subset; eauto.
-    cancel.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; auto.
     erewrite GLog.rep_blockmem_subset; eauto.
+    cancel.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     unfold map_replay.
     erewrite <- extract_blocks_map_subset_trans; eauto.
@@ -232,11 +256,16 @@ Module LOG.
     eassign ds'; eassign n; eassign ms0; cancel.
     erewrite GLog.rep_blockmem_subset; eauto.
     intuition.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     cancel.
     erewrite GLog.rep_blockmem_subset; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; auto.
     cancel.
     erewrite GLog.rep_blockmem_subset; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; auto.
   Qed.
 
   Lemma rep_hashmap_subset : forall xp F ms hm sm bm hm',
@@ -277,6 +306,7 @@ Module LOG.
     rewrite GLog.cached_recovering.
     norm'l. cancel.
     eassign (mk_mstate hmap0 ms'); auto.
+    simpl; eauto.
     apply map_empty_hmap0.
   Qed.
 
@@ -514,7 +544,7 @@ Module LOG.
      sm_ds_valid_dssync list2nmem_inbound ptsto_upd'
      sm_ds_valid_dsupd_vecs sm_ds_valid_dssync_vecs.
 
-
+(*
   Definition init_ok :
     forall xp cs pr,
     {< F l d m,
@@ -549,7 +579,7 @@ Module LOG.
     autorewrite with lists. auto.
     solve_hashmap_subset.
   Qed.
-
+*)
 
   Theorem begin_ok:
     forall xp ms pr,
@@ -639,7 +669,8 @@ Module LOG.
     step.
     step.
     rewrite GLog.rep_hashmap_subset; eauto.
-    clear H16; eapply handles_valid_map_subset_trans; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    clear H17; eapply handles_valid_map_subset_trans; eauto.
     erewrite mapeq_elements; eauto.
     apply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
@@ -647,6 +678,7 @@ Module LOG.
     rewrite <- H1; cancel.
     eassign (mk_mstate (MSTxn ms_1) ms'_1).
     intuition; pred_apply; cancel; simpl; eauto.
+    simpl; eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
     erewrite mapeq_elements; eauto.
@@ -668,6 +700,50 @@ Module LOG.
     apply replay_disk_add.
   Qed.
 
+  Lemma in_exists_fst_snd:
+      forall (A B : Type) (l : list (A * B)) (y : B),
+      (exists x : A, In (x, y) l) ->
+      In y (map snd l).
+    Proof.
+      intros; destruct H.
+      apply in_fst_snd_map_split in H; intuition.
+    Qed.
+    
+    Lemma add_forall_public:
+      forall a h bm v hmap,
+        Forall (fun t : tag => t = Public)
+               (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
+        handles_valid_map bm hmap ->
+        bm h = Some v ->
+        fst v = Public ->
+        Forall (fun t : tag => t = Public)
+               (map fst (extract_blocks bm (map snd (Map.elements (Map.add a h hmap))))).
+    Proof.
+      intros.
+      rewrite Forall_forall; intros.
+      denote In as Hin; apply in_map_iff in Hin; cleanup.
+      erewrite <- extract_blocks_map_extract_blocks_eq in H4; eauto.
+      rewrite <- map_add_extract_blocks_mem_comm with (a:=(a, h)) in H4; eauto.
+      denote In as Hin; apply in_map_iff in Hin; cleanup.
+      destruct x; simpl in *.
+      eapply In_InA in H4.
+      apply Map.elements_2 in H4.
+      destruct (Nat.eq_dec k a); subst.
+      apply mapsto_add in H4; subst; auto.
+      apply Map.add_3 in H4.
+      rewrite Forall_forall in *.
+      apply H.
+      apply in_map.
+      erewrite <- extract_blocks_map_extract_blocks_eq; eauto.
+      eapply in_exists_fst_snd.
+      exists k.
+      apply InA_eqke_In.
+      apply Map.elements_1; auto.
+      unfold Map.E.eq; auto.
+      simpl; auto.
+      eapply handles_valid_map_add; eauto.
+    Qed.
+
   Theorem write_ok :
     forall xp ms a h pr,
     {< F Fm ds m sm v vs,
@@ -676,6 +752,7 @@ Module LOG.
       rep xp F (ActiveTxn ds m) ms sm bm hm *
       [[ a <> 0 ]] *
       [[ bm h = Some v ]] *
+      [[ fst v = Public ]] *
       [[[ m ::: (Fm * a |-> vs) ]]]
     POST:bm', hm', RET:ms'
       exists m', rep xp F (ActiveTxn ds m') ms' sm bm' hm' *
@@ -686,7 +763,8 @@ Module LOG.
   Proof.
     unfold write.
     hoare using dems.
-    rewrite GLog.rep_hashmap_subset; eauto.    
+    rewrite GLog.rep_hashmap_subset; eauto.
+    eapply add_forall_public; eauto.
     eapply handles_valid_map_add; eauto.
     apply map_valid_add; eauto.
     erewrite <- replay_disk_length.
@@ -698,6 +776,38 @@ Module LOG.
   Qed.
 
   Set Regular Subst Tactic.
+
+  Lemma remove_forall_public:
+      forall a bm hmap,
+        Forall (fun t : tag => t = Public)
+               (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
+        handles_valid_map bm hmap ->
+        Forall (fun t : tag => t = Public)
+               (map fst (extract_blocks bm (map snd (Map.elements (Map.remove a hmap))))).
+    Proof.
+      intros.
+      rewrite Forall_forall; intros.
+      denote In as Hin; apply in_map_iff in Hin; cleanup.
+      erewrite <- extract_blocks_map_extract_blocks_eq in H2; eauto.
+      rewrite extract_blocks_map_remove in H2; eauto.
+      denote In as Hin; apply in_map_iff in Hin; cleanup.
+      destruct x; simpl in *.
+      eapply In_InA in H2.
+      apply Map.elements_2 in H2.
+      destruct (Nat.eq_dec k a); subst.
+      apply MapFacts.remove_mapsto_iff in H2; intuition.
+      apply Map.remove_3 in H2.
+      rewrite Forall_forall in *.
+      apply H.
+      apply in_map.
+      erewrite <- extract_blocks_map_extract_blocks_eq; eauto.
+      eapply in_exists_fst_snd.
+      exists k.
+      apply InA_eqke_In.
+      apply Map.elements_1; auto.
+      unfold Map.E.eq; auto.
+      eapply handles_valid_map_remove; eauto.
+    Qed.
 
   Theorem dwrite_ok :
     forall xp ms a h pr,
@@ -724,9 +834,11 @@ Module LOG.
     step.
     safestep; subst.
     rewrite GLog.rep_hashmap_subset; eauto.
-
+    eapply remove_forall_public; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_subset_trans; eauto.
     apply handles_valid_map_remove.
-    clear H18; eapply handles_valid_map_subset_trans; eauto.
+    clear H19; eapply handles_valid_map_subset_trans; eauto.
     
     eapply map_valid_remove; autorewrite with lists; eauto.
     rewrite dsupd_latest_length; auto.
@@ -734,7 +846,7 @@ Module LOG.
 
     erewrite mapeq_elements.
     apply updN_replay_disk_remove_eq; eauto.
-    clear H18.
+    clear H19.
     eapply MapFacts.Equal_trans.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -744,7 +856,7 @@ Module LOG.
     eapply sm_ds_valid_pushd_latest.
     apply sm_ds_valid_dsupd.
     eapply list2nmem_inbound; eauto.
-    inversion H13; eauto.
+    inversion H14; eauto.
          
     rewrite dsupd_latest.    
     eapply list2nmem_updN; eauto.
@@ -757,11 +869,13 @@ Module LOG.
     solve_hashmap_subset.
     xcrash.
     or_l; cancel; xform_normr; cancel.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
 
     or_r; cancel.
     xform_normr; cancel.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
   Qed.
@@ -789,7 +903,8 @@ Module LOG.
     step.
     safestep; subst.
     rewrite GLog.rep_hashmap_subset; eauto.
-    clear H17; eapply handles_valid_map_subset_trans; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    clear H18; eapply handles_valid_map_subset_trans; eauto.
     rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
     rewrite dssync_latest; substl (ds!!) at 1.
     erewrite mapeq_elements.
@@ -798,6 +913,7 @@ Module LOG.
     all: eauto.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
     solve_hashmap_subset.
@@ -819,10 +935,14 @@ Module LOG.
     unfold flushall, recover_any.
     hoare.
     rewrite GLog.rep_hashmap_subset; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
   Qed.
 
@@ -843,10 +963,14 @@ Module LOG.
     unfold flushsync, recover_any.
     hoare.
     rewrite GLog.rep_hashmap_subset; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
   Qed.
 
@@ -866,10 +990,14 @@ Module LOG.
     unfold flushall_noop, recover_any.
     hoare.
     rewrite GLog.rep_hashmap_subset; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
   Qed.
 
@@ -889,10 +1017,14 @@ Module LOG.
     unfold flushsync_noop, recover_any.
     hoare.
     rewrite GLog.rep_hashmap_subset; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
+    eapply Forall_public_subset_trans; eauto.
+    eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
   Qed.
 
@@ -935,6 +1067,7 @@ Module LOG.
     unfold GLog.would_recover_any.
     cancel.
     constructor; auto.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
 
@@ -966,6 +1099,7 @@ Module LOG.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
 
@@ -978,8 +1112,7 @@ Module LOG.
     apply MapFacts.Equal_sym.
     clear H14;
     apply extract_blocks_map_subset_trans; eauto.
-    clear H14;
-    eapply handles_valid_map_subset_trans; eauto.
+    clear H15; eapply handles_valid_map_subset_trans; eauto.
     solve_hashmap_subset.
 
 
@@ -990,11 +1123,12 @@ Module LOG.
     unfold GLog.would_recover_any.
     cancel.
     constructor; auto.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
-
+ 
 
   (* a pseudo-commit for read-only transactions *)
   Theorem commit_ro_ok :
@@ -1130,6 +1264,7 @@ Module LOG.
     unfold GLog.recover_any_pred; cancel.
     or_l; cancel.
     eassign (mk_mstate hmap0 ms); eauto.
+    simpl; auto.
     auto.
     eapply sm_ds_valid_disk_unsynced.
     intuition simpl; eauto.
@@ -1139,6 +1274,7 @@ Module LOG.
     cancel.
     or_r; cancel.
     eassign (mk_mstate hmap0 ms); eauto.
+    simpl; auto.
     auto.
     eapply sm_ds_valid_disk_unsynced.
     intuition simpl; eauto.
@@ -1167,7 +1303,8 @@ Module LOG.
     cancel.
     or_r; cancel.
     eassign (mk_mstate hmap0 ms); eauto.
-    eauto.
+    simpl; eauto.
+    simpl; auto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
   Qed.
@@ -1224,6 +1361,7 @@ Module LOG.
     norm. cancel.
     or_l; cancel.
     eassign (mk_mstate hmap0 ms'); cancel.
+    simpl; auto.
     auto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
@@ -1233,6 +1371,7 @@ Module LOG.
     norm. cancel.
     or_r; cancel.
     eassign (mk_mstate hmap0 ms'); cancel.
+    simpl; auto.
     auto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
@@ -1453,6 +1592,7 @@ Module LOG.
     safecancel.
     eassign (mk_mstate (MSTxn x_1) dummy1).
     cancel. auto.
+    auto.
     eapply sm_ds_valid_synced.
     eapply sm_vs_valid_crash_xform; eauto.
     eauto.
@@ -1460,7 +1600,8 @@ Module LOG.
 
     safecancel.
     eassign (mk_mstate hmap0 dummy1).
-    cancel. auto.
+    cancel. simpl; auto.
+    auto.
     eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
     eauto. auto.
   Qed.
@@ -1491,14 +1632,15 @@ Module LOG.
       safecancel.
       or_l; cancel.
       eassign (mk_mstate (Map.empty handle) dummy1).
-      cancel. auto.
+      cancel. simpl; auto.
+      auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption. auto.
 
       safecancel.
       or_r; cancel.
       eassign (mk_mstate (Map.empty handle) dummy1).
-      cancel. auto.
+      cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption. auto.
 
@@ -1514,7 +1656,7 @@ Module LOG.
       safecancel.
       or_l; cancel.
       match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
-      cancel. auto.
+      cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption.
       eapply crash_xform_diskIs_trans; eauto.
@@ -1523,7 +1665,7 @@ Module LOG.
       safecancel.
       or_r; cancel.
       match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
-      cancel. auto.
+      cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption.
       eapply crash_xform_diskIs_trans; eauto.
@@ -1538,7 +1680,7 @@ Module LOG.
       safecancel.
       or_l; cancel.
       match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
-      cancel. auto.
+      cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption.
       eapply crash_xform_diskIs_trans; eauto.
@@ -1548,7 +1690,7 @@ Module LOG.
       safecancel.
       or_r; cancel.
       match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
-      cancel. auto.
+      cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto; eauto.
       eassumption.
       eapply crash_xform_diskIs_trans; eauto.
@@ -1601,12 +1743,16 @@ Module LOG.
   Proof.
     unfold read_array.
     hoare.
-
+    unfold rep_inner; cancel.
+    eauto.
     subst; pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto.
     cancel.
     erewrite GLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
+    unfold rep_inner in *.
+    destruct_lift H11.
+    rewrite <- H1; cancel; eauto.
   Qed.
 
 
@@ -1617,6 +1763,7 @@ Module LOG.
     PRE:bm, hm,
         rep xp F (ActiveTxn ds m) ms sm bm hm *
         [[ bm h = Some v ]] *
+        [[ fst v = Public ]] *
         [[[ m ::: Fm * arrayP a vs ]]] *
         [[ i < length vs /\ a <> 0 ]]
     POST:bm', hm', RET:ms' exists m',
@@ -1630,6 +1777,7 @@ Module LOG.
     prestep. norm. cancel.
     unfold rep_inner; intuition.
     pred_apply; cancel.
+    eauto.
     eauto.
     eauto.
     subst; pred_apply.
@@ -1731,10 +1879,11 @@ Module LOG.
     clear H30; eapply handles_valid_subset_trans; eauto.
     erewrite firstn_S_selN_expand.
     rewrite extract_blocks_app; simpl.
-    rewrite H29.
+    subst.
+    rewrite H31.
     erewrite selN_map; subst.
     erewrite <- extract_blocks_subset_trans.
-    rewrite H16; auto.
+    rewrite H17; auto.
     apply handles_valid_rev_eq; auto.
     auto.
     eapply lt_le_trans; eauto.
@@ -1835,7 +1984,8 @@ Module LOG.
     PERM:pr   
     PRE:bm, hm,
       rep xp F (ActiveTxn ds m) ms sm bm hm *
-      [[ handles_valid bm l ]] *  
+      [[ handles_valid bm l ]] *
+      [[ Forall (fun t : tag => t = Public) (map fst (extract_blocks bm l)) ]] * 
       [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ a <> 0 /\ length l <= length vs ]]
     POST:bm', hm', RET:ms'
@@ -1853,6 +2003,11 @@ Module LOG.
     safestep.
     unfold rep_inner; cancel. eauto.
     eapply extract_blocks_selN; eauto.
+    rewrite Forall_forall in H7; eapply H7.
+    apply in_map.
+    erewrite <- extract_blocks_subset_trans; [| |eauto]; eauto.
+    apply in_selN.
+    rewrite extract_blocks_length; auto.
     eauto.
     rewrite vsupsyn_range_length; auto.
     eapply lt_le_trans; eauto.
@@ -2234,6 +2389,7 @@ Module LOG.
     step.
     safestep; subst; try rewrite dssync_vecs_latest.
     erewrite GLog.rep_hashmap_subset; eauto.
+    eapply Forall_public_subset_trans; eauto.
     clear H17; eapply handles_valid_list_subset_trans; eauto.
     apply map_valid_vssync_vecs; auto.
     rewrite <- replay_disk_vssync_vecs_comm.
@@ -2242,7 +2398,7 @@ Module LOG.
     rewrite <- dssync_vecs_latest.
     apply sm_ds_valid_pushd_latest.
     apply sm_ds_valid_dssync_vecs.
-    inversion H12; eauto.
+    inversion H13; eauto.
     
     apply dsync_vssync_vecs_ok; auto.
     apply sm_sync_vecs_listpred_ptsto; eauto.
@@ -2250,8 +2406,9 @@ Module LOG.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_list_subset_trans; eauto.
-    inversion H12; eauto.
+    inversion H13; eauto.
     solve_hashmap_subset.
   Qed.
 
@@ -2323,7 +2480,8 @@ Module LOG.
     step.
     safestep; subst; try rewrite dssync_vecs_latest.
     erewrite GLog.rep_hashmap_subset; eauto.
-    clear H17; eapply handles_valid_list_subset_trans; eauto.
+    eapply Forall_public_subset_trans; eauto.
+    clear H18; eapply handles_valid_list_subset_trans; eauto.
     apply map_valid_vssync_vecs; auto.
     rewrite <- replay_disk_vssync_vecs_comm.
     f_equal; auto.
@@ -2331,7 +2489,7 @@ Module LOG.
     rewrite <- dssync_vecs_latest.
     apply sm_ds_valid_pushd_latest.
     apply sm_ds_valid_dssync_vecs.
-    inversion H13; eauto.
+    inversion H14; eauto.
     erewrite <- vssync_vecs_nop with (vs := ds!!).
     rewrite vssync_vecs_app', vssync_vecs_app_comm.
     apply dsync_vssync_vecs_ok; auto.
@@ -2349,8 +2507,9 @@ Module LOG.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
+    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_list_subset_trans; eauto.
-    inversion H13; eauto.
+    inversion H14; eauto.
     solve_hashmap_subset.
   Qed.
 
@@ -2364,7 +2523,7 @@ Module LOG.
     -> idempred xp F ds sm bm hm
        =p=> idempred xp F ds sm bm hm'.
   Proof.
-    unfold idempred, recover_any, after_crash, before_crash; cancel.
+    unfold idempred, recover_any, after_crash, before_crash; safecancel.
     rewrite rep_hashmap_subset by eauto.
     or_l; cancel.
     rewrite rep_inner_hashmap_subset in * by eauto.
