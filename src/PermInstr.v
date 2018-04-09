@@ -2,40 +2,6 @@ Require Import Pred Mem Word Arith List.
 Require Import FunctionalExtensionality.
 Require Export PermSepAuto.
 
-(*
-Lemma bind_secure:
-  forall T T' (p1: prog T) (p2: T -> prog T') pr d bm hm,
-    permission_secure d bm hm pr p1 ->
-    (forall d' bm' hm' tr tr' r,
-       exec pr tr d bm hm p1 (Finished d' bm' hm' r) tr' ->
-       permission_secure d' bm' hm' pr (p2 r)) ->
-    permission_secure d bm hm pr (Bind p1 p2).
-Proof.
-  unfold permission_secure; intros.
-  inv_exec_perm; cleanup.
-  {
-    specialize (trace_app H1); intros; cleanup.
-    specialize (H _ _ _ H1); cleanup.
-    specialize (trace_app H2); intros; cleanup.
-    specialize (H0 _ _ _ _ _ _ H1); cleanup.
-    rewrite <- app_assoc in H2;
-    specialize (H0 _ _ _ H2); cleanup.
-    apply trace_secure_app; auto.
-  }
-  {
-    destruct H1.
-    specialize (H _ _ _ H1); cleanup; auto.
-    cleanup.
-    specialize (trace_app H1); intros; cleanup.
-    specialize (H _ _ _ H1); cleanup.
-    specialize (trace_app H2); intros; cleanup.
-    specialize (H0 _ _ _ _ _ _ H1); cleanup.
-    rewrite <- app_assoc in H2;
-    specialize (H0 _ _ _ H2); cleanup.
-    apply trace_secure_app; auto.
-  }
-Qed.
-*)
 Hint Resolve HS_nil.
 
 Definition false_pred {AT AEQ V}:= lift_empty(False)(AT:=AT)(AEQ:=AEQ)(V:=V).
@@ -88,24 +54,18 @@ Proof.
     pred_apply; cancel; eauto.
     or_r; cancel.
   }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_l; cancel.
+  }
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    or_r; cancel.
+  }
 Qed.
-
-
-(*
-Lemma read_return_deterministic:
-  forall pr tr d bm hm d1 bm1 hm1 r1 tr1 d2 bm2 hm2 r2 tr2 a,
-    exec pr tr d bm hm (Read a) (Finished d1 bm1 hm1 r1) tr1 ->
-    exec pr tr d bm hm (Read a) (Finished d2 bm2 hm2 r2) tr2 ->
-    r1 = r2.
-Proof.
-  intros.
-  repeat inv_exec_perm; cleanup; simpl in *.
-  destruct (handle_eq_dec r1 r2); subst; auto.
-  apply not_eq in n; intuition.
-  specialize H11 with (1:=H); cleanup; congruence.
-  specialize H10 with (1:=H); cleanup; congruence.
-Qed.
-*)
 
 Lemma read_secure:
   forall pr a,
@@ -148,6 +108,17 @@ Proof.
     split_ors; cleanup; try congruence.
     do 2 eexists; intuition eauto.
     inv_exec_perm; cleanup; auto.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    apply ptsto_subset_valid' in H; cleanup; eauto.
+  }
+  split_ors; cleanup.
+  {
+    inv_exec_perm.
+    apply ptsto_subset_valid' in H; cleanup; congruence.
+  }
+  {
+    repeat inv_exec_perm; simpl in *; cleanup.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     apply ptsto_subset_valid' in H; cleanup; eauto.
@@ -208,6 +179,21 @@ Proof.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
   }
+  split_ors; cleanup.
+  {
+    inv_exec_perm; cleanup.
+    apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
+    intuition congruence.
+  }
+  {
+    inv_exec_perm; cleanup.
+    edestruct H4; eauto.
+    apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H.
+    pred_apply; cancel; eauto.
+    unfold vsmerge; simpl;
+    apply ListUtils.incl_cons2; auto.
+  }
 Qed.
 
 
@@ -247,6 +233,17 @@ Proof.
     split_ors; cleanup; try congruence.
     split.
     right; do 3 eexists; intuition.
+    rewrite ListUtils.cons_app, app_assoc in H0.
+    cleanup.
+    apply trace_secure_app; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
+    rewrite H0 in H1. 
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
     rewrite ListUtils.cons_app, app_assoc in H0.
     cleanup.
     apply trace_secure_app; simpl; auto.
@@ -293,6 +290,17 @@ Proof.
     cleanup.
     apply trace_secure_app; simpl; auto.
   }
+  split_ors; cleanup; inv_exec_perm; try congruence.
+  {
+    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
+    rewrite H0 in H1. 
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split; auto.
+    rewrite ListUtils.cons_app, app_assoc in H0.
+    cleanup.
+    apply trace_secure_app; simpl; auto.
+  }
 Qed.
 
 Theorem hash_ok:
@@ -313,6 +321,12 @@ Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    solve_hashmap_subset.
+  }
+  split_ors; cleanup; inv_exec_perm.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -356,6 +370,12 @@ Proof.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
   }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    solve_hashmap_subset.
+  }
 Qed.
 
 Lemma ret_secure:
@@ -383,6 +403,11 @@ Proof.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
   }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+  }
 Qed.
 
 Lemma ret_secure':
@@ -401,6 +426,11 @@ Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+  }
+  split_ors; cleanup; inv_exec_perm.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -460,6 +490,14 @@ Proof.
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
   }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    repeat rewrite <- sep_star_assoc.
+    repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
+    apply sync_xform_pred_apply; auto.
+  }
 Qed.
 
 Lemma sync_secure':
@@ -504,6 +542,14 @@ Proof.
     apply sync_xform_pred_apply; auto.
     split_ors; cleanup; try congruence.
     inv_exec_perm; cleanup; auto.
+    edestruct H4; eauto.
+    repeat rewrite <- sep_star_assoc.
+    repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
+    apply sync_xform_pred_apply; auto.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).

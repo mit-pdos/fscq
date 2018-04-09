@@ -65,12 +65,18 @@ Lemma bind_sep:
      (exists tr1 r1 d1 bm1 hm1,
         exec pr tr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
         exec pr tr1 d1 bm1 hm1 (p2 r1) ret tr'))
+   | Failed d' bm' hm' =>
+    (exec pr tr d bm hm p1 (Failed d' bm' hm') tr' \/
+     (exists tr1 r1 d1 bm1 hm1,
+        exec pr tr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
+        exec pr tr1 d1 bm1 hm1 (p2 r1) ret tr'))
     end.
 Proof.
   intros.
   inv_exec'' H; eauto.
   destruct ret.
   do 4 eexists; eauto.
+  right; do 4 eexists; eauto.
   right; do 4 eexists; eauto.
 Qed.
 

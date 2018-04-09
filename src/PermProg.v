@@ -42,7 +42,8 @@ Hint Resolve can_access_public.
 
 Inductive result {T: Type} : Type :=
 | Finished : tagged_disk -> block_mem -> hashmap -> T -> result
-| Crashed : tagged_disk -> block_mem -> hashmap -> result.
+| Crashed : tagged_disk -> block_mem -> hashmap -> result
+| Failed : tagged_disk -> block_mem -> hashmap -> result.
 
 Inductive prog : Type -> Type :=
 | Read : addr -> prog handle
@@ -61,11 +62,6 @@ Inductive exec:
   forall T, perm -> trace -> tagged_disk ->
        block_mem -> hashmap -> prog T ->  @result T -> trace -> Prop :=
 | ExecRead    : forall pr d bm hm a i tb tbs tr,
-                  (** I need to enforce a deterministic handle return. 
-                      Read now returns smallest empth handle.
-                      It makes things much nicer. 
-                  (forall n, n < i -> exists tb, bm n = Some tb) -> 
-                  Nevermind. False alarm. **)
                   bm i = None ->
                   d a = Some (tb, tbs) ->
                   exec pr tr d bm hm (Read a) (Finished d (upd bm i tb) hm i) tr                 
@@ -124,7 +120,23 @@ Inductive exec:
 
 | CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d d' bm bm' hm hm' tr tr',
                 exec pr tr d bm hm p1 (@Crashed T d' bm' hm') tr' ->
-                exec pr tr d bm hm (Bind p1 p2) (@Crashed T' d' bm' hm') tr'.
+                exec pr tr d bm hm (Bind p1 p2) (@Crashed T' d' bm' hm') tr'
+                     
+| FailRead    : forall pr d bm hm a tr,
+                  d a = None ->
+                  exec pr tr d bm hm (Read a) (Failed d bm hm) tr
+
+| FailWrite    : forall pr d bm hm a i tr,
+                  bm i = None \/ d a = None ->
+                  exec pr tr d bm hm (Write a i) (Failed d bm hm) tr
+                    
+| FailUnseal : forall pr d bm hm i tr,
+                 bm i = None ->
+                 exec pr tr d bm hm (Unseal i) (Failed d bm hm) tr
+
+| FailBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d d' bm bm' hm hm' tr tr',
+                exec pr tr d bm hm p1 (@Failed T d' bm' hm') tr' ->
+                exec pr tr d bm hm (Bind p1 p2) (@Failed T' d' bm' hm') tr'.
 
 
 
