@@ -160,7 +160,7 @@ run_dcode s (YieldTillReady a) = {-# SCC "dcode-yield-till-ready" #-} do
   return $ unsafeCoerce ()
 run_dcode ds (Bind p1 p2) = {-# SCC "dcode-bind" #-} do
   r1 <- run_dcode ds p1
-  r2 <- run_dcode ds (p2 r1)
+  r2 <- run_dcode ds ({-# SCC "dcode-bind-app" #-} p2 r1)
   return r2
 
 newState :: Disk.DiskState -> IO ConcurState
