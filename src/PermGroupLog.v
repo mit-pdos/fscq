@@ -1301,13 +1301,13 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
 
   
   (************* correctness theorems *)
-(*
   Definition init_ok :
     forall xp cs pr,
     {< F l d m,
     PERM: pr   
     PRE:bm, hm,  PermCacheDef.rep cs d bm*
           [[ (F * arrayS (DataStart xp) m * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) l ]] *       
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
              length m = (LogHeader xp) - (DataStart xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\
@@ -1326,12 +1326,13 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     step.
     rewrite nthd_0; simpl.
     rewrite MLog.rep_hashmap_subset; eauto.
+    apply Forall_nil.
     apply vmap_match_nil.
     unfold handles_valid_nested; apply Forall_nil.
     apply dset_match_nil.
     solve_hashmap_subset.
   Qed.
- *)
+
   
   Theorem read_ok:
     forall xp ms a pr,

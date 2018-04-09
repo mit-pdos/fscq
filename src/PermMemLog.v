@@ -848,7 +848,7 @@ Qed.
 
   Section UnfoldProof1.
   Local Hint Unfold rep map_replay: hoare_unfold.
-(*
+
   Definition init_ok :
     forall xp cs pr,
     {< F l m d,
@@ -857,6 +857,7 @@ Qed.
           PermCacheDef.rep cs d bm *
           [[ (F * arrayS (DataStart xp) m *
               arrayS (LogHeader xp) l)%pred d ]] *
+          [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) l ]] *
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
              length m = (LogHeader xp) - (DataStart xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\
@@ -895,7 +896,7 @@ Qed.
     apply bmap0.
   Qed.
 
-*)
+
   Theorem read_ok:
     forall xp ms a pr,
     {< F d na vs,

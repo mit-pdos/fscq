@@ -544,7 +544,7 @@ Hint Resolve Forall_nil.
      sm_ds_valid_dssync list2nmem_inbound ptsto_upd'
      sm_ds_valid_dsupd_vecs sm_ds_valid_dssync_vecs.
 
-(*
+
   Definition init_ok :
     forall xp cs pr,
     {< F l d m,
@@ -552,6 +552,7 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
           PermCacheDef.rep cs d bm *
           [[ (F * arrayS (DataStart xp) m * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) l ]] *
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
              length m = (LogHeader xp) - (DataStart xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\
@@ -579,7 +580,7 @@ Hint Resolve Forall_nil.
     autorewrite with lists. auto.
     solve_hashmap_subset.
   Qed.
-*)
+
 
   Theorem begin_ok:
     forall xp ms pr,

@@ -1655,7 +1655,6 @@ Lemma combine_eq_r:
     solve_hashmap_subset.
   Qed.
 
-  (** There is a problem in here because we don't know the underlying tags 
   Definition init_ok :
     forall xp cs pr,
     {< F l d,
@@ -1663,6 +1662,7 @@ Lemma combine_eq_r:
     PRE:bm, hm,
       PermCacheDef.rep cs d bm *
       [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+      [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) l ]] *
       [[ length l = (1 + LogDescLen xp + LogLen xp) /\
          LogDescriptor xp = LogHeader xp + 1 /\
          LogData xp = LogDescriptor xp + LogDescLen xp /\
@@ -1687,14 +1687,17 @@ Lemma combine_eq_r:
     eassign F; cancel.
     rewrite firstn_length_l; auto.
     setoid_rewrite skipn_length with (n := 1); omega.
+    eapply forall_firstn; destruct l; auto.
+    inversion H7; eauto.
     setoid_rewrite skipn_skipn with (m := 1).
     rewrite skipn_length; omega.
+    eapply forall_skipn; destruct l; auto.
+    inversion H7; eauto.
     auto.
     step.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.
-   **)
   
   (* XXX:
     Ideally XCRASH can contain only Truncated state, whose crash_xform 

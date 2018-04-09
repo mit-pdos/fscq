@@ -201,7 +201,7 @@ Hint Resolve rep_hashmap_subset.
   Qed.
 
   End UnifyProof.
-(*
+
   Definition init_ok :
     forall xp cs pr,
     {< F l d,
@@ -209,6 +209,7 @@ Hint Resolve rep_hashmap_subset.
     PRE:bm, hm,
           PermCacheDef.rep cs d bm *
           [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) l ]] *
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\
              LogData xp = LogDescriptor xp + LogDescLen xp /\
@@ -238,7 +239,7 @@ Hint Resolve rep_hashmap_subset.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.
-*)
+
   Local Hint Resolve DescDefs.items_per_val_gt_0.
 
   Lemma extend_length_ok' : forall B (l new: @generic_contents B) def,
