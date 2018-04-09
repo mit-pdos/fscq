@@ -116,7 +116,7 @@ Lemma read_secure:
        POST: bm', hm',
           RET: i
           (a|+> tbs * [[ bm i = None ]] *
-           [[ bm' = upd (AEQ:= PeanoNat.Nat.eq_dec) bm i (fst tbs) ]])%pred
+           [[ bm' = upd bm i (fst tbs) ]])%pred
        CRASH: bm',  hm',
           a|+>tbs
      >} Read a.
@@ -220,7 +220,7 @@ Lemma seal_secure:
        POST: bm', hm',
           RET : i
           F * [[ bm i = None ]] *
-          [[ bm' = upd (AEQ:= PeanoNat.Nat.eq_dec) bm i (t, b)]]
+          [[ bm' = upd bm i (t, b)]]
        CRASH: bm'', hm'',
           false_pred (* Can't crash *)
      >!} Seal t b.

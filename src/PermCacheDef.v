@@ -206,7 +206,7 @@ Definition write_range a l cs :=
       [[ (F * arrayN ptsto_subset a (vsupd_range vs (firstn i vls)))%pred d' ]]
     OnCrash crash
     Begin
-      cs <- write_array a i (selN l i 0) cs;;
+      cs <- write_array a i (selN l i dummy_handle) cs;;
       Ret ^(cs, tt)
     Rof ^(cs, tt);;
   Ret cs.
@@ -236,7 +236,7 @@ Definition sync_range a nr cs :=
       [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn i (extract_blocks_list bm l))))%pred d' ]]
     OnCrash crash
     Begin
-      let v := selN l i (0, 0) in
+      let v := selN l i (0, dummy_handle) in
       cs <- write_array a (fst v) (snd v) cs;;
       Ret ^(cs, tt)
     Rof ^(cs, tt);;

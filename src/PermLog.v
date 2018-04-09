@@ -1835,7 +1835,7 @@ Hint Resolve Forall_nil.
       [[[ m ::: (Fm * arrayP a (vsupsyn_range vs (firstn i (extract_blocks bm l)))) ]]]
     OnCrash crash
     Begin
-      ms <- write_array xp a i (selN l i 0) ms;;
+      ms <- write_array xp a i (selN l i dummy_handle) ms;;
       Ret ^(ms)
     Rof ^(ms);;
     Ret ms.

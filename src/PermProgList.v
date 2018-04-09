@@ -51,7 +51,7 @@ Definition unseal_all (hl: list handle) :=
   OnCrash
     crash
   Begin
-    tb <- Unseal (selN hl i 0);;
+    tb <- Unseal (selN hl i dummy_handle);;
     Ret ^(tb::tbl)
   Rof ^((nil: list block));;
   Ret (rev bl).

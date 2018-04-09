@@ -11,7 +11,8 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Definition perm := option nat. (* None can only read public blocks *)
-Definition handle := nat.
+Parameter handle : Type.
+Parameter dummy_handle : handle.
 
 
 Definition perm_dec : forall (p p': perm), {p = p'}+{p <> p'}.
@@ -30,7 +31,7 @@ Definition op_dec : forall (o o': op), {o = o'}+{o <> o'}.
 Defined.
 
 Definition trace := list op.
-Definition handle_eq_dec:= Nat.eq_dec.
+Parameter handle_eq_dec : forall (x y : handle), {x=y}+{x<>y}.
 Definition tagged_disk:= rawdisk.
 Definition block_mem:= @Mem.mem handle handle_eq_dec tagged_block.
 

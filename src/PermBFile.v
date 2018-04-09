@@ -452,7 +452,7 @@ Module BFILE.
         match ret with
         | Err e => Ret ^(ms, ret)
         | OK _ =>
-          let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i 0) ms;;
+          let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i dummy_handle) ms;;
           Ret ^(ms, ok)
         end
       Rof ^(ms0, OK tt);;
