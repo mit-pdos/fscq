@@ -4,8 +4,8 @@ Require Import ProofIrrelevance.
 Set Implicit Arguments.
 
   Definition prog_equiv T : prog T -> prog T -> Prop :=
-    fun p1 p2 => forall pr tr d bm hm tr' out,
-        exec pr tr d bm hm p1 out tr' <-> exec pr tr d bm hm p2 out tr'.
+    fun p1 p2 => forall pr d bm hm tr' out,
+        exec pr d bm hm p1 out tr' <-> exec pr d bm hm p2 out tr'.
 
   Arguments prog_equiv {T} _ _.
 
@@ -15,51 +15,50 @@ Set Implicit Arguments.
       Bind (Bind p1 p2) p3 ~= Bind p1 (fun x => Bind (p2 x) p3).
   Proof.
     split; intros.
-    inv_exec_perm.
-    {
-      inv_exec_perm.
+    - repeat inv_exec_perm; cleanup.
+      rewrite List.app_assoc.
       repeat econstructor; eauto.
-    }
-    split_ors.
-    {
+
+      split_ors.
       inv_exec_perm; cleanup.
       split_ors; cleanup.
-      eapply CrashBind; auto.
-      
+      eapply CrashBind; auto.      
       econstructor; eauto.
       eapply CrashBind; eauto.
-    }
+      inv_exec_perm.
+      rewrite List.app_assoc.
+      repeat econstructor; eauto.
     
-    {
-      inv_exec_perm.
-      repeat econstructor; eauto.
-    }
-  
-    inv_exec_perm.
-    {
-      inv_exec_perm.
-      repeat econstructor; eauto.
-    }
-    {
       split_ors.
-      repeat eapply CrashBind; eauto.
-      inv_exec_perm.
-      split_ors.
-      eapply CrashBind;
+      inv_exec_perm; cleanup.
+      split_ors; cleanup.      
       econstructor; eauto.
+      eapply ExecBind; eauto.  
       repeat econstructor; eauto.
-    }
+      inv_exec_perm; cleanup.
+      rewrite List.app_assoc.
+      repeat (eapply ExecBind; eauto).
+    
+    - repeat inv_exec_perm; cleanup.
+      rewrite <- List.app_assoc.
+      repeat (eapply ExecBind; eauto).
+      
+      split_ors.
+      repeat econstructor; eauto.
+      inv_exec_perm.
+      split_ors.
+      eapply CrashBind; eauto.
+      econstructor; eauto.
+      rewrite <- List.app_assoc.
+      repeat econstructor; eauto.
+
+      split_ors.
+      repeat econstructor; eauto.
+      inv_exec_perm.
+      split_ors.
+      eapply FailBind; eauto.
+      econstructor; eauto.
+      rewrite <- List.app_assoc.
+      repeat econstructor; eauto.
   Qed.
 
-  Theorem security_equivalence:
-    forall T pr d bm hm (p1 p2: prog T),
-      permission_secure pr d bm hm p1 ->
-      prog_equiv p2 p1 ->
-      permission_secure pr d bm hm p2.
-  Proof.
-    unfold permission_secure; intros.
-    match goal with
-    | [ H: _ ~= _ |- _ ] =>
-      edestruct H; eauto
-    end.
-  Qed.
