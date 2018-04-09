@@ -110,7 +110,7 @@ Definition sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm:=
   Qed.
 
   Lemma file_get_attr_post:
-    forall Fr Fm Ftop pathname f ds sm tree mscs fsxp ilist frees d bm hm pr inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (Rec.data INODE.attrtype * res unit * unit))),
+    forall Fr Fm Ftop pathname f ds sm tree mscs fsxp ilist frees d bm hm pr inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (res (Rec.data INODE.attrtype) * unit))),
       
   (sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm *
    [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
@@ -118,13 +118,13 @@ Definition sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm:=
   exec pr tr d bm hm (file_get_attr fsxp inum mscs)
        (Finished d' bm' hm' rx) tr' ->
   let mscs':= fst rx in
-  let r := fst (fst (snd rx)) in
-  let ok := snd (fst (snd rx)) in
+  let rok := fst (snd rx) in
   (sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs' bm' hm' *
    [[ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]] *
-   (([[ isError ok ]] *
-     [[ r = INODE.iattr0 ]] * [[ ~can_access pr (DFOwner f) ]]) \/
-    ([[ ok = OK tt ]] *
+   (([[ isError rok ]] *
+     [[ ~can_access pr (DFOwner f) ]]) \/
+    (exists r,
+     [[ rok = OK r ]] *
      [[ r = DFAttr f ]] * [[ can_access pr (DFOwner f) ]])))%pred d'.
   Proof.
     unfold sys_rep, corr2; intros.
@@ -178,7 +178,7 @@ Definition sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm:=
 
 
 Lemma file_get_sz_post:
-    forall Fr Fm Ftop pathname f ds sm tree mscs fsxp ilist frees d bm hm pr inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (word 64 * res unit * unit))),
+    forall Fr Fm Ftop pathname f ds sm tree mscs fsxp ilist frees d bm hm pr inum tr d' bm' hm' tr' (rx: (BFILE.memstate * (res (word 64) * unit))),
       
   (sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs bm hm *
    [[ find_subtree pathname tree = Some (TreeFile inum f) ]])%pred d ->
@@ -187,14 +187,13 @@ Lemma file_get_sz_post:
        (Finished d' bm' hm' rx) tr' ->
   
   let mscs':= fst rx in
-  let r := fst (fst (snd rx)) in
-  let ok := snd (fst (snd rx)) in
+  let rok := fst (snd rx) in
   (sys_rep Fr Fm Ftop fsxp ds sm tree ilist frees mscs' bm' hm' *
    [[ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]] *
-   (([[ isError ok ]] *
-     [[ r = INODE.ABytes (INODE.iattr0) ]] *
+   (([[ isError rok ]] *
      [[ ~can_access pr (DFOwner f) ]]) \/
-    ([[ ok = OK tt ]] *
+    (exists r,
+     [[ rok = OK r ]] *
      [[ r = INODE.ABytes (DFAttr f) ]] *
      [[ can_access pr (DFOwner f) ]])))%pred d'.
   Proof.

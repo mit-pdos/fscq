@@ -62,12 +62,11 @@ Axiom one_user_per_tag:
 Inductive fbasic : Type -> Type :=
 | file_get_attr_f :
     INODE.IRec.Cache.key ->
-    fbasic (Rec.data (Rec.field_type
+    fbasic (res (Rec.data (Rec.field_type
             (Rec.FE [("owner", Rec.WordF 8);
                      ("unused", Rec.WordF 16)]
-                    "attr" INODE.attrtype)) *
-           res unit)
-                           
+                    "attr" INODE.attrtype))))
+
 | file_set_attr_f :
     INODE.IRec.Cache.key ->
     INODE.iattrin ->
@@ -75,7 +74,7 @@ Inductive fbasic : Type -> Type :=
 
 | file_get_sz_f :
     INODE.IRec.Cache.key ->
-    fbasic (word 64 * res unit)
+    fbasic (res (word 64))
 
 | file_set_sz_f :
     INODE.IRec.Cache.key ->
@@ -179,11 +178,7 @@ Inductive exec_fbasic:
 
 | FExecGetAttr    :
     forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
-      (r: Rec.data
-          (Rec.field_type
-          (Rec.FE [("owner", Rec.WordF 8);
-                   ("unused", Rec.WordF 16)]
-                  "attr" INODE.attrtype)) * res unit) d' bm' hm',
+      r d' bm' hm',
       exec pr tr d bm hm (file_get_attr fsxp inum ams)
            (Finished d' bm' hm' ^(ams', r)) tr' ->
       exec_fbasic pr tr d bm hm fsxp ams (file_get_attr_f inum)
@@ -199,7 +194,7 @@ Inductive exec_fbasic:
 
 | FExecGetSz    :
     forall pr d bm hm tr tr' fsxp inum (ams ams': BFILE.memstate)
-      (r: word 64 * res unit) d' bm' hm',
+      r d' bm' hm',
       exec pr tr d bm hm (file_get_sz fsxp inum ams)
            (Finished d' bm' hm' ^(ams', r)) tr' ->
       exec_fbasic pr tr d bm hm fsxp ams (file_get_sz_f inum)
