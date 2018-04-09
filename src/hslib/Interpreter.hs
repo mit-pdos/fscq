@@ -7,6 +7,7 @@ import Data.Word
 -- import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Digest.CRC32 as CRC32
 -- import System.CPUTime.Rdtsc
+import PermAsyncDisk
 
 -- import qualified System.Exit
 -- import qualified System.Random
@@ -119,8 +120,14 @@ run_dcode _ (Seal _ b) = do
 run_dcode _ (Unseal h) = do
   return $ unsafeCoerce h
 run_dcode _ (Auth t) = do
-  -- XXX
-  return $ unsafeCoerce True
+  case t of
+    Public ->
+      return $ unsafeCoerce True
+    Private uid ->
+      if uid == 123 then
+        return $ unsafeCoerce True
+      else
+        return $ unsafeCoerce False
 
 run :: Disk.DiskState -> PermProg.Coq_prog a -> IO a
 run ds p = run_dcode ds p

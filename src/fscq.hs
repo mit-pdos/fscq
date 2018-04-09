@@ -12,23 +12,23 @@ import System.Posix.IO
 import System.FilePath.Posix
 import Word
 import Disk
-import Prog
+import PermProg
 import Fuse
 import Data.IORef
 import Interpreter as I
 import qualified AsyncFS
 import FSLayout
-import qualified DirName
+import qualified PermDirName
 import System.Environment
-import Inode
+import PermInode
 import Control.Concurrent.MVar
 import Text.Printf
 import qualified System.Process
 import qualified Data.List
-import AsyncDisk
+import PermAsyncDisk
 import Control.Monad
 import qualified Errno
-import qualified BFile
+import qualified PermBFile
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -38,6 +38,11 @@ verboseFuse = False
 
 cachesize :: Integer
 cachesize = 100000
+
+-- XXX eventually fix this up
+-- for now, all data tags are 123
+theUID :: Coq_tag
+theUID = Private 123
 
 -- This controls whether HFuse will use upcalls (FUSE threads entering GHC runtime)
 -- or downcalls (separate FUSE threads using a queue, and GHC accessing this queue
@@ -66,8 +71,8 @@ nInodeBitmaps = 1
 nDescrBlocks :: Integer
 nDescrBlocks = 64
 
-type MSCS = BFile.BFILE__Coq_memstate
-type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
+type MSCS = PermBFile.BFILE__Coq_memstate
+type FSprog a = (MSCS -> PermProg.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
 doFScall ds ref f = do
@@ -190,6 +195,7 @@ errnoToPosix Errno.ENOSPCBLOCK  = eNOSPC
 errnoToPosix Errno.ENOSPCINODE  = eNOSPC
 errnoToPosix Errno.ENOTEMPTY    = eNOTEMPTY
 errnoToPosix Errno.EINVAL       = eINVAL
+errnoToPosix Errno.ENOPERMIT    = ePERM
 
 instance Show Errno.Errno where
   show Errno.ELOGOVERFLOW = "ELOGOVERFLOW"
@@ -203,6 +209,7 @@ instance Show Errno.Errno where
   show Errno.ENOSPCINODE  = "ENOSPCINODE"
   show Errno.ENOTEMPTY    = "ENOTEMPTY"
   show Errno.EINVAL       = "EINVAL"
+  show Errno.ENOPERMIT    = "EPERM"
 
 instance Show t => Show (Errno.Coq_res t) where
   show (Errno.OK v) = show v
@@ -354,7 +361,7 @@ fscqCreateFile fr m_fsxp (_:path) _ _ _
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (dnum, isdir)
       | isdir -> do
-        (r, ()) <- fr $ AsyncFS._AFS__create fsxp dnum filename
+        (r, ()) <- fr $ AsyncFS._AFS__create fsxp dnum filename theUID
         debugMore r
         case r of
           Errno.Err e -> return $ Left $ errnoToPosix e
@@ -373,8 +380,8 @@ fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
     Errno.OK (dnum, isdir)
       | isdir -> do
         (r, ()) <- case entrytype of
-          RegularFile -> fr $ AsyncFS._AFS__create fsxp dnum filename
-          Socket -> fr $ AsyncFS._AFS__mksock fsxp dnum filename
+          RegularFile -> fr $ AsyncFS._AFS__create fsxp dnum filename theUID
+          Socket -> fr $ AsyncFS._AFS__mksock fsxp dnum filename theUID
           _ -> return (Errno.Err Errno.EINVAL, ())
         debugMore r
         case r of
@@ -459,8 +466,12 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
 
   where
     read_piece fsxp (BR blk off count) = do
-      (wbuf, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
-      return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) $ w2bs wbuf 4096
+      (ok_wbuf, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
+      case ok_wbuf of
+        Errno.OK wbuf ->
+          return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) $ w2bs wbuf 4096
+        Errno.Err _ ->
+          error "PERMISSION ERROR"
 
 fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
@@ -527,10 +538,14 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
               --      the original end of the file.
               return $ BS.replicate (fromIntegral blocksize) 0
             else do
-              (block, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
-              case block of
-                W w -> i2bs w 4096
-                WBS bs' -> return bs'
+              (ok_block, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
+              case ok_block of
+                Errno.OK block ->
+                  case block of
+                    W w -> i2bs w 4096
+                    WBS bs' -> return bs'
+                Errno.Err _ ->
+                  error "PERMISSION ERROR"
           return $ BS.append (BS.take (fromIntegral off) old_bs)
                  $ BS.append piece_bs
                  $ BS.drop (fromIntegral $ off + cnt) old_bs
@@ -571,7 +586,7 @@ fscqGetFileSystemStats fr m_fsxp _ = withMVar m_fsxp $ \fsxp -> do
     , fsStatBlocksAvailable = fromIntegral $ freeblocks
     , fsStatFileCount = 8 * 4096 * (fromIntegral $ inode_bitmaps)
     , fsStatFilesFree = fromIntegral $ freeinodes
-    , fsStatMaxNameLength = fromIntegral DirName._SDIR__namelen
+    , fsStatMaxNameLength = fromIntegral PermDirName._SDIR__namelen
     }
 
 fscqSetFileTimes :: FilePath -> EpochTime -> EpochTime -> IO Errno
