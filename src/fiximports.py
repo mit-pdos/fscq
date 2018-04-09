@@ -13,6 +13,7 @@ import qualified Evict
 import qualified Profile
 import qualified Data.Map.Strict
 import qualified Data.Set
+import qualified Word
 """
 
 filename = sys.argv[2]
