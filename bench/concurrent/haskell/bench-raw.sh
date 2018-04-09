@@ -190,8 +190,7 @@ run_fusebench() {
     for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
       setup_cores $par
-      args=( --n=$par --system=$system
-             "$@" )
+      args=( --n=$par --system=$system "$@" )
       fusebench "${args[@]}" --fs-N=1  \
           | addfield "seq_fs"
       cp ~/fscq/bench/concurrent/disk.img /tmp/
