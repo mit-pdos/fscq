@@ -2,7 +2,6 @@ Require Import Word.
 Require Import Omega.
 Require Import Bool.
 Require Import Pred.
-Require Import PermDirCache.
 Require Import PermGenSepN.
 Require Import ListPred.
 
@@ -16,7 +15,8 @@ Require Import Errno.
 
 Require Import Lia.
 Require Import FunctionalExtensionality.
-
+(*
+Require Import PermDirCache.
 Require Import DirTree.
 Require Import SuperBlock.
 Require Import PermInode.
@@ -29,12 +29,13 @@ Require Import DirTreeSafe.
 Require Import DirTreeNames.
 Require Import DirTree.
 Require Import AsyncFS AsyncFSPost AsyncFSProg.
-
+*)
 Require Import FMapAVL.
 Require Import FMapFacts.
 Import ListNotations.
 
 Set Implicit Arguments.
+(*
 Import DIRTREE.
 Import AFS.
 
@@ -45,6 +46,7 @@ Notation MSIAllocC := BFILE.MSIAllocC.
 Notation MSICache := BFILE.MSICache.
 Notation MSAlloc := BFILE.MSAlloc.
 Notation MSDBlocks := BFILE.MSDBlocks.
+ *)
 
 Definition equivalent_for tag (d1 d2: rawdisk) :=
   forall a,
@@ -72,91 +74,6 @@ Definition same_except tag (d1 d2: rawdisk) :=
        Forall2 (fun tb1 tb2 => fst tb1 = fst tb2) (vsmerge vs1) (vsmerge vs2) /\
        Forall2 (fun tb1 tb2 => fst tb1 <> tag -> snd tb1 = snd tb2) (vsmerge vs1) (vsmerge vs2)).
 
-Theorem extend_exec_equivalent_finished:
-  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm d1' bm1' hm' tr' (r: T),
-    (Fr * [[ sync_invariant Fr ]] *
-    PermCacheDef.rep cs d bm *
-    [[ (F * rep xp (Synced old) hm)%pred d ]] *
-    [[ handles_valid bm (map ent_handle new) ]] *
-    [[ blocks = extract_blocks bm (map ent_handle new) ]] *
-    [[ Forall entry_valid new /\ sync_invariant F ]])%pred d1 ->
-    exec pr tr d1 bm1 hm (extend xp new cs) (Finished d1' bm1' hm' r) (tr'++tr) ->
-    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
-    trace_secure pr tr' ->
-    exists d2' bm2', exec pr tr d2 bm2 hm p (Finished d2' bm2' hm' r) (tr'++tr) /\
-    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
-    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
-
-
-
-
-
-
-
-
-
-
-
-
-(* I am doing something ugly in here. Type of the input 'log' has type list (addr * handle)
-   and blocks of the "real log" is sitting in the block memory *)
-Definition extend xp (log: input_contents) cs :=
-    (* Synced *)
-    let^ (cs, nr) <- PermDiskLogHdr.read xp cs;;
-    let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
-    let '(nndesc, nndata) := ((ndesc_list log), (ndata_log log)) in
-    If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
-       (* I need to seal addr blocks to write them back *)
-      ahl <- seal_all (addr_tags nndesc)
-             (DescDefs.ipack (map ent_addr log));;
-      h_addr <- hash_list_handle h_addr ahl;;
-      (* Need a special hash instruction to hash from handle *)
-      h_valu <- hash_list_handle h_valu (map ent_handle log);;
-      cs <- Desc.write_aligned xp ndesc ahl cs;;
-      (* I need handles to be supplied to me to write data blocks back *) 
-      cs <- Data.write_aligned xp ndata (map ent_handle log) cs;;
-      cs <- PermDiskLogHdr.write xp ((ndesc, ndata),
-                          (ndesc + nndesc, ndata + nndata),
-                          (h_addr, h_valu)) cs;;
-      (* Extended *)
-      cs <- PermCacheDef.begin_sync cs;;
-      cs <- Desc.sync_aligned xp ndesc nndesc cs;;
-      cs <- Data.sync_aligned xp ndata nndata cs;;
-      cs <- PermDiskLogHdr.sync xp cs;;
-      cs <- PermCacheDef.end_sync cs;;
-      (* Synced *)
-      Ret ^(cs, true)
-    } else {
-      Ret ^(cs, false)
-    }.
-
-
-
-
-Definition extend_ok :
-    forall xp (new: input_contents) cs pr,
-    {< F old d blocks,
-    PERM:pr   
-    PRE:bm, hm,
-          PermCacheDef.rep cs d bm *
-          [[ (F * rep xp (Synced old) hm)%pred d ]] *
-          [[ handles_valid bm (map ent_handle new) ]] *
-          [[ blocks = extract_blocks bm (map ent_handle new) ]] *
-          [[ Forall entry_valid new /\ sync_invariant F ]]
-    POST:bm', hm', RET: ^(cs, r) exists d',
-          PermCacheDef.rep cs d' bm' * 
-          ([[ r = true /\
-              (F * rep xp (Synced ((padded_log old) ++
-                                   (combine (map fst new) blocks))) hm')%pred d' ]] \/
-           [[ r = false /\ length ((padded_log old) ++
-                                   (combine (map fst new) blocks)) > LogLen xp /\
-             (F * rep xp (Synced old) hm')%pred d' ]])
-    XCRASH:bm'', hm_crash, exists cs' d',
-          PermCacheDef.rep cs' d' bm'' *
-          ([[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
-          [[ (F * rep xp (Extended old (combine (map fst new) blocks)) hm_crash)%pred d' ]])
-    >} extend xp new cs.
 
 (*
 Definition permission_secure_fbasic {T} d bm hm fsxp mscs pr (p: fbasic T) :=
@@ -201,36 +118,12 @@ Fixpoint only_reads_permitted {T} pr (p: prog T) d bm hm:=
   | _ => True
   end.
 *)
+
+
+
+
+
 Axiom can_access_dec: forall pr t, {can_access pr t}+{~can_access pr t}.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 Ltac rewriteall :=
   match goal with
@@ -247,13 +140,13 @@ Ltac cleanup:= try split_match; try logic_clean; subst; try rewriteall;
                try clear_dup; try some_subst;
                try clear_trace; subst; try rewriteall.
 
-Theorem exec_equivalent_finished_blockmem:
-  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm d1' bm1' hm' tr' (r: T),
-    exec pr tr d1 bm1 hm p (Finished d1' bm1' hm' r) (tr'++tr) ->
+Theorem exec_equivalent_finished:
+  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm d1' bm1' hm' (r: T),
+    exec pr d1 bm1 hm p (Finished d1' bm1' hm' r) tr ->
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
-    trace_secure pr tr' ->
-    exists d2' bm2', exec pr tr d2 bm2 hm p (Finished d2' bm2' hm' r) (tr'++tr) /\
+    trace_secure pr tr ->
+    exists d2' bm2', exec pr d2 bm2 hm p (Finished d2' bm2' hm' r) tr /\
     (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
 Proof.
@@ -386,116 +279,42 @@ Proof.
     unfold vsmerge in *; simpl in *; eauto.
     inversion H6; subst; auto.
   }
-  admit. (** handle hashing **)
-  admit. (** handle hashing **)
   { (** Bind **)
-    apply trace_app in H0 as Hx; cleanup.
-    apply trace_app in H4 as Hx; cleanup.
     apply trace_secure_app_split in H3; cleanup.
     specialize IHp with (1:=H0)(2:=H1)(3:=H2)(4:=H5); cleanup.
-    rewrite <- app_assoc in H4.
     specialize H with (1:=H4)(2:=H7)(3:=H8)(4:=H3); cleanup.
-    rewrite app_assoc in H.
     repeat eexists; [econstructor; eauto| |]; eauto.
-  }
-Admitted.
-
-
-
-
-Theorem exec_equivalent_finished:
-  forall T (p: prog T) pr tr d1 d2 bm hm d1' bm' hm' tr' (r: T),
-    exec pr tr d1 bm hm p (Finished d1' bm' hm' r) tr' ->
-    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    only_reads_permitted pr p d1 bm hm ->
-    exists d2', exec pr tr d2 bm hm p (Finished d2' bm' hm' r) tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
-Proof.
-  induction p; intros;  
-  inv_exec_perm; cleanup;
-  try solve [ eexists; split; [econstructor; eauto|]; eauto ].
-  { (** Read **)
-    unfold only_reads_permitted in *.
-    destruct tb.
-    specialize H1 with (1:= H14); simpl in *.    
-    specialize H0 with (1:= H1) as Hx;
-    specialize (Hx n); intuition; cleanup; try congruence.
-    destruct x0, t0.
-    unfold vsmerge in *; simpl in *.
-    inversion H3; inversion H4; simpl in *; subst.
-    intuition; cleanup.
-    eexists; split; [econstructor; eauto|]; eauto.
-  }
-
-  { (** Write **)
-    specialize H0 with (1:= can_access_public pr) as Hx;
-    specialize (Hx n); intuition; cleanup; try congruence.
-    destruct x0; repeat eexists; [econstructor; eauto|].
-    unfold equivalent_for in *; intros.
-    specialize H0 with (1:= H) as Hx.
-    specialize (Hx a); intuition; cleanup; try congruence.
-    destruct (Nat.eq_dec n a); subst; cleanup; try congruence.
-    left; repeat rewrite Mem.upd_ne; eauto.
-    destruct (Nat.eq_dec n a); subst; cleanup; try congruence.
-    right; repeat rewrite Mem.upd_eq; eauto.
-    repeat eexists; eauto.
-    unfold vsmerge in *; simpl in *; eauto.
-    unfold vsmerge in *; simpl in *; eauto.
-    right; repeat rewrite Mem.upd_ne; eauto.
-    repeat eexists; eauto.
-  }
-
-  { (** Sync **)
-    repeat eexists; [econstructor; eauto|].
-    unfold equivalent_for in *; intros.
-    specialize H0 with (1:= H) as Hx.
-    unfold sync_mem.
-    specialize (Hx a); intuition; cleanup; eauto.
-    destruct x, x0.
-    right; repeat eexists; eauto.
-    unfold vsmerge in *; simpl in *; eauto.
-    inversion H4; subst.
-    econstructor; eauto.
-    unfold vsmerge in *; simpl in *; eauto.
-    inversion H5; subst.
-    econstructor; eauto.
-  }
-  
-  { (** Bind **)
-    destruct H2.
-    specialize IHp with (1:=H0)(2:=H1)(3:=H2); cleanup.
-    specialize H4 with (1:=H0).
-    specialize H with (1:=H3)(2:=H6)(3:=H4); cleanup.
-    eexists; split; [econstructor; eauto|]; eauto.
   }
 Qed.
 
+
 Theorem exec_equivalent_crashed:
-  forall T (p: prog T) pr tr d1 d2 bm hm d1' bm' hm' tr',
-    exec pr tr d1 bm hm p (Crashed d1' bm' hm') tr' ->
+  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm d1' bm1' hm',
+    exec pr d1 bm1 hm p (Crashed d1' bm1' hm') tr ->
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    only_reads_permitted pr p d1 bm hm ->
-    exists d2', exec pr tr d2 bm hm p (Crashed d2' bm' hm') tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    trace_secure pr tr ->
+    exists d2' bm2', exec pr d2 bm2 hm p (Crashed d2' bm2' hm') tr /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
 Proof.
   induction p; intros;  
-  inv_exec_perm; cleanup;
-  try solve [ eexists; split; [econstructor; eauto|]; eauto ].
+  inv_exec_perm; cleanup; simpl in *;
+  try solve [repeat eexists; [econstructor; eauto|eauto|eauto] ].
   { (** Bind **)
-    inversion H2.
     intuition.
     { (** p Crashed **)
-      specialize IHp with (1:=H5)(2:=H1)(3:=H3); cleanup.
-      eexists; split.
+      specialize IHp with (1:=H4)(2:=H1)(3:=H2)(4:=H3); cleanup.
+      do 2 eexists; split.
       eapply CrashBind; eauto.
       eauto.
     }
     { (** p0 crashed **)
       cleanup.
-      specialize H4 with (1:=H0).
+      apply trace_secure_app_split in H3; cleanup.
       eapply exec_equivalent_finished in H0; eauto; cleanup.
-      specialize H with (1:=H5)(2:=H6)(3:=H4); cleanup.
-      eexists; split.
+      specialize H with (1:=H4)(2:=H6)(3:=H7)(4:=H3); cleanup.
+      do 2 eexists; split.
       econstructor; eauto.
       eauto.
     }
@@ -503,42 +322,116 @@ Proof.
 Qed.
 
 
+Theorem exec_equivalent_failed:
+  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm d1' bm1' hm',
+    exec pr d1 bm1 hm p (Failed d1' bm1' hm') tr ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    trace_secure pr tr ->
+    exists d2' bm2', exec pr d2 bm2 hm p (Failed d2' bm2' hm') tr /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
+Proof.
+  induction p; intros;  
+  inv_exec_perm; cleanup; simpl in *;
+  try solve [repeat eexists; [econstructor; eauto|eauto|eauto] ].
+  { (** Read **)
+    specialize H0 with (1:= can_access_public pr) as Hx;
+    specialize (Hx n); intuition; cleanup; try congruence.
+    do 2 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+  }
+  { (** Write **)
+    intuition.
+    { (** bm1 h = None **)
+      specialize H1 with (1:= can_access_public pr) as Hx;
+      specialize (Hx h); intuition; cleanup; try congruence.
+      do 2 eexists; split.
+      econstructor; eauto.
+      split; eauto.
+    }
+    { (** d1 n = None **)
+      specialize H0 with (1:= can_access_public pr) as Hx;
+      specialize (Hx n); intuition; cleanup; try congruence.
+      do 2 eexists; split.
+      econstructor; eauto.
+      split; eauto.
+    }
+  }
+  { (** Unseal **)
+    specialize H1 with (1:= can_access_public pr) as Hx;
+    specialize (Hx h); intuition; cleanup; try congruence.
+    do 2 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+  }
+  { (** Bind **)
+    intuition.
+    { (** p Failed **)
+      specialize IHp with (1:=H4)(2:=H1)(3:=H2)(4:=H3); cleanup.
+      do 2 eexists; split.
+      eapply FailBind; eauto.
+      eauto.
+    }
+    { (** p0 Failed **)
+      cleanup.
+      apply trace_secure_app_split in H3; cleanup.
+      eapply exec_equivalent_finished in H0; eauto; cleanup.
+      specialize H with (1:=H4)(2:=H6)(3:=H7)(4:=H3); cleanup.
+      do 2 eexists; split.
+      econstructor; eauto.
+      eauto.
+    }
+  }
+Qed.
 
 
 Theorem exec_equivalent:
-  forall T (p: prog T) pr tr d1 d2 bm hm (out: @result T) tr',
-    exec pr tr d1 bm hm p out tr' ->
+  forall T (p: prog T) pr tr d1 d2 bm1 bm2 hm (out: @result T),
+    exec pr d1 bm1 hm p out tr ->
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    only_reads_permitted pr p d1 bm hm ->
-    (exists d1' bm' hm' (r: T), out = Finished d1' bm' hm' r /\
-     exists d2', exec pr tr d2 bm hm p (Finished d2' bm' hm' r) tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')) \/
-    (exists d1' bm' hm', out = Crashed d1' bm' hm' /\
-     exists d2', exec pr tr d2 bm hm p (Crashed d2' bm' hm') tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')).
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    trace_secure pr tr ->
+    (exists d1' bm1' hm' (r: T), out = Finished d1' bm1' hm' r /\
+     exists d2' bm2', exec pr d2 bm2 hm p (Finished d2' bm2' hm' r) tr /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
+    (exists d1' bm1' hm', out = Crashed d1' bm1' hm' /\
+     exists d2' bm2', exec pr d2 bm2 hm p (Crashed d2' bm2' hm') tr /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
+    (exists d1' bm1' hm', out = Failed d1' bm1' hm' /\
+     exists d2' bm2', exec pr d2 bm2 hm p (Failed d2' bm2' hm') tr /\
+     (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')).
 Proof.
   intros.
   destruct out.
   left; do 4 eexists; split; eauto.
   eapply exec_equivalent_finished; eauto.
-  right; do 3 eexists; split; eauto.
+  right; left; do 3 eexists; split; eauto.
   eapply exec_equivalent_crashed; eauto.
+  right; right; do 3 eexists; split; eauto.
+  eapply exec_equivalent_failed; eauto.
 Qed.
 
 
-
 Theorem exec_equivalent_rfinished:
-  forall T T' (p1: prog T) (p2: prog T') pr tr d1 d2 bm hm d1' bm' hm' tr' (r: T),
-    exec_recover pr tr d1 bm hm p1 p2 (RFinished T' d1' bm' hm' r) tr' ->
+  forall T T' (p1: prog T) (p2: prog T') pr tr d1 d2 bm1 bm2 hm d1' bm1' hm' (r: T),
+    exec_recover pr d1 bm1 hm p1 p2 (RFinished T' d1' bm1' hm' r) tr ->
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    only_reads_permitted pr p1 d1 bm hm ->
-    exists d2', exec_recover pr tr d2 bm hm p1 p2 (RFinished T' d2' bm' hm' r) tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    trace_secure pr tr ->
+    exists d2' bm2',
+      exec_recover pr d2 bm2 hm p1 p2 (RFinished T' d2' bm2' hm' r) tr /\
+      (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+      (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
 Proof.
   intros.
   inversion H; subst.
   eapply exec_equivalent_finished in H14; eauto; cleanup.
-  exists x; split; eauto.
+  exists x, x0; split; eauto.
   econstructor; eauto.
 Qed.
 
@@ -587,7 +480,6 @@ Proof.
 Qed.
 
 
-
 Lemma possible_crash_equivalent:
   forall d1 cd1 d2 pr,
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
@@ -615,10 +507,12 @@ Proof.
     specialize (H0 a); intuition.
     specialize H with (1:= can_access_public pr) as Hx;
     specialize (Hx a); intuition; cleanup; try congruence.
-    left; auto.
+    left; rewrite H2; auto.
     cleanup.
+    rewrite H0, H1.
     specialize H with (1:= can_access_public pr) as Hx;
     specialize (Hx a); intuition; cleanup; try congruence.
+    rewrite H4.
     right; do 2 eexists; eauto.
     repeat split; eauto.
     apply in_selN.
@@ -628,10 +522,11 @@ Proof.
 
   {
     specialize (H0 a); intuition.
-    cleanup; left; eauto.
+    cleanup; left; rewrite H3; eauto.
     cleanup.
     specialize H with (1:=H1) as Hx;
     specialize (Hx a); intuition; cleanup; try congruence.
+    rewrite H0, H2, H5.
     right; do 2 eexists; eauto.
     repeat split; eauto.
     eapply forall2_selN with
@@ -640,7 +535,6 @@ Proof.
     erewrite index_in_selN in H6; eauto.
     simpl; auto.
     eapply index_in_lt; eauto.
-
     
     eapply forall2_selN with
         (n:= (index tagged_block_dec x0 (vsmerge x1))) in H7.
@@ -654,62 +548,52 @@ Proof.
   all: exact tagged_block0.
 Qed.
 
-
-
 Theorem exec_equivalent_recover:
-  forall T T' (p1: prog T) (p2: prog T') pr tr d1 bm hm tr' out,
-    exec_recover pr tr d1 bm hm p1 p2 out tr' ->
-    only_reads_permitted pr p1 d1 bm hm ->
-    (forall tr d1 bm hm d1' bm' hm' tr' cd1',
-       exec pr tr d1 bm hm p1 (Crashed d1' bm' hm') tr' ->
-       possible_crash d1' cd1' ->
-       only_reads_permitted pr p2 cd1' bm' hm') ->
-    (forall tr d1 bm hm d1' bm' hm' tr' cd1',
-       exec pr tr d1 bm hm p2 (Crashed d1' bm' hm') tr' ->
-       possible_crash d1' cd1' ->
-       only_reads_permitted pr p2 cd1' bm' hm') ->
-    forall d2,
+  forall T T' (p1: prog T) (p2: prog T') pr tr d1 bm1 hm out,
+    exec_recover pr d1 bm1 hm p1 p2 out tr ->
+    trace_secure pr tr ->
+    forall d2 bm2,
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    (exists d1' bm' hm' r, out = RFinished T' d1' bm' hm' r /\
-     exists d2', exec_recover pr tr d2 bm hm p1 p2 (RFinished T' d2' bm' hm' r) tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')) \/
-    (exists d1' bm' hm' r, out = RRecovered T d1' bm' hm' r /\
-     exists d2', exec_recover pr tr d2 bm hm p1 p2 (RRecovered T d2' bm' hm' r) tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2')).
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    (exists d1' bm1' hm' r, out = RFinished T' d1' bm1' hm' r /\
+     exists d2' bm2', exec_recover pr d2 bm2 hm p1 p2 (RFinished T' d2' bm2' hm' r) tr /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
+    (exists d1' bm1' hm' r, out = RRecovered T d1' bm1' hm' r /\
+     exists d2' bm2', exec_recover pr d2 bm2 hm p1 p2 (RRecovered T d2' bm2' hm' r) tr /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')).
 Proof.
   induction 1; intros.
   { (** p1 Finished **)
-    eapply exec_equivalent_finished in H; eauto; cleanup.
     left; do 4 eexists; split; eauto.
-    exists x; split; eauto.
+    eapply exec_equivalent_rfinished; eauto.
     econstructor; eauto.
   }
   { (** p1 Crashed then p2 Finished **)
     clear IHexec_recover.
-    right; do 4 eexists; split; eauto.
-    specialize H3 with (1:=H)(2:=H0).
+    inversion H1; subst; clear H1.
+    apply trace_secure_app_split in H2; cleanup.
     eapply exec_equivalent_crashed in H; eauto; cleanup.
-    eapply possible_crash_equivalent in H6 as Hx; eauto; cleanup.
-    inversion H1; subst.
-    eapply exec_equivalent_finished in H21 as Hp2; eauto; cleanup.
-    eexists; split; eauto.
+    eapply possible_crash_equivalent in H5 as Hx; eauto; cleanup.
+    eapply exec_equivalent_finished in H16 as Hp2; eauto; cleanup.
+    right; do 4 eexists; split; eauto.
+    do 2 eexists; split; eauto.
     econstructor; eauto.
     econstructor; eauto.
   }
   { (** p1 Crashed then p2 Crashed **)
     right; do 4 eexists; split; eauto.
-    specialize H3 with (1:=H)(2:=H0).
-    specialize IHexec_recover with (1:=H3)(2:=H4)(3:=H4).
+    apply trace_secure_app_split in H2; cleanup.
     eapply exec_equivalent_crashed in H; eauto; cleanup.
     eapply possible_crash_equivalent in H6 as Hx; eauto; cleanup.
-    specialize IHexec_recover with (1:=H8).
+    specialize IHexec_recover with (1:=H2)(2:=H9)(3:=H7).
     intuition; cleanup; try congruence.
-    inversion H9; subst; clear H9.
-    eexists; split; eauto.
+    inversion H10; subst; clear H10.
+    do 2 eexists; split; eauto.
     eapply XRCrashedRecovered; eauto.
   }
 Qed.
-
 
 
 Definition fbasic_to_prog {T} fsxp ams (fp: fbasic T): prog (BFILE.memstate * (T * unit)) :=
