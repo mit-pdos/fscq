@@ -420,7 +420,7 @@ Module CacheOneDir.
   
   Lemma sdir_rep_cache : forall f c m,
     SDIR.rep f m ->
-    SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c |} m.
+    SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c; BFILE.BFOwner := BFILE.BFOwner f |} m.
   Proof.
     unfold SDIR.rep, DIR.rep, DIR.Dent.rep, DIR.Dent.items_valid, DIR.Dent.RA.RALen; eauto.
   Qed.

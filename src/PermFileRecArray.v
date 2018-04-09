@@ -354,7 +354,8 @@ Module FileRecArray (FRA : FileRASig).
     items_valid f items ->
     items_valid {| BFILE.BFData := BFILE.BFData f ++ [((tag, block2val (updN block0 0 e)), [])];
                    BFILE.BFAttr := BFILE.BFAttr f;
-                   BFILE.BFCache := BFILE.BFCache f |}  (items ++ (updN block0 0 e)).
+                   BFILE.BFCache := BFILE.BFCache f;
+                   BFILE.BFOwner := BFILE.BFOwner f |}  (items ++ (updN block0 0 e)).
   Proof.
     unfold items_valid, RALen in *; intuition; simpl.
     repeat rewrite app_length; simpl.
