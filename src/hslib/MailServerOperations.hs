@@ -8,19 +8,20 @@ module MailServerOperations
   , cleanupMailboxes
   ) where
 
-import Control.Concurrent (threadDelay)
-import Control.Monad (when, void)
-import Control.Monad.Reader
-import Data.IORef
-import Options
-import System.Random
+import           Control.Concurrent (threadDelay)
+import           Control.Monad (when, unless, void)
+import           Control.Monad.Reader
+import           Data.IORef
+import qualified Data.Set as Set
+import           Options
+import           System.Random
 
-import System.FilePath.Posix
-import System.Posix.Files (ownerModes)
-import System.Posix.IO (defaultFileFlags)
+import           System.FilePath.Posix
+import           System.Posix.Files (ownerModes)
+import           System.Posix.IO (defaultFileFlags)
 
-import GenericFs
-import Fuse
+import           GenericFs
+import           Fuse
 
 data Config = Config
   { readPerc :: Double
@@ -58,14 +59,14 @@ userDir uid = do
 
 data UserState = UserState
   { lastMessage :: IORef Int
-  , lastRead :: IORef Int }
+  , readIds :: IORef (Set.Set String) }
 
 initUser :: Filesystem fh -> Int -> App UserState
 initUser Filesystem{fuseOps=fs} uid = do
   dir <- userDir uid
   liftIO $ do
     _ <- fuseCreateDirectory fs dir ownerModes
-    pure UserState <*> newIORef 0 <*> newIORef 0
+    pure UserState <*> newIORef 0 <*> newIORef Set.empty
 
 getFreshMessage :: UserState -> IO Int
 getFreshMessage s = do
@@ -89,11 +90,11 @@ readMessage Filesystem{fuseOps=fs} p = do
     fuseRead fs p fh 4096 off
   fuseRelease fs p fh
 
-getLastRead :: UserState -> IO Int
-getLastRead = readIORef . lastRead
+getHaveRead :: UserState -> String -> IO Bool
+getHaveRead s mId = Set.member mId <$> readIORef (readIds s)
 
-updateLastRead :: UserState -> Int -> IO ()
-updateLastRead s = writeIORef (lastRead s)
+updateRead :: UserState -> String -> IO ()
+updateRead s mId = modifyIORef' (readIds s) (Set.insert mId)
 
 mailRead :: Filesystem fh -> UserState -> User -> App ()
 mailRead fs@Filesystem{fuseOps} s uid = do
@@ -102,15 +103,15 @@ mailRead fs@Filesystem{fuseOps} s uid = do
   liftIO $ do
     dnum <- getResult d =<< fuseOpenDirectory fuseOps d
     allEntries <- getResult d =<< fuseReadDirectory fuseOps d dnum
-    lastId <- getLastRead s
-    forM_ allEntries $ \(p, _) -> do
+    forM_ (zip [1..] allEntries) $ \(index, (p, _)) -> do
       let fname = takeFileName p
-      let mId = read fname
-      when ( fname /= "." && fname /= ".." &&
-            -- always read some messages
-            mId > lastId-alwaysReadMessages) $ do
-        readMessage fs $ joinPath [d, p]
-        updateLastRead s mId
+      when ( fname /= "." && fname /= ".." ) $ do
+        haveRead <- if index < alwaysReadMessages
+          then return False
+          else getHaveRead s fname
+        unless haveRead $ do
+          readMessage fs $ joinPath [d, p]
+          updateRead s fname
     fuseRelease fuseOps d dnum
 
 randomDecisions :: Double -> IO [Bool]
