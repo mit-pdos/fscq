@@ -137,7 +137,7 @@ Proof.
   apply Forall_forall; intros.
   eapply Forall_forall in H; eauto.
   destruct H.
-  destruct (addr_eq_dec a x).
+  destruct (handle_eq_dec a x).
   eexists; apply upd_eq; eauto.
   eexists; rewrite upd_ne; eauto.
 Qed.
@@ -711,7 +711,7 @@ Proof.
   eexists; apply In_fst_InA; simpl; eauto.
   rewrite extract_blocks_length; auto.
   repeat rewrite map_length; auto.
-  Unshelve. eauto.
+  Unshelve. exact dummy_handle.
 Qed.
 
 Lemma KIn_extract_blocks_list2:
