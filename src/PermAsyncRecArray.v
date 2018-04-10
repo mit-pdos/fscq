@@ -497,7 +497,6 @@ Module AsyncRecArray (RA : RASig).
     intuition.
     rewrite firstn_length.
     rewrite Nat.min_l; omega.
-    Search Forall firstn.
     apply forall_firstn; auto.
     rewrite skipn_length; omega.
     apply forall_skipn; auto.

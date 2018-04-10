@@ -759,7 +759,6 @@ simpl.
     
     admit.
     eapply PermCacheDef_read_orp.
-    Search arrayS.
     
      (Finished x7 x8 x9 x6) x5 ->
 exists d2,
