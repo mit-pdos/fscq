@@ -111,10 +111,7 @@ Set Implicit Arguments.
     auto.
 
     rewrite vsupd_range_length; try omega.
-    eapply lt_le_trans; eauto.
     rewrite firstn_length_l; try omega.
-    eapply le_trans; [|eauto].
-    apply Nat.lt_le_incl; auto.
     apply extract_blocks_length in H5;
     rewrite H5; apply Nat.lt_le_incl; auto.
 
@@ -381,7 +378,9 @@ Set Implicit Arguments.
     Unshelve.
     all: auto.
     exact tt.
+    exact dummy_handle.
     unfold EqDec; apply handle_eq_dec.
+    exact dummy_handle.
   Qed.
 
 

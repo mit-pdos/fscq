@@ -306,7 +306,7 @@ Lemma addr_clean_cachepred_remove :
     rewrite MapFacts.add_neq_o; eauto.
     destruct (find a0 csmap) eqn:D; cancel.
     destruct p_2; cancel;
-    destruct (Nat.eq_dec h p_1); subst; try congruence;
+    destruct (handle_eq_dec h p_1); subst; try congruence;
     rewrite upd_ne; auto.
     apply upd_eq; auto.
   Qed.
@@ -322,7 +322,7 @@ Proof.
   destruct (find a (CSMap cs)); [| cancel];
   destruct p; destruct b;
   cancel;
-  destruct (Nat.eq_dec h0 h); subst;
+  destruct (handle_eq_dec h0 h); subst;
   try congruence; rewrite upd_ne; auto.
 Qed.
 

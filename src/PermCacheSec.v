@@ -70,6 +70,7 @@ Set Implicit Arguments.
     rewrite <- H1; cancel; eauto.
     Unshelve.
     all:eauto.
+    exact dummy_handle.
   Qed.
 
   
