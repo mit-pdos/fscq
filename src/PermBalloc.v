@@ -185,7 +185,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     let index := (bn / Defs.itemsz) in
     let^ (ms, s) <- Bmp.get lxp xp index ms;;
     let s' := set_bit s avail (bn mod Defs.itemsz) in
-    ms <- Bmp.put lxp xp index Public s' ms;;
+    ms <- Bmp.put lxp xp index s' ms;;
     Ret ms.
 
   (* Get the index of a byte with an available block *)
@@ -209,7 +209,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
         Ret ^(ms, None)
     | Some (bn, index, s) =>
       let s' := set_bit s inuse index in
-        ms <- Bmp.put lxp xp bn Public s' ms;;
+        ms <- Bmp.put lxp xp bn s' ms;;
         Ret ^(ms, Some (bn * Defs.itemsz + index))
     end.
 
@@ -241,7 +241,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     let index := (bn / Defs.itemsz) in
     let^ (ms, s) <- Bmp.get lxp xp index ms;;
     let s' := set_bit s inuse (bn mod Defs.itemsz) in
-    ms <- Bmp.put lxp xp index Public s' ms;;
+    ms <- Bmp.put lxp xp index s' ms;;
     Ret ms.
 
   Definition init lxp xp ms :=
@@ -251,7 +251,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   (* init with no free objects *)
   Definition init_nofree lxp xp ms :=
     ms <- Bmp.init lxp xp ms;;
-    ms <- Bmp.write lxp xp (repeat Public (BMPLen xp)) (repeat full ((BMPLen xp) * BmpSig.items_per_val)) ms;;
+    ms <- Bmp.write lxp xp (repeat full ((BMPLen xp) * BmpSig.items_per_val)) ms;;
     Ret ms.
 
   Definition to_bits {sz} (l : list (word sz)) : list bit :=
@@ -277,7 +277,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     forall a, (In a freelist <-> Avail (selN bmap a inuse)).
 
   Definition rep V FP xp (freelist : list addr) (freepred : @pred _ addr_eq_dec V) :=
-    (exists blist, Bmp.rep xp (repeat Public (BMPLen xp)) blist *
+    (exists blist, Bmp.rep xp blist *
      [[ NoDup freelist ]] *
      [[ freelist_bmap_equiv freelist (to_bits blist) ]] *
      [[ freepred <=p=> listpred (fun a => exists v, a |-> v * [[ FP v ]]) freelist ]] )%pred.
@@ -378,28 +378,28 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     auto using mult_assoc.
   Qed.
 
-  Lemma bmap_rep_length_ok1 : forall F xp tags blist d a,
+  Lemma bmap_rep_length_ok1 : forall F xp blist d a,
     a < length (to_bits blist) ->
-    (F * Bmp.rep xp tags blist)%pred d ->
+    (F * Bmp.rep xp blist)%pred d ->
     a < BMPLen xp * valulen.
   Proof.
     unfold Bmp.rep, Bmp.items_valid; intros.
     destruct_lift H0.
     eapply lt_le_trans; eauto.
     rewrite to_bits_length.
-    setoid_rewrite H7.
+    setoid_rewrite H6.
     rewrite bits_len_rewrite; auto.
   Qed.
 
-  Lemma bmap_rep_length_ok2 : forall F xp tags bmap d a,
-    (F * Bmp.rep xp tags bmap)%pred d ->
+  Lemma bmap_rep_length_ok2 : forall F xp bmap d a,
+    (F * Bmp.rep xp bmap)%pred d ->
     a < BMPLen xp * valulen ->
     a / Defs.itemsz < length bmap.
   Proof.
     unfold Bmp.rep, Bmp.items_valid; intros.
     destruct_lift H.
     apply Nat.div_lt_upper_bound; auto.
-    setoid_rewrite H7.
+    setoid_rewrite H6.
     rewrite mult_comm.
     rewrite bits_len_rewrite.
     auto.
@@ -922,10 +922,6 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     step.
     unfold Bmp.items_valid; intuition.
     rewrite repeat_length; auto.
-    rewrite repeat_length; auto.
-    rewrite Bmp.Defs.ipack_length.
-    rewrite repeat_length; auto.
-    rewrite divup_mul; eauto.
 
     step.
     step.
@@ -933,7 +929,6 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     pred_apply; cancel.
     constructor.
     unfold freelist_bmap_equiv; intuition; intros.
-    constructor.
     denote (Avail _) as Hx; unfold Avail in Hx.
     rewrite selN_to_bits in * by auto.
     rewrite full_eq_repeat, repeat_selN', bits_rep_bit, repeat_selN' in Hx.
@@ -965,7 +960,6 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Proof.
     unfold get_free_blocks, rep.
     step.
-    apply forall_firstn; auto.
     step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto.
@@ -981,7 +975,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     solve_hashmap_subset.
   Qed.   
     
-    Hint Resolve can_access_repeat_public_selN.
+Hint Resolve can_access_repeat_public_selN.
 
     
   Theorem steal_ok :
@@ -1004,7 +998,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
 
     unfold freelist_bmap_equiv in *; intuition.
     denote! (Forall _ _) as Hf; eapply Forall_forall in Hf; eauto.
-    denote (Bmp.rep _ _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
+    denote (Bmp.rep _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
     rewrite to_bits_length in *.
     apply Nat.div_lt_upper_bound; auto.
     rewrite mult_comm; auto.
@@ -1012,7 +1006,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     assert (bn / Defs.itemsz < length dummy).
     unfold freelist_bmap_equiv in *; intuition.
     denote! (Forall _ _) as Hf; eapply Forall_forall in Hf; eauto.
-    denote (Bmp.rep _ _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
+    denote (Bmp.rep _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
     rewrite to_bits_length in *.
     apply Nat.div_lt_upper_bound; auto.
     rewrite mult_comm; auto.
@@ -1023,8 +1017,6 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
 
     erewrite LOG.rep_hashmap_subset; eauto.
     pred_apply; cancel.     
-    rewrite repeat_updN_noop.
-    eauto.
     eapply NoDup_remove; eauto.
     rewrite to_bits_updN_set_avail by auto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
@@ -1096,7 +1088,6 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     or_r; cancel.
     erewrite LOG.rep_hashmap_subset; eauto.
     pred_apply; cancel.
-    rewrite repeat_updN_noop; eauto.
     eapply NoDup_remove; eauto.
     rewrite to_bits_set_bit; auto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
@@ -1184,7 +1175,6 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     eapply bmap_rep_length_ok2; eauto.
     erewrite LOG.rep_hashmap_subset; eauto.
     pred_apply; cancel.
-    rewrite repeat_updN_noop; eauto.
     constructor; eauto.
     intro Hin.
     denote (freepred <=p=> _) as Hfp.
@@ -1245,9 +1235,8 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     rewrite to_bits_length in *.
     unfold state in *.
     cbn in *.
-    rewrite H7 in *.
+    rewrite H5 in *.
     rewrite mult_assoc.
-    rewrite repeat_length in H9; rewrite H9.
     assumption.
   Qed.
 
@@ -1308,6 +1297,9 @@ Module ByteBmap <: WordBMapSig.
 
 End ByteBmap.
 
+
+
+(**)
 Module BmapAlloc (Sig : AllocSig) := BmpWord Sig ByteBmap.
 
 (* BmapAlloc with a list of free items to speed up allocation *)
@@ -1632,14 +1624,17 @@ Module BmapAllocCache (Sig : AllocSig).
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep; intros.
-    lightstep.
-    eassign Fm; cancel.
-    auto.
+    Opaque corr2.
+    safelightstep.
+    eauto.
+    eauto.
+    eauto.
     step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto.
     pred_apply; cancel.
     solve_hashmap_subset.
+    eauto.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _ _) _) => apply init_ok : prog.
@@ -1704,7 +1699,7 @@ Module BmapAllocCache (Sig : AllocSig).
 
 End BmapAllocCache.
 
-
+(**)
 (* Specialize for actual on-disk-block allocation *)
 
 Module BALLOC.
