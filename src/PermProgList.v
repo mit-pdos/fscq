@@ -223,6 +223,7 @@ Theorem unseal_all_ok :
     exact tt.
     exact Public.
     exact tagged_block0.
+    exact dummy_handle.
   Qed.
 
 
