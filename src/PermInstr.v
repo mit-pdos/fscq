@@ -32,7 +32,8 @@ Lemma auth_secure:
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -43,7 +44,8 @@ Proof.
     pred_apply; cancel; eauto.
     or_r; cancel.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -54,7 +56,8 @@ Proof.
     pred_apply; cancel; eauto.
     or_r; cancel.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -83,7 +86,8 @@ Lemma read_secure:
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -108,6 +112,7 @@ Proof.
     split_ors; cleanup; try congruence.
     do 2 eexists; intuition eauto.
     inv_exec_perm; cleanup; auto.
+    try rewrite app_nil_r.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     apply ptsto_subset_valid' in H; cleanup; eauto.
@@ -119,6 +124,7 @@ Proof.
   }
   {
     repeat inv_exec_perm; simpl in *; cleanup.
+    try rewrite app_nil_r.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     apply ptsto_subset_valid' in H; cleanup; eauto.
@@ -140,11 +146,12 @@ Lemma write_secure:
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x)) in H.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
@@ -165,16 +172,17 @@ Proof.
     inv_exec_perm.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H as Hy.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x)) in H as Hy.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
     split_ors; cleanup; try congruence.
     do 2 eexists; intuition eauto.
     inv_exec_perm; cleanup; simpl; auto.
+    try rewrite app_nil_r.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x)) in H.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
@@ -186,10 +194,11 @@ Proof.
     intuition congruence.
   }
   {
-    inv_exec_perm; cleanup.
+    inv_exec_perm; cleanup;
+    try rewrite app_nil_r.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
-    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x0)) in H.
+    eapply ptsto_subset_upd  with (v:= tb)(vs':= vsmerge (dummy1_cur, x)) in H.
     pred_apply; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
@@ -215,37 +224,25 @@ Proof.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
   {
-    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
-    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.  
     split; auto.
-    rewrite ListUtils.cons_app, app_assoc in H0.
-    cleanup.
     apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
-    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     split_ors; cleanup; try congruence.
     split.
     right; do 3 eexists; intuition.
-    rewrite ListUtils.cons_app, app_assoc in H0.
-    cleanup.
     apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
-    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.  
     split; auto.
-    rewrite ListUtils.cons_app, app_assoc in H0.
-    cleanup.
     apply trace_secure_app; simpl; auto.
   }
 Qed.
@@ -268,37 +265,27 @@ Proof.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
   {
-    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
-    rewrite H0 in H1. 
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     split; auto.
-    rewrite ListUtils.cons_app, app_assoc in H0.
-    cleanup.
     apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm.
   {
-    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
-    rewrite H0 in H1. 
     edestruct H4; eauto.
+    cleanup.
     pred_apply; cancel; eauto.
     split_ors; cleanup; try congruence.
     split.
     right; do 3 eexists; intuition.
-    rewrite ListUtils.cons_app, app_assoc in H0.
-    cleanup.
     apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm; try congruence.
   {
-    eapply trace_app in H1 as Htemp; simpl; repeat cleanup.
-    rewrite H0 in H1. 
+    cleanup.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     split; auto.
-    rewrite ListUtils.cons_app, app_assoc in H0.
-    cleanup.
     apply trace_secure_app; simpl; auto.
   }
 Qed.
@@ -320,19 +307,22 @@ Theorem hash_ok:
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -358,19 +348,22 @@ Theorem hash2_ok:
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     solve_hashmap_subset.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -393,17 +386,20 @@ Lemma ret_secure:
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -425,17 +421,20 @@ Lemma ret_secure':
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -457,7 +456,8 @@ Lemma sync_secure:
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
@@ -484,13 +484,15 @@ Proof.
     apply sync_xform_pred_apply; auto.
     split_ors; cleanup; try congruence.
     inv_exec_perm; cleanup; auto.
+    try rewrite app_nil_r.
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
@@ -515,7 +517,8 @@ Lemma sync_secure':
 Proof.
   unfold corr2; intros.
   destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
@@ -542,13 +545,15 @@ Proof.
     apply sync_xform_pred_apply; auto.
     split_ors; cleanup; try congruence.
     inv_exec_perm; cleanup; auto.
+    try rewrite app_nil_r.
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
   }
-  split_ors; cleanup; inv_exec_perm.
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
   {
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
