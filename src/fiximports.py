@@ -16,10 +16,16 @@ import qualified Data.Set
 import qualified Word
 """
 
+extra_imports = """
+import qualified Interpreter
+"""
+
 filename = sys.argv[2]
 out = open(sys.argv[3], "w")
 out.write("{-# LINE 1 \"%s\" #-}\n" % (filename))
 for n, line in enumerate(open(filename), 1):
+	if line.strip() == "module PermInode where":
+		imports += extra_imports
 	if line.strip() == "import qualified Prelude":
 		out.write(imports)
 		out.write("{-# LINE %d \"%s\" #-}\n" % (n, filename))

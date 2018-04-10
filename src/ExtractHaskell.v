@@ -13,6 +13,9 @@ Extraction Inline PermProg.pair_args_helper.
 (* Extract Inlined Constant PermProg.progseq => "Profile.progseq __FILE__ __LINE__". *)
 
 Extract Inlined Constant PermProg.handle => "Word.Coq_word".
+Extract Inlined Constant PermAsyncDisk.owner => "Prelude.Int".
+Extract Inlined Constant PermInode.encode_tag => "Interpreter.encode_tag".
+Extract Inlined Constant PermInode.decode_tag => "Interpreter.decode_tag".
 
 (* Hook up our untrusted replacement policy. *)
 Extract Inlined Constant PermCacheDef.eviction_state  => "Evict.EvictionState".

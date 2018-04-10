@@ -78,7 +78,8 @@ Definition waddrring := wring addrlen.
 Add Ring waddrring : waddrring (decidable (weqb_sound addrlen), constants [wcst]).
 
 
-Definition owner := nat.
+Parameter owner : Type.
+Axiom owner_dec : forall (a b : owner), {a=b}+{a<>b}.
 Definition block := valu.
 
 Inductive tag :=
@@ -88,7 +89,7 @@ Inductive tag :=
 
 Definition tag_dec : forall (t t': tag), {t = t'}+{t <> t'}.
   intros; destruct t, t'; auto; try solve [right; congruence].
-  destruct (Nat.eq_dec o o0); subst; auto; right; congruence.
+  destruct (owner_dec o o0); subst; auto; right; congruence.
 Defined.
 
 Definition tagged_block := (tag * block)%type.

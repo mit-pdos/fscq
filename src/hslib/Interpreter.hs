@@ -131,3 +131,15 @@ run_dcode _ (Auth t) = do
 
 run :: Disk.DiskState -> PermProg.Coq_prog a -> IO a
 run ds p = run_dcode ds p
+
+encode_tag :: Coq_tag -> Coq_word
+encode_tag Public = W64 0
+encode_tag (Private o) = W64 $ fromIntegral (o+1)
+
+decode_tag :: Coq_word -> Coq_tag
+decode_tag (W64 w) = decode_tag (W $ fromIntegral w)
+decode_tag (W w) =
+  if w == 0 then
+    Public
+  else
+    Private $ fromIntegral $ w-1
