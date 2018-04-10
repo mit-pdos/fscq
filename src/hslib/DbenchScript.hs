@@ -30,6 +30,18 @@ instance IsString Path where
 newtype CreateOptions = CreateOptions Flags
   deriving (Eq, Show)
 
+isCreate :: CreateDisposition -> Bool
+isCreate (CreateDisposition f) =
+  -- FILE_CREATE
+  f == 2
+
+isOverwriteFile :: CreateDisposition -> Bool
+isOverwriteFile (CreateDisposition f) =
+  -- FILE_OVERWRITE
+  f == 4 ||
+  -- FILE_OVERWRITE_IF
+  f == 5
+
 newtype CreateDisposition = CreateDisposition Flags
   deriving (Eq, Show)
 

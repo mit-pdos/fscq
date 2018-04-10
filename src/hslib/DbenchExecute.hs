@@ -33,6 +33,14 @@ getFilePath h = do
     Just p -> return p
     Nothing -> liftIO $ ioError (userError $ "unknown handle " ++ show h)
 
+tryGetFile :: Handle -> StateT (DbenchState fh) IO (Maybe (String, fh))
+tryGetFile h = do
+  p <- getFilePath h
+  mh <- gets (Map.lookup h . handleInums)
+  return $ case mh of
+             Nothing -> Nothing
+             Just inum -> Just (p,inum)
+
 getFile :: FuseOperations fh -> Handle -> StateT (DbenchState fh) IO (String, fh)
 getFile fs h = do
   p <- getFilePath h
@@ -89,17 +97,26 @@ zeroBytestring len
   | len <= 65536 = BS.take len largeBytestring
   | otherwise = BS.pack (replicate len 0)
 
+createXDirectory :: forall fh. FuseOperations fh -> String -> IO ()
+createXDirectory fs p =
+  void $ fuseCreateDirectory fs p (unionFileModes stdFileMode ownerExecuteMode)
+
+createXFile :: forall fh. FuseOperations fh -> String -> CreateDisposition -> IO ()
+createXFile fs p createDisposition = do
+  when (isOverwriteFile createDisposition) (void $ fuseRemoveLink fs p)
+  inum <- getResult p =<< fuseCreateFile fs p stdFileMode ReadWrite defaultFileFlags
+  closeFile fs p inum
+  return ()
+
 runCommand :: forall fh. FuseOperations fh -> Command -> StateT (DbenchState fh) IO ()
 runCommand fs c = run c
   where run :: Command -> StateT (DbenchState fh) IO ()
-        run (CreateX (Path p) createOptions _createDisposition h _s) = {-# SCC "createx" #-} do
+        run (CreateX (Path p) createOptions createDisposition h _s) = {-# SCC "createx" #-} do
           addHandle h p
-          liftIO $ if hasFileDirectoryFile createOptions then
-            void $ fuseCreateDirectory fs p (unionFileModes stdFileMode ownerExecuteMode)
-          else do
-            inum <- getResult p =<< fuseCreateFile fs p stdFileMode ReadWrite defaultFileFlags
-            closeFile fs p inum
-            return ()
+          when (isCreate createDisposition || isOverwriteFile createDisposition) $
+            liftIO $ if hasFileDirectoryFile createOptions then
+                       createXDirectory fs p
+                     else createXFile fs p createDisposition
         run (ReadX h off len _expectedLen _s) = {-# SCC "readx" #-}do
           (p, inum) <- getFile fs h
           -- TODO: check read size
@@ -111,9 +128,10 @@ runCommand fs c = run c
           _ <- liftIO $ fuseWrite fs p inum (zeroBytestring len) (fromIntegral off)
           return ()
         run (Close h _s) = {-# SCC "close" #-} do
-          (p, inum) <- getFile fs h
-          liftIO $ closeFile fs p inum
-          return ()
+          mInum <- tryGetFile h
+          case mInum of
+            Nothing -> return ()
+            Just (p,inum) -> liftIO $ closeFile fs p inum
         run (QueryPath (Path p) _ _s) = {-# SCC "querypath" #-} do
           _ <- liftIO $ fuseGetFileStat fs p
           return ()
@@ -148,7 +166,7 @@ runCommand fs c = run c
         run (LockX _h _off _level _s) = return ()
         run (UnlockX _h _off _level _s) = return ()
         run (Mkdir (Path p) _s) = do
-          _ <- liftIO $ fuseCreateDirectory fs p (unionFileModes stdFileMode ownerExecuteMode)
+          liftIO $ checkError p $ fuseCreateDirectory fs p (unionFileModes stdFileMode ownerExecuteMode)
           return ()
         run (Deltree (Path p) _s) = do
           _ <- liftIO $ delTree fs p
