@@ -42,7 +42,7 @@ for l in f.readlines():
       err_file = err_file[:-2]
     current_error = []
     errors[err_file].append(current_error)
-  if l.startswith("Error: File "):
+  if l.startswith("Error: File ") or l.startswith("Warning: File "):
     err_file = l.split(" ")[2].split(":")[0]
     current_error = []
     errors[err_file].append(current_error)
