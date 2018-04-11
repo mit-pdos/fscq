@@ -80,7 +80,7 @@ Module INODE.
 
   End IRecSig.
 
-  Module IRec := LogRecArrayCacheInode IRecSig.
+  Module IRec := LogRecArrayCache IRecSig.
   Hint Extern 0 (okToUnify (IRec.rep _ _) (IRec.rep _ _)) => constructor : okToUnify.
 
 
@@ -558,7 +558,6 @@ Qed.
     repeat constructor.
     eapply list_same_repeat.
     setoid_rewrite <- encode_public; rewrite encode_decode; auto.
-    apply Forall_nil.
   Qed.
 
 
