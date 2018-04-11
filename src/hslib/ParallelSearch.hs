@@ -75,12 +75,12 @@ runAtRoot fs act p = do
   files <- findFiles fs p
   mapM act files
 
-parallelSearchAtRoot :: FuseOperations fh -> Int -> BS.ByteString -> FilePath -> IO [(FilePath, Int)]
-parallelSearchAtRoot fs par needle p = do
+parallelSearchAtRoot :: FuseOperations fh -> BS.ByteString -> FilePath -> IO [(FilePath, Int)]
+parallelSearchAtRoot fs needle p = do
   allEntries <- getDirectoryContents fs p
   let entries = filterDots allEntries
       paths = map (\(n, s) -> (p `pathJoin` n, s)) entries
-      directories = take par (onlyDirectories paths)
+      directories =onlyDirectories paths
       search p = do
         count <- searchFile needle fs p
         return (p, count)
