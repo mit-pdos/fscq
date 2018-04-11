@@ -211,7 +211,10 @@ ripgrep() {
 
 mailserver() {
   info "mailserver"
-  run_fusebench mailserver --init-messages 0 --read-last 0 --read-perc 0.9 --iters=100 --users=24
+  run_fusebench mailserver --init-messages=0 --read-last=0 --users=48 \
+                --read-perc=0.95 --iters=1000 \
+                +RTS -qn4 -A512m -RTS
+
 }
 
 mailserver_parbench() {
@@ -222,8 +225,8 @@ mailserver_parbench() {
       info "  > n=$par"
       setup_cores $par
       run "parbench" $par --system=$system \
-          mailserver --read-perc 0.95 --users 48 \
-          --init-messages 0 --read-last 0 --reps=5000 \
+          mailserver --init-messages=0 --read-last=0 --users=48 \
+          --read-perc=0.95 --reps=5000 \
           +RTS -qn4 -A512m -RTS
       cp ~/fscq/bench/concurrent/disk.img /tmp/
     done
