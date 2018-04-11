@@ -579,7 +579,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
       [[ Forall (fun x => x = repeat $0 (NIndirect ^ S indlvl) /\ (Fs <=p=> emp))%type l ]].
   Proof.
     induction l; intros.
-    - split; cancel. constructor.
+    - split; cancel.
     - simpl. rewrite IHl.
       rewrite indrep_n_tree_0.
       split; cancel.
@@ -659,7 +659,6 @@ Proof.
   eauto.
   rewrite IndRec.Defs.ipack_one by (unfold IndRec.Defs.item in *; auto);
   simpl; cancel.
-  apply repeat_length.
   eauto.
 Qed.
 
@@ -1111,7 +1110,6 @@ Qed.
     - indrep_n_tree_bound.
     - rewrite indrep_n_helper_valid by omega.
       cancel.
-    - apply can_access_repeat_public_selN.
     - rewrite listmatch_isolate with (i := off / (NIndirect ^ S indlvl))
         by indrep_n_tree_bound.
       rewrite selN_combine by indrep_n_tree_bound.
@@ -1181,13 +1179,7 @@ Theorem indread_ok :
     + hoare.
       erewrite LOG.rep_hashmap_subset; eauto.
       - rewrite indrep_n_helper_0 in *. destruct_lifts. rewrite mult_1_r. auto.
-      - rewrite indrep_n_helper_valid by auto; cancel.
-      - destruct (repeat Public (length (IndRec.Defs.ipack l))) eqn:D; eauto.
-        apply Forall_nil.
-        destruct (length (IndRec.Defs.ipack l)); simpl in *;
-        inversion D; subst; eauto.
-        constructor; auto.
-        apply Forall_nil.
+      - rewrite indrep_n_helper_valid by auto; eassign Fm; cancel.
       - erewrite LOG.rep_hashmap_subset; eauto.
       - rewrite indrep_n_helper_length_piff in *.
         destruct_lifts. unfold IndRec.Defs.item in *; simpl in *.
@@ -1197,13 +1189,7 @@ Theorem indread_ok :
       - erewrite indrep_n_tree_repeat_concat; eauto. auto.
         rewrite indrep_n_helper_0 in *; destruct_lifts; cleanup;
         rewrite repeat_length; auto.
-      - rewrite indrep_n_helper_valid by omega. cancel.
-      - destruct (repeat Public (length (IndRec.Defs.ipack dummy))) eqn:D; eauto.
-        apply Forall_nil.
-        destruct (length (IndRec.Defs.ipack dummy)); simpl in *;
-        inversion D; subst; eauto.
-        constructor; auto.
-        apply Forall_nil.
+      - rewrite indrep_n_helper_valid by omega. eassign dummy; cancel.
       - rewrite firstn_oob by indrep_n_tree_bound.
         autorewrite with list.
         rewrite skipn_oob; auto.
@@ -1300,7 +1286,7 @@ Theorem indclear_all_ok :
            [[ incl freelist freelist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} indclear_all indlvl lxp bxp ir ms.
-    Proof.
+    Proof. 
       induction indlvl; simpl.
       + step.
         step.
@@ -1353,13 +1339,7 @@ Theorem indclear_all_ok :
         pred_apply; cancel.
         cancel.
         step.
-        rewrite indrep_n_helper_valid by auto. cancel.
-        destruct (repeat Public (length (IndRec.Defs.ipack dummy))) eqn:D; eauto.
-        apply Forall_nil.
-        destruct (length (IndRec.Defs.ipack dummy)); simpl in *;
-        inversion D; subst; eauto.
-        constructor; auto.
-        apply Forall_nil.
+        rewrite indrep_n_helper_valid by auto. eassign dummy; cancel.
         rewrite indrep_n_helper_length_piff in *.
         denote indrep_n_helper as Hi; destruct_lift Hi.
         unfold IndRec.Defs.item in *; simpl in *. rewrite firstn_oob by omega.
@@ -1511,7 +1491,7 @@ Theorem indclear_all_ok :
            [[ (Fs * BALLOCC.smrep freelist' * pred_fold_left fsl')%pred sm ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} indclear_aligned indlvl lxp bxp indbns start len ms.
-    Proof. 
+    Proof.
       unfold indclear_aligned. unfold Nat.divide.
       prestep. norml.
       repeat rewrite Nat.div_mul in * by mult_nonzero.
@@ -1613,8 +1593,12 @@ Theorem indclear_all_ok :
       If (list_eq_dec waddr_eq_dec contents new) {
         Ret ^(ms, bn)
       } else {
+<<<<<<< HEAD
           lms <- IndRec.write lxp bn
                               new (BALLOCC.MSLog ms);;
+=======
+          lms <- IndRec.write lxp bn new (BALLOCC.MSLog ms);;
+>>>>>>> Fix PermBlockPtr errors
         Ret ^(BALLOCC.upd_memstate lms ms, bn)
       }
     }.
@@ -1680,8 +1664,7 @@ Theorem update_block_ok :
       auto.
       eauto.
     + step.
-      rewrite indrep_n_helper_valid by auto; cancel.
-      apply repeat_length.
+      rewrite indrep_n_helper_valid by auto; eassign indbns; cancel.
       step.
       prestep. norm. repeat cancel.
       erewrite LOG.rep_hashmap_subset; eauto; cancel.
@@ -1788,14 +1771,11 @@ Theorem indclear_from_aligned_ok :
         indrep_n_tree_bound.
       - step.
         indrep_n_extract.
-        rewrite indrep_n_helper_valid by eauto. cancel.
+        rewrite indrep_n_helper_valid by eauto.
+        eassign (nil: list waddr). 
+        instantiate  (items:= selN l_part (start / NIndirect) nil); cancel.
         indrep_n_tree_bound.
-        destruct (repeat Public (length (IndRec.Defs.ipack l_part ⟦ start / NIndirect ⟧))) eqn:D; eauto.
-        apply Forall_nil.
-        destruct (length (IndRec.Defs.ipack l_part ⟦ start / NIndirect ⟧)); simpl in *;
-        inversion D; subst; eauto.
-        constructor; auto.
-        apply Forall_nil.
+        (**)
         rewrite firstn_oob.
         safestep.
         1, 2: match goal with |- context [selN ?l ?ind ?d] =>
@@ -1881,13 +1861,8 @@ Theorem indclear_from_aligned_ok :
       {
         rewrite selN_combine by indrep_n_tree_bound; cbn [fst snd].
         rewrite indrep_n_helper_valid by eauto. cancel.
+        eassign dummy; cancel.
       }
-      destruct (repeat Public (length (IndRec.Defs.ipack dummy))) eqn:D; eauto.
-      apply Forall_nil.
-      destruct (length (IndRec.Defs.ipack dummy)); simpl in *;
-      inversion D; subst; eauto.
-      constructor; auto.
-      apply Forall_nil.
       rewrite firstn_oob.
       match goal with [H : context [listmatch _ (combine ?l _)] |- context [?c = ?l] ] =>
         rewrite listmatch_length_pimpl with (a := combine l _) in H;
@@ -2097,13 +2072,10 @@ Theorem indclear_from_aligned_ok :
       auto.
       omega.
       step.
-      indrep_n_extract. rewrite indrep_n_helper_valid by eauto. cancel.
-      destruct (repeat Public (length (IndRec.Defs.ipack l_part ⟦ start / NIndirect ⟧))) eqn:D; eauto.
-      apply Forall_nil.
-      destruct (length (IndRec.Defs.ipack l_part ⟦ start / NIndirect ⟧)); simpl in *;
-      inversion D; subst; eauto.
-      constructor; auto.
-      apply Forall_nil.
+      indrep_n_extract. rewrite indrep_n_helper_valid by eauto.
+      eassign (nil:list waddr);
+      eassign (selN l_part (start / NIndirect) nil);
+      cancel.
       rewrite firstn_oob.
       prestep. norm. cancel.
       intuition auto.
@@ -2210,13 +2182,7 @@ Theorem indclear_from_aligned_ok :
       end. simpl in *. destruct_lifts.
       rewrite selN_combine in * by omega; cbn [fst snd] in *.
       step.
-      { rewrite indrep_n_helper_valid by eauto. cancel. }
-       destruct (repeat Public (length (IndRec.Defs.ipack dummy))) eqn:D; eauto.
-      apply Forall_nil.
-      destruct (length (IndRec.Defs.ipack dummy)); simpl in *;
-      inversion D; subst; eauto.
-      constructor; auto.
-      apply Forall_nil.
+      { rewrite indrep_n_helper_valid by eauto. eassign dummy; cancel. }
       rewrite firstn_oob.
       match goal with [H : context [listmatch _ (combine ?l _)] |- context [?c = ?l] ] =>
         rewrite listmatch_length_pimpl with (a := combine l _) in H;
@@ -2313,10 +2279,9 @@ Theorem indclear_from_aligned_ok :
     all : intros; try solve [exact unit | exact nil | exact $0 | exact emp | exact ($0, emp) | constructor]; eauto.
   Qed.
 
+  
+
   Local Hint Extern 1 ({{_|_}} Bind (indclear_to_aligned _ _ _ _ _ _) _) => apply indclear_to_aligned_ok : prog.
-
-
-
 
   Definition indclear_multiple_blocks indlvl lxp bxp indbns start len ms :=
     let N := NIndirect ^ S indlvl in
@@ -2475,13 +2440,7 @@ Theorem indclear_from_aligned_ok :
           erewrite LOG.rep_hashmap_subset; eauto; cancel.
           or_l; cancel.
         - step.
-          rewrite indrep_n_helper_valid by auto; cancel.
-          destruct (repeat Public (length (IndRec.Defs.ipack l))) eqn:D; eauto.
-          apply Forall_nil.
-          destruct (length (IndRec.Defs.ipack l)); simpl in *;
-          inversion D; subst; eauto.
-          constructor; auto.
-          apply Forall_nil.
+          rewrite indrep_n_helper_valid by auto; eassign l; cancel.
           rewrite firstn_oob by indrep_n_tree_bound.
           step.
           prestep; norm.
@@ -2523,13 +2482,7 @@ Theorem indclear_from_aligned_ok :
         pred_apply; cancel.
 
         step.
-        { rewrite indrep_n_helper_valid by auto. cancel. }
-        destruct (repeat Public (length (IndRec.Defs.ipack dummy))) eqn:D; eauto.
-        apply Forall_nil.
-        destruct (length (IndRec.Defs.ipack dummy)); simpl in *;
-        inversion D; subst; eauto.
-        constructor; auto.
-        apply Forall_nil.
+        { rewrite indrep_n_helper_valid by auto. eassign dummy; cancel. }
         rewrite indrep_n_helper_length_piff in *. destruct_lifts.
         unfold IndRec.Defs.item in *; simpl in *.
         rewrite firstn_oob by indrep_n_tree_bound.
@@ -2728,13 +2681,7 @@ Theorem indclear_from_aligned_ok :
       step.
       step.
       step.
-      destruct addr_eq_dec; try omega. cancel.
-      destruct (repeat Public (length (IndRec.Defs.ipack indbns))) eqn:D; eauto.
-      apply Forall_nil.
-      destruct (length (IndRec.Defs.ipack indbns)); simpl in *;
-      inversion D; subst; eauto.
-      constructor; auto.
-      apply Forall_nil.
+      destruct addr_eq_dec; try omega. eassign indbns; cancel.
       step.
       apply firstn_oob.
       unfold IndRec.rep, IndRec.items_valid, IndSig.RALen in *.
@@ -2772,6 +2719,10 @@ Theorem indclear_from_aligned_ok :
     safestep.
     erewrite LOG.rep_hashmap_subset; eauto.
     erewrite LOG.rep_blockmem_subset; eauto.
+    cleanup.
+    rewrite Forall_forall; intros x Hin.
+    rewrite map_fst_combine in Hin by (apply repeat_length).
+    apply repeat_spec in Hin; auto.
     unfold IndSig.RAStart. instantiate (1 := [_]). pred_apply; cancel.
     erewrite <- extract_blocks_length.
     rewrite H16.
@@ -2790,7 +2741,6 @@ Theorem indclear_from_aligned_ok :
     erewrite <- extract_blocks_subset_trans; eauto.
     rewrite H16.
     cancel; eauto.
-    apply repeat_length.
     erewrite <- extract_blocks_subset_trans; eauto.
     rewrite H16.
     rewrite IndRec.Defs.ipack_one.
@@ -2838,8 +2788,8 @@ Theorem indclear_from_aligned_ok :
     pred_apply; rewrite natToWord_wordToNat. rewrite updN_selN_eq. cancel.
 
     step.
-    unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence. cancel.
-    apply repeat_length.
+    unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence.
+    eassign indbns; cancel.
     step.
     unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence.
     rewrite indrep_n_helper_valid_sm in * by auto.
@@ -2889,7 +2839,7 @@ Proof.
   rewrite indrep_n_helper_0.
   cancel.
 Qed.
-
+(** Checked up to here **) 
 Theorem indput_ok :
   forall indlvl lxp bxp ir off bn ms pr,
     {< F Fm Fs m0 sm m l freelist IFs,
@@ -2956,9 +2906,6 @@ Theorem indput_ok :
         erewrite LOG.rep_hashmap_subset; eauto; cancel.
         or_r. cancel.
         rewrite indrep_n_helper_valid in * by omega. cancel.
-        rewrite BALLOC.Alloc.repeat_updN_noop.
-        repeat rewrite IndRec.Defs.ipack_length.
-        rewrite length_updN; auto.
         match goal with [H : context [?P] |- ?P] => destruct_lift H end. auto.
         match goal with [H : context [?P] |- ?P] => destruct_lift H end. auto.
         rewrite <- H1; cancel.
@@ -3018,6 +2965,7 @@ Theorem indput_ok :
             match goal with |- context[updN ?l ?i_] =>
               rewrite listmatch_isolate with (a := l) (i := i_), listmatch_updN_removeN
             end. rewrite selN_combine. cbn [fst snd]. rewrite repeat_selN'.
+            eassign (natToWord addrlen a5).
             rewrite indrep_n_tree_0.
             rewrite wordToNat_natToWord_idempotent'. cancel.
             rewrite indrep_n_tree_valid in * by auto.
@@ -3100,12 +3048,13 @@ Theorem indput_ok :
           (* prestep; norm.
           unfold stars; simpl; rewrite LOG.rep_hashmap_subset; eauto; cancel.
           repeat split.*)
-          safestep; [ | | | | | intros; rewrite <- H1; cancel; eauto].
+          prestep.
+          intros mx Hmx.
+          destruct_lift Hmx.
+          inversion H17; subst; clear H17.
+          exists F_, F; eexists; exists m0, sm, m, bxp, dummy, dummy0.
+          pred_apply. safecancel.
           rewrite LOG.rep_hashmap_subset; eauto; cancel.
-          eauto.
-          pred_apply; cancel.
-          eauto.
-          2: cancel.
           prestep; norm.
           cancel.
           repeat split.
@@ -3543,7 +3492,7 @@ Theorem indput_ok :
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} read lxp ir ms.
-  Proof.
+  Proof. 
     unfold read.
     step; denote rep as Hx.
     step.
@@ -3575,7 +3524,7 @@ Theorem indput_ok :
     IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
   Proof.
     unfold IndRec.rep; cancel.
-    assert (length (synced_list (combine tags (IndRec.Defs.ipack indrec))) = 1).
+    assert (length (synced_list (combine (repeat Public (length (IndRec.Defs.ipack indrec))) (IndRec.Defs.ipack indrec))) = 1).
     unfold IndRec.items_valid in *; intuition.
     rewrite synced_list_length; subst.
     setoid_rewrite combine_length.
@@ -3583,7 +3532,7 @@ Theorem indput_ok :
     rewrite IndRec.Defs.ipack_length.
     setoid_rewrite H0.
     rewrite Rounding.divup_mul; auto.
-    rewrite H2; auto.
+    rewrite repeat_length; auto.
 
     rewrite arrayN_isolate with (i := 0) by omega.
     unfold IndSig.RAStart; rewrite Nat.add_0_r.
@@ -3728,7 +3677,7 @@ Theorem indput_ok :
            [[ incl freelist freelist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} shrink lxp bxp ir nr ms.
-  Proof.
+  Proof. 
     unfold shrink. intros.
     repeat rewrite upd_range_fast_eq.
     prestep; norml.
