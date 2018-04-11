@@ -187,7 +187,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
       then [[ iblocks = repeat $0 NIndirect]] *
            [[ Fs <=p=> emp ]]
      else [[ BALLOCC.bn_valid bxp ibn ]] *
-          IndRec.rep ibn (repeat Public (length (IndRec.Defs.ipack iblocks))) iblocks *
+          IndRec.rep ibn iblocks *
            exists b, [[ (Fs <=p=> ibn |-> b) ]]
     )%pred.
 
@@ -309,7 +309,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Local Hint Extern 1 (incl ?a ?b) => incl_solve.
 
   Theorem indrep_n_helper_valid : forall bxp bn Fs l,
-    bn <> 0 -> indrep_n_helper Fs bxp bn l <=p=> [[ BALLOCC.bn_valid bxp bn ]] * IndRec.rep bn (repeat Public (length (IndRec.Defs.ipack l))) l * [[ exists b, (Fs <=p=> bn |->b) ]].
+    bn <> 0 -> indrep_n_helper Fs bxp bn l <=p=> [[ BALLOCC.bn_valid bxp bn ]] * IndRec.rep bn l * [[ exists b, (Fs <=p=> bn |->b) ]].
   Proof.
     intros. unfold indrep_n_helper.
     destruct addr_eq_dec; try congruence.
@@ -480,8 +480,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     split; cancel.
     eapply Forall_repeat; auto.
     erewrite concat_hom_repeat; autorewrite with lists; auto.
-    rewrite min_l by omega.
-    eauto.
     apply Forall_repeat. auto.
   Qed.
 
@@ -1615,7 +1613,7 @@ Theorem indclear_all_ok :
       If (list_eq_dec waddr_eq_dec contents new) {
         Ret ^(ms, bn)
       } else {
-          lms <- IndRec.write lxp bn (repeat Public (length (IndRec.Defs.ipack new)))
+          lms <- IndRec.write lxp bn
                               new (BALLOCC.MSLog ms);;
         Ret ^(BALLOCC.upd_memstate lms ms, bn)
       }
@@ -2748,7 +2746,7 @@ Theorem indclear_from_aligned_ok :
 
   (* This is a wrapper for IndRec.write that will use an alternate spec *)
   Definition indrec_write_blind lxp xp items ms :=
-    IndRec.write lxp xp (repeat Public (length (IndRec.Defs.ipack items))) items ms.
+    IndRec.write lxp xp items ms.
 
   (* This is an alternate spec for IndRec.write that does not require IndRec.rep
     to hold beforehand. This allows blind writes to blocks that have not been
@@ -2763,7 +2761,7 @@ Theorem indclear_from_aligned_ok :
           [[[ m ::: Fm * arrayN (@ptsto _ addr_eq_dec _) xp [old] ]]]
     POST:bm', hm', RET:ms exists m',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
-          [[[ m' ::: Fm * IndRec.rep xp (repeat Public (length (IndRec.Defs.ipack items))) items ]]]
+          [[[ m' ::: Fm * IndRec.rep xp items ]]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} indrec_write_blind lxp xp items ms.
   Proof. 
@@ -2866,7 +2864,7 @@ Theorem indclear_from_aligned_ok :
       | 0 => lms <- If (is_alloc) {
                       indrec_write_blind lxp ir ((repeat $0 NIndirect) ⟦ off := bn ⟧) (BALLOCC.MSLog ms)
                    } else {
-                      IndRec.put lxp ir off Public bn (BALLOCC.MSLog ms)
+                      IndRec.put lxp ir off bn (BALLOCC.MSLog ms)
                    };;
         Ret ^((BALLOCC.upd_memstate lms ms), ir)
       | S indlvl' =>
@@ -3573,8 +3571,8 @@ Theorem indput_ok :
   Qed.
 
 
-  Lemma indrec_ptsto_pimpl : forall ibn tags indrec,
-    IndRec.rep ibn tags indrec =p=> exists v, ibn |-> (v, nil).
+  Lemma indrec_ptsto_pimpl : forall ibn indrec,
+    IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
   Proof.
     unfold IndRec.rep; cancel.
     assert (length (synced_list (combine tags (IndRec.Defs.ipack indrec))) = 1).
