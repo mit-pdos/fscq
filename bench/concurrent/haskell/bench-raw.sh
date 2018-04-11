@@ -142,10 +142,11 @@ parsearch() {
     for par in $(seq 1 $MAX_PAR); do
       info "  > n=$par"
       setup_cores $par
-      run "warmup" $par --img=/tmp/disk.img --system=$system \
-          par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
-      run "mem" $par --img=/tmp/disk.img --system=$system --warmup=false \
-          par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
+      args=( --img=/tmp/disk.img --system=$system
+             par-search --dir '/search-benchmarks/coq' --query 'dependency graph'
+             --iters=15 )
+      run "warmup" $par "${args[@]}" +RTS -A512m -qn8 -RTS
+      run "mem"    $par "${args[@]}" +RTS -A512m -qn8 -RTS
     done
   done
   restore_cores
@@ -221,9 +222,9 @@ mailserver_parbench() {
       info "  > n=$par"
       setup_cores $par
       run "parbench" $par --system=$system \
-          mailserver --read-perc 0.9 --users 24 \
-          --init-messages 0 --read-last 0 --reps=1000 \
-          +RTS -qn6 -RTS
+          mailserver --read-perc 0.95 --users 48 \
+          --init-messages 0 --read-last 0 --reps=5000 \
+          +RTS -qn4 -A512m -RTS
       cp ~/fscq/bench/concurrent/disk.img /tmp/
     done
   done

@@ -113,7 +113,7 @@ data FileOffsetOpOptions =
                       , optFileOffset :: Int }
 instance Options FileOffsetOpOptions where
   defineOptions = pure FileOffsetOpOptions
-    <*> simpleOption "file" "/large"
+    <*> simpleOption "file" "/small"
       "file to operate on"
     <*> simpleOption "offset" 0
       "offset (in bytes) to read from"
