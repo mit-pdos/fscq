@@ -191,7 +191,7 @@ Module BFILE.
     destruct flag, p; intros; reflexivity.
   Qed.
 
-  Definition grow lxp bxps ixp inum h fms :=
+  Definition grow lxp bxps ixp inum fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (icache, ms, len) <- INODE.getlen lxp ixp inum icache ms;;
     If (lt_dec len INODE.NBlocks) {
@@ -204,6 +204,7 @@ Module BFILE.
            | Err e =>
              Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) ialc icache cache dblocks, Err e)
            | OK _ =>
+             h <- Seal Public ($0);;
              ms <- LOG.write lxp bn h (BALLOCC.MSLog cms);;
              let dblocks := put_dirty inum bn dblocks in
              Ret ^(mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) al) ialc icache cache dblocks, OK tt)
@@ -308,7 +309,7 @@ Module BFILE.
     (listmatch (fun v a => a |-> v ) (BFData f) (map (@wordToNat _) (INODE.IBlocks i)) *
      [[ BFAttr f = INODE.IAttr i ]] *
      [[ BFOwner f = INODE.IOwner i ]] *
-     [[ Forall (fun tb => fst (fst tb) = BFOwner f)%type (BFData f)]])%pred.
+     [[ Forall (fun tb => fst tb = tagged_block0 \/ fst (fst tb) = BFOwner f)%type (BFData f)]])%pred.
 
   Definition cache_ptsto inum (oc : option (Dcache_type * addr)) : @pred _ addr_eq_dec _ :=
     ( match oc with
@@ -423,8 +424,8 @@ Module BFILE.
     Ret ^(ms, rev r).
 
 
-  Definition grown lxp bxp ixp inum l ms0 :=
-    let^ (ms, ret) <- ForN i < length l
+  Definition grown lxp bxp ixp inum sz ms0 :=
+    let^ (ms, ret) <- ForN i < sz
       Blockmem bm
       Hashmap hm
       Ghost [ F Fm Fi m0 sm f ilist frees ]
@@ -440,7 +441,7 @@ Module BFILE.
          [[ ret = OK tt ]] *
          [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees' (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
          [[[ flist' ::: (Fi * inum |-> f') ]]] *
-         [[  f' = mk_bfile ((BFData f) ++ synced_list (firstn i (extract_blocks bm l))) (BFAttr f) (BFOwner f) (BFCache f) ]] *
+         [[  f' = mk_bfile ((BFData f) ++ synced_list (repeat tagged_block0 i)) (BFAttr f) (BFOwner f) (BFCache f) ]] *
          [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms)) 
                        ilist' (pick_balloc frees' (MSAlloc ms)) ]] *
          [[ treeseq_ilist_safe inum ilist ilist' ]] *
@@ -452,21 +453,20 @@ Module BFILE.
         match ret with
         | Err e => Ret ^(ms, ret)
         | OK _ =>
-          let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i dummy_handle) ms;;
+          let^ (ms, ok) <- grow lxp bxp ixp inum ms;;
           Ret ^(ms, ok)
         end
       Rof ^(ms0, OK tt);;
     Ret ^(ms, ret).
 
 (* caller has to provide tag to be written *)
-  Definition truncate lxp bxp xp inum newsz tag ms :=
+  Definition truncate lxp bxp xp inum newsz ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;;
     If (lt_dec newsz sz) {
       ms <- shrink lxp bxp xp inum (sz - newsz) ms;;
       Ret ^(ms, OK tt)
     } else {
-      hl <- seal_all (repeat tag (newsz - sz)) (repeat $0 (newsz - sz));;
-      let^ (ms, ok) <- grown lxp bxp xp inum hl ms;;
+      let^ (ms, ok) <- grown lxp bxp xp inum (newsz - sz) ms;;
       Ret ^(ms, ok)
     }.
 
@@ -1114,7 +1114,6 @@ Qed.
     rewrite IHn.
     unfold listmatch; cancel.
     unfold file_match, listmatch; cancel.
-    apply Forall_nil.
   Qed.
 
   Lemma odd_nonzero : forall n,
@@ -1972,7 +1971,6 @@ Qed.
     erewrite <- list2nmem_sel with (l:=flist); eauto.
     rewrite H5; cancel.
     erewrite <- list2nmem_sel with (l:=flist) in *; eauto.
-    apply Forall_nil.
     eauto.
     unfold smrep.
     rewrite arrayN_except with (i:= inum); simpl; auto.
@@ -2519,7 +2517,8 @@ Qed.
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs0) ]]] *
            [[ bm h = Some v ]] *
-           [[ fst v = BFOwner f ]]
+           [[ fst v = BFOwner f ]] *
+           [[ fst v = Public ]]
     POST:bm', hm', RET:ms'  exists m' flist' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
@@ -2568,6 +2567,7 @@ Qed.
     destruct_lift H0; denote (_ <> 0) as Hy; subst.
     eapply Hy; try eassumption; try omega.
     eauto.
+    eauto.
     pred_apply; cancel.
     
     step.
@@ -2602,16 +2602,14 @@ Qed.
 
 
   Theorem grow_ok : 
-    forall lxp bxp ixp inum h ms pr,
-    {< F Fm Fi Fd m0 sm m flist ilist frees v f,
+    forall lxp bxp ixp inum ms pr,
+    {< F Fm Fi Fd m0 sm m flist ilist frees f,
     PERM:pr
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
            [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFData f) ::: Fd ]]] *
-           [[ bm h = Some v ]] *
-           [[ fst v = BFOwner f ]]
+           [[[ (BFData f) ::: Fd ]]]
     POST:bm', hm', RET:^(ms', r) 
            [[ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] * exists m',
@@ -2620,15 +2618,15 @@ Qed.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> (v, nil)) ]]] *
-           [[ f' = mk_bfile ((BFData f) ++ [(v, nil)]) (BFAttr f) (BFOwner f) (BFCache f) ]] *
+           [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> valuset0) ]]] *
+           [[ f' = mk_bfile ((BFData f) ++ [valuset0]) (BFAttr f) (BFOwner f) (BFCache f) ]] *
            [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
                          ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
            [[ treeseq_ilist_safe inum ilist ilist' ]] *
            [[ INODE.IOwner(selN ilist' inum INODE.inode0) =
               INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
-    >} grow lxp bxp ixp inum h ms.
+    >} grow lxp bxp ixp inum ms.
   Proof. 
     unfold grow.
     prestep; norml.
@@ -2652,8 +2650,14 @@ Qed.
       safestep.
       sepauto.
       step.
-
+      safestep.
+      erewrite LOG.rep_blockmem_subset; [|eauto].
+      erewrite LOG.rep_hashmap_subset; eauto.
       eapply BALLOCC.bn_valid_facts; eauto.
+      apply upd_eq; eauto.
+      auto.
+      pred_apply; cancel.
+      auto.
       step.
       step.
       
@@ -2697,7 +2701,7 @@ Qed.
       eapply BALLOCC.bn_valid_goodSize; eauto.
       sepauto.
       cbn; auto.
-      apply list2nmem_app; eauto.
+      simpl; apply list2nmem_app; eauto.
 
       2: eauto using grow_treeseq_ilist_safe.
 
@@ -3022,6 +3026,7 @@ Qed.
     unfold smrep in Hx;
     rewrite arrayN_except with (i:= inum) in Hx.
     unfold smrep_single_helper at 2, smrep_single in Hx.
+    rewrite listpred_nodup_piff in Hx.
     rewrite listpred_isolate with (i := off) in Hx; try omega.
     destruct_lift Hx.
     
@@ -3047,28 +3052,63 @@ Qed.
     apply Forall_updN; auto.
     cbn; eauto.
 
-    (* painfully long
     unfold smrep.
     rewrite arrayN_except with (i:= inum).
+    rewrite arrayN_ex_smrep_single_helper_put_dirty.
     unfold smrep_single_helper at 3, smrep_single.
+    simpl.
     rewrite listpred_isolate with (i := off)(l:= INODE.IBlocks _).
-    eassign (natToWord addrlen 0).
+    eassign (natToWord addrlen 0); eassign dummy13.
     safecancel.
     eassign false.
     cancel.
+    unfold put_dirty.
+    rewrite M.find_add_eq.
+    rewrite listpred_lift with (F:=fun _ => True)
+     (G:=(fun bn : waddr => exists b1 : bool,
+          # (bn) |-> b1
+          ✶ ⟦⟦ (SS.In # (bn)
+                  (SS.add # (selN (INODE.IBlocks (selN dummy7 inum INODE.inode0)) off ($0))  (get_dirty inum (MSDBlocks ms))) -> False) -> 
+               b1 = true ⟧⟧)%pred).
+    cancel.
+    intros; split; norm;
+    try eassign b1; try cancel.
+    repeat split; intros.
+    apply H36; intros.
+    apply H29.
+    apply SetFacts.add_2; auto.
+    repeat split; intros.
+    apply H37; intros.
+    apply H29.
+    eapply SetFacts.add_3; [| eauto].
+    unfold removeN in *.
+    apply in_app_iff in H28; destruct H28.
+    apply Wneq_out.
+    unfold not; intros Heq.
+    eapply selN_NoDup_notin_firstn; [| | |eauto].
     eauto.
-    exfalso; apply H31; eauto.
-    specialize (H24 # (selN (INODE.IBlocks (selN dummy7 inum INODE.inode0)) off (natToWord addrlen 0))). 
-        
-    apply wordToNat_good.
-    rewrite natToWord_wordToNat.
+    eauto.
+    eauto.
+    apply Wneq_out.
+    unfold not; intros Heq.
+    eapply selN_NoDup_notin_skipn; [| | |eauto].
+    eauto.
+    eauto.
+    eauto.
+    unfold  SS.For_all; intros.
+    unfold put_dirty in H28;
+    rewrite M.find_add_eq in H28.
+    apply SS.add_spec in H28; destruct H28; subst.
+    apply in_map.
     apply in_selN.
-    sepauto.
-    *)
-    admit.
+    eauto.
+    apply H24; eauto.
+    exfalso; apply H32.
+    unfold put_dirty;
+    rewrite M.find_add_eq.
+    apply SetFacts.add_1; auto.
     all: eauto.
-
-    all: rewrite <- H2; cancel; eauto.
+    rewrite <- H2; cancel; eauto.
 
     repeat xcrash_rewrite.
     xform_norm; xform_normr.
@@ -3076,13 +3116,19 @@ Qed.
 
     or_r; cancel.
     xform_norm; cancel.
+    apply weq.
+    Search ptsto not.
+    intros; unfold not; intro Hcon;
+    eapply ptsto_conflict with (a:= #y); pred_apply' Hcon;
+    cancel.
 
+    rewrite <- H2; cancel; eauto.
     cancel.
     or_l; rewrite LOG.active_intact, LOG.intact_any; auto.
 
     Unshelve.
     all: try easy.
-  Admitted.
+  Qed.
 
   
   Theorem datasync_ok :
@@ -3183,7 +3229,7 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _ _ _ _ _ _) (rep _ _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
 
-
+(** CHECKED UNTIL HERE **)
   Theorem read_array_ok :
     forall lxp bxp ixp inum a i ms pr,
     {< F Fm Fi Fd m0 sm m flist ilist free allocc f vsl,
@@ -3244,7 +3290,8 @@ Qed.
            [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
            [[ i < length vsl]] *
            [[ bm h = Some v ]] *
-           [[ fst v = BFOwner f ]]
+           [[ fst v = BFOwner f ]] *
+           [[ fst v = Public ]]
     POST:bm', hm', RET:ms' exists m' flist' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist free allocc (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
@@ -3453,17 +3500,14 @@ Qed.
   (* Hint Extern 1 ({{_}} Bind (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog. *)
 
  Theorem grown_ok :
-    forall lxp bxp ixp inum hl ms pr,
-    {< F Fm Fi Fd m0 sm m flist ilist frees l f,
+    forall lxp bxp ixp inum sz ms pr,
+    {< F Fm Fi Fd m0 sm m flist ilist frees f,
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
            [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]] *
-           [[ handles_valid bm hl ]] *
-           [[ extract_blocks bm hl = l ]] *
-           [[ Forall (fun v => fst v = BFOwner f)%type l ]]
     POST:bm', hm', RET:^(ms', r)
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSCache ms' = MSCache ms ]] *
@@ -3474,15 +3518,15 @@ Qed.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: (Fd * arrayN (@ptsto _ addr_eq_dec _) (length (BFData f)) (synced_list l)) ]]] *
-           [[ f' = mk_bfile ((BFData f) ++ (synced_list l)) (BFAttr f) (BFOwner f) (BFCache f) ]] *
+           [[[ (BFData f') ::: (Fd * arrayN (@ptsto _ addr_eq_dec _) (length (BFData f)) (synced_list (repeat tagged_block0 sz))) ]]] *
+           [[ f' = mk_bfile ((BFData f) ++ (synced_list (repeat tagged_block0 sz))) (BFAttr f) (BFOwner f) (BFCache f) ]] *
            [[ ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
                       ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
            [[ treeseq_ilist_safe inum ilist ilist' ]] *
            [[ INODE.IOwner(selN ilist' inum INODE.inode0) =
               INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
-    >} grown lxp bxp ixp inum hl ms.
+    >} grown lxp bxp ixp inum sz ms.
   Proof. 
     unfold grown; intros.
     prestep.
