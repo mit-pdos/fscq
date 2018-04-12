@@ -1593,12 +1593,7 @@ Theorem indclear_all_ok :
       If (list_eq_dec waddr_eq_dec contents new) {
         Ret ^(ms, bn)
       } else {
-<<<<<<< HEAD
-          lms <- IndRec.write lxp bn
-                              new (BALLOCC.MSLog ms);;
-=======
-          lms <- IndRec.write lxp bn new (BALLOCC.MSLog ms);;
->>>>>>> Fix PermBlockPtr errors
+        lms <- IndRec.write lxp bn new (BALLOCC.MSLog ms);;
         Ret ^(BALLOCC.upd_memstate lms ms, bn)
       }
     }.
