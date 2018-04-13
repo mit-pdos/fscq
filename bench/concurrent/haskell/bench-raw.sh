@@ -102,6 +102,7 @@ io_concur() {
     info_system
     for par in 1 2; do
       for capabilities in 1 2; do
+        setup_cores $capabilities
         for disk in "mem" "ssd" "hdd"; do
           parse_disk
           if [ $img_valid = false ]; then
