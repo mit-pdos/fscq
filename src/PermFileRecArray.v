@@ -51,11 +51,11 @@ Module FileRecArray (FRA : FileRASig).
 
 
   (** rep invariant *)
-  Definition rep f tags (items : itemlist) :=
-    ( exists vl, [[ vl = ipack items ]] *
-      [[ length tags = length vl ]] * 
+  Definition rep f (items : itemlist) :=
+    ( exists vl, [[ BFILE.BFOwner f = Public ]] *
+      [[ vl = ipack items ]] *
       [[ items_valid f items ]] *
-      arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list (List.combine tags vl)))%pred.
+      arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list (List.combine (repeat Public (length vl)) vl)))%pred.
 
   Definition get lxp ixp inum ix ms :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
@@ -63,21 +63,28 @@ Module FileRecArray (FRA : FileRASig).
     v <- Unseal sv;;
     Ret ^(ms, selN_val2block v off).
 
-  Definition put lxp ixp inum ix tag item ms :=
+  Definition put lxp ixp inum ix item ms :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, sv) <- BFILE.read_array lxp ixp inum 0 bn ms;;
     v <- Unseal sv;;      
     let v' := block2val_updN_val2block v off item in
-    sv' <- Seal tag v';;
+    sv' <- Seal Public v';;
     ms <- BFILE.write_array lxp ixp inum 0 bn sv' ms;;
     Ret ms.
        
   (* extending one block and put item at the first entry *)
-  Definition extend lxp bxp ixp inum tag item ms :=
+  Definition extend lxp bxp ixp inum item ms :=
     let v := block2val (updN block0 0 item) in
-    sv <- Seal tag v;;
-    let^ (ms, r) <- BFILE.grow lxp bxp ixp inum sv ms;;
-    Ret ^(ms, r).
+    sv <- Seal Public v;;
+    let^ (ms, len) <- BFILE.getlen lxp ixp inum ms;;
+    let^ (ms, r) <- BFILE.grow lxp bxp ixp inum ms;;
+    match r with
+    | OK _ => 
+      ms <- BFILE.write lxp ixp inum len sv ms;;
+      Ret ^(ms, r)
+    | Err _ =>
+      Ret ^(ms, r)
+    end.
 
   Definition readall lxp ixp inum ms :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms;;
@@ -104,13 +111,13 @@ Module FileRecArray (FRA : FileRASig).
     let^ (ms, ret) <- ForN i < nr
     Blockmem bm                                          
     Hashmap hm
-    Ghost [ bxp F Fm Fi crash m0 sm m flist f tags items ilist frees ]
+    Ghost [ bxp F Fm Fi crash m0 sm m flist f items ilist frees ]
     Loopvar [ ms ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
       [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
-      [[[ RAData f ::: rep f tags items ]]] *
+      [[[ RAData f ::: rep f items ]]] *
       [[ ret = None ->
          forall ix, ix < i * items_per_val ->
                cond (selN items ix item0) ix = false ]] *
@@ -178,15 +185,14 @@ Module FileRecArray (FRA : FileRASig).
 
   Theorem get_ok :
     forall lxp ixp bxp inum ix ms pr,
-    {< F Fm Fi m0 sm m flist f tags items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[ ix < length items ]] *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[ can_access pr (selN tags (ix / items_per_val) Public) ]]
+          [[[ RAData f ::: rep f items ]]]
     POST:bm', hm', RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
           [[ r = selN items ix item0 ]] *
@@ -201,30 +207,21 @@ Module FileRecArray (FRA : FileRASig).
     >} get lxp ixp inum ix ms.
   Proof. 
     unfold get, rep.
-    prestep.
-    intros m Hm;
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    unfold RAData in *.
-    intuition.
-    pred_apply; cancel.
-    eauto.
+    lightstep.
+    unfold RAData in *;
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
     
-
-    (* [rewrite selN_val2block_equiv] somewhere *)
     rewrite synced_list_length.
-    setoid_rewrite combine_length_eq; auto.
-    rewrite H18, ipack_length; eauto.
+    setoid_rewrite combine_length_eq; [| apply repeat_length];
+    rewrite repeat_length; auto.
+    rewrite ipack_length; eauto.
     apply div_lt_divup; auto.
 
-    safestep.
-    apply H6.
+    step.
     denote (bm0 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
     setoid_rewrite selN_combine in Hx; eauto.
+    apply repeat_length.
 
     step.
     safestep; msalloc_eq.
@@ -234,52 +231,49 @@ Module FileRecArray (FRA : FileRASig).
     apply list_chunk_wellformed; auto.
     unfold items_valid in *; intuition; auto.
     apply Nat.mod_upper_bound; auto.
-    cancel.
-
+   
     Unshelve.
     all: eauto.
   Qed.
 
   Theorem put_ok :
-    forall lxp ixp bxp inum ix tag e ms pr,
-    {< F Fm Fi m0 sm m flist f tags items ilist frees,
+    forall lxp ixp bxp inum ix e ms pr,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PERM:pr                  
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[ ix < length items /\ Rec.well_formed e ]] *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[ can_access pr (selN tags (ix / items_per_val) Public) ]] *
-          [[ can_access pr tag ]] *
-          [[ tag = INODE.IOwner(selN ilist inum INODE.inode0) ]]
+          [[[ RAData f ::: rep f items ]]]
     POST:bm', hm', RET:ms' exists m' flist' f',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-          [[[ RAData f' ::: rep f' (updN tags (ix / items_per_val) tag) (updN items ix e) ]]] *
+          [[[ RAData f' ::: rep f' (updN items ix e) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]]  *
           [[ MSDBlocks ms' = MSDBlocks ms ]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
-    >} put lxp ixp inum ix tag e ms.
+    >} put lxp ixp inum ix e ms.
   Proof. 
     unfold put, rep.
     lightstep.
     unfold RAData in *;
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
     rewrite synced_list_length.
-    setoid_rewrite combine_length_eq; auto.
-    rewrite H21, ipack_length; eauto.
+    setoid_rewrite combine_length_eq; [| apply repeat_length];
+    rewrite repeat_length; auto.
+    rewrite ipack_length; eauto.
     apply div_lt_divup; auto.
 
-    safestep.
-    apply H8.
+    step.
     denote (bm0 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
     setoid_rewrite selN_combine in Hx; eauto.
+    apply repeat_length.
 
     step.
     Opaque corr2.
@@ -291,10 +285,12 @@ Module FileRecArray (FRA : FileRASig).
     unfold RAData in *;
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
     rewrite synced_list_length.
-    setoid_rewrite combine_length_eq; auto.
-    rewrite H21, ipack_length; eauto.
+    setoid_rewrite combine_length_eq; [| apply repeat_length];
+    rewrite repeat_length; auto.
+    rewrite ipack_length; eauto.
     apply div_lt_divup; auto.
     eapply upd_eq; eauto.
+    simpl; eauto.
     simpl; eauto.
     auto.
 
@@ -313,6 +309,8 @@ Module FileRecArray (FRA : FileRASig).
     rewrite block2val_updN_val2block_equiv.
     setoid_rewrite <- combine_updN.
     rewrite ipack_updN_divmod; auto.
+    rewrite repeat_updN_noop; repeat rewrite ipack_length;
+    rewrite length_updN; eauto.
     apply list_chunk_wellformed.
     unfold items_valid in *; intuition; auto.
     apply Nat.mod_upper_bound; auto.
@@ -369,17 +367,15 @@ Module FileRecArray (FRA : FileRASig).
   Qed.
 
   Theorem extend_ok :
-    forall lxp ixp bxp inum tag e ms pr,
-    {< F Fm Fi m0 sm m flist f tags items ilist frees,
+    forall lxp ixp bxp inum e ms pr,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[ Rec.well_formed e ]] *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[ can_access pr tag ]] *
-          [[ tag = INODE.IOwner(selN ilist inum INODE.inode0) ]]
+          [[[ RAData f ::: rep f items ]]]
     POST:bm', hm', RET: ^(ms', r) exists m',
          [[ MSAlloc ms' = MSAlloc ms ]] *
          [[ MSCache ms' = MSCache ms ]] *
@@ -391,104 +387,93 @@ Module FileRecArray (FRA : FileRASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-          [[[ RAData f' ::: rep f' (tags++[tag]) (items ++ (updN block0 0 e)) ]]] *
+          [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
-          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
-          listmatch (fun i1 i2 => [[INODE.IOwner i1 = INODE.IOwner i2]]) ilist ilist')
+          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]])
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
-    >} extend lxp bxp ixp inum tag e ms.
+    >} extend lxp bxp ixp inum e ms.
   Proof. 
     unfold extend, rep.
-    prestep. norm. cancel.
-    intuition.
-    prestep.
-    intros mx Hmx.
-    destruct_lift Hmx.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
+    lightstep.
+    Opaque corr2.
+    safelightstep.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     erewrite LOG.rep_blockmem_subset; eauto; cancel.
-    repeat split.
-    eauto. eauto. eauto.
-    eapply upd_eq; eauto.
-    right; simpl; auto.
-    auto.
+    pred_apply; cancel.
+    eauto.
+    eauto.
+
+    safelightstep.
+    msalloc_eq; pred_apply; cancel.
+    eauto.
+    eauto.
+    eauto.
+
+    intros; destruct_branch; try congruence.
+    prestep.
+    intros mx Hmx; destruct_lift Hmx.
+    apply sep_star_or_distr in H8.
+    destruct H8; destruct_lift H8; intuition; simpl in *.
+    inversion H14.
+    repeat eexists; pred_apply; cancel.
+    simpl; rewrite app_length; simpl; omega.
+    do 2 (eapply block_mem_subset_extract_some; eauto).
+    apply upd_eq; eauto.
+    simpl; eauto.
+    simpl; eauto.
 
     step.
     safestep.
- 
-    or_l; safecancel.
+    or_r; cancel.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
-
-    safestep.
-    or_r. norm; [ cancel | intuition eauto ].
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-
-    rewrite BFILE.rep_length_pimpl in H19; destruct_lift H19.
-    rewrite BFILE.rep_length_pimpl in H0; destruct_lift H0.
-    unfold BFILE.ilist_safe, BFILE.treeseq_ilist_safe in *.
-    apply list2nmem_ptsto_bound in H8.
-    cleanup.
-    rewrite listmatch_isolate with (i:= inum); try omega.    
-    cancel; eauto.
-    erewrite list_selN_ext' with (a:= (removeN ilist inum))(b:= (removeN ilist' inum)).
-    unfold listmatch; cancel.
-    apply listpred_emp_piff.
-    intros.
-    destruct x; simpl.
-    split; cancel.
-    denote In as Hy;
-    eapply in_selN_exists in Hy; cleanup.
-    rewrite selN_combine with (a0:=INODE.inode0)(b0:=INODE.inode0) in H32; cleanup.
-    inversion H32; subst; auto.
-    auto.
+    msalloc_eq; pred_apply; cancel.
     eauto.
-    repeat rewrite removeN_length; omega.
-    intros.
-    unfold removeN.
-    destruct (lt_dec pos inum).
-    repeat rewrite selN_app1; auto.
-    repeat rewrite selN_firstn; auto.
-    apply H15; omega.
-    rewrite firstn_length_l; omega.
-    rewrite firstn_length_l; omega.
-    apply Nat.nlt_ge in n.
-    repeat rewrite selN_app2; auto.
-    repeat rewrite firstn_length_l; try omega.
-    repeat rewrite skipn_selN.
-    apply H15; omega.
-    rewrite firstn_length_l; try omega.
-    rewrite firstn_length_l; try omega.
-    
+    simpl;
+    rewrite BFILE.rep_length_pimpl in H19; destruct_lift H19.
+    unfold BFILE.ilist_safe, BFILE.treeseq_ilist_safe in *.
+    apply list2nmem_ptsto_bound in H7.
+    cleanup.
+
     simpl; pred_apply; norm; [ | intuition ].
-    cancel; apply extend_ok_helper; auto.
-    rewrite ipack_length in *.
-    setoid_rewrite app_length;
-    rewrite block0_repeat. rewrite length_updN, repeat_length; auto.
+    cancel.
+    setoid_rewrite ipack_length at 2.
+    rewrite app_length.
+    rewrite block0_repeat at 2. rewrite length_updN, repeat_length; auto.
     replace items_per_val with (items_per_val * 1) at 1 by omega.
     rewrite divup_add; cleanup; auto.
+    rewrite <- repeat_app; simpl.
+    rewrite <- ipack_length.
+    apply extend_ok_helper; auto.
+    apply repeat_length.
+    rewrite updN_app_tail.
     apply extend_item_valid; auto.
+    msalloc_eq; auto.
+    eauto.
 
-    all: intros; rewrite <- H1; cancel; eauto.
+    intros; rewrite <- H2; cancel; eauto.
+
+    step.
+    safestep.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    or_l; cancel.
+
+    all: intros; rewrite <- H2; cancel; eauto.
 
     Unshelve.
     all: eauto.
-    exact INODE.inode0.
   Qed.
 
 
   Theorem readall_ok :
     forall lxp ixp bxp inum ms pr,
-    {< F Fm Fi m0 sm m flist f tags items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[ Forall (can_access pr) tags ]]
+          [[[ RAData f ::: rep f items ]]]
     POST:bm', hm', RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
           [[ r = items ]] *
@@ -528,12 +513,14 @@ Module FileRecArray (FRA : FileRASig).
     auto.
 
     step.
-    cleanup. rewrite H29 in H10.
-    rewrite synced_list_map_fst, firstn_oob, map_fst_combine in H10; auto.
-    rewrite Forall_forall in *; eauto.
-    rewrite <- synced_list_length at 1.
-    setoid_rewrite arrayN_list_eq at 2; eauto.
-    unfold RAData; apply list2nmem_array.
+    cleanup. rewrite H28 in H9.
+    rewrite synced_list_map_fst, firstn_oob, map_fst_combine in H9; auto.
+    apply repeat_spec in H9; subst; auto.
+    apply repeat_length.
+    unfold RAData in *.
+    apply list2nmem_array_eq in H6; eauto.
+    rewrite H6;
+    rewrite synced_list_length; eauto.
 
     msalloc_eq.
     step.
@@ -544,9 +531,11 @@ Module FileRecArray (FRA : FileRASig).
     subst; rewrite synced_list_map_fst, firstn_oob, map_snd_combine; auto.
     unfold items_valid, RALen in *; intuition.
     erewrite iunpack_ipack; eauto.
-    rewrite <- synced_list_length at 1.
-    setoid_rewrite arrayN_list_eq at 2; eauto.
-    unfold RAData; apply list2nmem_array.
+    apply repeat_length.
+    unfold RAData in *.
+    apply list2nmem_array_eq in H6; eauto.
+    rewrite H6;
+    rewrite synced_list_length; eauto.
     intros; rewrite <- H2; cancel; eauto.
 
     Unshelve.
@@ -618,14 +607,13 @@ Module FileRecArray (FRA : FileRASig).
 
   Theorem ifind_ok :
     forall lxp bxp ixp inum cond ms pr,
-    {< F Fm Fi m0 sm m flist f tags items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[ Forall (can_access pr) tags ]]
+          [[[ RAData f ::: rep f items ]]]
     POST:bm', hm', RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
@@ -645,35 +633,20 @@ Module FileRecArray (FRA : FileRASig).
     >} ifind lxp ixp inum cond ms.
   Proof. 
     unfold ifind, rep.
-    prestep.
-    intros m Hm.
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
-
-    prestep.
-    intros mx Hmx.
-    destruct_lift Hmx.
-    repeat eexists.
-    pred_apply; norm.
-    2: intuition.
+    lightstep.
+    lightstep.
     eassign dummy; cancel.
     instantiate (1:=((bxp_1, bxp_2), (dummy0, (dummy1,
                      (dummy2, (false_pred, (dummy3,
                      (dummy4, (dummy5, (dummy6, (dummy7,
-                     (dummy8, (dummy9, (dummy10,
-                     (dummy12_1, dummy12_2, tt))))))))))))))).
+                     (dummy8, (dummy9, ((dummy10_1, dummy10_2), tt)))))))))))))).
     all: simpl in *.
     eauto.
     msalloc_eq.
     pred_apply; cancel.
     eauto.
     pred_apply; cancel.
-    inversion H9.
+    omega.
     congruence.
     congruence.
     congruence.
@@ -683,6 +656,7 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
 
+    
     prestep.
     intros my Hmy.
     destruct_lift Hmy.
@@ -690,7 +664,7 @@ Module FileRecArray (FRA : FileRASig).
     pred_apply; norm.
     cancel.
     intuition.
-    eauto.
+    pred_apply; cancel.
     eauto.
     unfold RAData in *.
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
@@ -699,16 +673,18 @@ Module FileRecArray (FRA : FileRASig).
     unfold RAData; apply list2nmem_array.
 
     safestep.
-    eassign (selN dummy8 m0 Public).
-    eapply Forall_selN; eauto.
-    unfold items_valid in *; intuition idtac.
-    cleanup.
-    rewrite ipack_length.
-    setoid_rewrite H25; rewrite divup_mul; auto.
-    
+    eassign Public; auto.   
     denote (bm2 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
-    setoid_rewrite selN_combine in Hx; eauto.
+    setoid_rewrite selN_combine in Hx.
+    setoid_rewrite repeat_selN in Hx. eauto.
+    eapply lt_le_trans; eauto.
+    setoid_rewrite arrayN_list_eq at 1; eauto.
+    rewrite synced_list_length;
+    setoid_rewrite combine_length_eq;
+    rewrite repeat_length; eauto.
+    unfold RAData; apply list2nmem_array.
+    apply repeat_length.
 
     safestep.
     safestep.
@@ -724,8 +700,10 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     eapply ifind_block_none_progress; eauto.
+    eapply repeat_length.
     setoid_rewrite synced_list_selN.
     setoid_rewrite selN_combine; eauto.
+    apply repeat_length.
     unfold items_valid in *; intuition idtac.
     cleanup.
     unfold items_valid in *; intuition idtac.
@@ -745,12 +723,12 @@ Module FileRecArray (FRA : FileRASig).
     unfold items_valid, RALen in *; intuition.
 
     Unshelve.
-    all: try exact tt; eauto.
+    all: try exact tt; eauto; try exact Public.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (get _ _ _ _ _) _) => apply get_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (put _ _ _ _ _ _ _) _) => apply put_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (extend _ _ _ _ _ _ _) _) => apply extend_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (put _ _ _ _ _ _) _) => apply put_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (extend _ _ _ _ _ _) _) => apply extend_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (readall _ _ _ _) _) => apply readall_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (ifind _ _ _ _ _) _) => apply ifind_ok : prog.
@@ -762,12 +740,12 @@ Module FileRecArray (FRA : FileRASig).
     r <- get lxp ixp inum ix ms;;
     Ret r.
 
-  Definition put_array lxp ixp inum ix tag item ms :=
-    r <- put lxp ixp inum ix tag item ms;;
+  Definition put_array lxp ixp inum ix item ms :=
+    r <- put lxp ixp inum ix item ms;;
     Ret r.
 
-  Definition extend_array lxp bxp ixp inum tag item ms :=
-    r <- extend lxp bxp ixp inum tag item ms;;
+  Definition extend_array lxp bxp ixp inum item ms :=
+    r <- extend lxp bxp ixp inum item ms;;
     Ret r.
 
   Definition ifind_array lxp ixp inum cond ms :=
@@ -776,16 +754,14 @@ Module FileRecArray (FRA : FileRASig).
 
   Theorem get_array_ok :
     forall lxp ixp bxp inum ix ms pr,
-    {< F Fm Fi Fe Ft m0 sm m flist f tags items t e ilist frees,
+    {< F Fm Fi Fe m0 sm m flist f items e ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[[ items ::: Fe * ix |-> e ]]] *
-          [[[ tags ::: Ft * (ix/items_per_val) |-> t ]]] *
-          [[ can_access pr t ]]
+          [[[ RAData f ::: rep f items ]]] *
+          [[[ items ::: Fe * ix |-> e ]]]
     POST:bm', hm', RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
           [[ r = e ]] *
@@ -799,19 +775,12 @@ Module FileRecArray (FRA : FileRASig).
     >} get_array lxp ixp inum ix ms.
   Proof. 
     unfold get_array.
-    prestep.
-    intros m Hm.
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
     Opaque corr2.
-    repeat split.
+    safelightstep.
     eapply list2nmem_ptsto_bound; eauto.
     eauto.
     eauto.
     eauto.
-    erewrite <- list2nmem_sel; eauto.
     eauto.
 
     step.
@@ -824,36 +793,30 @@ Module FileRecArray (FRA : FileRASig).
 
 
   Theorem put_array_ok :
-    forall lxp ixp bxp inum ix t e ms pr,
-    {< F Fm Fi Fe Ft m0 sm m flist f tags items t0 e0 ilist frees,
+    forall lxp ixp bxp inum ix e ms pr,
+    {< F Fm Fi Fe m0 sm m flist f items e0 ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[ Rec.well_formed e ]] *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[[ items ::: Fe * ix |-> e0 ]]] *
-          [[[ tags ::: Ft * (ix/items_per_val) |-> t0 ]]] *
-          [[ can_access pr t ]] *
-          [[ can_access pr t0 ]] *
-          [[ t = INODE.IOwner(selN ilist inum INODE.inode0) ]]
-    POST:bm', hm', RET:ms' exists m' flist' f' tags' items',
+          [[[ RAData f ::: rep f items ]]] *
+          [[[ items ::: Fe * ix |-> e0 ]]]
+    POST:bm', hm', RET:ms' exists m' flist' f' items',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-          [[[ RAData f' ::: rep f' tags' items' ]]] *
+          [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * ix |-> e ]]] *
-          [[[ tags' ::: Ft * (ix/items_per_val) |-> t ]]] *
           [[ items' = updN items ix e ]] *
-          [[ tags' = updN tags (ix/items_per_val) t ]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]] *
           [[ MSDBlocks ms' = MSDBlocks ms ]] 
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
-    >} put_array lxp ixp inum ix t e ms.
+    >} put_array lxp ixp inum ix e ms.
   Proof. 
     unfold put_array.
     Opaque corr2.
@@ -863,7 +826,6 @@ Module FileRecArray (FRA : FileRASig).
     eauto.
     eauto.
     eauto.
-    erewrite <- list2nmem_sel; eauto.
     eauto.
     eauto.
 
@@ -871,25 +833,21 @@ Module FileRecArray (FRA : FileRASig).
     step.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     eapply list2nmem_updN; eauto.
-    eapply list2nmem_updN; eauto.
     intros; rewrite <- H2; cancel; eauto.
   Qed.
 
   
   Theorem extend_array_ok :
-    forall lxp bxp ixp inum t e ms pr,
-    {< F Fm Fi Fe Ft m0 sm m flist f tags items ilist frees,
+    forall lxp bxp ixp inum e ms pr,
+    {< F Fm Fi Fe m0 sm m flist f items ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[ Rec.well_formed e ]] *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[[ items ::: Fe ]]] *
-          [[[ tags ::: Ft ]]] *
-          [[ can_access pr t ]] *
-          [[ t = INODE.IOwner(selN ilist inum INODE.inode0) ]]
+          [[[ RAData f ::: rep f items ]]] *
+          [[[ items ::: Fe ]]]
     POST:bm', hm', RET:^(ms', r) exists m',
          [[ MSAlloc ms' = MSAlloc ms ]] *
          [[ MSCache ms' = MSCache ms ]] *
@@ -897,32 +855,24 @@ Module FileRecArray (FRA : FileRASig).
          ([[ isError r ]] * 
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' \/
           [[ r = OK tt ]] *
-          exists flist' f' tags' items' ilist' frees',
+          exists flist' f' items' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp sm ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-          [[[ RAData f' ::: rep f' tags' items' ]]] *
+          [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * (length items) |-> e *
               arrayN (@ptsto _ addr_eq_dec _) (length items + 1)
                      (repeat item0 (items_per_val - 1)) ]]] *
-          [[[ tags' ::: Ft * (length tags) |-> t ]]] *
           [[ items' = items ++ (updN block0 0 e)  ]] *
-          [[ tags' = tags ++ [t]  ]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
-    >} extend_array lxp bxp ixp inum t e ms.
+    >} extend_array lxp bxp ixp inum e ms.
   Proof. 
     unfold extend_array.
-    prestep.
-    intros m Hm.
-    destruct_lift Hm.
-    repeat eexists.
-    pred_apply; norm.
-    cancel.
     Opaque corr2.
-    repeat split.
+    safelightstep.
     eauto.
     eauto.
     eauto.
@@ -942,29 +892,26 @@ Module FileRecArray (FRA : FileRASig).
     fold Rec.data.
     replace (updN (repeat item0 items_per_val) 0 e) with
             ([e] ++ (repeat item0 (items_per_val - 1))).
-    replace (length dummy11 + 1) with (length (dummy11 ++ [e])).
+    replace (length dummy9 + 1) with (length (dummy9 ++ [e])).
     rewrite app_assoc.
     apply list2nmem_arrayN_app.
     apply list2nmem_app; auto.
     rewrite app_length; simpl; auto.
     rewrite updN_0_skip_1 by (rewrite repeat_length; auto).
     rewrite skipn_repeat; auto.
-    apply list2nmem_app; auto.
-
     intros; rewrite <-H2; cancel; eauto.
   Qed.
 
 
   Theorem ifind_array_ok :
     forall lxp bxp ixp inum cond ms pr,
-    {< F Fm Fi m0 sm m flist f tags items ilist frees,
+    {< F Fm Fi m0 sm m flist f items ilist frees,
     PERM:pr   
     PRE:bm, hm,
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
-          [[[ RAData f ::: rep f tags items ]]] *
-          [[ Forall (can_access pr) tags ]]
+          [[[ RAData f ::: rep f items ]]]
     POST:bm', hm', RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
           [[[ m ::: (Fm * BFILE.rep bxp sm ixp flist ilist frees (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
@@ -1012,21 +959,21 @@ Module FileRecArray (FRA : FileRASig).
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
 
-  Lemma items_wellformed : forall F xp tl l m,
-    (F * rep xp tl l)%pred m -> Forall Rec.well_formed l.
+  Lemma items_wellformed : forall F xp l m,
+    (F * rep xp l)%pred m -> Forall Rec.well_formed l.
   Proof.
     unfold rep, items_valid; intuition.
     destruct_lift H; auto.
   Qed.
 
-  Lemma items_wellformed_pimpl : forall xp tl l,
-    rep xp tl l =p=> [[ Forall Rec.well_formed l ]] * rep xp tl l.
+  Lemma items_wellformed_pimpl : forall xp l,
+    rep xp l =p=> [[ Forall Rec.well_formed l ]] * rep xp l.
   Proof.
     unfold rep, items_valid; cancel.
   Qed.
 
-  Lemma item_wellformed : forall F xp m tl l i,
-    (F * rep xp tl l)%pred m -> Rec.well_formed (selN l i item0).
+  Lemma item_wellformed : forall F xp m l i,
+    (F * rep xp l)%pred m -> Rec.well_formed (selN l i item0).
   Proof.
     intros.
     destruct (lt_dec i (length l)).
@@ -1036,16 +983,16 @@ Module FileRecArray (FRA : FileRASig).
     apply item0_wellformed.
   Qed.
 
-  Lemma items_length_ok : forall F xp tl l m,
-    (F * rep xp tl l)%pred m ->
+  Lemma items_length_ok : forall F xp l m,
+    (F * rep xp l)%pred m ->
     length l = (RALen xp) * items_per_val.
   Proof.
     unfold rep, items_valid; intuition.
     destruct_lift H; auto.
   Qed.
 
-  Lemma items_length_ok_pimpl : forall xp tl l,
-    rep xp tl l =p=> [[ length l = ((RALen xp) * items_per_val)%nat ]] * rep xp tl l.
+  Lemma items_length_ok_pimpl : forall xp l,
+    rep xp l =p=> [[ length l = ((RALen xp) * items_per_val)%nat ]] * rep xp l.
   Proof.
     unfold rep, items_valid; cancel.
   Qed.
@@ -1083,10 +1030,10 @@ Module FileRecArray (FRA : FileRASig).
     apply synced_list_map_fst; auto.
   Qed.
 
-  Lemma rep_items_eq : forall m f tl1 tl2 vs1 vs2,
-    rep f tl1 vs1 m ->
-    rep f tl2 vs2 m ->
-    tl1 = tl2 /\ vs1 = vs2.
+  Lemma rep_items_eq : forall m f vs1 vs2,
+    rep f vs1 m ->
+    rep f vs2 m ->
+    vs1 = vs2.
   Proof.
     unfold rep, items_valid; intros.
     destruct_lift H; destruct_lift H0; subst.
@@ -1095,17 +1042,19 @@ Module FileRecArray (FRA : FileRASig).
     eapply combine_eq in H; eauto.
     intuition.
     apply ipack_injective; unfold pack_unpack_cond; eauto.
+    repeat rewrite repeat_length.
     cleanup.
     repeat rewrite ipack_length.
     setoid_rewrite H2.
-    setoid_rewrite H3; auto.
+    setoid_rewrite H4; auto.
     repeat rewrite ipack_length.
     setoid_rewrite H2.
-    setoid_rewrite H3; auto.
+    setoid_rewrite H4; auto.
+    apply repeat_length.
   Qed.
 
-  Lemma xform_rep : forall f tl vs,
-    crash_xform (rep f tl vs) =p=> rep f tl vs.
+  Lemma xform_rep : forall f vs,
+    crash_xform (rep f vs) =p=> rep f vs.
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -1113,25 +1062,26 @@ Module FileRecArray (FRA : FileRASig).
     cancel.
   Qed.
 
-  Lemma file_crash_rep : forall f f' tl vs,
+  Lemma file_crash_rep : forall f f' vs,
     BFILE.file_crash f f' ->
-    rep f tl vs (list2nmem (BFILE.BFData f)) ->
-    rep f' tl vs (list2nmem (BFILE.BFData f')).
+    rep f vs (list2nmem (BFILE.BFData f)) ->
+    rep f' vs (list2nmem (BFILE.BFData f')).
   Proof.
     unfold rep; intros.
     destruct_lift H0; subst.
     eapply BFILE.file_crash_synced in H.
     intuition. rewrite <- H1.
+    rewrite  H1, <- H2.
     pred_apply; cancel.
     unfold items_valid, RALen in *; intuition congruence.
     eapply BFILE.arrayN_synced_list_fsynced; eauto.
   Qed.
 
-  Lemma file_crash_rep_eq : forall f f' tl1 tl2 vs1 vs2,
+  Lemma file_crash_rep_eq : forall f f' vs1 vs2,
     BFILE.file_crash f f' ->
-    rep f  tl1 vs1 (list2nmem (BFILE.BFData f)) ->
-    rep f' tl2 vs2 (list2nmem (BFILE.BFData f')) ->
-    tl1 = tl2 /\ vs1 = vs2.
+    rep f  vs1 (list2nmem (BFILE.BFData f)) ->
+    rep f' vs2 (list2nmem (BFILE.BFData f')) ->
+    vs1 = vs2.
   Proof.
     intros.
     eapply rep_items_eq in H1.
