@@ -90,9 +90,8 @@ Module DIR.
 
   Definition rep f dmap :=
     exists delist,
-    (Dent.rep f (repeat Public (length (Dent.Defs.ipack delist))) delist)%pred (list2nmem (BFILE.BFData f)) /\
-    listpred dmatch delist dmap /\
-    BFILE.BFOwner f = Public.
+    (Dent.rep f delist)%pred (list2nmem (BFILE.BFData f)) /\
+    listpred dmatch delist dmap.
 
   Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees f ms sm : (@pred _ addr_eq_dec valuset) :=
     (exists flist,
@@ -130,7 +129,7 @@ Module DIR.
     match r with
     | None => Ret ^(ms, 0, Err ENOENT)
     | Some (ix, _) =>
-        ms <- Dent.put lxp ixp dnum ix Public dent0 ms;;
+        ms <- Dent.put lxp ixp dnum ix dent0 ms;;
         Ret ^(ms, ix, OK tt)
     end.
 
@@ -139,10 +138,10 @@ Module DIR.
     let^ (ms, r) <- ifind_invalid lxp ixp dnum ms;;
     match r with
     | Some (ix, _) =>
-        ms <- Dent.put lxp ixp dnum ix Public de ms;;
+        ms <- Dent.put lxp ixp dnum ix de ms;;
         Ret ^(ms, ix+1, OK tt)
     | None =>
-        let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum Public de ms;;
+        let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;;
         Ret ^(ms, 0, ok)
     end.
 
@@ -162,7 +161,7 @@ Module DIR.
         let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;;
         Ret ^(ms, ix, r0)
       | false => 
-        ms <- Dent.put lxp ixp dnum ix0 Public de ms;;
+        ms <- Dent.put lxp ixp dnum ix0 de ms;;
         Ret ^(ms, ix0+1, OK tt)
       end
     } else {
@@ -631,14 +630,6 @@ Module DIR.
     unfold Dent.RA.RAData in *; eauto.
     eexists; split; eauto.
     subst.
-    pred_apply.
-    rewrite repeat_updN_noop.
-    replace (length (Dent.Defs.ipack x))
-      with (length (Dent.Defs.ipack (updN x a0_1 dent0))); eauto.
-    repeat rewrite Dent.Defs.ipack_length.
-    rewrite length_updN; auto.
-    denote lookup_f as Hx;
-    apply lookup_f_ok in Hx; cleanup.
     apply listpred_dmatch_dent0_emp; auto.
 
     rewrite lookup_ptsto by eauto.
@@ -732,16 +723,6 @@ Module DIR.
     auto.
     eexists; split; eauto.
     unfold Dent.RA.RAData in *; eauto.
-    subst.
-    pred_apply.
-    rewrite repeat_updN_noop.
-    replace (length (Dent.Defs.ipack x))
-      with (length (Dent.Defs.ipack (updN x a0_1 dent0))); eauto.
-    repeat rewrite Dent.Defs.ipack_length.
-    rewrite length_updN; auto.
-    erewrite <- length_updN; eauto.
-    repeat rewrite Dent.Defs.ipack_length.
-    setoid_rewrite length_updN; eauto.
 
     apply listpred_dmatch_mem_upd; auto.
     eapply ptsto_upd_disjoint; eauto.
@@ -772,32 +753,12 @@ Module DIR.
     intros mz Hmz; pose proof Hmz as Htemp; pred_apply.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
 
-    apply listmatch_emp; intros; cancel.
     rewrite BFILE.rep_length_pimpl in *.
     destruct_lift H5.
     destruct_lift H28.
-    apply list2nmem_ptsto_bound in H36.
+    apply list2nmem_ptsto_bound in H34.
 
-    rewrite listmatch_isolate with (i:=dnum) in Htemp; try omega.
-    destruct_lift Htemp; eauto.
-    rewrite <- H41; eauto.
-    
     eexists; split; eauto.
-    unfold Dent.RA.RAData in *; eauto.
-    subst.
-    pred_apply.
-    rewrite <- repeat_app_tail.
-    
-    replace ((S (length (Dent.Defs.ipack x))))
-      with (length (Dent.Defs.ipack (x ++ (updN Dent.Defs.block0 0 (mk_dent name inum isdir))))); eauto.
-    repeat rewrite Dent.Defs.ipack_length.
-    rewrite app_length, length_updN; auto.
-    setoid_rewrite Dent.Defs.block0_repeat.
-    rewrite repeat_length.
-    replace Dent.RA.items_per_val with (Dent.RA.items_per_val * 1) at 1 by omega.
-    rewrite Rounding.divup_add; auto.
-    apply Nat.add_1_r.
-    apply Dent.Defs.items_per_val_not_0.
     eapply listpred_dmatch_ext_mem_upd; eauto.
     eapply ptsto_upd_disjoint; eauto.
 
@@ -862,6 +823,7 @@ Module DIR.
     erewrite Dent.items_length_ok with (xp := dummy9) (m := (list2nmem (BFILE.BFData dummy9))).
     unfold Dent.RA.RALen. auto.
     pred_apply; cancel.
+    eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); cancel.
     eauto.
     eauto.
     eauto.
@@ -880,7 +842,6 @@ Module DIR.
     eauto.
     eexists; split; eauto.
     erewrite <- notindomain_mem_eq; eauto.
-
 
     step.
     step; msalloc_eq.
@@ -904,9 +865,9 @@ Module DIR.
     erewrite Dent.items_length_ok with (xp := dummy9) (m := (list2nmem (BFILE.BFData dummy9))).
     unfold Dent.RA.RALen. auto.
     pred_apply; cancel.
+    eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); cancel.
     cbv; intuition.
     msalloc_eq; eauto.
-    eauto.
     eauto.
     eauto.
 
@@ -917,14 +878,6 @@ Module DIR.
     eexists; split; eauto.
 
     unfold Dent.RA.RAData in *; eauto.
-    subst.
-    pred_apply.
-    rewrite repeat_updN_noop.
-    replace (length (Dent.Defs.ipack delist))
-      with (length (Dent.Defs.ipack (updN delist ixhint (mk_dent name inum isdir)))); eauto.
-    repeat rewrite Dent.Defs.ipack_length.
-    rewrite length_updN; auto.
-
     apply listpred_dmatch_mem_upd; auto.
     rewrite Bool.negb_true_iff; auto.
     erewrite Dent.items_length_ok with (xp := dummy9) (m := (list2nmem (BFILE.BFData dummy9))).
@@ -943,7 +896,6 @@ Module DIR.
     pred_apply; norm.
     cancel.
     intuition.
-    eauto.
     eauto.
     eauto.
     eexists; split; eauto.
@@ -1020,7 +972,6 @@ Module DIR.
     setoid_rewrite Dent.Defs.ipack_nil.
     assert (emp (list2nmem (@nil valuset))) by firstorder.
     pred_apply' H; cancel.
-    apply Forall_nil.
   Qed.
 
   Theorem rep_no_0_inum: forall f m, rep f m ->
