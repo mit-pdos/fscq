@@ -226,9 +226,9 @@ Module DIRTREE.
     mscs <- BFILE.sync_noop (FSXPLog fsxp) (FSXPInode fsxp) mscs;;
     Ret mscs.
 
-  Definition truncate fsxp inum nblocks tag mscs :=
+  Definition truncate fsxp inum nblocks mscs :=
     let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
-                                     inum nblocks tag mscs;;
+                                     inum nblocks mscs;;
     Ret ^(mscs, ok).
 
   Definition getlen fsxp inum mscs :=
@@ -1211,14 +1211,12 @@ Module DIRTREE.
   Qed.
 
   Theorem truncate_ok :
-    forall fsxp inum nblocks mscs tag pr,
+    forall fsxp inum nblocks mscs pr,
     {< F ds sm d pathname Fm Ftop tree f frees ilist,
     PERM:pr   
     PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
            [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm ]]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[ tag = DFOwner f ]] *
-           [[ can_access pr tag ]]
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:bm', hm', RET:^(mscs', ok)
            exists d',
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d') (MSLL mscs') sm bm' hm' *
@@ -1229,13 +1227,13 @@ Module DIRTREE.
            exists tree' f' ilist' frees',
            [[[ d' ::: Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-           [[ f' = mk_dirfile (setlen (DFData f) nblocks ((tag, $0), nil)) (DFAttr f) (DFOwner f)]] *
+           [[ f' = mk_dirfile (setlen (DFData f) nblocks ((Public, $0), nil)) (DFAttr f) (DFOwner f)]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
            [[ nblocks >= Datatypes.length (DFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]])
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
-    >} truncate fsxp inum nblocks tag mscs.
+    >} truncate fsxp inum nblocks mscs.
   Proof. 
     unfold truncate, rep.
     intros. prestep.

@@ -424,8 +424,7 @@ Module AFS.
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
     let^ (ams, p) <- authenticate fsxp inum ams;;
     If (bool_dec p true) {
-      let^ (ams, t) <- DIRTREE.getowner fsxp inum ams;;
-      let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz t ams;;
+      let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz ams;;
       match ok with
       | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');;
