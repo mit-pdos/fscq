@@ -96,6 +96,23 @@ syscalls() {
   sep
 }
 
+retry_syscalls() {
+  info "retry syscalls"
+  for system in fscq cfscq; do
+    info_system
+    setup_cores 1
+    for run in $(seq 1 10); do
+      args=( 1 --img="/tmp/disk.img" --system=$system
+             --reps=1 --iters=1 --warmup=false )
+      run ""          "${args[@]}" open
+      run "large-dir" "${args[@]}" traverse-dir --dir="/large-dir"
+      run "large"     "${args[@]}" cat-file     --file="/large"
+    done
+  done
+  restore_cores
+  sep
+}
+
 io_concur() {
   info "I/O concurrency"
   for system in fscq cfscq; do
@@ -238,6 +255,7 @@ mailserver_parbench() {
 parbench print-header | addfield "description"
 
 syscalls
+retry_syscalls
 io_concur
 dbench
 parsearch
