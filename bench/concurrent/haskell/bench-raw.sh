@@ -104,9 +104,9 @@ retry_syscalls() {
     for run in $(seq 1 10); do
       args=( 1 --img="/tmp/disk.img" --system=$system
              --reps=1 --iters=1 --warmup=false )
-      run ""          "${args[@]}" open
-      run "large-dir" "${args[@]}" traverse-dir --dir="/large-dir"
-      run "large"     "${args[@]}" cat-file     --file="/large"
+      run "cold" "${args[@]}" open
+      run "cold" "${args[@]}" traverse-dir --dir="/large-dir"
+      run "cold" "${args[@]}" cat-file     --file="/large"
     done
   done
   restore_cores
