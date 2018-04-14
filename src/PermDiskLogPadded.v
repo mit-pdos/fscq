@@ -815,10 +815,6 @@ Proof.
   simpl; unfold roundup; apply divup_n_mul_n_le.
   unfold DescSig.items_per_val.
   rewrite valulen_is. cbv; omega.
-
-  unfold roundup; apply divup_n_mul_n_le.
-  unfold DescSig.items_per_val.
-  rewrite valulen_is. cbv; omega.
 Qed.
 
 

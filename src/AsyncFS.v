@@ -897,12 +897,6 @@ Module AFS.
     step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
-    unfold INODE.iattr0 in H13; inversion H13; eauto.
-    step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_r; cancel.
-    inversion H13; simpl; auto.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.

@@ -328,7 +328,6 @@ Import ListNotations.
           eapply IHelem with (name := name); eauto.
           rewrite find_dirlist_ne in H1; eauto.
           inversion H. simpl in H7; eauto.
-          rewrite <- H2; eauto.
   Qed.
 
   Lemma tree_inodes_distinct_elem: forall a n l subtree,
