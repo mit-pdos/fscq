@@ -101,10 +101,7 @@ Set Implicit Arguments.
     inversion H2.
     constructor; eauto.
     constructor.
-    inversion H. 
-    simpl in *. subst.
-    constructor.
-    simpl in *; auto.
+    unfold not; intros Hin; inversion Hin.
     constructor.
   Qed.
 
