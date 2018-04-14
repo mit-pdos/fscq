@@ -3210,7 +3210,6 @@ Qed.
     or_r; cancel.
     xform_norm; cancel.
     apply weq.
-    Search ptsto not.
     intros; unfold not; intro Hcon;
     eapply ptsto_conflict with (a:= #y); pred_apply' Hcon;
     cancel.
