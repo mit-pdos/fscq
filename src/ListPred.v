@@ -697,6 +697,7 @@ Proof.
   cancel.
   replace (length l + 0) with n by omega.
   cancel.
+  inversion H; subst; eauto.
 Qed.
 
 
