@@ -207,7 +207,33 @@ Module CacheOneDir.
     repeat match goal with
     | [ H : Some _ = Some _ |- _ ] => inversion H; clear H; subst
     | [ H1 : BFILE.BFCache ?f = _ , H2 : BFILE.BFCache ?F = _ |- _ ] => rewrite H1 in H2
-    end.
+           end.
+
+  Lemma inode_owner_public:
+      forall F Ff bxp lxp ixp flist ilist x ms m dnum f dl def,
+      (F * BFILE.rep bxp lxp ixp flist ilist
+            x (MSAllocC ms) (MSCache ms) 
+            (SDIR.MSICache ms) (MSDBlocks ms))%pred m ->
+      (Ff ✶ dnum |-> f)%pred (list2nmem flist) ->
+      SDIR.rep f dl ->
+      INODE.IOwner (selN ilist dnum def) = Public.
+    Proof.
+      intros.
+      denote BFILE.rep as Hbr; unfold BFILE.rep in Hbr.
+      destruct_lift Hbr.
+      denote listmatch as Hmatch;
+      erewrite listmatch_isolate with (i:=dnum)(ad:=BFILE.bfile0)(bd:=def) in Hmatch.
+      unfold BFILE.file_match at 2 in Hmatch; destruct_lift Hmatch.
+      denote SDIR.rep as Hdr; unfold SDIR.rep, DIR.rep, DIR.Dent.rep in Hdr;
+      cleanup; auto.
+      denote LOG.arrayP as Hp; destruct_lift Hp; cleanup.
+      eapply list2nmem_sel with (def:=BFILE.bfile0) in H0; cleanup; auto.
+      eapply list2nmem_inbound; eauto.
+      rewrite listmatch_length_pimpl in Hmatch; destruct_lift Hmatch.
+      rewrite <- H11; eapply list2nmem_inbound; eauto.
+      Unshelve.
+      exact nat.
+    Qed.
 
   Theorem init_cache_ok :
     forall bxp lxp ixp dnum ms pr,
@@ -231,6 +257,7 @@ Module CacheOneDir.
     unfold init_cache, rep_macro.
     lightstep.
     msalloc_eq.
+    eapply inode_owner_public; eauto.
     lightstep.
     msalloc_eq; lightstep.
     msalloc_eq; lightstep.
@@ -292,7 +319,6 @@ Module CacheOneDir.
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
-           [[ MSDBlocks ms' = MSDBlocks ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\ inum <> 0 /\
@@ -320,6 +346,9 @@ Module CacheOneDir.
     cancel.
     eauto using any_sep_star_ptsto.
     cancel.
+    
+    eauto.
+    cleanup; msalloc_eq; eauto.
     cancel.
     
   Unshelve.
@@ -342,14 +371,14 @@ Module CacheOneDir.
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
-             [[ MSIAllocC ms' = MSIAllocC ms ]] *
-             [[ True ]]
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} readdir lxp ixp dnum ms.
   Proof. 
     unfold readdir, rep_macro, rep.
     lightstep.
+    eapply inode_owner_public; eauto.
     lightstep.
     lightstep; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto.
@@ -371,8 +400,7 @@ Module CacheOneDir.
              [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
-             [[ MSIAllocC ms' = MSIAllocC ms ]] *
-             [[ True ]]
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} unlink lxp ixp dnum name ms.
   Proof. 
@@ -380,7 +408,8 @@ Module CacheOneDir.
     lightstep.
     simpl. destruct_branch.
     safestep.
-    eauto.
+    eapply inode_owner_public; eauto.
+    eauto.    
     lightstep.
     lightstep.
     lightstep.
@@ -388,7 +417,7 @@ Module CacheOneDir.
     msalloc_eq.
     subst; pred_apply; cancel.
     simpl in *.
-    inversion H23; subst.
+    inversion H21; subst.
     unfold mem_except; cbn [fst snd].
     rewrite DcacheDefs.MapFacts.remove_o.
     denote (Dcache.find) as Hf.
@@ -417,7 +446,6 @@ Module CacheOneDir.
     all: eauto.
   Qed.
 
-  
   Lemma sdir_rep_cache : forall f c m,
     SDIR.rep f m ->
     SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c; BFILE.BFOwner := BFILE.BFOwner f |} m.
@@ -458,13 +486,14 @@ Module CacheOneDir.
     unfold link'.
     lightstep.
     lightstep; try congruence.
+    eapply inode_owner_public; eauto.
     simpl; destruct_branch.
     prestep.
     intros mz Hmz.
     destruct_lift Hmz.
     pred_apply; norml.
-    inversion H13.
-    inversion H13.
+    inversion H12.
+    inversion H12.
     intros mz' Hmz'; repeat eexists;
     pred_apply' Hmz'; norm.
     cancel.
@@ -488,6 +517,7 @@ Module CacheOneDir.
     lightstep; msalloc_eq.
     erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
     auto.
+    
   Unshelve.
     all : try exact BALLOCC.Alloc.freelist0.
     all : eauto.
