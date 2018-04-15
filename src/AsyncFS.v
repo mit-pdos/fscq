@@ -753,9 +753,6 @@ Module AFS.
     unfold file_get_sz; intros.
     step.
     step.
-    step.
-    step.
-    Unshelve. all: exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.

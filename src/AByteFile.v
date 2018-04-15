@@ -569,9 +569,8 @@ omega.
 apply byteset0.
 
 Grab Existential Variables.
-apply valuset0.
-apply valuset0.
-apply nil.
+all: try exact valuset0.
+all: try exact nil.
 Qed.
 
 
