@@ -1786,7 +1786,7 @@ Module BFILE.
     erewrite arrayN_split with (i := BmapStart bxps_2). repeat rewrite Nat.add_0_l.
     erewrite arrayN_split with (i := BmapStart bxps_1) (a := firstn _ _). repeat rewrite Nat.add_0_l.
     erewrite arrayN_split with (i := (BmapNBlocks bxps_1) * valulen) at 1; repeat rewrite Nat.add_0_l.
-    rewrite arrayN_listpred_seq by eauto. rewrite Nat.add_0_r.
+    rewrite arrayN_listpred_seq by eauto.
     repeat rewrite firstn_length.
     substl (length sl).
     cancel.
