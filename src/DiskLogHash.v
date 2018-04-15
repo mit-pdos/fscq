@@ -1117,8 +1117,8 @@ Module PaddedLog.
     intros; cancel.
   Qed.
 
-  Lemma helper_add_sub_0 : forall a b,
-    a <= b -> a + (b - a) + 0 = b.
+  Lemma helper_add_sub : forall a b,
+    a <= b -> a + (b - a) = b.
   Proof.
     intros; omega.
   Qed.
@@ -1149,7 +1149,7 @@ Module PaddedLog.
     rewrite helper_sep_star_reorder.
     rewrite Desc.avail_rep_merge by auto.
     rewrite Data.avail_rep_merge by auto.
-    repeat rewrite helper_add_sub_0 by auto.
+    repeat rewrite helper_add_sub by auto.
     cancel.
   Qed.
 
