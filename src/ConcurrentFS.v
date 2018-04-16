@@ -523,18 +523,14 @@ Section ConcurrentFS.
                             (fs_spec P fsspec tid mscs Locked c)
                             (p mscs Locked c)) ->
       cprog_spec G tid
-                 (fun '(tree, homedirs, a, v0) sigma =>
+                 (fun '(tree, homedirs, a) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
                          same_fs_update tid homedirs tree update (fs_dirup (fsspec a)) /\
-                         allowed_fs_update tid homedirs tree (fs_post (fsspec a)) update /\
-                         match m_a with
-                         | Some v => v = v0
-                         | None => True
-                         end;
+                         allowed_fs_update tid homedirs tree (fs_post (fsspec a)) update;
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -561,6 +557,11 @@ Section ConcurrentFS.
       descend; simpl in *; intuition eauto.
       step.
       descend; simpl in *; intuition eauto.
+      step.
+      descend; simpl in *; intuition eauto.
+
+      monad_simpl.
+      eapply cprog_ok_weaken; [ solve [ eapply H ] | ]; simplify; finish.
 
       (* destruct return value of optimistic program *)
       destruct a1.
@@ -598,9 +599,9 @@ Section ConcurrentFS.
         step.
         descend; simpl in *; intuition eauto.
         norm_eq.
-        eauto.
+        solve [ eauto ].
         unfold G, fs_guarantee.
-        exists (fs_dirup (fsspec a0) r tree'), (fs_dirup (fsspec a0) r tree').
+        eexists (fs_dirup (fsspec a0) r tree'), (fs_dirup (fsspec a0) r tree').
         match goal with
         | [ H: same_fs_update _ _ _ _ _ |- _ ] =>
           erewrite H in *; eauto
@@ -621,7 +622,7 @@ Section ConcurrentFS.
         step; finish.
 
         (* next iteration of loop *)
-        destruct (guard r1); simpl.
+        destruct (guard r2); simpl.
         * (* succeeded, return *)
           step; finish.
           match goal with
@@ -648,7 +649,7 @@ Section ConcurrentFS.
 
         (* need to loop around depending on guard r (in particular, will stop on
         SyscallFailed) *)
-        destruct (guard r0) eqn:? .
+        destruct (guard r1) eqn:? .
         step; finish.
         destruct e; auto.
         intuition; repeat deex; try discriminate.
@@ -668,8 +669,8 @@ Section ConcurrentFS.
 
         step; simplify.
         intuition trivial.
-        destruct r0; intuition; subst.
-        exists tree'0, (fs_dirup (fsspec a0) v tree'0).
+        destruct r1; intuition; subst.
+        eexists tree'0, (fs_dirup (fsspec a0) v tree'0).
         descend; simpl in *; intuition eauto.
         etransitivity; eauto.
 

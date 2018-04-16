@@ -68,6 +68,25 @@ Section Primitives.
            | _ => simpl in *; intuition eauto
            end.
 
+  Theorem IsInBounds_ok : forall tid a,
+      cprog_spec G tid
+                 (fun (_:unit) sigma =>
+                    {| precondition := True;
+                       postcondition :=
+                         fun sigma' (r:bool) =>
+                           sigma' = sigma /\
+                           if r then exists v, Sigma.disk sigma' a = Some v
+                           else Sigma.disk sigma' a = None |})
+                 (IsInBounds a).
+  Proof.
+    prim.
+    destruct (Sigma.disk st a); congruence.
+    destruct_with_eqn (Sigma.disk st a);
+      match goal with
+      | [ H: StepTo _ _ = StepTo _ _ |- _ ] => inversion H; subst; clear H
+      end; eauto.
+  Qed.
+
   Theorem BeginRead_ok : forall tid a,
       cprog_spec G tid
                  (fun '(F, v) sigma =>
@@ -605,6 +624,7 @@ Section Primitives.
 
 End Primitives.
 
+Hint Extern 0 {{ IsInBounds _; _ }} => apply IsInBounds_ok : prog.
 Hint Extern 0 {{ BeginRead _; _ }} => apply BeginRead_ok : prog.
 Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.

@@ -692,11 +692,14 @@ Section OptimisticCache.
 
   Definition EnsureFilled (c:Cache) (a:option nat) : cprog Cache :=
     match a with
-    | Some a => start <- Rdtsc;
-                 do '(_, cs) <- CacheRead (caches c c) a Locked;
-                 end_t <- Rdtsc;
-                 _ <- Debug "EnsureFilled fill" (end_t - start);
-                 Ret (cache cs)
+    | Some a => inbounds <- IsInBounds a;
+                 if inbounds then
+                   start <- Rdtsc;
+                     do '(_, cs) <- CacheRead (caches c c) a Locked;
+                     end_t <- Rdtsc;
+                     _ <- Debug "EnsureFilled fill" (end_t - start);
+                     Ret (cache cs)
+                 else Ret c
     | None => Ret c
     end.
 
@@ -711,15 +714,26 @@ Section OptimisticCache.
 
   Hint Resolve lock_owned.
 
+  Lemma cache_rep_disk_inbounds : forall d c vd a v,
+      cache_rep d c vd ->
+      d a = Some v ->
+      exists v', vd a = Some v'.
+  Proof.
+    unfold cache_rep; intros.
+    specialize (H a);
+      destruct_with_eqn (cache_get c a);
+      (intuition idtac);
+      repeat deex;
+      eauto.
+    destruct (vd a); try congruence; eauto.
+  Qed.
+
   Theorem EnsureFilled_ok : forall tid c ma,
       cprog_spec G tid
-                 (fun '(F, vd, v0) sigma =>
+                 (fun '(F, vd) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
-                         (* eviction is only supported if the caches are in sync
-                         (the virtual disks are the same) *)
                          cache_rep (Sigma.disk sigma) c vd /\
-                         (forall a, ma = Some a -> vd a = Some v0) /\
                          Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' c' =>
@@ -733,6 +747,8 @@ Section OptimisticCache.
     unfold EnsureFilled.
     destruct ma; intros;
       hoare finish.
+    destruct r; hoare finish.
+    eapply cache_rep_disk_inbounds in H5; eauto; deex.
     eapply cprog_ok_weaken.
     monad_simpl.
     eapply CacheRead_ok.

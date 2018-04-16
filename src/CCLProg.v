@@ -115,6 +115,7 @@ Section CCL.
   | AssgnTxn (tx:write_transaction) : cprog unit
   | BeginRead (a:addr) : cprog unit
   | WaitForRead (a:addr) : cprog valu
+  | IsInBounds (a:addr) : cprog bool
   | Write (a:addr) (v: valu) : cprog unit
   | Hash sz (buf: word sz) : cprog (word hashlen)
   | Hash2 sz1 sz2 (buf1: word sz1) (buf2: word sz2) : cprog (word hashlen)
@@ -239,6 +240,10 @@ Section CCL.
                       then NonDet (* still need to check type *)
                       else Fails
                     else Fails
+    | IsInBounds a => match Sigma.disk sigma a with
+                     | Some _ => StepTo sigma true
+                     | None => StepTo sigma false
+                     end
     | BeginRead a => if local_l tid (Sigma.l sigma) then
                       match Sigma.disk sigma a with
                       | Some (v, NoReader) =>
