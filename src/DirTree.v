@@ -68,8 +68,7 @@ Module DIRTREE.
         [[ valid = OK tt -> find_subtree fndone treetop = Some tree ]] *
         [[ isError valid -> find_subtree fnlist treetop = None ]] *
         [[ MSAlloc mscs = MSAlloc mscs0 ]] *
-        [[ MSAllocC mscs = MSAllocC mscs0 ]] *
-        [[ MSDBlocks mscs = MSDBlocks mscs0 ]]
+        [[ MSAllocC mscs = MSAllocC mscs0 ]]
       OnCrash
         crash
       Begin
@@ -227,8 +226,7 @@ Module DIRTREE.
     Ret mscs.
 
   Definition truncate fsxp inum nblocks mscs :=
-    let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
-                                     inum nblocks mscs;;
+    let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum nblocks mscs;;
     Ret ^(mscs, ok).
 
   Definition getlen fsxp inum mscs :=
@@ -267,7 +265,6 @@ Module DIRTREE.
            [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
            [[ MSCache mscs' = MSCache mscs ]] *
-           [[ MSDBlocks mscs' = MSDBlocks mscs ]] *
            [[ MSAllocC mscs' = MSAllocC mscs ]] *
            [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
            [[ r = DFOwner f ]]
@@ -880,6 +877,7 @@ Module DIRTREE.
     rewrite dir_names_delete with (dnum := dnum); eauto.
     rewrite dirlist_pred_except_delete; eauto.
     cancel.
+    unfold BFILE.freepred,  BFILE.bfile0_owned; eauto.
     eauto.
     apply dirlist_safe_delete; auto.
 
@@ -923,14 +921,13 @@ Module DIRTREE.
     step.
     step.
     Opaque corr2.
-    safelightstep.
+    prestep.
+    intros mx Hmx.
+    destruct_lift Hmx.
+    exists F_, F; do 2 eexists;  exists mbase, sm, m.
+    pred_apply; cancel.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    pred_apply; cancel.
-    pred_apply; cancel.
-    unfold SDIR.rep in *; cleanup; eauto.
-    unfold SDIR.rep in *; cleanup; eauto.
-    auto.
-    intros. destruct_branch.
+    eauto.
     step.
     step.
     msalloc_eq.
@@ -980,7 +977,6 @@ Module DIRTREE.
     eassumption.
     all: try solve [intros; rewrite <- H1; cancel; eauto].
 
-    step.
     step.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
@@ -1049,7 +1045,7 @@ Module DIRTREE.
 
     rewrite <- H2; cancel; eauto.
   Qed.
-
+(** Checked until here **)
   Theorem dwrite_ok :
     forall fsxp inum off h mscs pr,
     {< F ds sm pathname Fm Ftop tree f Fd v vs ilist frees,
@@ -1104,11 +1100,13 @@ Module DIRTREE.
     eauto.
 
     step.
-    step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    cancel.
+    prestep.
+    intros mx Hmx; destruct_lift Hmx.
+    pred_apply; erewrite LOG.rep_hashmap_subset; eauto.
+    msalloc_eq; cancel.
     rewrite <- subtree_absorb by eauto.
-    pred_apply; cancel.
+    cancel.
+    simpl; eapply list2nmem_updN; eauto.
 
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file.
@@ -1227,7 +1225,7 @@ Module DIRTREE.
            exists tree' f' ilist' frees',
            [[[ d' ::: Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-           [[ f' = mk_dirfile (setlen (DFData f) nblocks ((Public, $0), nil)) (DFAttr f) (DFOwner f)]] *
+           [[ f' = mk_dirfile (setlen (DFData f) nblocks valuset0) (DFAttr f) (DFOwner f)]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
            [[ nblocks >= Datatypes.length (DFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]])
@@ -1396,7 +1394,7 @@ Module DIRTREE.
   Hint Extern 1 ({{_|_}} Bind (datasync _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync_noop _ _) _) => apply sync_noop_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (truncate _ _ _ _ _) _) => apply truncate_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (truncate _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattr _ _ _) _) => apply getattr_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _) _) => apply getowner_ok : prog.
