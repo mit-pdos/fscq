@@ -83,6 +83,16 @@ Module BFILE.
 
   (* interface implementation *)
 
+  Definition getowner lxp ixp inum fms :=
+  let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
+  let^ (icache, ms, ow) <- INODE.getowner lxp ixp inum icache ms;;
+  Ret ^(mk_memstate al ms alc ialc icache cache dblocks, ow).
+
+  Definition setowner lxp ixp inum tag fms :=
+  let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
+  let^ (icache, ms) <- INODE.setowner lxp ixp inum tag icache ms;;
+  Ret (mk_memstate al ms alc ialc icache cache dblocks).
+  
   Definition getlen lxp ixp inum fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (icache, ms, n) <- INODE.getlen lxp ixp inum icache ms;;
@@ -263,16 +273,6 @@ Module BFILE.
   Definition cache_put inum dc fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     Ret (mk_memstate al ms alc ialc icache (BFcache.add inum dc cache) dblocks).
-
-  Definition getowner lxp ixp inum fms :=
-  let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
-  let^ (icache, ms, ow) <- INODE.getowner lxp ixp inum icache ms;;
-  Ret ^(mk_memstate al ms alc ialc icache cache dblocks, ow).
-
-  Definition setowner lxp ixp inum tag fms :=
-  let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
-  let^ (icache, ms) <- INODE.setowner lxp ixp inum tag icache ms;;
-  Ret (mk_memstate al ms alc ialc icache cache dblocks).
 
 
 
@@ -479,8 +479,9 @@ Module BFILE.
     let l := map (@wordToNat _) bns in
     cms <- BALLOCC.freevec lxp (pick_balloc bxp (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));;
     let^ (icache, cms) <- INODE.reset lxp (pick_balloc bxp (negb al)) xp inum sz attr0 icache cms;;
+    let^ (icache, ms) <- INODE.setowner lxp xp inum Public icache (BALLOCC.MSLog cms);;          
     let dblocks := clear_dirty inum dblocks in
-    Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache) dblocks).
+    Ret (mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache) dblocks).
 
   Definition reset' lxp bxp xp inum ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;;
@@ -1939,7 +1940,7 @@ Qed.
            [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} setowner lxp ixp inum tag ms.
-  Proof.
+  Proof. 
     unfold setowner, rep.
     step.
     sepauto.
@@ -2033,7 +2034,7 @@ Qed.
            [[ (Fs * BALLOCC.smrep (fst frees') * BALLOCC.smrep (snd frees'))%pred sm ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} shuffle_allocs lxp bxps ms cms.
-  Proof.
+  Proof. 
     unfold shuffle_allocs.
     intros.
     eapply pimpl_ok2.
@@ -2145,7 +2146,7 @@ Qed.
     erewrite arrayN_split with (i := BmapStart bxps_2). repeat rewrite Nat.add_0_l.
     erewrite arrayN_split with (i := BmapStart bxps_1) (a := firstn _ _). repeat rewrite Nat.add_0_l.
     erewrite arrayN_split with (i := (BmapNBlocks bxps_1) * valulen) at 1; repeat rewrite Nat.add_0_l.
-    rewrite arrayN_listpred_seq by eauto. rewrite Nat.add_0_r.
+    rewrite arrayN_listpred_seq by eauto. (*rewrite Nat.add_0_r.*)
     repeat rewrite firstn_length.
     substl (length sl).
     cancel.
@@ -2248,7 +2249,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} getlen lxp ixp inum ms.
-  Proof. 
+  Proof.
     unfold getlen, rep.
     safestep.
     sepauto.
@@ -2266,7 +2267,6 @@ Qed.
     rewrite <- H1; cancel; eauto.
     Unshelve. all: eauto.
   Qed.
-            
 
   Theorem getattrs_ok :
     forall lxp bxp ixp inum ms pr,
@@ -3305,6 +3305,8 @@ Qed.
 *)
 
   Hint Extern 1 ({{_|_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
@@ -3317,8 +3319,6 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _ _ _ _ _ _) (rep _ _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
 
   Theorem read_array_ok :
@@ -3742,7 +3742,7 @@ Qed.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
                       (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms')) ]]] *
-           [[[ flist' ::: (Fi * inum |-> bfile0_owned (BFOwner f)) ]]] *
+           [[[ flist' ::: (Fi * inum |-> bfile0) ]]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
@@ -3812,6 +3812,7 @@ Qed.
     simplen.
     pred_apply; cancel.
     eauto.
+    step.
     
     safestep.
     safestep.
@@ -3847,14 +3848,6 @@ Qed.
     rewrite listmatch_isolate with (i:=inum) in H5.
     unfold file_match at 2 in H5; destruct_lift H5; eauto.
     all: simplen.
-    rewrite listmatch_isolate with (i:=inum) in H5.
-    unfold file_match at 2 in H5;
-    rewrite listmatch_length_pimpl with (a:=(BFData dummy6 ⟦ inum ⟧)) in H5;
-    destruct_lift H5; rewrite map_length in *.
-    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H36; eauto.
-    simplen.
-    simplen.
-    unfold bfile0_owned; eauto.
     eapply bfcache_remove'; eauto.
 
     unfold smrep; cancel.
@@ -3875,12 +3868,12 @@ Qed.
           (q:= (smrep_single_helper (Map.remove inum (MSDBlocks a)))).
       auto.
       intros.
-      rewrite <- H23.
+      rewrite <- H33.
       unfold smrep_single_helper.
       rewrite M.find_remove_ne by omega; eauto.
       intros.
-      rewrite <- H23, Nat.add_0_r.
-      rewrite firstn_length_l in H22 by simplen.
+      rewrite <- H33, Nat.add_0_r.
+      rewrite firstn_length_l in H29 by simplen.
       unfold smrep_single_helper.
       rewrite M.find_remove_ne by omega; eauto.
     }
@@ -3892,14 +3885,12 @@ Qed.
     unfold file_match at 2 in H5;
     rewrite listmatch_length_pimpl with (a:=(BFData dummy6 ⟦ inum ⟧)) in H5;
     destruct_lift H5; rewrite map_length in *.
-    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H36; eauto.
+    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H42; eauto.
     simplen.
     simplen.
     simplen.
     simplen.
-
-
-    
+ 
     replace (length (INODE.IBlocks dummy7 ⟦ inum ⟧) -
              length (BFData dummy6 ⟦ inum ⟧)) with 0; simpl.
     destruct (MSAlloc a); simpl;
@@ -3908,7 +3899,7 @@ Qed.
     unfold file_match at 2 in H5;
     rewrite listmatch_length_pimpl with (a:=(BFData dummy6 ⟦ inum ⟧)) in H5;
     destruct_lift H5; rewrite map_length in *.
-    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H35; eauto.
+    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H40; eauto.
     simplen.
     simplen.
     rewrite selN_updN_ne; auto.
