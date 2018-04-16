@@ -550,17 +550,17 @@ Module DTCrash.
     unfold BFILE.synced_file in H0; simpl in *.
     eauto. simpl in *.
     destruct f'; simpl in *.
+    cleanup;
     subst; eauto.
-    eauto.
   Qed.
 
   Lemma dirfile_crash_exists : forall f, exists f',
     file_crash f f'.
   Proof.
     unfold file_crash; intros.
-    edestruct (file_crash_exists (BFILE.mk_bfile (DFData f) (DFAttr f) None)).
+    edestruct (file_crash_exists (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) None)).
     destruct x.
-    exists (mk_dirfile BFData BFAttr).
+    exists (mk_dirfile BFData BFAttr BFOwner).
     do 2 eexists.
     simpl; eauto.
   Qed.
