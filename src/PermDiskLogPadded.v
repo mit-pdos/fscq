@@ -1507,8 +1507,9 @@ Lemma combine_eq_r:
     rewrite helper_sep_star_reorder.
     rewrite Desc.avail_rep_merge by auto.
     rewrite Data.avail_rep_merge by auto.
-    repeat rewrite helper_add_sub_0 by auto.
-    cancel.
+    repeat rewrite Nat.add_sub_assoc by auto.
+    repeat rewrite minus_plus.
+    cancel.    
   Qed.
 (** Specs **)
 
