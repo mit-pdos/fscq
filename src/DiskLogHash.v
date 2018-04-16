@@ -1356,13 +1356,6 @@ Module PaddedLog.
   Local Hint Resolve ent_valid_addr_valid.
   Local Hint Resolve Forall_append DescDefs.items_per_val_not_0.
 
-  Lemma helper_add_sub : forall a b,
-    a <= b -> a + (b - a) = b.
-  Proof.
-    intros; omega.
-  Qed.
-
-
   Lemma nonzero_addrs_app : forall a b,
     nonzero_addrs (a ++ b) = nonzero_addrs a + nonzero_addrs b.
   Proof.
