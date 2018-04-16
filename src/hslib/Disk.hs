@@ -77,6 +77,11 @@ logFlush (Just fl) = do
   FL writes flushed <- readIORef fl
   writeIORef fl $ FL [] (writes : flushed)
 
+get_size :: DiskState -> IO Integer
+get_size (S fd _ _ _) = do
+  bytes <- fdSeek fd SeekFromEnd 0
+  return (ceiling $ (fromIntegral bytes :: Double) / 4096)
+
 read_disk :: DiskState -> Integer -> IO Coq_word
 read_disk (S fd sr _ _) a = do
   debugmsg $ "read(" ++ (show a) ++ ")"

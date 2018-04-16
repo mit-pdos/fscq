@@ -66,6 +66,11 @@ crc32_word_update c sz (W w) = do
 crc32_word_update c sz (W64 w) = crc32_word_update c sz $ W $ fromIntegral w
 crc32_word_update c _ (WBS bs) = return $ CRC32.crc32Update c bs
 
+is_in_bounds :: ConcurState -> Integer -> IO Bool
+is_in_bounds s a = do
+  size <- Disk.get_size (disk s)
+  return $ a < size
+
 schedule_read :: ConcurState -> Integer -> IO ()
 schedule_read s a = do
   m <- newEmptyMVar
@@ -146,6 +151,10 @@ run_dcode s (SetLock l l') = {-# SCC "dcode-setlock" #-} do
     (Locked, Unacquired) -> putMVar (lock s) ()
     (_, _) -> error $ "SetLock used incorrectly: " ++ show l ++ " " ++ show l'
   return $ unsafeCoerce l'
+run_dcode s (IsInBounds a) = do
+  debugmsg $ "IsInBounds"
+  b <- is_in_bounds s a
+  return $ unsafeCoerce b
 run_dcode s (BeginRead a) = do
   debugmsg $ "BeginRead"
   schedule_read s a
