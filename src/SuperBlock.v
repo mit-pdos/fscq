@@ -173,7 +173,6 @@ Module SB.
   Proof.
     unfold load, rep.
     hoare.
-    unfold can_access; destruct pr; auto.
     apply v_pickle_unpickle_superblock; auto.
     eexists; repeat (eapply hashmap_subset_trans; eauto).
   Qed.
@@ -206,7 +205,6 @@ Module SB.
   Proof.
     unfold rep, init.
     step.
-    unfold can_access; destruct pr; auto.
     safestep.
     eassign F_; cancel.
     eapply PermCacheLemmas.block_mem_subset_rep; eauto.
