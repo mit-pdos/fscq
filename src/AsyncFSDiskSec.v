@@ -198,7 +198,7 @@ Proof.
       unfold equivalent_for; intros.
       specialize H0 with (1:= H) as Hx;
       specialize (Hx n); destruct Hx; cleanup; try congruence.
-      destruct (handle_eq_dec a n); subst.
+      destruct (addr_eq_dec a n); subst.
       right.
       repeat rewrite Mem.upd_eq; eauto.
       do 2 eexists; eauto.
@@ -223,7 +223,7 @@ Proof.
       destruct (tag_dec t2 tag); subst; intuition.
       specialize H0 with (1:= H) as Hx;
       specialize (Hx n); destruct Hx; cleanup; try congruence.
-      destruct (handle_eq_dec a n); subst.
+      destruct (addr_eq_dec a n); subst.
       right.
       repeat rewrite Mem.upd_eq; eauto.
       do 2 eexists; eauto.
@@ -594,100 +594,3 @@ Proof.
     eapply XRCrashedRecovered; eauto.
   }
 Qed.
-
-
-Definition fbasic_to_prog {T} fsxp ams (fp: fbasic T): prog (BFILE.memstate * (T * unit)) :=
-  match fp with
-  | (read_fblock_f inum off) => read_fblock fsxp inum off ams
-  | file_set_attr_f inum attr => file_set_attr fsxp inum attr ams
-  | file_get_attr_f inum => file_get_attr fsxp inum ams
-  | file_set_sz_f inum sz => file_set_sz fsxp inum sz ams
-  | file_get_sz_f inum => file_get_sz fsxp inum ams
-  | update_fblock_d_f inum off v => update_fblock_d fsxp inum off v ams
-  | file_truncate_f inum sz => file_truncate fsxp inum sz ams
-  | file_sync_f inum => file_sync fsxp inum ams
-  | readdir_f inum => readdir fsxp inum ams
-  | create_f dnum name tag => create fsxp dnum name tag ams
-  | delete_f dnum name => delete fsxp dnum name ams
-  | lookup_f dnum fnlist => lookup fsxp dnum fnlist ams
-  | rename_f dnum srcpath srcname dstpath dstname => rename fsxp dnum srcpath srcname dstpath dstname ams
-  | tree_sync_f => tree_sync fsxp ams
-    | tree_sync_noop_f => tree_sync_noop fsxp ams
-  end.
-
-Fixpoint fprog_to_prog {T} fsxp ams (fp: fprog T): prog (BFILE.memstate * (T * unit)) :=
-  match fp with
-  | FBasic p => fbasic_to_prog fsxp ams p
-  | FBind p bp => x <- (fbasic_to_prog fsxp ams p);; (fprog_to_prog fsxp (fst x) (bp (fst (snd x))))
-  end.
-
-
-Theorem exec_fbasic_equivalent:
-  forall T (p: fbasic T) pr tr d1 d2 bm hm d1' bm' hm' tr' fsxp mscs mscs' (r: T),
-    exec_fbasic pr tr d1 bm hm fsxp mscs p (Finished d1' bm' hm' r) mscs' tr' ->
-    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    only_reads_permitted pr (fbasic_to_prog fsxp mscs p) d1 bm hm ->
-    exists d2', exec_fbasic pr tr d2 bm hm fsxp mscs p (Finished d2' bm' hm' r) mscs' tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
-Proof.
-  unfold fbasic_to_prog; intros; destruct p;
-  try solve
-  [ inversion H; subst; try sigT_eq;
-    denote exec as Hx;
-    eapply exec_equivalent_finished in Hx; eauto;
-    cleanup; eexists; split; eauto;
-    econstructor; eauto].
-Qed.
-
-  
-Theorem fbasic_return :
- forall T (p: fbasic T) pr
-   mscs mscs1' fsxp d1 bm hm d1' bm1' hm1' tr1 tr1' d2 (r: T),
-   (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->                     
-   exec_fbasic pr tr1 d1 bm hm fsxp mscs p (Finished d1' bm1' hm1' r) mscs1' tr1' ->
-   only_reads_permitted pr (fbasic_to_prog fsxp mscs p) d1 bm hm ->
-  exists d2',
-    exec_fbasic pr tr1 d2 bm hm fsxp mscs p (Finished d2' bm1' hm1' r) mscs1' tr1' /\
-    (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
-Proof.
-  intros. eapply exec_fbasic_equivalent; eauto.
-Qed.
-
-
-Lemma fbasic_to_prog_exec:
-    forall T (p: fbasic T) pr tr d bm hm fsxp mscs  d' bm' hm' (v:T) ams' tr',
-    exec_fbasic pr tr d bm hm fsxp mscs p (Finished d' bm' hm' v) ams' tr' ->
-    exec pr tr d bm hm (fbasic_to_prog fsxp mscs p) (Finished d' bm' hm' ^(ams', v)) tr'.
-  Proof.
-    unfold fbasic_to_prog; intros; destruct p;
-    inversion H; subst; repeat sigT_eq; eauto.
-  Qed.
-
-
-Theorem exec_fprog_equivalent:
-  forall T (p: fprog T) pr tr d1 d2 bm hm d1' bm' hm' tr' fsxp mscs mscs' (r: T),
-    fexec pr tr d1 bm hm fsxp mscs p (Finished d1' bm' hm' r) mscs' tr' ->
-    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
-    only_reads_permitted pr (fprog_to_prog fsxp mscs p) d1 bm hm ->
-    exists d2', fexec pr tr d2 bm hm fsxp mscs p (Finished d2' bm' hm' r) mscs' tr' /\
-     (forall tag, can_access pr tag -> equivalent_for tag d1' d2').
-Proof.
-  unfold fprog_to_prog; induction p; intros.
-  inversion H; subst; repeat sigT_eq.
-  eapply fbasic_return in H12; eauto.
-  cleanup.
-  eexists; split; eauto.
-  econstructor; eauto.
-  
-  destruct H2.
-  inversion H0; subst; repeat sigT_eq.
-  eapply fbasic_return in H18 as Hx; eauto.
-  cleanup.
-  eapply fbasic_to_prog_exec in H18.
-  specialize H3 with (1:=H18).
-  specialize H with (1:=H19)(2:=H5)(3:=H3).
-  cleanup.
-  eexists; split; eauto.
-  econstructor; eauto.
-Qed.
-
