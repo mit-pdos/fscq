@@ -493,19 +493,19 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
-  (okspc, do_log) <- if len < endpos then do
+  okspc <- if len < endpos then do
     (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
-    return (ok, True)
+    return ok
   else do
     bslen <- return $ fromIntegral $ BS.length bs
     if ((fromIntegral offset) `mod` 4096 == 0) && (bslen `mod` 4096 == 0) && bslen > 4096 * 5 then
       -- block is large and aligned -> bypass write
-      return $ (Errno.OK (), False)
+      return $ Errno.OK ()
     else
-      return $ (Errno.OK (), True)
+      return $ Errno.OK ()
   case okspc of
     Errno.OK _ -> do
-      r <- foldM (write_piece do_log fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
+      r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
       case r of
         WriteOK c -> do
           okspc2 <- if len < endpos then do
@@ -524,8 +524,8 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
     Errno.Err e -> do
       return $ Left $ errnoToPosix e
   where
-    write_piece _ _ _ (WriteErr c) _ = return $ WriteErr c
-    write_piece do_log fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
+    write_piece _ _ (WriteErr c) _ = return $ WriteErr c
+    write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
       new_bs <- if cnt == blocksize then
           -- Whole block writes don't need read-modify-write
           return piece_bs
@@ -549,12 +549,7 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
           return $ BS.append (BS.take (fromIntegral off) old_bs)
                  $ BS.append piece_bs
                  $ BS.drop (fromIntegral $ off + cnt) old_bs
-      if do_log then do
-        _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (WBS new_bs)
-        return ()
-      else do
-        _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (WBS new_bs)
-        return ()
+      fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (WBS new_bs)
       return $ WriteOK (c + (fromIntegral cnt))
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
