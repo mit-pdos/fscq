@@ -673,12 +673,22 @@ Ltac destruct_lifts := try progress match goal with
 end.
 
 Ltac norm'l := eapply start_normalizing_left; [ flatten | ];
-               eapply pimpl_exists_l; intros;
+               (* performance optimization that avoids extreme memory usage in
+               some situations (compared to even [simple apply pimpl_exists_l]) *)
+               match goal with
+               | [ |- exis ?p =p=> ?q ] => simple apply (@pimpl_exists_l _ _ _ _ p q)
+               end;
+               intros;
                apply sep_star_lift_l; let Hlift:=fresh in intro Hlift;
                destruct_lift Hlift.
 
 Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
-               eapply pimpl_exists_r; repeat eexists_one;
+               (* performance optimization that avoids extreme memory usage in
+               some situations (compared to even [simple apply pimpl_exists_r]) *)
+               match goal with
+               | [ |- ?p =p=> exis ?q ] => simple apply (@pimpl_exists_r _ _ _ _ p q)
+               end;
+               repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
                simpl in *.
 
