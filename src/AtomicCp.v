@@ -1625,7 +1625,6 @@ Qed.
     2: repeat rewrite flatmem_crash_xform_file.
     2: reflexivity.
     destruct_lift Htc.
-    destruct_lift Htc.
 
     2: distinct_names.
 
@@ -1784,7 +1783,6 @@ Qed.
       2: repeat rewrite flatmem_crash_xform_lift_empty.
       2: reflexivity.
       destruct_lift Htc.
-      destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
       eassumption.
@@ -1809,7 +1807,6 @@ Qed.
       2: repeat rewrite flatmem_crash_xform_dir.
       2: repeat rewrite flatmem_crash_xform_lift_empty.
       2: reflexivity.
-      destruct_lift Htc.
       destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
@@ -1850,7 +1847,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
         destruct_lift Htc.
-        destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
         eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
@@ -1880,7 +1876,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
         destruct_lift Htc.
-        destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
         eassign ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)), @nil treeseq_one)); simpl in *.
@@ -1906,7 +1901,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_dir.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
-        destruct_lift Htc.
         destruct_lift Htc.
 
         edestruct (dirfile_crash_exists dstfile).
@@ -2189,7 +2183,6 @@ Qed.
     2: repeat rewrite flatmem_crash_xform_file.
     2: reflexivity.
     destruct_lift Htc.
-    destruct_lift Htc.
 
     2: distinct_names.
     
@@ -2361,7 +2354,6 @@ Qed.
       2: repeat rewrite flatmem_crash_xform_lift_empty.
       2: reflexivity.
       destruct_lift Htc.
-      destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
       rewrite sep_star_or_distr; or_r; cancel.
@@ -2387,7 +2379,6 @@ Qed.
       2: repeat rewrite flatmem_crash_xform_dir.
       2: repeat rewrite flatmem_crash_xform_lift_empty.
       2: reflexivity.
-      destruct_lift Htc.
       destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
@@ -2427,7 +2418,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
         destruct_lift Htc.
-        destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
         or_r; cancel; eauto.
@@ -2456,7 +2446,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
         destruct_lift Htc.
-        destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
         or_r; cancel; eauto.
@@ -2483,7 +2472,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_dir.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
-        destruct_lift Htc.
         destruct_lift Htc.
 
         edestruct (dirfile_crash_exists dfile).
@@ -2537,7 +2525,6 @@ Qed.
     2: repeat rewrite flatmem_crash_xform_sep_star.
     2: repeat rewrite flatmem_crash_xform_file.
     2: reflexivity.
-    destruct_lift Htc.
     destruct_lift Htc.
 
     2: distinct_names.
@@ -2698,7 +2685,6 @@ Qed.
       2: repeat rewrite flatmem_crash_xform_lift_empty.
       2: reflexivity.
       destruct_lift Htc.
-      destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
       rewrite sep_star_or_distr; or_l; cancel.
@@ -2724,7 +2710,6 @@ Qed.
       2: repeat rewrite flatmem_crash_xform_dir.
       2: repeat rewrite flatmem_crash_xform_lift_empty.
       2: reflexivity.
-      destruct_lift Htc.
       destruct_lift Htc.
 
       pred_apply. synced_file_eq. cancel.
@@ -2766,7 +2751,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
         destruct_lift Htc.
-        destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
         or_l; cancel; eauto.
@@ -2795,7 +2779,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
         destruct_lift Htc.
-        destruct_lift Htc.
 
         xcrash. or_r. cancel. xcrash.
         or_l; cancel; eauto.
@@ -2821,7 +2804,6 @@ Qed.
         2: repeat rewrite flatmem_crash_xform_dir.
         2: repeat rewrite flatmem_crash_xform_lift_empty.
         2: reflexivity.
-        destruct_lift Htc.
         destruct_lift Htc.
 
         edestruct (dirfile_crash_exists dstfile).
