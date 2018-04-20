@@ -10,15 +10,15 @@ Require Export PermAsyncDisk.
 Import ListNotations.
 Set Implicit Arguments.
 
-Definition perm := option nat. (* None can only read public blocks *)
+Parameter perm : Type.
+Parameter perm_dec : forall (p p': perm), {p = p'}+{p <> p'}.
 Parameter handle : Type.
 Parameter dummy_handle : handle.
+Parameter handle_eq_dec : forall (x y : handle), {x=y}+{x<>y}.
+Parameter can_access: perm -> tag -> Prop.
+Axiom can_access_public: forall pr, can_access pr Public.
+Hint Resolve can_access_public.
 
-
-Definition perm_dec : forall (p p': perm), {p = p'}+{p <> p'}.
-  intros; destruct p, p'; try (solve [left; auto] || solve [right; congruence]).
-  destruct (Nat.eq_dec n n0); subst; auto; right; congruence.
-Defined.
 
 Inductive op :=
 | Sea : tag -> op
@@ -31,14 +31,11 @@ Definition op_dec : forall (o o': op), {o = o'}+{o <> o'}.
 Defined.
 
 Definition trace := list op.
-Parameter handle_eq_dec : forall (x y : handle), {x=y}+{x<>y}.
 Definition tagged_disk:= rawdisk.
 Definition block_mem:= @Mem.mem handle handle_eq_dec tagged_block.
 
 (* Axiom finite_map : forall A AEQ V (m : @mem A AEQ V), exists a, m a = None. *)
-Axiom can_access: perm -> tag -> Prop.
-Axiom can_access_public: forall pr, can_access pr Public.
-Hint Resolve can_access_public.
+
 
 Inductive result {T: Type} : Type :=
 | Finished : tagged_disk -> block_mem -> hashmap -> T -> result

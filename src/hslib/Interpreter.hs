@@ -50,19 +50,19 @@ crc32_word_update c sz (W w) = do
 crc32_word_update c sz (W64 w) = crc32_word_update c sz $ W $ fromIntegral w
 crc32_word_update c _ (WBS bs) = return $ CRC32.crc32Update c bs
 
-run_dcode :: Disk.DiskState -> PermProg.Coq_prog a -> IO a
-run_dcode _ (Ret r) = do
+run_dcode :: Prelude.Int -> Disk.DiskState -> PermProg.Coq_prog a -> IO a
+run_dcode _ _ (Ret r) = do
   debugmsg $ "Done"
   return r
-run_dcode ds (Read a) = do
+run_dcode _ ds (Read a) = do
   debugmsg $ "Read " ++ (show a)
   val <- Disk.read_disk ds a
   return $ unsafeCoerce val
-run_dcode ds (Write a v) = do
+run_dcode _ ds (Write a v) = do
   debugmsg $ "Write " ++ (show a) ++ " " ++ (show v)
   Disk.write_disk ds a v
   return $ unsafeCoerce ()
-run_dcode ds Sync = do
+run_dcode _ ds Sync = do
   debugmsg $ "Sync"
   Disk.sync_disk ds
   return $ unsafeCoerce ()
@@ -101,36 +101,36 @@ run_dcode ds Sync = do
 --     return $ unsafeCoerce r
 --   else
 --     return $ unsafeCoerce ()
-run_dcode _ (Hash sz w) = do
+run_dcode _ _ (Hash sz w) = do
   debugmsg $ "Hash " ++ (show sz)
   c <- crc32_word_update 0 sz w
   return $ unsafeCoerce $ W $ fromIntegral c
-run_dcode _ (Hash2 sz1 sz2 w1 w2) = do
+run_dcode _ _ (Hash2 sz1 sz2 w1 w2) = do
   debugmsg $ "Hash2 " ++ (show sz1) ++ " " ++ (show sz2)
   c1 <- crc32_word_update 0 sz1 w1
   c2 <- crc32_word_update c1 sz2 w2
   return $ unsafeCoerce $ W $ fromIntegral c2
-run_dcode ds (Bind p1 p2) = do
+run_dcode pr ds (Bind p1 p2) = do
   debugmsg $ "Bind"
-  r1 <- run_dcode ds p1
-  r2 <- run_dcode ds (p2 r1)
+  r1 <- run_dcode pr ds p1
+  r2 <- run_dcode pr ds (p2 r1)
   return r2
-run_dcode _ (Seal _ b) = do
+run_dcode _ _ (Seal _ b) = do
   return $ unsafeCoerce b
-run_dcode _ (Unseal h) = do
+run_dcode _ _ (Unseal h) = do
   return $ unsafeCoerce h
-run_dcode _ (Auth t) = do
+run_dcode pr _ (Auth t) = do
   case t of
     Public ->
       return $ unsafeCoerce True
     Private uid ->
-      if uid == 123 then
+      if uid == pr then
         return $ unsafeCoerce True
       else
         return $ unsafeCoerce False
 
-run :: Disk.DiskState -> PermProg.Coq_prog a -> IO a
-run ds p = run_dcode ds p
+run :: Prelude.Int -> Disk.DiskState -> PermProg.Coq_prog a -> IO a
+run pr ds p = run_dcode pr ds p
 
 encode_tag :: Coq_tag -> Coq_word
 encode_tag Public = W64 0

@@ -25,8 +25,8 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
-Axiom encode_tag: tag -> word 8.
-Axiom decode_tag: word 8 -> tag.
+Axiom encode_tag: tag -> word 16.
+Axiom decode_tag: word 16 -> tag.
 Axiom encode_decode: forall t, decode_tag (encode_tag  t) = t.
 Axiom encode_inj: forall t t', encode_tag t = encode_tag t' -> t = t'.
 Axiom encode_public: encode_tag Public = $0.
@@ -47,8 +47,8 @@ Module INODE.
 
   Definition iattrtype : Rec.type := Rec.RecF ([
     ("attr", attrtype) ;
-    ("owner",  Rec.WordF  8) ;
-    ("unused", Rec.WordF 16)          (* reserved (permission bits) *)
+    ("owner",  Rec.WordF  16) ;
+    ("unused", Rec.WordF 8)          (* reserved (permission bits) *)
   ]).
 
   Definition NDirect := 7.

@@ -159,7 +159,7 @@ Module AFS.
         ));
         equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
     end.
-(*
+
   Theorem mkfs_ok :
     forall cachesize data_bitmaps inode_bitmaps log_descr_blocks pr,
     {!< disk,
@@ -347,7 +347,7 @@ Module AFS.
     try exact valuset0.
  Qed.
 
-  *)
+  
   Definition recover cachesize :=
     let^ (cs) <- PermCacheSec.init_recover cachesize;;
     let^ (cs, fsxp) <- SB.load cs;;
@@ -358,6 +358,17 @@ Module AFS.
     } else {
       Ret (Err EINVAL)
     }.
+
+
+  (** For debugging purposes **)
+  Definition getowner fsxp inum ams:=
+    let^ (ams, t) <- DIRTREE.getowner fsxp inum ams;;
+    match t with
+    | Public => Ret ^(ams, dummy_owner)
+    | Private n =>  Ret ^(ams, n)
+    end.  
+
+  
 
   Definition authenticate fsxp inum ams:=
     let^ (ams, t) <- DIRTREE.getowner fsxp inum ams;;
@@ -618,7 +629,7 @@ Module AFS.
   (* Recover theorems *)
 
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
-(*
+
   Theorem recover_ok :
     forall cachesize pr,
     {< fsxp cs ds,
@@ -754,7 +765,7 @@ Module AFS.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (recover _) _) => apply recover_ok : prog.
-*)
+
  (* 
   Ltac recover_ro_ok := intros;
     repeat match goal with
@@ -818,7 +829,7 @@ Module AFS.
   Hint Extern 1 ({{_|_}} Bind (authenticate _ _ _) _) => apply authenticate_ok : prog.
 
   Opaque corr2.
-(*
+
   Theorem file_getattr_ok :
     forall fsxp inum mscs pr,
   {< ds sm pathname Fm Ftop tree f ilist frees,
@@ -1251,7 +1262,7 @@ Module AFS.
 
 
   Hint Extern 1 ({{_|_}} Bind (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
-*)
+
   Theorem file_truncate_ok :
     forall fsxp inum sz mscs pr,
     {< ds sm Fm Ftop tree pathname f ilist frees,

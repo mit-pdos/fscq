@@ -5,6 +5,7 @@ import qualified AsyncFS
 import FSLayout
 import Disk
 import System.Environment
+import System.Posix.User
 import qualified Errno
 
 cachesize :: Integer
@@ -18,7 +19,8 @@ main = do
     [fn] -> do
       ds <- init_disk fn
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs cachesize 4 1 256
+      uid <- getEffectiveUserID
+      res <- I.run (fromEnum uid) ds $ AsyncFS._AFS__mkfs cachesize 4 1 256
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (_, fsxp) ->

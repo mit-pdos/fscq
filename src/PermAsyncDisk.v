@@ -79,7 +79,8 @@ Add Ring waddrring : waddrring (decidable (weqb_sound addrlen), constants [wcst]
 
 
 Parameter owner : Type.
-Axiom owner_dec : forall (a b : owner), {a=b}+{a<>b}.
+Parameter dummy_owner : owner.
+Parameter owner_dec : forall (a b : owner), {a=b}+{a<>b}.
 Definition block := valu.
 
 Inductive tag :=
