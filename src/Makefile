@@ -4,25 +4,25 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 	      -I codegen -I mllib -X ocamlfuse \
 	      -package extunix -package zarith -package ocamlfuse
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
-	      Mem Pred DestructVarname ADestructPair \
+	      Mem Pred DestructVarname DestructPair \
 	      Errno ListUtils MapUtils Rec \
 	      FSLayout ListPred FMapMem NEList StringUtils\
 	      GenSepAuto MemMatch \
 	      ExtrHaskellPrelude ExtrHaskellMap \
-	      PermAsyncDisk PermPredCrash \
-	      PermArray PermRecArrayUtils PermAsyncRecArray \
-	      PermProg PermHashmap PermBlockmem \
-	      PermProgAuto PermSec \
-	      PermProgMonad PermHoare PermSepAuto \
-	      PermMemPred \
-	      PermInstr PermProgLoop PermProgList \
-              PermCacheDef PermCacheLemmas PermCacheSec PermCacheRangeSec \
-	      PermDiskLogHdr PermDiskLogPadded PermDiskLog \
-	      PermGenSepN PermLogReplay PermMemLog PermDiskSet \
-	      PermGroupLog PermLog PermLogRecArray \
-	      PermBalloc PermBlockPtr PermInode \
-	      PermBFile PermBFileCrash PermFileRecArray \
-	      PermDir PermDirName PermDirCache \
+	      AsyncDisk PredCrash \
+	      Array RecArrayUtils AsyncRecArray \
+	      Prog Hashmap Blockmem \
+	      ProgAuto Sec \
+	      ProgMonad Hoare SepAuto \
+	      MemPred \
+	      Instr ProgLoop ProgList \
+              CacheDef CacheLemmas CacheSec CacheRangeSec \
+	      DiskLogHdr DiskLogPadded DiskLog \
+	      GenSepN LogReplay MemLog DiskSet \
+	      GroupLog Log LogRecArray \
+	      Balloc BlockPtr Inode \
+	      BFile BFileCrash FileRecArray \
+	      Dir DirName DirCache \
 	      DirTreePath DirTreeDef DirTreePred DirTreeRep \
 	      DirTreeNames DirTreeInodes DirTreeSafe DirTree \
 	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock \

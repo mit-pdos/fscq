@@ -1,8 +1,8 @@
-Require Import PermBFile.
+Require Import BFile.
 Require Import Pred.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
-Require Import PermGenSepN.
+Require Import GenSepN.
 Require Import Arith.
 Require Import Omega.
 Require Import List.

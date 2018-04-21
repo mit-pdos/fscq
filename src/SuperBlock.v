@@ -4,9 +4,9 @@ Require Import List.
 Require Import Pred.
 Require Import Eqdep_dec.
 Require Import Arith.
-Require Import PermCacheDef.
+Require Import CacheDef.
 Require Import Omega.
-Require Import PermSepAuto.
+Require Import SepAuto.
 Require Import FSLayout.
 
 Import ListNotations.
@@ -155,7 +155,7 @@ Module SB.
      0 |+>((Public, v_pickle_superblock fsxp), nil))%pred.
 
   Definition load cs :=
-    let^ (cs, v) <- PermCacheDef.read 0 cs;;
+    let^ (cs, v) <- CacheDef.read 0 cs;;
     v <- Unseal v;;
     Ret ^(cs, v_unpickle_superblock v).
 
@@ -164,11 +164,11 @@ Module SB.
     {< m F fsxp,
     PERM:pr   
     PRE:bm, hm,
-       PermCacheDef.rep cs m bm * [[ (F * rep fsxp)%pred m ]]
+       CacheDef.rep cs m bm * [[ (F * rep fsxp)%pred m ]]
     POST:bm', hm', RET:^(cs',r)
-       PermCacheDef.rep cs' m bm' * [[ r = fsxp ]]
+       CacheDef.rep cs' m bm' * [[ r = fsxp ]]
     CRASH:bm', hm',
-      exists cs',  PermCacheDef.rep cs' m bm'
+      exists cs',  CacheDef.rep cs' m bm'
     >} load cs.
   Proof.
     unfold load, rep.
@@ -179,10 +179,10 @@ Module SB.
 
   Definition init fsxp cs :=
     h <- Seal Public (v_pickle_superblock fsxp);;
-    cs <- PermCacheDef.write 0 h cs;;
-    cs <- PermCacheDef.begin_sync cs;;
-    cs <- PermCacheDef.sync 0 cs;;
-    cs <- PermCacheDef.end_sync cs;;
+    cs <- CacheDef.write 0 h cs;;
+    cs <- CacheDef.begin_sync cs;;
+    cs <- CacheDef.sync 0 cs;;
+    cs <- CacheDef.end_sync cs;;
     Ret cs.
 
   Theorem init_ok :
@@ -190,16 +190,16 @@ Module SB.
     {< m F,
     PERM:pr   
     PRE:bm, hm,
-      PermCacheDef.rep cs m bm * 
+      CacheDef.rep cs m bm * 
       [[ fs_xparams_ok fsxp ]] *
       [[ FSXPMagic fsxp = magic_number ]] *
       [[ (F * 0 |->?)%pred m ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:cs
       exists m',
-      PermCacheDef.rep cs m' bm' * [[ (F * rep fsxp)%pred m' ]]
+      CacheDef.rep cs m' bm' * [[ (F * rep fsxp)%pred m' ]]
     XCRASH:bm', hm',
-      exists cs' m' vs, PermCacheDef.rep cs' m' bm' * 
+      exists cs' m' vs, CacheDef.rep cs' m' bm' * 
       [[ (F * 0 |+> vs)%pred m' ]]
     >} init fsxp cs.
   Proof.
@@ -207,7 +207,7 @@ Module SB.
     step.
     safestep.
     eassign F_; cancel.
-    eapply PermCacheLemmas.block_mem_subset_rep; eauto.
+    eapply CacheLemmas.block_mem_subset_rep; eauto.
     apply Mem.upd_eq; auto.
     pred_apply; rewrite ptsto_pimpl_ptsto_subset; cancel.
     eassign F; cancel.

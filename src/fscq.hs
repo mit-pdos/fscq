@@ -12,25 +12,25 @@ import System.Posix.IO
 import System.FilePath.Posix
 import Word
 import Disk
-import PermProg
+import Prog
 import Fuse
 import Data.IORef
 import Interpreter as I
 import qualified AsyncFS
 import FSLayout
-import qualified PermDirName
+import qualified DirName
 import System.Environment
-import PermInode
+import Inode
 import Control.Concurrent.MVar
 import Text.Printf
 import qualified System.Process
 import qualified Data.List
-import PermAsyncDisk
+import AsyncDisk
 import Control.Monad
 import GHC.IO.Unsafe
 import System.Posix.User
 import qualified Errno
-import qualified PermBFile
+import qualified BFile
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -79,8 +79,8 @@ nInodeBitmaps = 1
 nDescrBlocks :: Integer
 nDescrBlocks = 64
 
-type MSCS = PermBFile.BFILE__Coq_memstate
-type FSprog a = (MSCS -> PermProg.Coq_prog (MSCS, a))
+type MSCS = BFile.BFILE__Coq_memstate
+type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
 doFScall ds ref f = do
@@ -601,7 +601,7 @@ fscqGetFileSystemStats fr m_fsxp _ = withMVar m_fsxp $ \fsxp -> do
     , fsStatBlocksAvailable = fromIntegral $ freeblocks
     , fsStatFileCount = 8 * 4096 * (fromIntegral $ inode_bitmaps)
     , fsStatFilesFree = fromIntegral $ freeinodes
-    , fsStatMaxNameLength = fromIntegral PermDirName._SDIR__namelen
+    , fsStatMaxNameLength = fromIntegral DirName._SDIR__namelen
     }
 
 fscqSetFileTimes :: FilePath -> EpochTime -> EpochTime -> IO Errno

@@ -5,7 +5,7 @@ Require Import Pred.
 Require Import Eqdep_dec.
 Require Import Arith.
 Require Import Omega.
-Require Import PermCacheRangeSec.
+Require Import CacheRangeSec.
 
 Import ListNotations.
 Set Implicit Arguments.

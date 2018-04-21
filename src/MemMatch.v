@@ -1,7 +1,7 @@
 Require Import Mem.
 Require Import List Omega Ring Word Pred.
 Require Import FunctionalExtensionality.
-Require Export PermArray.
+Require Export Array.
 
 Set Implicit Arguments.
 Set Default Proof Using "Type".

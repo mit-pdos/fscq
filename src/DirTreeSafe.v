@@ -1,14 +1,14 @@
 Require Import Bool.
 Require Import Word.
-Require Import PermBFile Bytes Rec PermInode.
+Require Import BFile Bytes Rec Inode.
 Require Import String.
 Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import PermAsyncDisk.
-Require Import PermSepAuto.
-Require Import PermGenSepN.
+Require Import AsyncDisk.
+Require Import SepAuto.
+Require Import GenSepN.
 Require Import GenSepAuto.
 Require Import DirTreePath.
 Require Import DirTreeDef.
@@ -119,103 +119,6 @@ Set Implicit Arguments.
       erewrite <- find_subtree_update_subtree_oob'; eauto.
   Qed.
 
-(*
-  Theorem dirtree_update_safe_inum : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
-    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
-    BFILE.block_belong_to_file ilist_newest bn inum off ->
-    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
-    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
-    fst (fst v) = DFOwner f ->
-    exists tree',
-    (F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)) /\
-    (tree' = tree \/
-     exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
-     tree' = dirtree_update_inode tree inum off v).
-  Proof.
-    intros.
-    unfold dirtree_safe, BFILE.ilist_safe in H1.
-    intuition.
-    specialize (H5 _ _ _ _ _ H H0).
-    intuition; repeat deex.
-    - (**
-       * The block still belongs to the same inode in this earlier disk.
-       *)
-      eexists; split.
-      2: right; intuition.
-      eapply dirtree_update_block; eauto.
-      unfold rep in *.
-      destruct_lift H2.
-      admit.
-      eauto.
-    - (**
-       * The block is now in the free list.
-       *)
-      eexists; split.
-      2: left; reflexivity.
-      eapply dirtree_update_free; eauto.
-  Admitted.
-
-  Theorem dirtree_update_safe_pathname :
-    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
-    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
-    BFILE.block_belong_to_file ilist_newest bn inum off ->
-    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
-    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
-    fst (fst v) = DFOwner f ->
-    exists tree',
-    (F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)) /\
-    (tree' = tree \/
-     exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
-     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') (DFOwner f')in
-     tree' = update_subtree pathname' (TreeFile inum f'new) tree).
-  Proof.
-    intros; destruct v.
-    edestruct dirtree_update_safe_inum; eauto.
-    intuition; subst; eauto.
-    destruct (in_dec addr_eq_dec inum (tree_inodes tree)).
-    - (* inum is in the tree.. *)
-      edestruct tree_inodes_pathname_exists; eauto; repeat deex.
-      eapply rep_tree_names_distinct; eauto.
-      eapply rep_tree_inodes_distinct; eauto.
-      destruct (lt_dec off (length (DFData f'))).
-      + (* in-bounds write *)
-        erewrite dirtree_update_inode_update_subtree in H5; eauto.
-        eexists; split.
-        eauto.
-        right; eauto.
-        eapply rep_tree_inodes_distinct; eauto.
-        eapply rep_tree_names_distinct; eauto.
-      + (* out-of-bounds write *)
-        erewrite dirtree_update_inode_oob in H5; eauto.
-        eapply rep_tree_inodes_distinct; eauto.
-        eapply rep_tree_names_distinct; eauto.
-    - (* inum is not in the tree *)
-      repeat deex.
-      erewrite dirtree_update_inode_absent in H5 by eauto.
-      eauto.
-  Qed.
-
-  Theorem dirtree_update_safe_pathname_pred :
-    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks ms sm v bn inum off m flag,
-    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
-    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
-    BFILE.block_belong_to_file ilist_newest bn inum off ->
-    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
-    fst (fst v) = DFOwner f ->
-    (F0 * rep fsxp F tree ilist freeblocks ms sm \/
-     exists pathname' f',
-     [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
-     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') (DFOwner f') in
-     let tree' := update_subtree pathname' (TreeFile inum f'new) tree in
-     F0 * rep fsxp F tree' ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
-  Proof.
-    intros.
-    edestruct dirtree_update_safe_pathname; eauto.
-    intuition.
-    eapply pimpl_apply; try eassumption. cancel.
-    eapply pimpl_apply; try eassumption. cancel.
-  Qed.
-*)
   (**
    * Helpers for proving [dirlist_safe] in postconditions.
    *)

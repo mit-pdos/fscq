@@ -52,10 +52,10 @@ def filter_valid_thms(regions):
 
 if __name__ == "__main__":
     from os import path
-    with open("statistics/files.txt") as f:
-        files = [line.rstrip() for line in f]
+    with open("files.txt") as f:
+        files = ["../"+line.rstrip() for line in f]
 
-    THM_BEGIN = re.compile("Theorem.*_ok :")
+    THM_BEGIN = re.compile("(Theorem|Lemma).*_ok :")
     THM_END = re.compile("\.$")
     file_specs = map_matches(find_lines_between(THM_BEGIN, THM_END),
                              filter_valid_thms)
@@ -67,7 +67,7 @@ if __name__ == "__main__":
                     f.write(thm)
                     f.write("\n")
 
-    with open("statistics/spec-counts.txt", "w") as f:
+    with open("spec-counts.txt", "w") as f:
         total_thms = 0
         for fname, regions in file_specs:
             num_thms = len(regions)

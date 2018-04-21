@@ -2,51 +2,21 @@ Require Import Word.
 Require Import Omega.
 Require Import Bool.
 Require Import Pred.
-Require Import PermGenSepN.
+Require Import GenSepN.
 Require Import ListPred.
-
 Require Import List ListUtils.
 Require Import Bytes.
-
 Require Import Rec.
 Require Import Arith.
 Require Import FSLayout.
 Require Import Errno.
-
 Require Import Lia.
 Require Import FunctionalExtensionality.
-(*
-Require Import PermDirCache.
-Require Import DirTree.
-Require Import SuperBlock.
-Require Import PermInode.
-Require Import PermBFile.
-Require Import DirTreeDef.
-Require Import DirTreeRep.
-Require Import DirTreePred.
-Require Import DirTreeInodes.
-Require Import DirTreeSafe.
-Require Import DirTreeNames.
-Require Import DirTree.
-Require Import AsyncFS AsyncFSPost AsyncFSProg.
-*)
 Require Import FMapAVL.
 Require Import FMapFacts.
 Import ListNotations.
 
 Set Implicit Arguments.
-(*
-Import DIRTREE.
-Import AFS.
-
-
-Notation MSLL := BFILE.MSLL.
-Notation MSAllocC := BFILE.MSAllocC.
-Notation MSIAllocC := BFILE.MSIAllocC.
-Notation MSICache := BFILE.MSICache.
-Notation MSAlloc := BFILE.MSAlloc.
-Notation MSDBlocks := BFILE.MSDBlocks.
- *)
 
 Definition equivalent_for tag (d1 d2: rawdisk) :=
   forall a,
@@ -73,55 +43,6 @@ Definition same_except tag (d1 d2: rawdisk) :=
        d1 a = Some vs1 /\ d2 a = Some vs2 /\
        Forall2 (fun tb1 tb2 => fst tb1 = fst tb2) (vsmerge vs1) (vsmerge vs2) /\
        Forall2 (fun tb1 tb2 => fst tb1 <> tag -> snd tb1 = snd tb2) (vsmerge vs1) (vsmerge vs2)).
-
-
-(*
-Definition permission_secure_fbasic {T} d bm hm fsxp mscs pr (p: fbasic T) :=
-  forall tr tr' r mscs' ,
-    exec_fbasic pr tr d bm hm fsxp mscs p r mscs' (tr'++tr) ->
-    trace_secure pr tr'.
-
-Lemma trace_app_fbasic:
-  forall T (fp: fbasic T) tr d bm hm fsxp mscs pr out mscs' tr',
-    exec_fbasic pr tr d bm hm fsxp mscs fp out mscs' tr' ->
-    exists tr'', tr' = tr''++tr.
-Proof.
-  intros;
-  inversion H; subst; try sigT_eq;
-  denote exec as Hx; apply trace_app in Hx; auto.
-Qed.
-
-
-
-Fixpoint filter tag tree:=
-  match tree with
-  | TreeFile inum f =>
-    if tag_dec tag (DFOwner f) then
-      TreeFile inum f
-    else
-      TreeFile inum (mk_dirfile nil INODE.iattr0 (DFOwner f))
-  | TreeDir inum ents =>
-    TreeDir inum (map (fun st => (fst st, filter tag (snd st))) ents)
-  end.
-
-Definition tree_equivalent_for tag tree1 tree2:=
-  filter tag tree1 = filter tag tree2.
-
-
-Fixpoint only_reads_permitted {T} pr (p: prog T) d bm hm:=
-  match p with
-  | Read n => forall vs, d n = Some vs -> can_access pr (fst (fst vs))
-  | Bind p1 p2 => only_reads_permitted pr p1 d bm hm /\
-                 forall tr d' bm' hm' r tr',
-                   exec pr tr d bm hm p1 (Finished d' bm' hm' r) tr' ->
-                   only_reads_permitted pr (p2 r) d' bm' hm'
-  | _ => True
-  end.
-*)
-
-
-
-
 
 Axiom can_access_dec: forall pr t, {can_access pr t}+{~can_access pr t}.
 

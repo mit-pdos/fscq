@@ -1,35 +1,7 @@
-Require Import Arith Omega Word Setoid.
-Require Import Pred PermHoare PermSepAuto PermAsyncDisk Word.
-Require Import PermArray List ListUtils.
-Require Import PermGenSepN ListPred.
-
-(*
-Require Import Arith.
-Require Import Pred.
-Require Import Word.
-Require Import Prog.
-Require Import Hoare.
-Require Import SepAuto.
-Require Import BasicProg.
-Require Import Omega.
-Require Import Log.
-Require Import Array.
-Require Import List ListUtils.
-Require Import Bool.
-Require Import Eqdep_dec.
-Require Import Setoid.
-Require Import Rec.
-Require Import FunctionalExtensionality.
-Require Import NArith.
-Require Import WordAuto.
-Require Import RecArrayUtils LogRecArray.
-Require Import GenSepN.
-Require Import Balloc.
-Require Import ListPred.
-Require Import FSLayout.
-Require Import AsyncDisk.
-Require Import BlockPtr.
-*)
+Require Import Arith Omega Setoid.
+Require Import Pred Hoare SepAuto AsyncDisk Word.
+Require Import Array List ListUtils.
+Require Import GenSepN ListPred.
 
 
 (* Hints for resolving default values *)

@@ -1,13 +1,13 @@
 module Interpreter where
 
-import PermProg
+import Prog
 import qualified Disk
 import Word
 import Data.Word
 -- import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Digest.CRC32 as CRC32
 -- import System.CPUTime.Rdtsc
-import PermAsyncDisk
+import AsyncDisk
 
 -- import qualified System.Exit
 -- import qualified System.Random
@@ -50,7 +50,7 @@ crc32_word_update c sz (W w) = do
 crc32_word_update c sz (W64 w) = crc32_word_update c sz $ W $ fromIntegral w
 crc32_word_update c _ (WBS bs) = return $ CRC32.crc32Update c bs
 
-run_dcode :: Prelude.Int -> Disk.DiskState -> PermProg.Coq_prog a -> IO a
+run_dcode :: Prelude.Int -> Disk.DiskState -> Prog.Coq_prog a -> IO a
 run_dcode _ _ (Ret r) = do
   debugmsg $ "Done"
   return r
@@ -129,7 +129,7 @@ run_dcode pr _ (Auth t) = do
       else
         return $ unsafeCoerce False
 
-run :: Prelude.Int -> Disk.DiskState -> PermProg.Coq_prog a -> IO a
+run :: Prelude.Int -> Disk.DiskState -> Prog.Coq_prog a -> IO a
 run pr ds p = run_dcode pr ds p
 
 encode_tag :: Coq_tag -> Coq_word

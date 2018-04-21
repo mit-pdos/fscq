@@ -6,7 +6,7 @@ Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import PermBFile PermInode.
+Require Import BFile Inode.
 Require Import DirTreePath.
 
 Import ListNotations.
@@ -56,7 +56,7 @@ Set Implicit Arguments.
     | TreeDir  _ _ => dirfile0
     end.
 
-  Definition synced_dirfile f := mk_dirfile (PermArray.synced_list (map fst (DFData f))) (DFAttr f) (DFOwner f).
+  Definition synced_dirfile f := mk_dirfile (Array.synced_list (map fst (DFData f))) (DFAttr f) (DFOwner f).
 
   Definition dirfile_to_bfile f c := BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) c.
 

@@ -1,19 +1,19 @@
-Require Import PermDirName.
-Require Import PermBalloc.
+Require Import DirName.
+Require Import Balloc.
 Require Import Bool.
 Require Import Word.
-Require Import PermBFile Bytes Rec PermInode.
+Require Import BFile Bytes Rec Inode.
 Require Import String.
 Require Import FSLayout.
 Require Import Pred.
 Require Import Arith.
-Require Import PermGenSepN.
+Require Import GenSepN.
 Require Import List ListUtils.
-Require Import PermArray.
+Require Import Array.
 Require Import FunctionalExtensionality.
-Require Import PermDiskSet.
+Require Import DiskSet.
 Require Import GenSepAuto.
-Require Import PermBFileCrash.
+Require Import BFileCrash.
 Require Import Omega.
 Require Import DirTreeDef.
 Require Import DirTreeRep.
@@ -23,7 +23,7 @@ Require Import DirTreeInodes.
 
 Import ListNotations.
 
-Module SDIR := PermDirCache.CacheOneDir.
+Module SDIR := DirCache.CacheOneDir.
 
 Set Implicit Arguments.
 

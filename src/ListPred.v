@@ -2,7 +2,7 @@ Require Import Mem Pred.
 Require Import List Omega Ring Word ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Permutation.
-Require Import PermArray.
+Require Import Array.
 
 Set Implicit Arguments.
 

@@ -2197,7 +2197,7 @@ Lemma le_neq_lt : forall sz (a b : word sz),
 Proof.
   intros; destruct (wlt_dec b a); auto.
   elimtype False. apply H0. unfold wlt, N.lt in *.
-  eapply wordToN_inj. eapply N.compare_eq_correct.
+  eapply wordToN_inj. eapply Ncompare_eq_correct.
   case_eq ((wordToN a ?= wordToN b)%N); auto; try congruence.
   intros. rewrite <- N.compare_antisym in n. rewrite H1 in n. simpl in *. congruence.
 Qed.
@@ -2283,7 +2283,7 @@ Proof.
   destruct x.
   simpl in *; omega.
   simpl in *.
-  apply N.lt_out in H.
+  apply Nlt_out in H.
   autorewrite with N in *.
   rewrite Npow2_nat in *.
   generalize dependent (x * pow2 sz).
@@ -2334,7 +2334,7 @@ Proof.
   intros.
   unfold wlt in H.
   repeat rewrite wordToN_nat in *.
-  apply N.lt_out in H.
+  apply Nlt_out in H.
   repeat rewrite Nat2N.id in *.
   auto.
 Qed.
@@ -2497,7 +2497,7 @@ Proof.
   intros.
   unfold wlt.
   repeat rewrite wordToN_nat.
-  apply N.lt_in.
+  apply Nlt_in.
   repeat rewrite Nat2N.id.
   auto.
 Qed.
@@ -2556,7 +2556,7 @@ Proof.
   rewrite <- Nat.add_sub_assoc.
   omega.
 
-  apply Nat.N.lt_ge.
+  apply Nat.Nlt_ge.
   unfold not in *; intros.
   apply H.
   apply lt_wlt; auto.

@@ -4,7 +4,7 @@ Require Import WordAuto.
 Require Import Psatz.
 
 (* TODO: move byte-specific lemmas *)
-Require Import PermAsyncDisk.
+Require Import AsyncDisk.
 Import Valulen.
 
 (** The divup and roundup functions and associated theorems.

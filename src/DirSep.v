@@ -4,8 +4,8 @@ Require Import DirTree.
 Require Import String.
 Require Import Mem.
 Require Import List.
-Require Import PermSepAuto.
-Require Import PermBFile.
+Require Import SepAuto.
+Require Import BFile.
 Require Import FunctionalExtensionality.
 Require Import DirTreePath.
 Require Import DirTreeNames.

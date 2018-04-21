@@ -1,20 +1,20 @@
 Require Import Bool.
 Require Import Word.
-Require Import PermBFile Bytes Rec PermInode.
+Require Import BFile Bytes Rec Inode.
 Require Import String.
 Require Import FSLayout.
 Require Import Pred.
 Require Import Arith.
-Require Import PermGenSepN.
+Require Import GenSepN.
 Require Import List ListUtils.
-Require Import PermArray.
+Require Import Array.
 Require Import FunctionalExtensionality.
-Require Import PermDiskSet.
+Require Import DiskSet.
 Require Import GenSepAuto.
 Require Import Lock.
 Require Import Errno.
-Require Import PermDirCache.
-Require Import PermBalloc.
+Require Import DirCache.
+Require Import Balloc.
 Import ListNotations.
 Require Import DirTreePath.
 Require Import DirTreeDef.

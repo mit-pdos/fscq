@@ -1,18 +1,18 @@
 Require Import Bool.
 Require Import Word.
-Require Import PermBFile Bytes Rec PermInode.
+Require Import BFile Bytes Rec Inode.
 Require Import String.
 Require Import Pred.
 Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
-Require Import PermAsyncDisk.
-Require Import PermDirName.
+Require Import AsyncDisk.
+Require Import DirName.
 Require Import DirTreeDef.
 Require Import DirTreePath.
 Require Import DirTreePred.
 Require Import DirTreeRep.
-Require Import PermSepAuto.
+Require Import SepAuto.
 
 Import ListNotations.
 Set Implicit Arguments.

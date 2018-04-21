@@ -2,10 +2,10 @@ Require Import Word.
 Require Import Omega.
 Require Import Bool.
 Require Import Pred.
-Require Import PermDirCache.
-Require Import PermGenSepN.
+Require Import DirCache.
+Require Import GenSepN.
 Require Import ListPred.
-Require Import PermInode.
+Require Import Inode.
 Require Import List ListUtils.
 Require Import Bytes.
 Require Import DirTree.
@@ -16,7 +16,7 @@ Require Import Errno.
 Require Import SuperBlock.
 Require Import Lia.
 Require Import FunctionalExtensionality.
-Require Import PermBFile.
+Require Import BFile.
 Require Import DirTreeDef.
 Require Import DirTreeRep.
 Require Import DirTreePred.
@@ -57,7 +57,7 @@ Module AFS.
     let log_hdr := 1 + balloc_base2 + data_bitmaps in
     let log_descr := log_hdr + 1 in
     let log_data := log_descr + log_descr_blocks in
-    let log_data_size := log_descr_blocks * PermDiskLogPadded.DescSig.items_per_val in
+    let log_data_size := log_descr_blocks * DiskLogPadded.DescSig.items_per_val in
     let max_addr := log_data + log_data_size in
     (Build_fs_xparams
      (Build_log_xparams 1 log_hdr log_descr log_descr_blocks log_data log_data_size)
@@ -74,7 +74,7 @@ Module AFS.
           data_bitmaps * valulen +
           inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
           inode_bitmaps + data_bitmaps + data_bitmaps +
-          1 + log_descr_blocks + log_descr_blocks * PermDiskLogPadded.DescSig.items_per_val) ->
+          1 + log_descr_blocks + log_descr_blocks * DiskLogPadded.DescSig.items_per_val) ->
     fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks magic).
   Proof.
     unfold fs_xparams_ok.
@@ -96,7 +96,7 @@ Module AFS.
 
   Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks SB.magic_number in
-    let^ (cs) <- PermCacheSec.init_load cachesize;;
+    let^ (cs) <- CacheSec.init_load cachesize;;
     cs <- SB.init fsxp cs;;
     mscs <- LOG.init (FSXPLog fsxp) cs;;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;;
@@ -173,7 +173,7 @@ Module AFS.
           data_bitmaps * valulen +
           inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
           inode_bitmaps + data_bitmaps + data_bitmaps +
-          1 + log_descr_blocks + log_descr_blocks * PermDiskLogPadded.DescSig.items_per_val ]] *
+          1 + log_descr_blocks + log_descr_blocks * DiskLogPadded.DescSig.items_per_val ]] *
        [[ goodSize addrlen (length disk) ]]
      POST:bm',hm', RET:r exists ms fsxp d sm,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
@@ -222,7 +222,7 @@ Module AFS.
     rewrite Nat.sub_0_r; auto.
     rewrite S_minus_1_helper2.
     generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
-    generalize (log_descr_blocks * PermDiskLogPadded.DescSig.items_per_val); intros.
+    generalize (log_descr_blocks * DiskLogPadded.DescSig.items_per_val); intros.
     omega.
 
     eapply goodSize_trans; [ | eauto ].
@@ -230,7 +230,7 @@ Module AFS.
     setoid_rewrite skipn_length with (n := 1).
     substl (length disk).
     generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
-    generalize (log_descr_blocks * PermDiskLogPadded.DescSig.items_per_val); intros.
+    generalize (log_descr_blocks * DiskLogPadded.DescSig.items_per_val); intros.
     omega.
     auto.
     auto.
@@ -349,7 +349,7 @@ Module AFS.
 
   
   Definition recover cachesize :=
-    let^ (cs) <- PermCacheSec.init_recover cachesize;;
+    let^ (cs) <- CacheSec.init_recover cachesize;;
     let^ (cs, fsxp) <- SB.load cs;;
     If (addr_eq_dec (FSXPMagic fsxp) SB.magic_number) {
       mscs <- LOG.recover (FSXPLog fsxp) cs;;
@@ -649,7 +649,7 @@ Module AFS.
   Proof. 
     unfold recover, LOG.after_crash; intros.
     eapply pimpl_ok2; monad_simpl.
-    eapply PermCacheSec.init_recover_ok.
+    eapply CacheSec.init_recover_ok.
     intros; norm. cancel.
     intuition simpl. eauto.
 
