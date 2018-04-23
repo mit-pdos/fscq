@@ -1,5 +1,5 @@
 Require Import Arith Omega Setoid.
-Require Import Pred Hoare SepAuto AsyncDisk Word.
+Require Import Pred HoareWeak SepAuto AsyncDisk Word.
 Require Import Array List ListUtils.
 Require Import GenSepN ListPred.
 

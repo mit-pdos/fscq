@@ -13,7 +13,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Array RecArrayUtils AsyncRecArray \
 	      Prog Hashmap Blockmem \
 	      ProgAuto Sec \
-	      ProgMonad Hoare SepAuto \
+	      ProgMonad Hoare HoareWeak SepAuto \
 	      MemPred \
 	      Instr ProgLoop ProgList \
               CacheDef CacheLemmas CacheSec CacheRangeSec \

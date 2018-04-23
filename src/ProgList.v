@@ -63,7 +63,7 @@ Theorem seal_all_ok :
     PERM: pr                      
     PRE:bm, hm,
         F * [[ length tl = length bl ]] *
-        [[ forall t, In t tl -> can_access pr t ]]
+        [[ forall t, In t tl -> t = Public ]]
     POST:bm', hm', RET: r
         F * [[ extract_blocks bm' r = combine tl bl ]] *
         [[ handles_valid bm' r ]]                
@@ -163,7 +163,7 @@ Theorem unseal_all_ok :
     PRE:bm, hm,
         F * [[ tbl = extract_blocks bm hl ]] *
         [[ handles_valid bm hl ]] *
-        [[ forall t, In t (map fst tbl) -> can_access pr t ]]
+        [[ forall t, In t (map fst tbl) -> t = Public ]]
     POST:bm', hm', RET: r
         F * [[ r = map snd tbl ]]
     CRASH:bm'', hm_crash,

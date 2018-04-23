@@ -74,24 +74,7 @@ Lemma exec_blockmem_subset_upd:
     eexists; intuition eauto.
   Qed.
 
-  Fixpoint only_public_operations tr :=
-    match tr with
-    | nil => True
-    | op::tr' =>
-      match op with
-      | Uns t => t = Public
-      | Sea t => t = Public
-      end /\ only_public_operations tr'
-    end.
 
-  Lemma only_public_operations_app:
-    forall tr1 tr2,
-      only_public_operations (tr1++tr2) ->
-      only_public_operations tr1 /\ only_public_operations tr2.
-  Proof.
-    induction tr1; simpl; intuition;
-    specialize IHtr1 with (1:= H1); cleanup; auto.
-  Qed.
 
   Lemma blockmem_same_except_upd_same:
     forall t bm bm' h b b0,

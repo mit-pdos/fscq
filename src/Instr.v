@@ -211,6 +211,48 @@ Lemma seal_secure:
     {!< F,
        PERM: pr
        PRE: bm, hm,
+         (F * [[ t = Public ]])%pred
+       POST: bm', hm',
+          RET : i
+          F * [[ bm i = None ]] *
+          [[ bm' = upd bm i (t, b)]]
+       CRASH: bm'', hm'',
+          false_pred (* Can't crash *)
+     >!} Seal t b.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split_ors; cleanup; try congruence.
+    split.
+    right; do 3 eexists; intuition.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+Qed.
+
+(*
+Lemma seal_secure:
+  forall pr t b,
+    {!< F,
+       PERM: pr
+       PRE: bm, hm,
          (F * [[ can_access pr t ]])%pred
        POST: bm', hm',
           RET : i
@@ -246,7 +288,52 @@ Proof.
     apply trace_secure_app; simpl; auto.
   }
 Qed.
+*)
 
+Lemma unseal_secure:
+  forall pr i,
+     {!< F tb,
+       PERM: pr
+       PRE: bm, hm, 
+         F * [[ fst tb = Public ]] *
+         [[ bm i = Some tb ]]
+       POST: bm', hm', RET : b
+         F * [[ b = snd tb ]] *
+         [[ bm' = bm ]]
+       CRASH: bm'', hm'',
+         false_pred (* Can't crash *)
+     >!} Unseal i.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    cleanup.
+    pred_apply; cancel; eauto.
+    split_ors; cleanup; try congruence.
+    split.
+    right; do 3 eexists; intuition.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm; try congruence.
+  {
+    cleanup.
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+Qed.
+
+(*
 Lemma unseal_secure:
   forall pr i,
      {!< F tb,
@@ -289,6 +376,7 @@ Proof.
     apply trace_secure_app; simpl; auto.
   }
 Qed.
+*)
 
 Theorem hash_ok:
   forall sz (buf : word sz) pr,

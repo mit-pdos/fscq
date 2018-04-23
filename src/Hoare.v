@@ -21,10 +21,12 @@ Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> block_mem -> hash
   -> ((exists d' bm' hm' v, out = Finished d' bm' hm' v /\
                   donec d' bm' hm' v) \/
       (exists d' bm' hm', out = Crashed d' bm' hm' /\ crashc bm' hm' d'))/\
-    trace_secure pr tr.
+    only_public_operations tr.
+
 
 Notation "{{ pr | pre }} p" := (corr2 pr pre p)
-  (at level 0, p at level 60).
+       (at level 0, p at level 60).
+
 
 Notation "'RET' : r post" :=
   (fun F =>
@@ -107,7 +109,7 @@ Notation "{!< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
       bm'' at level 0, hm'' at level 0,
       hm at level 0, hm' at level 0,
-    e1 closed binder, e2 closed binder).
+      e1 closed binder, e2 closed binder).
 
 
 Notation "{!< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH' : bm'' , hm'' , crash >!} p1" :=

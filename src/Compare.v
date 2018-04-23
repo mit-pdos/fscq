@@ -3,7 +3,7 @@ Require Import Prog.
 Require Import BasicProg.
 Require Import SepAuto.
 Require Import Word.
-Require Import Hoare.
+Require Import HoareWeak.
 Require Import Pred.
 Require Import EqdepFacts.
 

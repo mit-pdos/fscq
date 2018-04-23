@@ -5,7 +5,7 @@ Require Import Pred.
 Require Import Word.
 Require Import Errno.
 Require Import DestructPair DestructVarname.
-Require Export Hoare.
+Require Export HoareWeak.
 
 Set Implicit Arguments.
 
