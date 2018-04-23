@@ -227,16 +227,16 @@ Definition sync_range a nr cs :=
     Ret cs.
 
   Definition write_vecs a l cs :=
-    let^ (cs, tt) <- ForN i < length l
+    let^ (cs, tt) <- ForEach v l' l
     Blockmem bm                          
     Ghost [ F crash vs ]
     Loopvar [ cs tt ]
     Invariant
-    exists d', rep cs d' bm *
-      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn i (extract_blocks_list bm l))))%pred d' ]]
+    exists d' iprefix, rep cs d' bm *
+      [[ iprefix ++ l' = l ]] *
+      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (extract_blocks_list bm iprefix)))%pred d' ]]
     OnCrash crash
     Begin
-      let v := selN l i (0, dummy_handle) in
       cs <- write_array a (fst v) (snd v) cs;;
       Ret ^(cs, tt)
     Rof ^(cs, tt);;

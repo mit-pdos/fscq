@@ -1,8 +1,8 @@
-Require Import Word.
+Require Import Mem Word.
 Require Import Omega.
 Require Import Bool.
 Require Import Pred.
-Require Import GenSepN.
+Require Import Log GenSepN.
 Require Import ListPred.
 Require Import List ListUtils.
 Require Import Bytes.
@@ -14,8 +14,21 @@ Require Import Lia.
 Require Import FunctionalExtensionality.
 Require Import FMapAVL.
 Require Import FMapFacts.
-Import ListNotations.
+Require Import DirTree.
+Require Import AsyncFS.
+Require Import Prog ProgLoop ProgList.
+Require Import ProgAuto.
+Require Import DestructPair.
+Require Import DirTreePath.
+Require Import DirTreeDef.
+Require Import DirTreePred.
+Require Import DirTreeRep.
+Require Import DirTreeSafe.
+Require Import DirTreeNames.
+Require Import DirTreeInodes.
 
+Import ListNotations.
+Import AFS.
 Set Implicit Arguments.
 
 Definition equivalent_for tag (d1 d2: rawdisk) :=
@@ -44,7 +57,159 @@ Definition same_except tag (d1 d2: rawdisk) :=
        Forall2 (fun tb1 tb2 => fst tb1 = fst tb2) (vsmerge vs1) (vsmerge vs2) /\
        Forall2 (fun tb1 tb2 => fst tb1 <> tag -> snd tb1 = snd tb2) (vsmerge vs1) (vsmerge vs2)).
 
+Definition blockmem_same_except tag (bm1 bm2: block_mem) :=
+  forall a,
+    (bm1 a = None /\ bm2 a = None) \/
+    (exists v1 v2,
+       bm1 a = Some v1 /\ bm2 a = Some v2 /\
+       fst v1 = fst v2 /\
+       (fst v1 <> tag -> snd v1 = snd v2)).
+
 Axiom can_access_dec: forall pr t, {can_access pr t}+{~can_access pr t}.
+
+Lemma inv_exec_if:
+  forall T P Q d bm hm pr tr (out: result) (b:{P}+{Q}) (p1 p2: prog T),
+    exec pr d bm hm (If_ b p1 p2) out tr ->
+    (P /\ exec pr d bm hm p1 out tr) \/
+    (Q /\ exec pr d bm hm p2 out tr).
+  intros.
+  unfold If_ in *; destruct b; eauto.
+Qed.
+
+
+Ltac inv_exec_highlvl :=
+  match goal with
+  |[H : exec _ _ _ _ (match ?x with | _ => _ end) _ _ |- _ ] =>
+   let D := fresh "D" in destruct x eqn:D; try setoid_rewrite D; simpl in *
+  |[H : exec _ _ _ _ (If_ _ _ _) _ _ |- _ ] =>
+   apply inv_exec_if in H; split_ors
+  |[H : exec _ _ _ _ _ _ _ |- _ ] => inv_exec_perm         
+  end.
+
+Ltac inv_exec_bind:=
+  match goal with
+  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => inv_exec_perm
+  |[H : exec _ _ _ _ (match ?x with | _ => _ end) _ _ |- _ ] =>
+   let D := fresh "D" in destruct x; simpl in *
+  |[H : exec _ _ _ _ (If_ _ _ _) _ _ |- _ ] =>
+   apply inv_exec_if in H; split_ors
+  end.
+
+Ltac invert_step := inv_exec_highlvl; unfold pair_args_helper in *; simpl in *.
+Ltac invert f:= unfold f in *; repeat invert_step.
+
+Ltac invert_step_bind := inv_exec_bind; unfold pair_args_helper in *; simpl in *.
+Ltac invert_bind f:= unfold f in *; repeat invert_step_bind.
+
+
+Lemma forall2_tag_refl:
+  forall l, Forall2 (fun tb1 tb2 : tag * block => fst tb1 = fst tb2) l l.
+Proof.
+  induction l; simpl; intuition.
+Qed.
+
+Lemma forall2_tag_ne_refl:
+  forall l t, Forall2 (fun tb1 tb2 : tag * block => fst tb1 <> t -> snd tb1 = snd tb2) l l.
+Proof.
+  induction l; simpl; intuition.
+Qed.
+
+
+Lemma same_except_refl:
+  forall t d, same_except t d d.
+Proof.
+  unfold same_except; intros.
+  destruct (d a); eauto.
+  right; repeat eexists; eauto.
+  apply forall2_tag_refl.
+  apply forall2_tag_ne_refl.
+Qed.
+
+Lemma blockmem_same_except_upd:
+  forall bm t h v1 v2,
+    blockmem_same_except t (upd bm h (t, v1)) (upd bm h (t, v2)).
+Proof.
+  unfold blockmem_same_except; intros.
+  destruct (handle_eq_dec h a); subst.
+  repeat rewrite upd_eq; eauto.
+  right; repeat eexists; intuition eauto.
+  repeat rewrite upd_ne; eauto.
+  destruct (bm a); eauto.
+  right; repeat eexists; intuition eauto.
+Qed.
+
+Lemma blockmem_same_except_upd_same:
+  forall bm1 bm2 t h v,
+    blockmem_same_except t bm1 bm2 ->
+    blockmem_same_except t (upd bm1 h v) (upd bm2 h v).
+Proof.
+  unfold blockmem_same_except; intros.
+  destruct (handle_eq_dec h a); subst.
+  repeat rewrite upd_eq; eauto.
+  right; repeat eexists; intuition eauto.
+  repeat rewrite upd_ne; eauto.
+Qed.
+
+Lemma foreach_invariant_pimpl:
+  forall (ITEM : Type) (L : Type) (G : Type) 
+    (l : list ITEM) (f : ITEM -> L -> prog L)
+    (I I' : G -> list ITEM -> L -> block_mem -> hashmap -> rawpred)
+    (C : G -> block_mem -> hashmap -> rawpred)
+    (x : L) pr d bm hm tr out,
+    exec pr d bm hm (ForEach_ f l I C x) out tr ->
+    exec pr d bm hm (ForEach_ f l I' C x) out tr.
+Proof.
+  induction l; simpl; intuition.
+  inv_exec_perm.
+  econstructor; eauto.
+  split_ors; cleanup.
+  econstructor; eauto.
+  econstructor; eauto.
+  split_ors; cleanup.
+  econstructor; eauto.
+  econstructor; eauto.
+Qed.
+
+Lemma foreach_step:
+  forall (ITEM : Type) (L : Type) (G : Type) 
+    (l : list ITEM) (f : ITEM -> L -> prog L)
+    (I : G -> list ITEM -> L -> block_mem -> hashmap -> rawpred)
+    (C : G -> block_mem -> hashmap -> rawpred)
+    (x : L) pr d bm hm tr d1 bm1 hm1 r a,
+    exec pr d bm hm (ForEach_ f (a::l) I C x) (Finished d1 bm1 hm1 r) tr ->
+    exists d' bm' hm' r' tr' tr'',
+      tr = tr''++tr' /\
+      exec pr d bm hm (f a x) (Finished d' bm' hm' r') tr' /\
+      exec pr d' bm' hm' (ForEach_ f l I C r') (Finished d1 bm1 hm1 r) tr''.
+Proof.
+  intros; simpl in *.
+  inv_exec_perm; eauto.
+  repeat eexists; eauto.
+Qed.  
+      
+(*
+Theorem write_syscal_sec:
+  forall pr d bm hm v1 v2 fsxp inum off ams d1 bm1 hm1 hm2 r1 r2 tr1 tr2
+    ds sm Fr Fm Ftop Fd tree ilist frees mscs pathname f vs,
+    
+    (Fr * [[ sync_invariant Fr ]] *
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+      [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
+    
+    exec pr d bm hm (update_fblock_d fsxp inum off v1 mscs) (Finished d1 bm1 hm1 r1) tr1 ->
+    can_access pr (DFOwner f) ->
+    
+    exists d2 bm2, 
+    exec pr d bm hm (update_fblock_d fsxp inum off v2 mscs) (Finished d2 bm2 hm2 r2) tr2 /\
+    same_except (DFOwner f) d1 d2 /\
+    blockmem_same_except (DFOwner f) bm1 bm2.
+Proof.
+  intros.
+  invert update_fblock_d.
+Abort.
+ *)
 
 Ltac rewriteall :=
   match goal with

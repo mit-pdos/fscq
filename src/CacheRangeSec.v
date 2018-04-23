@@ -301,39 +301,38 @@ Set Implicit Arguments.
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
-    safestep. auto. eauto.
+    safestep.
+    rewrite app_nil_l; auto.
+    simpl; cancel.
+    eauto.
     eauto.
     
+    prestep; norml.
     unfold handles_valid_list, handles_valid in *;
     pose proof H6 as Hy.
     rewrite Forall_forall in Hy.
     edestruct Hy.
     apply in_map.
-    apply in_selN; eauto.
-    safestep.
-    eapply block_mem_subset_extract_some; eauto.
+    apply in_app_middle; eauto.
+    norm. cancel.
+    intuition eauto.
     rewrite vsupd_vecs_length.
     pose proof H5 as Hx.
-    rewrite Forall_forall in Hx; apply Hx.
-    apply in_selN; eauto.
+    apply forall_app_l in Hx.
+    inversion Hx; simpl in *; eauto.
     step.
     prestep; unfold rep; cancel.
-
-    erewrite firstn_S_selN_expand.
-    setoid_rewrite vsupd_vecs_app; simpl.
+    apply cons_nil_app.
     unfold extract_blocks_list.
-    rewrite selN_combine; simpl; auto.
-    erewrite selN_map; auto.
-    
-    erewrite extract_blocks_selN_some; eauto.
-    rewrite map_length; auto.
-    clear H18; eapply handles_valid_list_subset_trans; eauto.
-    erewrite selN_map; eauto.
+    repeat rewrite map_app.
+    rewrite extract_blocks_app, combine_app.
+    setoid_rewrite vsupd_vecs_app; simpl.
+    erewrite block_mem_subset_extract_some; eauto.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
-    clear H18; eapply handles_valid_list_subset_trans; eauto.
-    erewrite extract_blocks_list_length; auto.
-    clear H18; eapply handles_valid_list_subset_trans; eauto.
+    rewrite map_app in H6;
+    apply forall_app_r in H6; eauto.
+    clear H18; eapply handles_valid_subset_trans; eauto.
     solve_hashmap_subset.
 
     cancel; rewrite <- H1; cancel.
@@ -343,34 +342,54 @@ Set Implicit Arguments.
     xcrash_rewrite.
     erewrite <- vsupd_vecs_xcrash_firstn.
     simpl.
-    eassign (S m).
-    xcrash.
-    erewrite firstn_S_selN_expand.
+    eassign (S (length iprefix)).
+    unfold extract_blocks_list.
+    repeat rewrite map_app.
+    rewrite extract_blocks_app, combine_app.
+    simpl List.map.
+    simpl extract_blocks.
+    erewrite block_mem_subset_extract_some; eauto.
+    simpl List.combine.
+    rewrite <- cons_nil_app.
+    rewrite firstn_app_l.
+    rewrite firstn_oob.
     setoid_rewrite vsupd_vecs_app; simpl.
-    unfold extract_blocks_list; simpl.
-    rewrite selN_combine; simpl; auto.
-    erewrite selN_map; auto.
+    xcrash.
 
-    erewrite extract_blocks_subset_trans.
-    erewrite extract_blocks_selN_some; eauto.
-    rewrite map_length; auto.
+    erewrite extract_blocks_subset_trans; eauto.
+    rewrite map_app in H6;
+    apply forall_app_r in H6; eauto.
     eapply handles_valid_subset_trans; eauto.
-    erewrite selN_map; eauto.
-    eapply handles_valid_list_subset_trans; eauto.
-    eauto.
+    rewrite app_length; simpl.
+    rewrite combine_length_eq.
+    rewrite map_length; omega.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
-    erewrite extract_blocks_list_length; auto.
-    eapply handles_valid_list_subset_trans; eauto.    
+    rewrite map_app in H6;
+    apply forall_app_r in H6; eauto.
+    eapply handles_valid_subset_trans; eauto.
+    rewrite app_length; simpl.
+    rewrite combine_length_eq.
+    rewrite map_length; omega.
+    erewrite extract_blocks_length; auto.
+    repeat rewrite map_length; auto.
+    eapply handles_valid_subset_trans; eauto.
+    rewrite map_app in H6;
+    apply forall_app_r in H6; eauto.
+    eapply handles_valid_subset_trans; eauto.
+    erewrite extract_blocks_length; auto.
+    repeat rewrite map_length; auto.
+    eapply handles_valid_subset_trans; eauto.
+    rewrite map_app in H6;
+    apply forall_app_r in H6; eauto.
+    eapply handles_valid_subset_trans; eauto.  
     apply Forall_extract_blocks_list_length_le; auto.
     eapply handles_valid_subset_trans; eauto.
 
     step.
     step.
-    rewrite firstn_oob; auto.
-    erewrite extract_blocks_list_length; auto.
-    eapply handles_valid_list_subset_trans; eauto.
+    rewrite app_nil_r; eauto.
     solve_hashmap_subset.
     eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
     unfold false_pred; cancel.
@@ -378,9 +397,7 @@ Set Implicit Arguments.
     Unshelve.
     all: auto.
     exact tt.
-    exact dummy_handle.
     unfold EqDec; apply handle_eq_dec.
-    exact dummy_handle.
   Qed.
 
 
