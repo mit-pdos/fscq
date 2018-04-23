@@ -186,30 +186,6 @@ Proof.
   inv_exec_perm; eauto.
   repeat eexists; eauto.
 Qed.  
-      
-(*
-Theorem write_syscal_sec:
-  forall pr d bm hm v1 v2 fsxp inum off ams d1 bm1 hm1 hm2 r1 r2 tr1 tr2
-    ds sm Fr Fm Ftop Fd tree ilist frees mscs pathname f vs,
-    
-    (Fr * [[ sync_invariant Fr ]] *
-     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm)]]] *
-      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-      [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred d ->
-    
-    exec pr d bm hm (update_fblock_d fsxp inum off v1 mscs) (Finished d1 bm1 hm1 r1) tr1 ->
-    can_access pr (DFOwner f) ->
-    
-    exists d2 bm2, 
-    exec pr d bm hm (update_fblock_d fsxp inum off v2 mscs) (Finished d2 bm2 hm2 r2) tr2 /\
-    same_except (DFOwner f) d1 d2 /\
-    blockmem_same_except (DFOwner f) bm1 bm2.
-Proof.
-  intros.
-  invert update_fblock_d.
-Abort.
- *)
 
 Ltac rewriteall :=
   match goal with
@@ -479,14 +455,17 @@ Theorem exec_equivalent:
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
     trace_secure pr tr ->
+    
     (exists d1' bm1' hm' (r: T), out = Finished d1' bm1' hm' r /\
      exists d2' bm2', exec pr d2 bm2 hm p (Finished d2' bm2' hm' r) tr /\
     (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
+    
     (exists d1' bm1' hm', out = Crashed d1' bm1' hm' /\
      exists d2' bm2', exec pr d2 bm2 hm p (Crashed d2' bm2' hm') tr /\
      (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
      (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
+    
     (exists d1' bm1' hm', out = Failed d1' bm1' hm' /\
      exists d2' bm2', exec pr d2 bm2 hm p (Failed d2' bm2' hm') tr /\
      (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
@@ -641,10 +620,12 @@ Theorem exec_equivalent_recover:
     forall d2 bm2,
     (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    
     (exists d1' bm1' hm' r, out = RFinished T' d1' bm1' hm' r /\
      exists d2' bm2', exec_recover pr d2 bm2 hm p1 p2 (RFinished T' d2' bm2' hm' r) tr /\
     (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
+    
     (exists d1' bm1' hm' r, out = RRecovered T d1' bm1' hm' r /\
      exists d2' bm2', exec_recover pr d2 bm2 hm p1 p2 (RRecovered T d2' bm2' hm' r) tr /\
     (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
