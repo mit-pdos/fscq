@@ -20,7 +20,7 @@ Definition corr2_weak (T: Type) pr (pre: donecond T -> crashcond -> block_mem ->
       (exists d' bm' hm', out = Crashed d' bm' hm' /\ crashc bm' hm' d'))/\
     trace_secure pr tr.
 
-Notation "'{{W' pr | pre W'}}' p" := (corr2_weak pr pre p)
+Notation "'{{W' pr | pre 'W}}' p" := (corr2_weak pr pre p)
   (at level 0, p at level 60).
 
 
@@ -137,7 +137,7 @@ Notation "'{<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' 
     e1 closed binder, e2 closed binder).
 
 
-Theorem pimpl_ok2:
+Theorem pimpl_ok2_weak:
   forall T pr (pre pre':donecond T -> crashcond -> block_mem ->  hashmap -> @pred _ _ valuset) (p: prog T),
   corr2_weak pr pre' p ->
   (forall done crash bm hm, pre done crash bm hm =p=>  pre' done crash bm hm) ->
@@ -148,7 +148,7 @@ Proof.
   apply H0; auto.
 Qed.
 
-Theorem pimpl_ok2_cont :
+Theorem pimpl_ok2_cont_weak:
   forall T pr (pre pre': donecond T -> crashcond -> block_mem ->  hashmap ->  @pred _ _ valuset) A (k : A -> prog T) x y,
     corr2_weak pr pre' (k y) ->
     (forall done crash bm hm, pre done crash bm hm =p=>  pre' done crash bm hm) ->
@@ -161,7 +161,7 @@ Proof.
   apply H0; auto.
 Qed.
 
-Theorem pimpl_pre2:
+Theorem pimpl_pre2_weak:
   forall T pr pre' (pre: donecond T -> crashcond -> block_mem ->  hashmap ->  @pred _ _ valuset) (p: prog T),
     (forall done crash bm hm, pre done crash bm hm  =p=>  [corr2_weak pr (pre' done crash bm hm) p]) ->
     (forall done crash bm hm, pre done crash bm hm  =p=> pre' done crash bm hm done crash bm hm) ->
@@ -172,7 +172,7 @@ Proof.
   apply H0; auto.
 Qed.
 
-Theorem pre_false2:
+Theorem pre_false2_weak:
   forall T pr (pre: donecond T -> crashcond -> block_mem ->  hashmap ->  @pred _ _ valuset) (p: prog T),
     (forall done crash bm hm, pre done crash bm hm =p=>  [False]) ->
     corr2_weak pr pre p.
