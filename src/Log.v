@@ -625,6 +625,27 @@ Hint Resolve Forall_nil.
     cancel.
   Qed.
 
+  Theorem abort_ok_weak :
+    forall xp ms pr,
+    {<W F ds sm m,
+    PERM:pr   
+    PRE:bm, hm,
+      rep xp F (ActiveTxn ds m) ms sm bm hm
+    POST:bm', hm', RET:r
+      rep xp F (NoTxn ds) r sm bm' hm' *
+      [[ (exists ms0, readOnly ms0 ms) -> readOnly ms r ]]
+    CRASH:bm', hm',
+      exists ms', rep xp F (NoTxn ds) ms' sm bm' hm'
+    W>} abort xp ms.
+  Proof.
+    unfold abort.
+    weaksafestep.
+    weakstep using dems; subst; simpl.
+    rewrite GLog.rep_hashmap_subset; eauto.
+    eapply readOnlyLL; eauto; try reflexivity; simpl; dems.
+    cancel.
+  Qed.
+
 
   Theorem read_ok:
     forall xp ms a pr,
@@ -1705,6 +1726,7 @@ Hint Resolve Forall_nil.
   Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (begin _ _) _) => apply begin_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (abort _ _) _) => apply abort_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (abort _ _) _) => apply abort_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (commit _ _) _) => apply commit_ok : prog.

@@ -247,10 +247,10 @@ Proof.
   }
 Qed.
 
-(*
-Lemma seal_secure:
+
+Lemma seal_secure_weak:
   forall pr t b,
-    {!< F,
+    {!<W F,
        PERM: pr
        PRE: bm, hm,
          (F * [[ can_access pr t ]])%pred
@@ -260,9 +260,9 @@ Lemma seal_secure:
           [[ bm' = upd bm i (t, b)]]
        CRASH: bm'', hm'',
           false_pred (* Can't crash *)
-     >!} Seal t b.
+     W>!} Seal t b.
 Proof.
-  unfold corr2; intros.
+  unfold corr2_weak; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
   {
@@ -288,7 +288,6 @@ Proof.
     apply trace_secure_app; simpl; auto.
   }
 Qed.
-*)
 
 Lemma unseal_secure:
   forall pr i,
@@ -333,10 +332,10 @@ Proof.
   }
 Qed.
 
-(*
-Lemma unseal_secure:
+
+Lemma unseal_secure_weak:
   forall pr i,
-     {!< F tb,
+     {!<W F tb,
        PERM: pr
        PRE: bm, hm, 
          F * [[ can_access pr (fst tb) ]] *
@@ -346,9 +345,9 @@ Lemma unseal_secure:
          [[ bm' = bm ]]
        CRASH: bm'', hm'',
          false_pred (* Can't crash *)
-     >!} Unseal i.
+     W>!} Unseal i.
 Proof.
-  unfold corr2; intros.
+  unfold corr2_weak; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup.
   {
@@ -376,7 +375,6 @@ Proof.
     apply trace_secure_app; simpl; auto.
   }
 Qed.
-*)
 
 Theorem hash_ok:
   forall sz (buf : word sz) pr,
@@ -473,6 +471,41 @@ Lemma ret_secure:
      >!} Ret v.
 Proof.
   unfold corr2; intros.
+  destruct_lift H; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup;
+  try rewrite app_nil_r.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+  }
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+  }
+  split_ors; cleanup; inv_exec_perm;
+  try rewrite app_nil_r.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+  }
+Qed.
+
+Lemma ret_secure_weak:
+  forall T pr (v: T),
+     {!<W F,
+       PERM: pr
+       PRE: bm, hm,
+          F
+       POST: bm', hm', RET : r
+         F * [[ r = v ]] *
+         [[ bm' = bm ]]
+       CRASH:bm'', hm'',
+         false_pred (* Can't crash *)
+     W>!} Ret v.
+Proof.
+  unfold corr2_weak; intros.
   destruct_lift H; cleanup.
   repeat inv_exec_perm; simpl in *; cleanup;
   try rewrite app_nil_r.
@@ -655,11 +688,14 @@ Hint Extern 1 (corr2 _ _ (Bind (Read _) _)) => apply read_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Write _ _) _)) => apply write_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Seal _ _) _)) => apply seal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Unseal _) _)) => apply unseal_secure : prog.
+Hint Extern 1 (corr2_weak _ _ (Bind (Seal _ _) _)) => apply seal_secure_weak : prog.
+Hint Extern 1 (corr2_weak _ _ (Bind (Unseal _) _)) => apply unseal_secure_weak : prog.
 Hint Extern 1 ({{_|_}} Bind (Hash _) _) => apply hash_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (Hash2 _ _) _) => apply hash2_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply auth_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.
+Hint Extern 1 (corr2_weak _ _ (Bind (Ret _) _)) => apply ret_secure_weak : prog.
 
 
 

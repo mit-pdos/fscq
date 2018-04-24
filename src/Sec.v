@@ -67,3 +67,12 @@ Qed.
     induction tr1; simpl; intuition;
     specialize IHtr1 with (1:= H1); cleanup; auto.
   Qed.
+
+  Lemma only_public_operations_to_trace_secure:
+    forall tr,
+      only_public_operations tr ->
+      forall pr, trace_secure pr tr.
+  Proof.
+    induction tr; simpl; intuition.
+    destruct a; subst; simpl; auto.
+  Qed.

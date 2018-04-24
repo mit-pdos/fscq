@@ -136,7 +136,17 @@ Notation "'{<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' 
       hm at level 0, hm' at level 0,
     e1 closed binder, e2 closed binder).
 
-
+Theorem corr2_to_corr2_weak:
+  forall T pr (pre: donecond T -> crashcond -> block_mem ->  hashmap -> @pred _ _ valuset) (p: prog T),
+  corr2 pr pre p ->
+  corr2_weak pr pre p.
+Proof.
+  unfold corr2, corr2_weak; intros.
+  specialize H with (1:=H0)(2:=H1); cleanup.
+  split; auto.
+  apply only_public_operations_to_trace_secure; eauto.
+Qed.
+  
 Theorem pimpl_ok2_weak:
   forall T pr (pre pre':donecond T -> crashcond -> block_mem ->  hashmap -> @pred _ _ valuset) (p: prog T),
   corr2_weak pr pre' p ->
@@ -238,4 +248,3 @@ Ltac monad_simpl_one_weak :=
   end.
 
 Ltac monad_simpl_weak := repeat monad_simpl_one_weak.
-

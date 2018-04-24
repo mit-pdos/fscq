@@ -827,6 +827,25 @@ Proof.
   cancel.
 Qed.
 
+Theorem nop_ok_weak :
+  forall T A pr v (rx : A -> prog T),
+  corr2_weak pr (fun done_ crash_ bm hm => exists F, F * [[ forall r_,
+    corr2_weak pr (fun done' crash' bm' hm' => (fun r => F * [[ r = v ]]) r_ *
+                                       [[ hm = hm' ]] *
+                                       [[ bm = bm' ]] *
+                                       [[ done' = done_ ]] *
+                                       [[ crash' = crash_ ]])
+     (rx r_) ]] * [[ F =p=> crash_ bm hm]])%pred (rx v).
+Proof.
+  unfold corr2_weak, pimpl.
+  intros.
+  destruct H.
+  destruct_lift H.
+  eapply H4; eauto.
+  pred_apply.
+  cancel.
+Qed.
+
 Ltac autorewrite_fast_goal :=
   set_evars; (rewrite_strat (topdown (hints core))); subst_evars;
   try autorewrite_fast_goal.
@@ -845,6 +864,10 @@ Ltac destruct_branch :=
   | [ |- corr2 _ _ (Bind (match ?v with | None => _ | Some _ => _ end) _) ] => destruct v eqn:?
   | [ |- corr2 _ _ (Bind (if ?v then _ else _) _) ] => destruct v eqn:?
   | [ |- corr2 _ _ (Bind (let '_ := ?v in _) _) ] => destruct v eqn:?
+  | [ |- corr2_weak _ _ (Bind (match ?v with | Some _ => _ | None => _ end) _) ] => destruct v eqn:?
+  | [ |- corr2_weak _ _ (Bind (match ?v with | None => _ | Some _ => _ end) _) ] => destruct v eqn:?
+  | [ |- corr2_weak _ _ (Bind (if ?v then _ else _) _) ] => destruct v eqn:?
+  | [ |- corr2_weak _ _ (Bind (let '_ := ?v in _) _) ] => destruct v eqn:?
   end.
 
 Ltac prestep :=
@@ -864,9 +887,28 @@ Ltac prestep :=
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try autounfold with hoare_unfold in *; eauto.
 
+Ltac weakprestep :=
+  intros;
+  try autounfold with hoare_unfold in *;
+  repeat destruct_pair_once;
+  try cancel;
+  repeat (destruct_branch || monad_simpl_one_weak);
+  (*   remember_xform; *)
+  ((eapply pimpl_ok2_weak; [ solve [ eauto with prog ] | ])
+   || (eapply pimpl_ok2_cont_weak; [ solve [ eauto with prog ] | | ])
+   || (eapply pimpl_ok2_weak; [
+        match goal with
+        | [ |- corr2_weak _ _ (?rx _) ] => is_var rx
+        end; solve [eapply nop_ok_weak] | ]));
+  intros; try subst;
+  repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
+  try autounfold with hoare_unfold in *; eauto.
+
+
 Ltac poststep t :=
   let tac := match goal with
   | [ |- corr2 _ _ _ ] => idtac
+  | [ |- corr2_weak _ _ _ ] => idtac
   | _ => t
   end in
   intuition tac;
@@ -876,6 +918,10 @@ Ltac poststep t :=
 
 Ltac safestep :=
     prestep; safecancel;
+    set_evars; poststep auto; subst_evars.
+
+Ltac weaksafestep :=
+    weakprestep; safecancel;
     set_evars; poststep auto; subst_evars.
 
 Ltac safestep_r :=
@@ -912,6 +958,11 @@ Tactic Notation "step_r" "using" tactic(t) :=
   try (remember (cancel_with t); try remember (cancel_with t));
   poststep t.
 
+Tactic Notation "weakstep" "using" tactic(t) :=
+  weakprestep;
+  try (cancel_with t; try cancel_with t);
+  poststep t.
+
 (*
 Ltac step_with t :=
   prestep;
@@ -927,6 +978,7 @@ Ltac step_with t :=
 Ltac step := step using eauto.
 Ltac step_idtac := step using idtac with intuition idtac.
 Ltac step_r := step_r using eauto.
+Ltac weakstep := weakstep using eauto.
 
 Tactic Notation "hoare" "using" tactic(t) "with" ident(db) "in" "*" :=
   repeat (step using t with db in *).
@@ -1005,3 +1057,751 @@ Ltac lightstep :=
     repeat eexists;
     pred_apply;
     norm; [cancel|repeat split].
+
+
+  Ltac weaklightstep :=
+    let m := fresh "m" in
+    let Hm := fresh "Hm" in
+    weakprestep;
+    intros m Hm;
+    destruct_lift Hm;
+    repeat eexists;
+    pred_apply;
+    norm; [cancel|intuition];
+    match goal with
+    | [|- corr2_weak _ _ _] => idtac
+    | _ => eauto
+    end.
+  
+  Ltac weaksafelightstep :=
+    let m := fresh "m" in
+    let Hm := fresh "Hm" in
+    weakprestep;
+    intros m Hm;
+    destruct_lift Hm;
+    repeat eexists;
+    pred_apply;
+    norm; [cancel|repeat split].
+
+
+
+Transparent corr2 corr2_weak.
+
+   Theorem weak_conversion:
+    forall T T' A1 (p1: prog T) (p2: T -> prog T') pr
+      pre post post2 crash1 crash2,
+      
+      {< (e1: A1),
+         PERM: pr
+         PRE: bm, hm, pre e1 bm hm
+         POST: bm', hm', (fun F r => F * post F r e1 bm' hm')
+         CRASH: bm'', hm'', crash1 e1 bm'' hm'' >} p1 ->
+      
+      (forall F r e1,
+          {<W PERM: pr
+              PRE: bm, hm, post F r e1 bm hm 
+              POST: bm', hm', (fun F r => F * post2 F r e1 bm' hm')
+              CRASH: bm'', hm'', crash2 e1 bm'' hm'' W>} (p2 r)) ->
+      
+      (forall e1 bm'' hm'' , crash1 e1 bm'' hm'' =p=> crash2 e1 bm'' hm'') ->
+                           
+      {<W (e1: A1),
+          PERM: pr
+          PRE: bm, hm, pre e1 bm hm 
+          POST: bm', hm', (fun F r => F * post2 F r e1 bm' hm')
+          CRASH: bm'', hm'', crash2 e1 bm'' hm'' W>} (Bind p1 p2).
+  Proof.
+    intros.
+    monad_simpl_weak.
+    unfold corr2, corr2_weak in *; intros.
+    inv_exec_perm.
+    - destruct_lift H2.
+      edestruct H.
+      2: repeat econstructor; eauto.
+      {
+        pred_apply; safecancel.
+        eassign dummy; cancel.
+        eauto.
+        inv_exec'' H13.
+        destruct_lift H12.
+        eassign crashc.
+        left; repeat eexists; eauto.
+        eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+          simpl; pred_apply; cancel.
+        eauto.
+        inv_exec'' H13; simpl; eauto.
+        rewrite <- H7; cancel; eauto.
+      }
+      simpl in *; split_ors; cleanup; try congruence.
+      edestruct H0; eauto.
+      {
+        pred_apply; safecancel.
+        eassign dummy; cancel.
+        eauto.
+        edestruct H8; eauto.
+        pred_apply; cancel.
+        solve_hashmap_subset.
+        eauto.
+        edestruct H8; eauto.
+        pred_apply; cancel.
+        solve_hashmap_subset.
+        eauto.
+        rewrite <- H7; cancel; auto.
+        solve_hashmap_subset.
+        eauto.
+      }
+      simpl in *; split_ors; cleanup; try congruence.
+      split.
+      left; repeat eexists; eauto.
+      apply trace_secure_app; eauto.
+      apply only_public_operations_to_trace_secure; auto.
+
+    - split_ors; cleanup.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: eapply CrashBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          inv_exec'' H12.
+          destruct_lift H11.
+          eassign crashc.
+          left; repeat eexists; eauto.
+          eassign (fun (d0:rawdisk)
+                     (bm0: block_mem) (hm0:hashmap) (r: T) => True);
+          simpl; auto.
+          inv_exec'' H12; simpl; eauto.
+          rewrite <- H6; cancel; auto.
+          solve_hashmap_subset.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        split.
+        right; repeat eexists; eauto.
+        apply only_public_operations_to_trace_secure; auto.
+      + destruct_lift H2.
+        edestruct H.
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          inv_exec'' H13.
+          destruct_lift H12.
+          left; repeat eexists; eauto.
+          eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+            simpl; pred_apply; cancel.
+          solve_hashmap_subset.
+          inv_exec'' H13; simpl; eauto.
+          eassign crashc; rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        edestruct H0; eauto.
+        {
+           pred_apply; safecancel.
+           eassign dummy; cancel.
+           auto.
+           destruct_lift H16.
+           eassign crashc.
+           edestruct H8; eauto.
+           pred_apply; cancel.
+           solve_hashmap_subset.
+           eauto.
+           edestruct H8; eauto.
+           pred_apply; cancel.
+           solve_hashmap_subset.
+           eauto.
+           rewrite <- H7; cancel; auto.
+           solve_hashmap_subset.
+           eauto.
+         }
+         simpl in *; split_ors; cleanup; try congruence.
+         split.
+         right; repeat eexists; eauto.
+         apply trace_secure_app; auto.
+         apply only_public_operations_to_trace_secure; auto.
+
+    - split_ors; cleanup.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: eapply FailBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          inv_exec'' H12.
+          destruct_lift H11.
+          left; repeat eexists; eauto.
+          eassign (fun (d0:rawdisk)
+                     (bm0: block_mem) (hm0:hashmap) (r: T) => True);
+          simpl; auto.
+          inv_exec'' H12; simpl; eauto.
+          eassign crashc; rewrite <- H6; cancel; auto.
+          solve_hashmap_subset.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          inv_exec'' H13.
+          destruct_lift H12.
+          left; repeat eexists; eauto.
+          eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+            simpl; pred_apply; cancel.
+          solve_hashmap_subset.
+          inv_exec'' H13; simpl; eauto.
+          eassign crashc; rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        edestruct H0; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          destruct_lift H17.
+          edestruct H8; eauto.
+          pred_apply; cancel.
+          solve_hashmap_subset.
+          eauto.
+          edestruct H8; eauto.
+          pred_apply; cancel.
+          solve_hashmap_subset.
+          eauto.
+          rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+          eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        Unshelve.
+        all: eauto.
+        all: unfold Mem.EqDec; apply handle_eq_dec.
+  Qed.
+
+  Theorem weak_conversion_xcrash:
+    forall T T' A1 (p1: prog T) (p2: T -> prog T') pr
+      pre post post2 crash1 crash2,
+      
+      {< (e1: A1),
+         PERM: pr
+         PRE: bm, hm, pre e1 bm hm
+         POST: bm', hm', (fun F r => F * post F r e1 bm' hm')
+         XCRASH: bm'', hm'', crash1 e1 bm'' hm'' >} p1 ->
+      
+      (forall F r e1,
+          {<W (_: A1),
+              PERM: pr
+              PRE: bm, hm, post F r e1 bm hm 
+              POST: bm', hm', (fun F r => F * post2 F r e1 bm' hm')
+              XCRASH: bm'', hm'', crash2 e1 bm'' hm'' W>} (p2 r)) ->
+      
+      (forall e1 bm'' hm'' , crash1 e1 bm'' hm'' =p=> crash2 e1 bm'' hm'') ->
+                           
+      {<W (e1: A1),
+          PERM: pr
+          PRE: bm, hm, pre e1 bm hm 
+          POST: bm', hm', (fun F r => F * post2 F r e1 bm' hm')
+          XCRASH: bm'', hm'', crash2 e1 bm'' hm'' W>} (Bind p1 p2).
+  Proof.
+    intros.
+    monad_simpl_weak.
+    unfold corr2, corr2_weak in *; intros.
+    inv_exec_perm.
+    - destruct_lift H2.
+      edestruct H.
+      2: repeat econstructor; eauto.
+      {
+        pred_apply; safecancel.
+        eassign dummy; cancel.
+        eauto.
+        inv_exec'' H13.
+        destruct_lift H12.
+        eassign crashc.
+        left; repeat eexists; eauto.
+        eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+          simpl; pred_apply; cancel.
+        solve_hashmap_subset.
+        inv_exec'' H13; simpl; eauto.
+        rewrite <- H7; cancel; eauto.
+        erewrite H12.
+        apply crash_xform_pimpl; eauto.
+      }
+      simpl in *; split_ors; cleanup; try congruence.
+      edestruct H0; eauto.
+      {
+        pred_apply; safecancel.
+        eassign dummy; cancel.
+        eauto.
+        edestruct H8; eauto.
+        pred_apply; cancel.
+        solve_hashmap_subset.
+        eauto.
+        edestruct H8; eauto.
+        pred_apply; cancel.
+        solve_hashmap_subset.
+        eauto.
+        rewrite <- H7; cancel; auto.
+        solve_hashmap_subset.
+        eauto.
+      }
+      simpl in *; split_ors; cleanup; try congruence.
+      split.
+      left; repeat eexists; eauto.
+      apply trace_secure_app; eauto.
+      apply only_public_operations_to_trace_secure; auto.
+
+    - split_ors; cleanup.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: eapply CrashBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          inv_exec'' H12.
+          destruct_lift H11.
+          eassign crashc.
+          left; repeat eexists; eauto.
+          eassign (fun (d0:rawdisk)
+                     (bm0: block_mem) (hm0:hashmap) (r: T) => True);
+          simpl; auto.
+          inv_exec'' H12; simpl; eauto.
+          rewrite <- H6; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H11.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        split.
+        right; repeat eexists; eauto.
+        apply only_public_operations_to_trace_secure; auto.
+      + destruct_lift H2.
+        edestruct H.
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          inv_exec'' H13.
+          destruct_lift H12.
+          left; repeat eexists; eauto.
+          eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+            simpl; pred_apply; cancel.
+          solve_hashmap_subset.
+          inv_exec'' H13; simpl; eauto.
+          eassign crashc; rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H12.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        edestruct H0; eauto.
+        {
+           pred_apply; safecancel.
+           eassign dummy; cancel.
+           auto.
+           destruct_lift H16.
+           eassign crashc.
+           edestruct H8; eauto.
+           pred_apply; cancel.
+           solve_hashmap_subset.
+           eauto.
+           edestruct H8; eauto.
+           pred_apply; cancel.
+           solve_hashmap_subset.
+           eauto.
+           rewrite <- H7; cancel; auto.
+           solve_hashmap_subset.
+           eauto.
+         }
+         simpl in *; split_ors; cleanup; try congruence.
+         split.
+         right; repeat eexists; eauto.
+         apply trace_secure_app; auto.
+         apply only_public_operations_to_trace_secure; auto.
+
+    - split_ors; cleanup.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: eapply FailBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          inv_exec'' H12.
+          destruct_lift H11.
+          left; repeat eexists; eauto.
+          eassign (fun (d0:rawdisk)
+                     (bm0: block_mem) (hm0:hashmap) (r: T) => True);
+          simpl; auto.
+          inv_exec'' H12; simpl; eauto.
+          eassign crashc; rewrite <- H6; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H11.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          inv_exec'' H13.
+          destruct_lift H12.
+          left; repeat eexists; eauto.
+          eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+            simpl; pred_apply; cancel.
+          solve_hashmap_subset.
+          inv_exec'' H13; simpl; eauto.
+          eassign crashc; rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H12.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        edestruct H0; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          destruct_lift H17.
+          edestruct H8; eauto.
+          pred_apply; cancel.
+          solve_hashmap_subset.
+          eauto.
+          edestruct H8; eauto.
+          pred_apply; cancel.
+          solve_hashmap_subset.
+          eauto.
+          rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+          eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        Unshelve.
+        all: eauto.
+        all: unfold Mem.EqDec; apply handle_eq_dec.
+  Qed.
+
+
+  Theorem weak_conversion_reverse_xcrash:
+    forall T T' A1 (p1: prog T) (p2: T -> prog T') pr
+      pre post post2 crash1 crash2,
+      
+      {<W (e1: A1),
+         PERM: pr
+         PRE: bm, hm, pre e1 bm hm
+         POST: bm', hm', (fun F r => F * post F r e1 bm' hm')
+         XCRASH: bm'', hm'', crash1 e1 bm'' hm'' W>} p1 ->
+      
+      (forall F r e1,
+          {< (_: A1),
+              PERM: pr
+              PRE: bm, hm, post F r e1 bm hm 
+              POST: bm', hm', (fun F r => F * post2 F r e1 bm' hm')
+              XCRASH: bm'', hm'', crash2 e1 bm'' hm'' >} (p2 r)) ->
+      
+      (forall e1 bm'' hm'' , crash1 e1 bm'' hm'' =p=> crash2 e1 bm'' hm'') ->
+                           
+      {<W (e1: A1),
+          PERM: pr
+          PRE: bm, hm, pre e1 bm hm 
+          POST: bm', hm', (fun F r => F * post2 F r e1 bm' hm')
+          XCRASH: bm'', hm'', crash2 e1 bm'' hm'' W>} (Bind p1 p2).
+  Proof.
+    intros.
+    monad_simpl_weak.
+    unfold corr2, corr2_weak in *; intros.
+    inv_exec_perm.
+    - destruct_lift H2.
+      edestruct H.
+      2: repeat econstructor; eauto.
+      {
+        pred_apply; safecancel.
+        eassign dummy; cancel.
+        eauto.
+        inv_exec'' H13.
+        destruct_lift H12.
+        eassign crashc.
+        left; repeat eexists; eauto.
+        eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+          simpl; pred_apply; cancel.
+        solve_hashmap_subset.
+        inv_exec'' H13; simpl; eauto.
+        rewrite <- H7; cancel; eauto.
+        erewrite H12.
+        apply crash_xform_pimpl; eauto.
+      }
+      simpl in *; split_ors; cleanup; try congruence.
+      inv_exec_perm.
+      edestruct H0; eauto.
+      2: repeat econstructor; eauto.
+      {
+        pred_apply; safecancel.
+        eassign dummy; cancel.
+        eauto.
+        inv_exec'' H18.
+        destruct_lift H17.
+        eassign crashc.
+        left; repeat eexists; eauto.
+        eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T') =>
+                   (dummy * post2 dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l x7 hm0 ]] *
+                    [[ x6 c= bm0 ]])%pred d0);
+          simpl; pred_apply; cancel.
+        solve_hashmap_subset.
+        inv_exec'' H18; simpl; eauto.
+        rewrite <- H7; cancel; eauto.
+        solve_hashmap_subset.
+      }
+      simpl in *; split_ors; cleanup; try congruence.
+      edestruct H8; eauto.
+      destruct_lift H10.
+      pred_apply; cancel; eauto.
+      solve_hashmap_subset.
+      simpl in *; split_ors; cleanup; try congruence.
+      split.
+      left; repeat eexists; eauto.
+      apply trace_secure_app; eauto.
+      apply trace_secure_app; eauto.
+      apply only_public_operations_to_trace_secure; auto.
+
+    - split_ors; cleanup.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: eapply CrashBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          inv_exec'' H12.
+          destruct_lift H11.
+          eassign crashc.
+          left; repeat eexists; eauto.
+          eassign (fun (d0:rawdisk)
+                     (bm0: block_mem) (hm0:hashmap) (r: T) => True);
+          simpl; auto.
+          inv_exec'' H12; simpl; eauto.
+          rewrite <- H6; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H11.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        split.
+        right; repeat eexists; eauto.
+        eauto.
+      + destruct_lift H2.
+        edestruct H.
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          inv_exec'' H13.
+          destruct_lift H12.
+          left; repeat eexists; eauto.
+          eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+            simpl; pred_apply; cancel.
+          solve_hashmap_subset.
+          inv_exec'' H13; simpl; eauto.
+          eassign crashc; rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H12.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        inv_exec_perm; split_ors; cleanup.
+        * edestruct H0 with (rx:=@Ret T'); eauto.
+          2: eapply CrashBind; eauto.
+          {
+            pred_apply; safecancel.
+            eassign dummy; cancel.
+            auto.
+            inv_exec'' H17.
+            destruct_lift H16.
+            eassign crashc.
+            left; repeat eexists; eauto.
+            eassign (fun (d0:rawdisk)
+                       (bm0: block_mem) (hm0:hashmap) (r: T') => True);
+              simpl; auto.
+            inv_exec'' H17; simpl; eauto.
+            rewrite <- H7; cancel; auto.
+            solve_hashmap_subset.
+            eauto.
+          }
+          simpl in *; split_ors; cleanup; try congruence.
+          split.
+          right; repeat eexists; eauto.
+          apply trace_secure_app; auto.
+          apply only_public_operations_to_trace_secure; auto.
+        * edestruct H0; eauto.
+          2: repeat econstructor; eauto.
+          {
+            pred_apply; safecancel.
+            eassign dummy; cancel.
+            eauto.
+            inv_exec'' H18.
+            destruct_lift H17.
+            eassign crashc.
+            left; repeat eexists; eauto.
+            eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T') =>
+                       (dummy * post2 dummy r dummy0 bm0 hm0 *
+                        [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                             hashmap_subset l x7 hm0 ]] *
+                        [[ x6 c= bm0 ]])%pred d0);
+              simpl; pred_apply; cancel.
+            solve_hashmap_subset.
+            inv_exec'' H18; simpl; eauto.
+            rewrite <- H7; cancel; eauto.
+            solve_hashmap_subset.
+          }
+          simpl in *; split_ors; cleanup; try congruence.
+          edestruct H8; eauto.
+          destruct_lift H10.
+          pred_apply; cancel; eauto.
+          solve_hashmap_subset.
+          simpl in *; split_ors; cleanup; try congruence.
+          split.
+          right; repeat eexists; eauto.
+          apply trace_secure_app; eauto.
+          apply trace_secure_app; eauto.
+          apply only_public_operations_to_trace_secure; auto.
+    - split_ors; cleanup.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: eapply FailBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          inv_exec'' H12.
+          destruct_lift H11.
+          left; repeat eexists; eauto.
+          eassign (fun (d0:rawdisk)
+                     (bm0: block_mem) (hm0:hashmap) (r: T) => True);
+          simpl; auto.
+          inv_exec'' H12; simpl; eauto.
+          eassign crashc; rewrite <- H6; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H11.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+      + destruct_lift H2.
+        edestruct H with (rx:=@Ret T).
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          inv_exec'' H13.
+          destruct_lift H12.
+          left; repeat eexists; eauto.
+          eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+                   (dummy * post dummy r dummy0 bm0 hm0 *
+                    [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                         hashmap_subset l hm hm0 ]] *
+                    [[ bm c= bm0 ]])%pred d0);
+            simpl; pred_apply; cancel.
+          solve_hashmap_subset.
+          inv_exec'' H13; simpl; eauto.
+          eassign crashc; rewrite <- H7; cancel; auto.
+          solve_hashmap_subset.
+          erewrite H12.
+          apply crash_xform_pimpl; eauto.
+        }
+        simpl in *; split_ors; cleanup; try congruence.
+        inv_exec_perm; split_ors; cleanup.
+        * edestruct H0 with (rx:=@Ret T'); eauto.
+          2: eapply FailBind; eauto.
+          {
+            pred_apply; safecancel.
+            eassign dummy; cancel.
+            auto.
+            inv_exec'' H17.
+            destruct_lift H16.
+            eassign crashc.
+            left; repeat eexists; eauto.
+            eassign (fun (d0:rawdisk)
+                       (bm0: block_mem) (hm0:hashmap) (r: T') => True);
+              simpl; auto.
+            inv_exec'' H17; simpl; eauto.
+            rewrite <- H7; cancel; auto.
+            solve_hashmap_subset.
+            eauto.
+          }
+          simpl in *; split_ors; cleanup; try congruence.
+        * edestruct H0; eauto.
+          2: repeat econstructor; eauto.
+          {
+            pred_apply; safecancel.
+            eassign dummy; cancel.
+            eauto.
+            inv_exec'' H18.
+            destruct_lift H17.
+            eassign crashc.
+            left; repeat eexists; eauto.
+            eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T') =>
+                       (dummy * post2 dummy r dummy0 bm0 hm0 *
+                        [[ exists l : list (word hashlen * {sz : addr & word sz}),
+                             hashmap_subset l x7 hm0 ]] *
+                        [[ x6 c= bm0 ]])%pred d0);
+              simpl; pred_apply; cancel.
+            solve_hashmap_subset.
+            inv_exec'' H18; simpl; eauto.
+            rewrite <- H7; cancel; eauto.
+            solve_hashmap_subset.
+          }
+          simpl in *; split_ors; cleanup; try congruence.
+          edestruct H8; eauto.
+          destruct_lift H10.
+          pred_apply; cancel; eauto.
+          solve_hashmap_subset.
+          simpl in *; split_ors; cleanup; try congruence.
+        Unshelve.
+        all: eauto.
+        all: unfold Mem.EqDec; apply handle_eq_dec.
+  Qed. 
+
+  Opaque corr2 corr2_weak.
