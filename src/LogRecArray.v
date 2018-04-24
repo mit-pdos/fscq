@@ -169,8 +169,6 @@ Module LogRecArray (RA : RASig).
     eapply ipack_length_eq; eauto.
   Qed.
 
-
-  
   Theorem get_ok :
     forall lxp xp ix ms pr,
     {< F Fm m0 sm m items,
@@ -334,10 +332,7 @@ Module LogRecArray (RA : RASig).
     rewrite synced_list_map_fst in H4.
     rewrite <- firstn_map_comm in H4.
     setoid_rewrite map_fst_combine in H4; auto.
-    pose proof Forall_can_access_public as H5.
-    setoid_rewrite Forall_forall in H5; eauto.
-    eapply H5.
-    eapply in_firstn_in; eauto.
+    apply in_firstn_in in H4; apply repeat_spec in H4; auto.
     apply repeat_length.
 
     step.
@@ -376,9 +371,7 @@ Module LogRecArray (RA : RASig).
     unfold write, rep.
     step.
     apply repeat_length.
-    pose proof Forall_can_access_public.
-    setoid_rewrite Forall_forall in H4; auto.
-    eapply H4; eauto.
+    apply repeat_spec in H; auto.
 
     safestep.
     rewrite LOG.rep_blockmem_subset; [|eauto].

@@ -2139,7 +2139,7 @@ Qed.
 Lemma lt_le : forall sz (a b : word sz),
   a < b -> a <= b.
 Proof.
-  unfold wlt, N.lt. intros. intro. rewrite <- N.compare_antisym in H0. rewrite H in H0. simpl in *. congruence.
+  unfold wlt, N.lt. intros. intro. rewrite <- Ncompare_antisym in H0. rewrite H in H0. simpl in *. congruence.
 Qed.
 Lemma eq_le : forall sz (a b : word sz),
   a = b -> a <= b.
@@ -2199,7 +2199,7 @@ Proof.
   elimtype False. apply H0. unfold wlt, N.lt in *.
   eapply wordToN_inj. eapply Ncompare_eq_correct.
   case_eq ((wordToN a ?= wordToN b)%N); auto; try congruence.
-  intros. rewrite <- N.compare_antisym in n. rewrite H1 in n. simpl in *. congruence.
+  intros. rewrite <- Ncompare_antisym in n. rewrite H1 in n. simpl in *. congruence.
 Qed.
 
 
@@ -2556,7 +2556,7 @@ Proof.
   rewrite <- Nat.add_sub_assoc.
   omega.
 
-  apply Nat.Nlt_ge.
+  apply Nat.nlt_ge.
   unfold not in *; intros.
   apply H.
   apply lt_wlt; auto.

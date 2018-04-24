@@ -221,6 +221,9 @@ Module FileRecArray (FRA : FileRASig).
     denote (bm0 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
     setoid_rewrite selN_combine in Hx; eauto.
+    rewrite repeat_selN in Hx; eauto.
+    rewrite ipack_length; eauto.
+    apply div_lt_divup; auto.
     apply repeat_length.
 
     step.
@@ -273,6 +276,9 @@ Module FileRecArray (FRA : FileRASig).
     denote (bm0 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
     setoid_rewrite selN_combine in Hx; eauto.
+    rewrite repeat_selN in Hx; eauto.
+    rewrite ipack_length; eauto.
+    apply div_lt_divup; auto.
     apply repeat_length.
 
     step.

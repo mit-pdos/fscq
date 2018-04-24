@@ -224,7 +224,7 @@ Lemma corr2_weak_or_helper:
     corr2_weak pr R p.
 Proof.
   intros.
-  eapply pimpl_ok2; [| apply H1].
+  eapply pimpl_ok2_weak; [| apply H1].
   unfold corr2_weak in *.
   intros.
   destruct H2; eauto.

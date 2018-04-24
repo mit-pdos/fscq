@@ -984,7 +984,6 @@ Qed.
   End UnfoldProof1.
 
 
-
   Local Hint Resolve log_valid_nodup.
 
 
@@ -1015,7 +1014,6 @@ Qed.
     extract_blocks_list, handles_valid_list.
     step.
     rewrite Forall_forall in *; intuition.
-    specialize H6 with (1:=H); subst; auto.
     safestep.
     erewrite block_mem_subset_rep; eauto.
     pred_apply; cancel.

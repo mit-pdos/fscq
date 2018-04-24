@@ -2,7 +2,7 @@ Install fusexmp from fuse-2.9.3/example.
 
 Turn off CPU frequency scaling because FUSE is highly affected by it:
 
-  for f in /sys/devices/system/cpu/cpufreq/*/scaling_governor; do echo performance > $f; done
+  for f in /sys/devices/system/cpu/cpufreq/*/scaling_governor; do echo performance | sudo tee $f; done
 
 Build sv6's mailbench:
 
