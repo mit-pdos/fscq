@@ -1187,7 +1187,7 @@ Module AFS.
   Qed.
 
   Hint Extern 1 ({{W _|_ W}} Bind (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
-*
+
   Ltac latest_rewrite := unfold latest, pushd; simpl.
 
   Theorem update_fblock_d'_ok :
