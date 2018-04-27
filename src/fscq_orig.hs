@@ -47,6 +47,11 @@ uid = unsafePerformIO (
           return (fromEnum uidx))
 utag = Private uid
 
+-- XXX eventually fix this up
+-- for now, all data tags are 123
+-- theUID :: Coq_tag
+-- theUID = Private 123
+
 -- This controls whether HFuse will use upcalls (FUSE threads entering GHC runtime)
 -- or downcalls (separate FUSE threads using a queue, and GHC accessing this queue
 -- using its own threads).
@@ -79,7 +84,7 @@ type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
 doFScall ds ref f = do
-  s <- readIORef ref
+  s <- readIORef ref    
   (s', r) <- I.run ds $ f s
   writeIORef ref s'
   return r
@@ -100,7 +105,7 @@ run_fuse disk_fn fuse_args = do
   (s, fsxp) <- if fileExists
   then
     do
-      putStrLn $ "Recovering file system"
+      putStrLn $ "Recovering file system for user " ++ show uid
       res <- I.run ds $ AsyncFS._AFS__recover cachesize
       case res of
         Errno.Err _ -> error $ "recovery failed; not an fscq fs?"
@@ -108,7 +113,7 @@ run_fuse disk_fn fuse_args = do
           return (s, fsxp)
   else
     do
-      putStrLn $ "Initializing file system"
+      putStrLn $ "Initializing file system for user " ++ show uid
       res <- I.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Errno.Err _ -> error $ "mkfs failed"
@@ -118,13 +123,13 @@ run_fuse disk_fn fuse_args = do
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
   ref <- newIORef s
   m_fsxp <- newMVar fsxp
-  fuseRun "fscq" fuse_args (fscqFSOps getFuseContext disk_fn ds (doFScall ds ref) m_fsxp) defaultExceptionHandler useDowncalls
+  fuseRun "fscq" fuse_args (fscqFSOps disk_fn ds (doFScall ds ref) m_fsxp) defaultExceptionHandler useDowncalls
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: IO FuseContext -> String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
-fscqFSOps getctx fn ds fr m_fsxp = defaultFuseOps
-  { fuseGetFileStat = fscqGetFileStat getctx fr m_fsxp
+fscqFSOps :: String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
+fscqFSOps fn ds fr m_fsxp = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat fr m_fsxp
   , fuseOpen = fscqOpen fr m_fsxp
   , fuseCreateFile = fscqCreateFile fr m_fsxp
   , fuseCreateDevice = fscqCreate fr m_fsxp
@@ -135,7 +140,7 @@ fscqFSOps getctx fn ds fr m_fsxp = defaultFuseOps
   , fuseWrite = fscqWrite fr m_fsxp
   , fuseSetFileSize = fscqSetFileSize fr m_fsxp
   , fuseOpenDirectory = fscqOpenDirectory fr m_fsxp
-  , fuseReadDirectory = fscqReadDirectory getctx fr m_fsxp
+  , fuseReadDirectory = fscqReadDirectory fr m_fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats fr m_fsxp
   , fuseDestroy = fscqDestroy ds fn fr m_fsxp
   , fuseSetFileTimes = fscqSetFileTimes
@@ -198,6 +203,7 @@ errnoToPosix Errno.ENOSPCBLOCK  = eNOSPC
 errnoToPosix Errno.ENOSPCINODE  = eNOSPC
 errnoToPosix Errno.ENOTEMPTY    = eNOTEMPTY
 errnoToPosix Errno.EINVAL       = eINVAL
+errnoToPosix Errno.ENOPERMIT    = ePERM
 
 instance Show Errno.Errno where
   show Errno.ELOGOVERFLOW = "ELOGOVERFLOW"
@@ -211,6 +217,7 @@ instance Show Errno.Errno where
   show Errno.ENOSPCINODE  = "ENOSPCINODE"
   show Errno.ENOTEMPTY    = "ENOTEMPTY"
   show Errno.EINVAL       = "EINVAL"
+  show Errno.ENOPERMIT    = "EPERM"
 
 instance Show t => Show (Errno.Coq_res t) where
   show (Errno.OK v) = show v
@@ -272,14 +279,10 @@ fileStat ctx attr = FileStat
   , statStatusChangeTime = 0
   }
 
-fscqGetFileStat :: IO FuseContext -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
-fscqGetFileStat getctx fr m_fsxp (_:path)
-  | (path == "sync") = withMVar m_fsxp $ \fsxp -> do
-    ctx <- getctx
-    _ <- fr $ AsyncFS._AFS__umount fsxp
-    return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
+fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat fr m_fsxp (_:path)
   | path == "stats" = do
-    ctx <- getctx
+    ctx <- getFuseContext
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
@@ -290,13 +293,15 @@ fscqGetFileStat getctx fr m_fsxp (_:path)
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (inum, isdir)
       | isdir -> do
-        ctx <- getctx
+        ctx <- getFuseContext
         return $ Right $ dirStat ctx
       | otherwise -> do
+        --(own, ()) <- fr $ AsyncFS._AFS__getowner fsxp inum
+        --debugMore own
         (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
-        ctx <- getctx
+        ctx <- getFuseContext
         return $ Right $ fileStat ctx attr
-fscqGetFileStat _ _ _ _ = return $ Left eNOENT
+fscqGetFileStat _ _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno HT)
 fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
@@ -311,10 +316,10 @@ fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
       | otherwise -> return $ Left eNOTDIR
 fscqOpenDirectory _ _ "" = return $ Left eNOENT
 
-fscqReadDirectory :: IO FuseContext -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory getctx fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
+fscqReadDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
   debugStart "READDIR" dnum
-  ctx <- getctx
+  ctx <- getFuseContext
   (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
   files_stat <- mapM (mkstat fsxp ctx) files
   return $ Right $ [(".",          dirStat ctx)
@@ -329,7 +334,7 @@ fscqReadDirectory getctx fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
 
 fscqOpen :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr m_fsxp (_:path) _ flags
-  | (path == "stats") || (path == "sync") = return $ Right 0
+  | path == "stats" = return $ Right 0
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPEN" path
   nameparts <- return $ splitDirectories path
@@ -341,8 +346,11 @@ fscqOpen fr m_fsxp (_:path) _ flags
       | isdir -> return $ Left eISDIR
       | otherwise -> do
         if trunc flags then do
+          --(own, ()) <- fr $ AsyncFS._AFS__getowner fsxp inum
+          --debugMore own
           _ <- fr $ AsyncFS._AFS__file_truncate fsxp inum 0
           (ok, ()) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W64 0)
+          debugMore ok
           case ok of
             Errno.OK _ -> return $ Right inum
             Errno.Err e -> return $ Left $ errnoToPosix e
@@ -356,7 +364,7 @@ splitDirsFile path = (init parts, last parts)
 
 fscqCreateFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileMode -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqCreateFile fr m_fsxp (_:path) _ _ _
-  | (path == "stats") || (path == "sync") = return $ Left eEXIST
+  | path == "stats" = return $ Left eEXIST
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "CREATEFILE" path
   (dirparts, filename) <- return $ splitDirsFile path
@@ -462,6 +470,7 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
   | otherwise = withMVar m_fsxp $ \fsxp -> do
+  debugStart "READ" path
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   offset' <- return $ min offset len
@@ -472,12 +481,13 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   where
     read_piece fsxp (BR blk off count) = do
       (ok_wbuf, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
+      debugMore ok_wbuf
       case ok_wbuf of
         Errno.OK wbuf ->
           return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) $ w2bs wbuf 4096
         Errno.Err _ ->
           error "PERMISSION ERROR"
-
+          
 fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
 
@@ -495,22 +505,23 @@ data WriteState =
 
 fscqWrite :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
+  debugStart "WRITE" inum
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
-  (okspc, do_log) <- if len < endpos then do
+  okspc <- if len < endpos then do
     (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
-    return (ok, True)
+    return ok
   else do
     bslen <- return $ fromIntegral $ BS.length bs
     if ((fromIntegral offset) `mod` 4096 == 0) && (bslen `mod` 4096 == 0) && bslen > 4096 * 5 then
       -- block is large and aligned -> bypass write
-      return $ (Errno.OK (), False)
+      return $ Errno.OK ()
     else
-      return $ (Errno.OK (), True)
+      return $ Errno.OK ()
   case okspc of
     Errno.OK _ -> do
-      r <- foldM (write_piece do_log fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
+      r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
       case r of
         WriteOK c -> do
           okspc2 <- if len < endpos then do
@@ -529,8 +540,8 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
     Errno.Err e -> do
       return $ Left $ errnoToPosix e
   where
-    write_piece _ _ _ (WriteErr c) _ = return $ WriteErr c
-    write_piece do_log fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
+    write_piece _ _ (WriteErr c) _ = return $ WriteErr c
+    write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
       new_bs <- if cnt == blocksize then
           -- Whole block writes don't need read-modify-write
           return piece_bs
@@ -544,6 +555,7 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
               return $ BS.replicate (fromIntegral blocksize) 0
             else do
               (ok_block, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
+              debugMore ok_block
               case ok_block of
                 Errno.OK block ->
                   case block of
@@ -554,16 +566,11 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
           return $ BS.append (BS.take (fromIntegral off) old_bs)
                  $ BS.append piece_bs
                  $ BS.drop (fromIntegral $ off + cnt) old_bs
-      okb <- if do_log then do
-        (okb, ()) <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (WBS new_bs)
-        return okb
-      else do
-        (okb, ()) <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (WBS new_bs)
-        return okb
+      (okb, ()) <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (WBS new_bs)
+      debugMore okb
       case okb of
         Errno.Err _ -> return $ WriteErr c
         Errno.OK _ -> return $ WriteOK (c + (fromIntegral cnt))
-
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do

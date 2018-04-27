@@ -48,8 +48,6 @@ Inductive prog : Type -> Type :=
 | Seal : tag -> block -> prog handle
 | Unseal : handle -> prog block
 | Sync : prog unit
-| Hash (sz: nat) (buf: word sz) : prog (word hashlen)
-| Hash2 (sz1 sz2: nat) (buf1 : word sz1) (buf2 : word sz2) : prog (word hashlen)
 | Auth : tag -> prog bool
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
@@ -85,18 +83,6 @@ Inductive exec:
 | ExecAuthFail : forall pr d bm hm t,
                ~can_access pr t ->
                exec pr d bm hm (Auth t) (Finished d bm hm false) nil
-
-| StepHash : forall pr d bm hm sz (buf : word sz) h,
-               hash_safe hm h buf ->
-               hash_fwd buf = h ->
-               exec pr d bm hm (Hash buf) (Finished d bm (upd_hashmap' hm h buf) h) nil
-         
-| StepHash2 : forall pr d bm hm sz1 sz2 (buf1 : word sz1)
-                (buf2 : word sz2) (buf : word (sz1 + sz2)) h,
-                buf = Word.combine buf1 buf2 ->
-                hash_safe hm h buf ->
-                hash_fwd buf = h ->
-                exec pr d bm hm (Hash2 buf1 buf2) (Finished d bm (upd_hashmap' hm h buf) h) nil
                     
 | ExecRet : forall T pr d bm hm (r: T),
               exec pr d bm hm (Ret r) (Finished d bm hm r) nil

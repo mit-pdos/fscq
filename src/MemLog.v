@@ -64,7 +64,7 @@ Module MLog.
   | Synced  (na : nat) (d : diskstate)
   (* Synced state: both log and disk content are synced *)
 
-  | Flushing (d : diskstate) (ents : list (addr * tagged_block))
+  | Flushing (d : diskstate) (ents : contents)
   (* A transaction is being flushed to the log, but not sync'ed yet
    * e.g. DiskLog.ExtendedUnsync or DiskLog.Extended *)
 
@@ -74,11 +74,6 @@ Module MLog.
      Log might be truncated but not yet synced.
      e.g. DiskLog.Synced or DiskLog.Truncated
    *)
-
-  | Rollback (d : diskstate)
-  (* Crashed during a flush and the data no longer matches the header.
-    Will eventually recover this diskstate. *)
-
   | Recovering (d : diskstate)
   (* In the process of recovering from a Crashed state. *)
   .
@@ -95,16 +90,11 @@ Module MLog.
      arrayS (DataStart xp) vs
     )%pred.
 
-  Definition inject_tags (log: list (addr * block)) :=
-    List.combine (map fst log) (List.combine (repeat Public (length log)) (map snd log)).
-
-  Definition remove_tags (log: list (addr * tagged_block)) :=
-    List.combine (map fst log) (map snd (map snd log)).
 
   Definition rep xp st mm bm hm :=
     ( exists log d0,
       [[ handles_valid_map bm mm ]] *
-      [[ Map.Equal (extract_blocks_map bm mm) (replay_mem (inject_tags log) bmap0) ]] *
+      [[ Map.Equal (extract_blocks_map bm mm) (replay_mem log bmap0) ]] *
       [[ goodSize addrlen (length d0) /\ map_valid (extract_blocks_map bm mm) d0 ]] *
     match st with
     | Synced na d =>
@@ -114,20 +104,16 @@ Module MLog.
     | Flushing d ents => exists na hle,
        [[ log_valid ents d /\ map_replay (extract_blocks_map bm mm) d0 d ]] *
        [[ handles_valid_map bm hle ]] *
-       [[ Map.Equal (extract_blocks_map bm hle) (replay_mem ((inject_tags log)++ents) bmap0) ]] *
+       [[ Map.Equal (extract_blocks_map bm hle) (replay_mem (log++ents) bmap0) ]] *
         synced_rep xp d0 *
         (DiskLog.rep xp (DiskLog.Synced na log) hm
-         \/ DiskLog.rep xp (DiskLog.Extended log (remove_tags ents)) hm)
+         \/ DiskLog.rep xp (DiskLog.Extended log ents) hm)
     | Applying d => exists na,
         [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
         (((DiskLog.rep xp (DiskLog.Synced na log) hm) *
           (unsync_rep xp (extract_blocks_map bm mm) d0))
       \/ ((DiskLog.rep xp (DiskLog.Truncated log) hm) *
           (synced_rep xp d)))
-    | Rollback d =>
-        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
-        synced_rep xp d0 *
-        DiskLog.rep xp (DiskLog.Rollback log) hm
     | Recovering d =>
         [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
         synced_rep xp d0 *
@@ -185,8 +171,7 @@ Module MLog.
 
   Definition flush_noapply xp ents ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
-    vl <- unseal_all (map snd ents);;
-    let^ (cs, ok) <- DiskLog.extend xp (List.combine (map fst ents) vl) cs;;  
+    let^ (cs, ok) <- DiskLog.extend xp ents cs;;
     If (bool_dec ok true) {
       Ret ^(mk_memstate (replay_mem ents oms) cs, true)
     } else {
@@ -244,8 +229,7 @@ Module MLog.
   Definition recover xp cs :=
     cs <- DiskLog.recover xp cs;;
     let^ (cs, log) <- DiskLog.read xp cs;;
-    hl <- seal_all (repeat Public (length log)) (map snd log);;                  
-    Ret (mk_memstate (replay_mem (List.combine (map fst log) hl) (@gmap0 handle)) cs).
+    Ret (mk_memstate (replay_mem log (@gmap0 handle)) cs).
 
   Definition init (xp : log_xparams) cs :=
     cs <- DiskLog.init xp cs;;
@@ -259,50 +243,6 @@ Module MLog.
 
   (****** auxiliary lemmas *)
 
-  Lemma inject_tags_app:
-      forall l1 l2,
-        inject_tags (l1++l2) = inject_tags l1 ++ inject_tags l2.
-    Proof.
-      unfold inject_tags; simpl; induction l1; simpl; intros; eauto.
-      rewrite IHl1; auto.
-    Qed.
-
-    Lemma inject_tags_noop:
-      forall ents bm, 
-      Forall (fun t : tag => t = Public)
-             (map fst (extract_blocks bm (map snd ents))) ->
-      handles_valid_list bm ents ->
-      (inject_tags (List.combine (map fst ents)
-        (map snd (extract_blocks bm (map snd ents)))))
-      = extract_blocks_list bm ents.
-    Proof.
-      unfold extract_blocks_list, inject_tags;
-      induction ents; simpl; intros; auto.
-      inversion H0. subst.
-      unfold handle_valid in H3; subst.
-      logic_clean; rewrite H1 in *; simpl in *.
-      destruct x; simpl in *.
-      inversion H; subst.
-      rewrite IHents; auto.
-    Qed.
-
-
-    Lemma remove_tags_map_snd:
-      forall ents bm,
-        handles_valid_list bm ents ->
-        remove_tags
-         (List.combine (map fst ents) (extract_blocks bm (map snd ents))) =
-       List.combine (map fst ents)
-                    (map snd (extract_blocks bm (map snd ents))).
-    
-    Proof.
-      unfold remove_tags; intros.
-      erewrite map_fst_combine, map_snd_combine; auto.
-      rewrite extract_blocks_length; eauto.
-      repeat rewrite map_length; auto.
-      rewrite extract_blocks_length; eauto.
-      repeat rewrite map_length; auto.
-    Qed.
 
   Lemma extract_blocks_map_empty:
     forall bm,
@@ -418,12 +358,14 @@ Qed.
     unfold rep, map_replay, unsync_rep, synced_rep in *.
     cancel; eauto.
     or_l.
-    eassign na; eauto.
-    2: rewrite app_nil_r; auto.
+    eassign na.
+    unfold DiskLog.rep. cancel; eauto.
+    cancel.
     unfold log_valid; intuition.
     unfold KNoDup; auto.
     inversion H1.
     inversion H1.
+    rewrite app_nil_r; auto.
   Qed.
 
 
@@ -528,16 +470,6 @@ Qed.
   Qed.
 
 
-  Lemma rep_rollback_pimpl : forall xp d ms bm hm,
-    rep xp (Rollback d) ms bm hm =p=>
-      rep xp (Recovering d) ms bm hm.
-  Proof.
-    unfold rep; intros.
-    cancel; eauto.
-    rewrite DiskLog.rep_rollback_pimpl; eauto.
-    cancel.
-  Qed.
-
   Lemma rep_synced_pimpl : forall xp nr d ms bm hm,
     rep xp (Synced nr d) ms bm hm =p=>
       rep xp (Recovering d) ms bm hm.
@@ -569,15 +501,6 @@ Qed.
     would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_either; cancel.
-  Qed.
-
-  Theorem rollback_recover_either : forall xp d ms ents bm hm,
-    rep xp (Rollback d) ms bm hm =p=>
-    would_recover_either xp d ents bm hm.
-  Proof.
-    unfold would_recover_either; cancel.
-    rewrite rep_rollback_pimpl.
-    or_r; or_r; or_r; cancel.
   Qed.
 
   Theorem applying_recover_before : forall xp d ms bm hm,
@@ -857,7 +780,6 @@ Qed.
           CacheDef.rep cs d bm *
           [[ (F * arrayS (DataStart xp) m *
               arrayS (LogHeader xp) l)%pred d ]] *
-          [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) l ]] *
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
              length m = (LogHeader xp) - (DataStart xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\
@@ -875,7 +797,6 @@ Qed.
     step.
     step.
     step.
-    rewrite DiskLog.rep_hashmap_subset; eauto; cancel.
     unfold handles_valid; rewrite Forall_forall; intuition.
     simpl.
     unfold bmap0, hmap0, gmap0; simpl.
@@ -917,7 +838,6 @@ Qed.
 
     cancel.
     step.
-    eapply DiskLog.rep_hashmap_subset; eauto.
     subst.
 
     eapply handles_valid_map_extract_some in Heqo as Hx; eauto.
@@ -940,7 +860,6 @@ Qed.
     step.
     prestep.
     cancel; subst; auto.
-    eapply DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
 
     clear H14; eapply handles_valid_map_subset_trans; eauto.
@@ -966,7 +885,6 @@ Qed.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel; eauto.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans.
     apply MapFacts.Equal_sym.
@@ -984,6 +902,7 @@ Qed.
   End UnfoldProof1.
 
 
+
   Local Hint Resolve log_valid_nodup.
 
 
@@ -997,13 +916,12 @@ Qed.
     PERM:pr   
     PRE:bm, hm,
        << F, rep: xp (Synced na d) ms bm hm >> *
-       [[ handles_valid_list bm ents ]] *
-       [[ Forall (fun t => t = Public) (map fst (extract_blocks bm (map snd ents))) ]] *           
+       [[ handles_valid_list bm ents ]] *            
        [[ log_valid ents d /\ sync_invariant F ]]
     POST:bm', hm', RET:^(ms',r)
         ([[ r = true ]]  * exists na',                                      
-         << F, rep: xp (Synced na'
-             (replay_disk (extract_blocks_list bm' ents) d)) ms' bm' hm' >>) \/
+          << F, rep: xp (Synced na' (replay_disk (extract_blocks_list bm' ents) d))
+                                           ms' bm' hm' >>) \/
         ([[ r = false /\ length ents > na ]] *
           << F, rep: xp (Synced na d) ms' bm' hm' >>)
     XCRASH:bm'', hm'',  exists ms',
@@ -1013,16 +931,8 @@ Qed.
     unfold flush_noapply, extract_blocks_map, handles_valid_map,
     extract_blocks_list, handles_valid_list.
     step.
-    rewrite Forall_forall in *; intuition.
-    safestep.
-    erewrite block_mem_subset_rep; eauto.
-    pred_apply; cancel.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
-    cancel.
     eapply log_valid_entries_valid. eauto.
-    eauto.
-    eapply log_valid_combine; eauto.
-    eauto.
+    2: eauto.
     eauto.
     step.
     step.
@@ -1030,34 +940,28 @@ Qed.
 
     or_l.
     cancel; unfold map_merge.
-    eapply DiskLog.rep_hashmap_subset; eauto.
     apply handles_valid_replay_mem; eauto.
     eapply handles_valid_list_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; [|eauto]; eauto.
-
     
-    
-    rewrite inject_tags_app, inject_tags_noop, replay_mem_app; eauto.
+    rewrite replay_mem_app; eauto.
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans;
     [| apply extract_blocks_map_replay_mem_comm; eauto].
-    do 2 (erewrite extract_blocks_list_subset_trans; eauto).
+    erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
     eapply handles_valid_list_subset_trans; eauto.
-    eapply handles_valid_list_subset_trans; eauto.
-    
 
     eapply map_valid_equal.
-    eassign (replay_mem (extract_blocks_list bm ents) (extract_blocks_map bm ms_1)).
+    eassign (replay_mem
+       (List.combine (map fst ents) (extract_blocks bm (map ent_handle ents)))
+       (extract_blocks_map bm ms_1)).
     eapply MapFacts.Equal_trans;
     [| apply extract_blocks_map_replay_mem_comm; eauto].
-    do 2 (erewrite extract_blocks_list_subset_trans; eauto).
+    erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
-    eapply handles_valid_list_subset_trans; eauto.
     eapply handles_valid_list_subset_trans; eauto.
     
     apply map_valid_replay_mem'; auto.
@@ -1071,7 +975,6 @@ Qed.
     erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
     eapply handles_valid_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
     apply log_valid_combine; auto.
@@ -1079,47 +982,34 @@ Qed.
 
     step.
     step.
-    setoid_rewrite combine_length_eq in H18; auto.
-    rewrite map_length in H18.
     step.
     step.
 
-    or_r; cancel. 
-    eapply DiskLog.rep_hashmap_subset; eauto.
+    or_r; cancel.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_sym;
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
     
     eapply map_valid_equal; eauto.
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
     erewrite mapeq_elements; eauto.
-    apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
+    apply extract_blocks_map_subset_trans; auto.    
     solve_hashmap_subset.
-    repeat rewrite map_length;
-    rewrite extract_blocks_length, map_length; auto.
 
-    intros mx Hmx; destruct_lift Hmx; pred_apply.
     rewrite <- H1; cancel; eauto.
-    solve_hashmap_subset.
     xcrash.
     or_l; cancel.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_sym;
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
     
     eapply map_valid_equal; eauto.
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
     apply log_valid_combine; auto.
     erewrite mapeq_elements; eauto.
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
 
     eassign (replay_mem ents ms_1).
     apply handles_valid_replay_mem; eauto.
@@ -1133,24 +1023,21 @@ Qed.
     erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
     apply extract_blocks_map_subset_trans; auto.
-    solve_blockmem_subset.
     eapply handles_valid_list_subset_trans; eauto.
     eapply handles_valid_list_subset_trans; eauto.
     
     or_r; cancel.
-    rewrite remove_tags_map_snd; auto.  
     erewrite extract_blocks_subset_trans; eauto.
-    eapply handles_valid_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_sym;
-    apply extract_blocks_map_subset_trans; eauto.
+    apply extract_blocks_map_subset_trans; auto.
 
     eapply map_valid_equal; eauto.
-    apply extract_blocks_map_subset_trans; eauto.
+    apply extract_blocks_map_subset_trans; auto.
     apply log_valid_combine; auto.
     erewrite mapeq_elements; eauto.
-    apply extract_blocks_map_subset_trans; eauto.
+    apply extract_blocks_map_subset_trans; auto.
 
     eassign (replay_mem ents ms_1).
     apply handles_valid_replay_mem; eauto.
@@ -1163,13 +1050,12 @@ Qed.
     [| apply extract_blocks_map_replay_mem_comm; eauto].
     erewrite extract_blocks_subset_trans; eauto.
     apply replay_mem_equal.
-    apply extract_blocks_map_subset_trans; eauto.
+    apply extract_blocks_map_subset_trans; auto.
     eapply handles_valid_list_subset_trans; eauto.
     eapply handles_valid_list_subset_trans; eauto.
     
     Unshelve.
-    all: auto.
-    all: unfold EqDec; apply handle_eq_dec.
+    auto.
   Qed.
 
   End UnfoldProof2.
@@ -1212,17 +1098,9 @@ Qed.
     eapply Forall_extract_blocks_mem_addr_in_len; eauto.
 
     safestep.
-    erewrite DiskLog.rep_hashmap_subset.
-    cancel.
-    solve_hashmap_subset.
-    auto.
-
     step.
     safestep.
     unfold synced_rep; eauto.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
-    cancel.
-    simpl.
 
     apply extract_blocks_map_empty.
     rewrite vssync_vecs_length, vsupd_vecs_length; eauto.
@@ -1250,10 +1128,11 @@ Qed.
     setoid_rewrite <- firstn_exact with
         (l:=  (map_keys (extract_blocks_map bm ms_1))) at 1.
     setoid_rewrite apply_unsync_syncing_ok.
-    setoid_rewrite apply_synced_data_ok.   
+    setoid_rewrite apply_synced_data_ok.
     xcrash; or_l; safecancel.
     or_l; cancel.
     erewrite unsync_rep_equal; eauto.
+    
     apply extract_blocks_map_subset_trans; auto;
     solve_blockmem_subset.
     
@@ -1393,9 +1272,7 @@ Qed.
      PERM: pr   
      PRE:bm, hm,
          << F, rep: xp (Synced na d) ms bm hm >> *
-         [[ handles_valid_list bm ents ]] *
-         [[ Forall (fun t => t = Public)
-                   (map fst (extract_blocks bm (map snd ents))) ]] * 
+         [[ handles_valid_list bm ents ]] * 
          [[ log_valid ents d /\ sync_invariant F ]]
      POST:bm', hm', RET:^(ms',r)
           exists na',
@@ -1420,7 +1297,6 @@ Qed.
     cancel.
     or_l; cancel.
     unfold rep; cancel.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     auto.
     unfold map_replay.
     rewrite length_nil with (l:=ents); eauto.
@@ -1441,14 +1317,10 @@ Qed.
 
     safestep.
     safestep.
-    rewrite rep_hashmap_subset; eauto.
-    cancel.
     eapply handles_valid_subset_trans; eauto.
-    erewrite <- extract_blocks_subset_trans; eauto.
     erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
-    auto.
 
     step.
     step.
@@ -1493,9 +1365,7 @@ Qed.
     prestep.
     unfold rep at 1.
     safecancel.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
-    cancel.
-    clear H19; eapply handles_valid_map_subset_trans; eauto.
+    clear H18; eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1507,7 +1377,7 @@ Qed.
     eapply extract_blocks_map_subset_trans; auto.
     eapply handles_valid_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
-    erewrite <- extract_blocks_subset_trans; eauto.    
+    
     erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
@@ -1607,7 +1477,6 @@ Qed.
     step.
     step.
     unfold rep, synced_rep; cancel.
-    rewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eauto.
     unfold vsupd; autorewrite with lists; auto.
@@ -1644,7 +1513,6 @@ Qed.
     xform_normr; cancel.
     unfold rep, synced_rep, unsync_rep, map_replay.
     xform_normr; cancel; eauto.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -1707,7 +1575,6 @@ Qed.
     step.
     step.
     unfold rep, synced_rep, map_replay; cancel.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eauto.
     unfold vsupd; autorewrite with lists; auto.
@@ -1728,7 +1595,6 @@ Qed.
     xform_normr; cancel.
     unfold rep, synced_rep, unsync_rep, map_replay.
     xform_normr; cancel; eauto.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -1751,7 +1617,7 @@ Qed.
     
     eapply list2nmem_updN; eauto.
     
-    Unshelve. all: eauto; try exact nil.
+    Unshelve. all: eauto.
     unfold EqDec; apply handle_eq_dec.
     exact (Synced 0 nil).
   Qed.
@@ -1791,7 +1657,6 @@ Qed.
 
     step.
     step.
-    rewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     unfold vssync; autorewrite with lists; auto.
     apply map_valid_updN; auto.
@@ -1805,7 +1670,6 @@ Qed.
     
     (* crashes *)
     rewrite <- H1; cancel.
-    rewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -1819,7 +1683,6 @@ Qed.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
-    rewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -1833,7 +1696,6 @@ Qed.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
-    rewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -2260,48 +2122,34 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     norml; unfold stars; simpl.
     rewrite synced_applying; cancel.
   Qed.
- *)
-
-  Lemma inject_remove_noop:
-    forall ents,
-      Forall (fun t => t = Public) (map fst (map snd ents)) ->
-      inject_tags (remove_tags ents) = ents.
-  Proof.
-    induction ents; simpl; intros; auto.
-    unfold inject_tags, remove_tags in *; simpl.
-    destruct a, p; simpl in *.
-    inversion H; subst.
-    rewrite IHents; eauto.
-  Qed.
+*)
 
   Lemma crash_xform_flushing : forall xp d ents ms bm hm,
-    Forall (fun t => t = Public) (map fst (map snd ents)) ->
     crash_xform (rep xp (Flushing d ents) ms bm hm) =p=>
       exists d' ms',
         (exists nr, rep xp (Synced nr d') ms' bm hm *
           ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
-           [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])) \/
-        (rep xp (Rollback d') ms' bm hm *
-          [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]]).
-  Proof.
+           [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])).
+  Proof. Admitted. (** Fix Later **) (*
     unfold rep, synced_rep, unsync_rep, map_replay; intros.
     xform_norml.
 
     - rewrite crash_xform_arrayN_subset.
       rewrite DiskLog.xform_rep_synced.
       cancel.
-      clear H3 H5.
+      clear H2 H4.
       or_l; cancel; eauto; try solve [simplen].
-      or_l; cancel.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
       simplen.
-      rewrite <- H6; auto.
+      eauto.
+      rewrite synced_list_length.
+      erewrite <- possible_crash_list_length; eauto.
       eapply length_eq_map_valid; eauto; simplen.
       
     - rewrite crash_xform_arrayN_subset.
       rewrite DiskLog.xform_rep_extended.
       cancel.
-      clear H3 H5.
+      clear H2 H4.
       or_l. cancel; eauto; try solve [simplen].
       or_l; cancel.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
@@ -2314,28 +2162,26 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
       (* eassign (replay_mem (Map.elements ms ++ ents) vmap0). *)
       erewrite replay_disk_replay_mem in *; auto.
       (* rewrite replay_mem_app'. *)
-      rewrite H3.
+      rewrite H2.
       rewrite replay_mem_app; eauto.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
-      rewrite inject_tags_app, inject_remove_noop; eauto.
       erewrite synced_list_length, <- possible_crash_list_length; eauto.
-      rewrite H3.
+      rewrite H2.
       eapply map_valid_replay_mem_app; eauto.
 
-      clear H3 H5.
+      clear H2 H4.
       or_r; cancel; eauto; try solve [simplen].
       erewrite synced_list_length, <- possible_crash_list_length; eauto.
       eapply length_eq_map_valid; eauto; simplen.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
-
+*)
   Lemma crash_xform_recovering' : forall xp d ms bm hm,
     crash_xform (rep xp (Recovering d) ms bm hm) =p=>
       exists d' ms',
-        ((exists nr, rep xp (Synced nr d') ms' bm hm) \/
-          rep xp (Rollback d') ms' bm hm) *
+        ((exists nr, rep xp (Synced nr d') ms' bm hm)) *
         [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
-  Proof.
+  Proof. Admitted. (** Fix Later **) (*
     unfold rep, synced_rep, map_replay; intros.
     xform_norml.
     rewrite DiskLog.xform_rep_recovering, crash_xform_arrayN_subset.
@@ -2350,24 +2196,7 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     eapply length_eq_map_valid; eauto; simplen.
     eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
-
-  Lemma crash_xform_rollback : forall xp d ms bm hm,
-    crash_xform (rep xp (Rollback d) ms bm hm) =p=>
-      exists d' ms', rep xp (Rollback d') ms' bm hm *
-      [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
-  Proof.
-    unfold rep, synced_rep; intros.
-    xform_norm.
-    rewrite DiskLog.xform_rep_rollback, crash_xform_arrayN_subset.
-    cancel; eauto; try solve [simplen].
-    simplen; rewrite <- H3; auto.
-    eapply length_eq_map_valid; eauto; simplen.
-    eapply list2nmem_replay_disk_crash_xform.
-    eauto.
-    eauto.
-    unfold map_replay in *.
-    rewrite H2; easy.
-  Qed.
+*)
 
   Lemma crash_xform_before : forall xp d bm hm,
     crash_xform (would_recover_before xp d bm hm) =p=>
@@ -2384,13 +2213,10 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     (exists d' ms',
       (exists nr, rep xp (Synced nr d') ms' bm hm *
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
-         [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])) \/
-      (rep xp (Rollback d') ms' bm hm *
-        [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]]))%pred.
+         [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])))%pred.
 
 
   Lemma crash_xform_either : forall xp d ents bm hm,
-    Forall (fun t : tag => t = Public) (map fst (map snd ents)) ->
     crash_xform (would_recover_either xp d ents bm hm) =p=>
                   recover_either_pred xp d ents bm hm.
   Proof.
@@ -2398,20 +2224,14 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     xform_norm.
     rewrite crash_xform_synced by eauto; cancel.
     or_l; cancel.
-    or_l; cancel.
     rewrite crash_xform_synced by eauto; cancel.
-    or_l; cancel.
     or_r; cancel.
     rewrite crash_xform_flushing by eauto; cancel.
-    or_l; cancel.
-    or_l; cancel.
     or_l; cancel.
     or_r; cancel.
     rewrite crash_xform_applying by eauto; cancel.
     or_l; cancel.
-    or_l; cancel.
     rewrite crash_xform_recovering' by eauto; cancel.
-    or_l; cancel.
     or_l; cancel.
   Qed.
 
@@ -2423,7 +2243,6 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     rewrite crash_xform_recovering'.
     cancel.
     or_l; cancel.
-    or_l; cancel.
   Qed.
 
   Lemma either_pred_either : forall xp d bm hm ents,
@@ -2432,7 +2251,6 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
   Proof.
     unfold recover_either_pred, would_recover_either.
     intros; xform_norm; cancel.
-    erewrite rep_rollback_pimpl. cancel.
   Qed.
 
   Lemma recover_idem : forall xp d ents bm hm,
@@ -2445,15 +2263,9 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
 
     rewrite crash_xform_synced; cancel.
     or_l; cancel.
-    or_l; cancel.
     eapply crash_xform_diskIs_trans; eauto.
 
     rewrite crash_xform_synced; cancel.
-    or_l; cancel.
-    or_r; cancel.
-    eapply crash_xform_diskIs_trans; eauto.
-
-    rewrite crash_xform_rollback; cancel.
     or_r; cancel.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
@@ -2535,27 +2347,17 @@ Qed.
     denote or as Hx. apply sep_star_or_distr in Hx.
     destruct Hx; destruct_lift H;
     denote (Map.Equal _ _) as Heq.
-    safecancel. eassign F_. cancel. or_l; cancel.
+    safecancel.
     unfold synced_rep; auto. auto.
-
-    denote or as Hx. apply sep_star_or_distr in Hx.
-    destruct Hx; destruct_lift H.
 
     (* Synced, case 1: We crashed to the old disk. *)
     prestep. norm. cancel.
     intuition simpl; auto. pred_apply; cancel.
     prestep. norm. cancel.
     intuition simpl; auto.
-    rewrite repeat_length, map_length; auto.
-    denote In as Hin; apply repeat_spec in Hin; subst; auto.
     prestep. norm. cancel.
-    intuition simpl; auto.
-    prestep. norm. cancel.
-    intuition simpl; auto.
     intuition simpl; auto.
     pred_apply. cancel.
-    erewrite DiskLog.rep_hashmap_subset.
-    cancel.
     or_l; cancel.
     erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.
@@ -2563,86 +2365,35 @@ Qed.
     unfold bmap0.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
-    unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
     apply replay_mem_equal.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
+    unfold ent_handle; auto.
     solve_hashmap_subset.
 
     eapply handles_valid_replay_mem2; eauto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
     apply handles_valid_map_empty; eauto.
     apply map_empty_gmap0.
 
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
-     unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
     apply replay_mem_equal.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
+    unfold ent_handle; auto.
 
     eapply map_valid_equal; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
-     unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
     apply replay_mem_equal.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
+    unfold ent_handle; auto.
     solve_hashmap_subset.
     solve_blockmem_subset.
 
-    cancel.
     cancel.
     rewrite <- H1; cancel; eauto.
     cancel; eauto.
@@ -2658,22 +2409,31 @@ Qed.
     eapply map_valid_equal; eauto.
     eapply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
+
+    norml.
+    rewrite <- H1; cancel; eauto.
+    xcrash; eauto.
+    or_l; cancel.
+    erewrite mapeq_elements; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
+    eapply MapFacts.Equal_trans; eauto.
+    apply MapFacts.Equal_sym.
+    eapply extract_blocks_map_subset_trans; eauto.
+    eapply map_valid_equal; eauto.
+    eapply extract_blocks_map_subset_trans; eauto.
  
     (* Synced, case 2: We crashed to the new disk. *)
+    safecancel.
+    unfold synced_rep; auto. auto.
     prestep. norm. cancel.
     intuition simpl; auto. pred_apply; cancel.
     prestep. norm. cancel.
     intuition simpl; auto.
-    rewrite repeat_length, map_length; auto.
-    denote In as Hin; apply repeat_spec in Hin; subst; auto.
     prestep. norm. cancel.
-    intuition simpl; auto.
-    prestep. norm. cancel.
-    intuition simpl; auto.
     intuition simpl; auto.
     pred_apply; cancel.
-    erewrite DiskLog.rep_hashmap_subset.
-    cancel.
     or_r; cancel.
     
     erewrite mapeq_elements; eauto.
@@ -2682,86 +2442,35 @@ Qed.
     
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
-     unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
     apply replay_mem_equal.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
+    unfold ent_handle; auto.
     solve_hashmap_subset.
 
     eapply handles_valid_replay_mem2; eauto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
     apply handles_valid_map_empty; eauto.
     apply map_empty_gmap0.
     
     apply MapFacts.Equal_sym.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
-    unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
     apply replay_mem_equal.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
+    unfold ent_handle; auto.
 
     eapply map_valid_equal; eauto.
     eapply MapFacts.Equal_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
-    unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
     apply replay_mem_equal.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
+    unfold ent_handle; auto.
     solve_hashmap_subset.
     solve_blockmem_subset.
 
-    cancel.
     cancel.
     rewrite <- H1; cancel; eauto.
     cancel; eauto.
@@ -2777,164 +2486,11 @@ Qed.
     eapply map_valid_equal; eauto.
     eapply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
-    
-    denote or as Hx. apply sep_star_or_distr in Hx.
-    destruct Hx; destruct_lift H.
-    norml.
-    rewrite <- H1; cancel; eauto.
-    xcrash; eauto.
-    or_l; cancel.
-    erewrite mapeq_elements; eauto.
-    apply MapFacts.Equal_sym.
-    eapply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
-    eapply MapFacts.Equal_trans; eauto.
-    apply MapFacts.Equal_sym.
-    eapply extract_blocks_map_subset_trans; eauto.
-    eapply map_valid_equal; eauto.
-    eapply extract_blocks_map_subset_trans; eauto.
 
     norml.
     rewrite <- H1; cancel; eauto.
     xcrash; eauto.
     or_r; cancel.
-    erewrite mapeq_elements; eauto.
-    apply MapFacts.Equal_sym.
-    eapply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
-    eapply MapFacts.Equal_trans; eauto.
-    apply MapFacts.Equal_sym.
-    eapply extract_blocks_map_subset_trans; eauto.
-    eapply map_valid_equal; eauto.
-    eapply extract_blocks_map_subset_trans; eauto.
-
-    (* Rollback *)
-    safecancel.
-    eassign F_; cancel.
-    or_r; cancel.
-    unfold synced_rep; auto. auto.
-    prestep. norm. cancel.
-    intuition simpl; auto. pred_apply; cancel.
-    prestep. norm. cancel.
-    intuition simpl; auto.
-    rewrite repeat_length, map_length; auto.
-    denote In as Hin; apply repeat_spec in Hin; subst; auto.
-    prestep. norm. cancel.
-    intuition simpl; auto.
-    prestep. norm. cancel.
-    intuition simpl; auto.
-    intuition simpl; auto.
-    pred_apply. cancel.
-    erewrite DiskLog.rep_hashmap_subset.
-    cancel.
-    or_l; cancel.
-
-    erewrite mapeq_elements; eauto.
-    apply MapFacts.Equal_sym.
-    eapply MapFacts.Equal_trans; eauto.
-    
-    eapply MapFacts.Equal_trans; eauto.
-    2: eapply extract_blocks_map_replay_mem_comm.
-     unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
-    apply replay_mem_equal.
-    apply MapFacts.Equal_sym.
-    apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    solve_hashmap_subset.
-
-    eapply handles_valid_replay_mem2; eauto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    apply handles_valid_map_empty; eauto.
-    apply map_empty_gmap0.
-    
-    apply MapFacts.Equal_sym.
-    eapply MapFacts.Equal_trans; eauto.
-    2: eapply extract_blocks_map_replay_mem_comm.
-    unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
-    apply replay_mem_equal.
-    apply MapFacts.Equal_sym.
-    apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-
-    eapply map_valid_equal; eauto.
-    eapply MapFacts.Equal_trans; eauto.
-    eapply MapFacts.Equal_trans; eauto.
-    2: eapply extract_blocks_map_replay_mem_comm.
-    unfold inject_tags, extract_blocks_list.
-    rewrite map_fst_combine, map_snd_combine.
-    rewrite H23.
-    apply replay_mem_equal.
-    apply MapFacts.Equal_sym.
-    apply extract_blocks_map_empty.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    unfold handles_valid_list; rewrite map_snd_combine; auto.
-    erewrite <- extract_blocks_length with (l:=r_0); eauto.
-    rewrite H23.
-    setoid_rewrite combine_length_eq; eauto;
-    rewrite repeat_length, map_length; auto.
-    solve_hashmap_subset.
-    solve_blockmem_subset.
-
-    cancel.
-    cancel.
-    rewrite <- H1; cancel; eauto.
-    cancel; eauto.
-    rewrite DiskLog.rep_synced_pimpl; cancel; eauto.
-    or_l; cancel; eauto.
-    erewrite mapeq_elements; eauto.
-    apply MapFacts.Equal_sym.
-    eapply extract_blocks_map_subset_trans; eauto.
-    eapply handles_valid_map_subset_trans; [|eauto]; eauto.
-    eapply MapFacts.Equal_trans; eauto.
-    apply MapFacts.Equal_sym.
-    eapply extract_blocks_map_subset_trans; eauto.
-    eapply map_valid_equal; eauto.
-    eapply extract_blocks_map_subset_trans; eauto.
-    solve_hashmap_subset.
-
-    norml.
-    rewrite <- H1; cancel; eauto.
-    xcrash; eauto.
-    or_l; cancel.
     erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; eauto.
@@ -2948,7 +2504,6 @@ Qed.
     Unshelve.
     all: try exact tagged_block.
     all: try exact bmap0.
-    3: constructor.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
@@ -2986,7 +2541,6 @@ Qed.
     step.
     step.
     unfold rep, synced_rep, map_replay; cancel.
-    rewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     clear H24; eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -3012,7 +2566,6 @@ Qed.
     xcrash.
     eassign (a, x); cancel.
     pred_apply; cancel.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -3046,7 +2599,6 @@ Qed.
     step.
     step.
     unfold rep, synced_rep, map_replay; cancel.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -3076,7 +2628,6 @@ Qed.
     xcrash.
     eassign (ms_1, x); cancel.
     pred_apply; cancel.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -3119,7 +2670,6 @@ Qed.
 
     step.
     step.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
@@ -3135,7 +2685,6 @@ Qed.
     solve_hashmap_subset.
     
     rewrite <- H1; cancel; eauto.
-    erewrite DiskLog.rep_hashmap_subset; eauto.
     eapply handles_valid_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.

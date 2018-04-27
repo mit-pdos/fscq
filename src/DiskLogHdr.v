@@ -16,24 +16,11 @@ Require Export AsyncRecArray.
 
 Import ListNotations.
 
-Definition header_type := Rec.RecF ([("previous_ndesc", Rec.WordF addrlen);
-                                     ("previous_ndata", Rec.WordF addrlen);
-                                     ("ndesc", Rec.WordF addrlen);
-                                     ("ndata", Rec.WordF addrlen);
-                                     ("addr_checksum", Rec.WordF hashlen);
-                                     ("valu_checksum", Rec.WordF hashlen)]).
-Definition header := Rec.data header_type.
-Definition hdr := ((nat * nat) * (nat * nat) * (word hashlen * word hashlen))%type.
-Definition previous_length (header : hdr) := fst (fst header).
-Definition current_length (header : hdr) := snd (fst header).
-Definition checksum (header : hdr) := snd header.
-Definition mk_header (len : hdr) : header :=
-  ($ (fst (previous_length len)),
-   ($ (snd (previous_length len)),
-    ($ (fst (current_length len)),
-     ($ (snd (current_length len)),
-      (fst (checksum len),
-       (snd (checksum len), tt)))))).
+Definition header_type := Rec.RecF ([("ndesc", Rec.WordF addrlen);
+                                         ("ndata", Rec.WordF addrlen)]).
+    Definition header := Rec.data header_type.
+    Definition hdr := (nat * nat)%type.
+    Definition mk_header (len : hdr) : header := ($ (fst len), ($ (snd len), tt)).
 
 Theorem hdrsz_ok : Rec.len header_type <= valulen.
 Proof.
@@ -86,11 +73,8 @@ Inductive state : Type :=
 | Unsync : hdr -> hdr -> state
 .
 
-Definition hdr_goodSize header :=
-  goodSize addrlen (fst (previous_length header)) /\
-  goodSize addrlen (snd (previous_length header)) /\
-  goodSize addrlen (fst (current_length header)) /\
-  goodSize addrlen (snd (current_length header)).
+Definition hdr_goodSize (n:hdr):=
+  goodSize addrlen (fst n) /\ goodSize addrlen (snd n).
 
 Definition state_goodSize st :=
   match st with
@@ -108,17 +92,11 @@ Definition rep xp state : @rawpred :=
    end)%pred.
 
 
-
 Definition read xp cs := Eval compute_rec in
       let^ (cs, h) <- read (LAHdr xp) cs;;   
       v <- Unseal h;;
       let header := (val2hdr v) in
-      Ret ^(cs, ((# (header :-> "previous_ndesc"),
-                 # (header :-> "previous_ndata")),
-                (# (header :-> "ndesc"),
-                 # (header :-> "ndata")),
-                (header :-> "addr_checksum",
-                 header :-> "valu_checksum"))).
+      Ret ^(cs, (# ((val2hdr v) :-> "ndesc"), # ((val2hdr v) :-> "ndata"))).
 
 Definition write xp n cs :=
     h <- Seal Public (hdr2val (mk_header n));;
@@ -136,8 +114,7 @@ Definition sync_now xp cs :=
      Ret cs.
 
 Definition init xp cs :=
-  h <- Hash default_valu;;
-    hdr <- Seal Public (hdr2val (mk_header((0, 0), (0, 0), (h, h))));;
+    hdr <- Seal Public (hdr2val (mk_header((0, 0))));;
     cs <- CacheDef.write (LAHdr xp) hdr cs;;
     cs <- begin_sync cs;;
     cs <- CacheDef.sync (LAHdr xp) cs;;
@@ -177,8 +154,6 @@ Theorem write_ok :
       PRE:bm, hm,
          CacheDef.rep cs d bm *
          [[ hdr_goodSize n ]] *
-         [[ previous_length n = current_length old \/
-         previous_length old = current_length n ]] *
          [[ (F * rep xp (Synced old))%pred d ]]
     POST:bm', hm', RET: cs
          exists d', CacheDef.rep cs d' bm' *
@@ -203,17 +178,6 @@ Proof.
   eexists; eapply hashmap_subset_trans; eauto.
   xcrash.
 
-  safestep.
-  rewrite rep_none_upd_pimpl; eauto.
-  apply upd_eq; auto.
-  eauto.
-  eauto.
-  step.
-  step.
-  eexists; repeat (eapply hashmap_subset_trans; eauto).
-  erewrite <- H1; cancel; eauto.
-  eexists; eapply hashmap_subset_trans; eauto.
-  xcrash.
   Unshelve.
   all: unfold EqDec; apply handle_eq_dec.
 Qed.
@@ -239,7 +203,6 @@ Proof.
   unfold hdr_goodSize in *; intuition.
   repeat rewrite wordToNat_natToWord_idempotent'; auto.
   destruct n; auto.
-  destruct p as (p1 , p2); destruct p1, p2, p0; auto.
   eexists; repeat(eapply hashmap_subset_trans; eauto).
 Qed.
 
@@ -308,19 +271,15 @@ Theorem init_ok :
         [[ sync_invariant F ]]
      POST:bm', hm', RET: cs
         exists d', CacheDef.rep cs d' bm'*
-         [[ (F * rep xp (Synced ((0, 0), (0, 0),
-                                 (hash_fwd default_valu,
-                                  hash_fwd default_valu))))%pred d' ]]
+         [[ (F * rep xp (Synced ((0, 0))))%pred d' ]]
      CRASH:bm'', hm'',
         any
     >} init xp cs.
 Proof.
   unfold init; intros.
   step.
-  step.
   safestep.
   rewrite block_mem_subset_rep; eauto.
-  cancel.
   apply upd_eq; auto.
   all: eauto.
   step.

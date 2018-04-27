@@ -7,23 +7,6 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-Definition hash_list h values :=
-  let^ (hash) <- ForEach item items_rest values
-  Hashmap hm'
-  Ghost [ l crash ]
-  Loopvar [ hash ]
-  Invariant
-    exists items_prefix,
-    [[ values = items_prefix ++ items_rest ]] *
-    [[ hash_list_rep (rev items_prefix ++ l) hash hm' ]]
-  OnCrash crash
-  Begin
-    hash <- Hash2 item hash;;
-    Ret ^(hash)
-  Rof ^(h);;
-  Ret hash.
-
-
 Definition seal_all (tl: list tag) (bl: list block):=
   let^ (l) <- ForN i < length bl
   Blockmem bm
@@ -114,47 +97,6 @@ Proof.
   Unshelve.
   exact tt.
 Qed.
-     
-     
-Theorem hash_list_ok :
-  forall h values pr,
-  {!< F l,
-  PERM:pr   
-  PRE:bm, hm,
-    F * [[ hash_list_rep l h hm ]]
-  POST:bm', hm', RET:h'
-    F * [[ hash_list_rep (rev values ++ l) h' hm' ]]
-  CRASH:bm'', hm'',
-    false_pred (* Can't crash *)
-  >!} hash_list h values.
-Proof.
-  unfold hash_list.
-  step.
-  rewrite app_nil_l; reflexivity.
-  rewrite app_nil_l; eassumption.
-  step; try apply HL_nil; auto.
-  step.
-  safestep.
-
-  (* Loop invariant. *)
-  - rewrite <- cons_nil_app. eauto.
-  - rewrite rev_unit. cbn [app].
-    eapply hash_list_rep_subset; eauto.
-    econstructor; eauto using hash_list_rep_upd.
-    eauto using hashmap_get_fwd_safe_eq.
-  - solve_hashmap_subset.
-  
-  (* Loop invariant implies post-condition. *)
-  - step.
-    step.
-    rewrite app_nil_r.
-    eapply hash_list_rep_subset; eauto.
-    solve_hashmap_subset.
-  - eassign (lift_empty (False) (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred.
-    cancel.
-    Unshelve.
-    exact tt.
-Qed. 
 
 Theorem unseal_all_ok :
     forall hl pr,
@@ -229,7 +171,6 @@ Theorem unseal_all_ok :
 
 Hint Extern 1 ({{_|_}} Bind (seal_all _ _) _) => apply seal_all_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (unseal_all _) _) => apply unseal_all_ok : prog.
-Hint Extern 1 ({{_|_}} Bind (hash_list _ _) _) => apply hash_list_ok : prog.
 
 
 

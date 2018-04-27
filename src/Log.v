@@ -63,8 +63,7 @@ Module LOG.
   | FlushingTxn (new : diskset)
   (* A flushing is in progress
    *)
-
-  | RollbackTxn (old : diskstate)
+                
   | RecoveringTxn (old : diskstate)
   .
 
@@ -87,10 +86,6 @@ Module LOG.
       [[ handles_valid_map bm cm ]] *
       [[ sm_ds_valid sm ds ]] *
       GLog.would_recover_any xp ds bm hm
-    | RollbackTxn d =>
-      [[ Map.Empty cm ]] *
-      [[ sm_ds_valid sm (d, nil) ]] *
-      GLog.rep xp (GLog.Rollback d) mm bm hm
     | RecoveringTxn d =>
       [[ Map.Empty cm ]] *
       [[ sm_ds_valid sm (d, nil) ]] *
@@ -211,14 +206,6 @@ Hint Resolve Forall_nil.
     erewrite GLog.rep_hashmap_subset; eauto.
     cancel.
     erewrite GLog.rep_hashmap_subset; eauto.
-    norml. norm.
-    eassign ds'; eassign n; eassign ms0; cancel.
-    erewrite GLog.rep_hashmap_subset; eauto.
-    intuition.
-    cancel.
-    erewrite GLog.rep_hashmap_subset; eauto.
-    cancel.
-    erewrite GLog.rep_hashmap_subset; eauto.
   Qed.
 
   Lemma Forall_public_subset_trans:
@@ -262,10 +249,6 @@ Hint Resolve Forall_nil.
     erewrite GLog.rep_blockmem_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; auto.
-    cancel.
-    erewrite GLog.rep_blockmem_subset; eauto.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; auto.
   Qed.
 
   Lemma rep_hashmap_subset : forall xp F ms hm sm bm hm',
@@ -274,7 +257,6 @@ Hint Resolve Forall_nil.
         =p=> rep xp F st ms sm bm hm'.
   Proof.
     unfold rep; intros; cancel.
-    erewrite rep_inner_hashmap_subset; eauto.
   Qed.
 
   Lemma rep_blockmem_subset : forall xp F ms hm sm bm bm',
@@ -308,15 +290,6 @@ Hint Resolve Forall_nil.
     eassign (mk_mstate hmap0 ms'); auto.
     simpl; eauto.
     apply map_empty_hmap0.
-  Qed.
-
-  Lemma rep_inner_rollbacktxn_pimpl : forall xp d ms sm hm bm,
-    rep_inner xp (RollbackTxn d) ms sm bm hm
-    =p=> rep_inner xp (RecoveringTxn d) ms sm bm hm.
-  Proof.
-    unfold rep_inner; intros.
-    rewrite GLog.rollback_recovering.
-    cancel.
   Qed.
 
   Lemma readOnlyMapEmpty : forall ms,
@@ -572,7 +545,6 @@ Hint Resolve Forall_nil.
     step.
     step.
     step.
-    rewrite GLog.rep_hashmap_subset; eauto.
     apply sm_ds_valid_synced.
     apply sm_vs_valid_disk_exact.
     apply list2nmem_array.
@@ -597,7 +569,6 @@ Hint Resolve Forall_nil.
   Proof.
     unfold begin.
     hoare using dems.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply handles_valid_map_empty; auto.
     rewrite replay_disk_empty; auto.
     apply empty_extract_blocks_map; auto.
@@ -620,7 +591,6 @@ Hint Resolve Forall_nil.
     unfold abort.
     safestep.
     step using dems; subst; simpl.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply readOnlyLL; eauto; try reflexivity; simpl; dems.
     cancel.
   Qed.
@@ -641,7 +611,6 @@ Hint Resolve Forall_nil.
     unfold abort.
     weaksafestep.
     weakstep using dems; subst; simpl.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply readOnlyLL; eauto; try reflexivity; simpl; dems.
     cancel.
   Qed.
@@ -666,7 +635,6 @@ Hint Resolve Forall_nil.
     prestep.
     cancel.
     step.
-    rewrite GLog.rep_hashmap_subset; eauto.
     subst.
     eapply list2nmem_sel in H5 as Hx.
     eapply handles_valid_map_extract in Heqo as Hy; eauto; cleanup.
@@ -690,7 +658,6 @@ Hint Resolve Forall_nil.
 
     step.
     step.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     clear H17; eapply handles_valid_map_subset_trans; eauto.
     erewrite mapeq_elements; eauto.
@@ -785,7 +752,6 @@ Hint Resolve Forall_nil.
   Proof.
     unfold write.
     hoare using dems.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply add_forall_public; eauto.
     eapply handles_valid_map_add; eauto.
     apply map_valid_add; eauto.
@@ -855,7 +821,6 @@ Hint Resolve Forall_nil.
     step.
     step.
     safestep; subst.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply remove_forall_public; eauto.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
@@ -924,7 +889,6 @@ Hint Resolve Forall_nil.
     step.
     step.
     safestep; subst.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     clear H18; eapply handles_valid_map_subset_trans; eauto.
     rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
@@ -956,7 +920,6 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushall, recover_any.
     hoare.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
@@ -984,7 +947,6 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushsync, recover_any.
     hoare.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
@@ -1011,7 +973,6 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushall_noop, recover_any.
     hoare.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
@@ -1038,7 +999,6 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushsync_noop, recover_any.
     hoare.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     solve_hashmap_subset.
@@ -1077,9 +1037,6 @@ Hint Resolve Forall_nil.
     step.
     step.
     step.
-    or_r; cancel.
-    rewrite GLog.rep_hashmap_subset; eauto.
-    eapply sm_ds_valid_pushd_r; eauto.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
@@ -1095,9 +1052,6 @@ Hint Resolve Forall_nil.
 
     step.
     step.
-    or_r; cancel.
-    rewrite GLog.rep_hashmap_subset; eauto.
-    eapply sm_ds_valid_pushd_r; eauto.
     solve_hashmap_subset.
 
     step.
@@ -1106,7 +1060,7 @@ Hint Resolve Forall_nil.
     or_l; cancel.
     rewrite <- extract_blocks_list_map; eauto.
     erewrite mapeq_elements.
-    rewrite GLog.rep_hashmap_subset; eauto.
+    cancel.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
@@ -1130,7 +1084,7 @@ Hint Resolve Forall_nil.
     or_l; cancel.
     rewrite <- extract_blocks_list_map; eauto.
     erewrite mapeq_elements.
-    rewrite GLog.rep_hashmap_subset; eauto.
+    cancel.
     apply MapFacts.Equal_sym.
     clear H14;
     apply extract_blocks_map_subset_trans; eauto.
@@ -1181,8 +1135,7 @@ Hint Resolve Forall_nil.
   Definition after_crash xp F ds cs bm hm :=
     (exists raw, CacheDef.rep cs raw bm *
      [[ ( exists d sm n ms, [[ n <= length (snd ds) ]] *
-       F * (rep_inner xp (NoTxn (d, nil)) ms sm bm hm \/
-            rep_inner xp (RollbackTxn d) ms sm bm hm) *
+       F * (rep_inner xp (NoTxn (d, nil)) ms sm bm hm) *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      )%pred raw ]])%pred.
 
@@ -1229,19 +1182,13 @@ Hint Resolve Forall_nil.
     safestep.
     unfold GLog.recover_any_pred. norm.
     eassign F; cancel.
-    or_l; cancel.
     intuition simpl; eauto.
-    unfold GLog.recover_any_pred. norm.
-    cancel.
-    or_r; cancel.
-    intuition simpl; eauto.
-    eauto.
+    auto.
 
     step.
     prestep. norm. cancel.
     intuition simpl; eauto.
     pred_apply; cancel.
-    rewrite GLog.rep_hashmap_subset; eauto.
     eapply sm_ds_valid_synced.
     eapply sm_vs_valid_disk_synced; eauto.
     apply list2nmem_array.
@@ -1283,23 +1230,10 @@ Hint Resolve Forall_nil.
     unfold GLog.recover_any_pred.
     norm. unfold stars; simpl.
     cancel.
-    unfold GLog.recover_any_pred; cancel.
-    or_l; cancel.
     eassign (mk_mstate hmap0 ms); eauto.
     simpl; auto.
-    auto.
-    eapply sm_ds_valid_disk_unsynced.
     intuition simpl; eauto.
-    eapply crash_xform_diskIs_trans; eauto.
-
-    unfold stars; simpl.
-    cancel.
-    or_r; cancel.
-    eassign (mk_mstate hmap0 ms); eauto.
-    simpl; auto.
-    auto.
-    eapply sm_ds_valid_disk_unsynced.
-    intuition simpl; eauto.
+    eapply sm_ds_valid_disk_unsynced.    
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
@@ -1319,41 +1253,26 @@ Hint Resolve Forall_nil.
     eassign (mk_mstate hmap0 ms); eauto.
     intuition simpl; eauto.
 
-    or_l; cancel.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
-    intuition simpl; eauto.
-    cancel.
-    or_r; cancel.
-    eassign (mk_mstate hmap0 ms); eauto.
-    simpl; eauto.
-    simpl; auto.
-    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
-    intuition simpl; eauto.
   Qed.
 
   Lemma after_crash_notxn : forall xp cs F ds bm hm,
     after_crash xp F ds cs bm hm =p=>
       exists d n sm ms, [[ n <= length (snd ds) ]] *
-      (rep xp F (NoTxn (d, nil)) ms sm bm hm \/
-        rep xp F (RollbackTxn d) ms sm bm hm) *
+      (rep xp F (NoTxn (d, nil)) ms sm bm hm) *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
     unfold after_crash, recover_any, rep, rep_inner.
     intros. norm. cancel.
-    denote or as Hor; apply sep_star_or_distr in Hor.
-    destruct Hor; destruct_lift H.
-    or_l; cancel.
+    intuition eauto.
+    pred_apply; cancel.
     eauto.
-    or_r; cancel.
-    intuition simpl. eassumption.
-    auto.
   Qed.
 
 
   Lemma after_crash_notxn_singular : forall xp cs F d bm hm,
     after_crash xp F (d, nil) cs bm hm =p=>
-      exists d' sm ms, (rep xp F (NoTxn (d', nil)) ms sm bm hm \/
-                      rep xp F (RollbackTxn d') ms sm bm hm) *
+      exists d' sm ms, (rep xp F (NoTxn (d', nil)) ms sm bm hm) *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     intros; rewrite after_crash_notxn; cancel.
@@ -1370,31 +1289,17 @@ Hint Resolve Forall_nil.
     xform_norm.
     denote crash_xform as Hx.
     apply crash_xform_sep_star_dist in Hx.
-    rewrite crash_xform_or_dist in Hx.
-    apply sep_star_or_distr in Hx.
     norm. unfold stars; simpl. cancel.
     intuition simpl; eauto.
 
-    destruct Hx as [Hx | Hx];
     autorewrite with crash_xform in Hx;
     destruct_lift Hx; pred_apply.
 
     rewrite GLog.crash_xform_cached.
     norm. cancel.
-    or_l; cancel.
     eassign (mk_mstate hmap0 ms'); cancel.
     simpl; auto.
-    auto.
-    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
-    intuition simpl; eauto.
-    eapply crash_xform_diskIs_trans; eauto.
-
-    rewrite GLog.crash_xform_rollback.
-    norm. cancel.
-    or_r; cancel.
-    eassign (mk_mstate hmap0 ms'); cancel.
-    simpl; auto.
-    auto.
+    intuition eauto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     intuition simpl; eauto.
     eapply crash_xform_diskIs_trans; eauto.
@@ -1402,23 +1307,18 @@ Hint Resolve Forall_nil.
   
   Lemma after_crash_idem' : forall xp d ms sm bm hm (F : rawpred),
     F (list2nmem d) ->
-    crash_xform (rep_inner xp (NoTxn (d, nil)) ms sm bm hm
-              \/ rep_inner xp (RollbackTxn d) ms sm bm hm) =p=>
-    exists d' ms' sm',(rep_inner xp (NoTxn (d', nil)) ms' sm' bm hm \/
-                   rep_inner xp (RollbackTxn d') ms' sm' bm hm) *
+    crash_xform (rep_inner xp (NoTxn (d, nil)) ms sm bm hm) =p=>
+    exists d' ms' sm',(rep_inner xp (NoTxn (d', nil)) ms' sm' bm hm) *
                    [[ (crash_xform F) (list2nmem d') ]].
   Proof.
     unfold rep_inner; intros.
     xform_norml.
     rewrite GLog.crash_xform_cached; cancel.
     eassign (mk_mstate hmap0 ms').
-    or_l; cancel.
-    eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
-    eapply crash_xform_diskIs_pred; eauto.
-
-    rewrite GLog.crash_xform_rollback; cancel.
-    eassign (mk_mstate hmap0 ms').
-    or_r; cancel.
+    eauto.
+    simpl.
+    apply Forall_nil.
+    simpl; eauto.
     eapply sm_ds_valid_synced, sm_vs_valid_disk_exact.
     eapply crash_xform_diskIs_pred; eauto.
   Qed.
@@ -1453,15 +1353,7 @@ Hint Resolve Forall_nil.
     subst. norm. cancel. intuition simpl.
     pred_apply. norm.
 
-    cancel.
-    rewrite sep_star_or_distr.
-    or_l; cancel.
-    rewrite H0; eauto.
-    intuition simpl; eauto.
-
-    cancel.
-    rewrite sep_star_or_distr.
-    or_r; cancel.
+    cancel; eauto.
     rewrite H0; eauto.
     intuition simpl; eauto.
   Qed.
@@ -1473,23 +1365,7 @@ Hint Resolve Forall_nil.
   Proof.
     unfold rep, after_crash, rep_inner; intros.
     safecancel.
-    or_l; cancel.
     eauto.
-    eauto.
-    auto.
-  Qed.
-
-  Lemma rollbacktxn_after_crash_diskIs : forall xp F n d ds ms sm bm hm,
-    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-    n <= length (snd ds) ->
-    rep xp F (RollbackTxn d) ms sm bm hm =p=> after_crash xp F ds (snd ms) bm hm.
-  Proof.
-    unfold rep, after_crash, rep_inner; intros.
-    safecancel.
-    or_r; cancel.
-    eauto.
-    eauto.
-    auto.
   Qed.
 
   (** idempred includes both before-crash cand after-crash cases *)
@@ -1584,14 +1460,6 @@ Hint Resolve Forall_nil.
     norm. cancel.
     intuition. pred_apply.
     norm. cancel.
-    rewrite sep_star_or_distr.
-    or_l; cancel.
-    rewrite H0; cancel.
-    intuition simpl; eauto.
-
-    norm; auto. cancel.
-    rewrite sep_star_or_distr.
-    or_r; cancel.
     rewrite H0; cancel.
     intuition simpl; eauto.
   Qed.
@@ -1631,8 +1499,7 @@ Hint Resolve Forall_nil.
   Theorem crash_xform_idempred : forall xp F ds sm bm hm,
     crash_xform (idempred xp F ds sm bm hm) =p=>
       exists ms d sm n,
-        (rep xp (crash_xform F) (NoTxn (d, nil)) ms sm bm hm \/
-          rep xp (crash_xform F) (RollbackTxn d) ms sm bm hm) *
+        (rep xp (crash_xform F) (NoTxn (d, nil)) ms sm bm hm) *
         [[ n <= length (snd ds) ]] *
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
@@ -1647,22 +1514,10 @@ Hint Resolve Forall_nil.
       unfold GLog.recover_any_pred in Hx;
       destruct_lift Hx.
 
-      denote or as Hor.
-      apply sep_star_or_distr in Hor.
-      destruct Hor.
-
       safecancel.
-      or_l; cancel.
       eassign (mk_mstate (Map.empty handle) dummy1).
       cancel. simpl; auto.
       auto.
-      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
-      eassumption. auto.
-
-      safecancel.
-      or_r; cancel.
-      eassign (mk_mstate (Map.empty handle) dummy1).
-      cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
       eassumption. auto.
 
@@ -1671,21 +1526,7 @@ Hint Resolve Forall_nil.
       unfold GLog.recover_any_pred in Hx;
       destruct_lift Hx.
 
-      denote or as Hor.
-      apply sep_star_or_distr in Hor.
-      destruct Hor.
-
       safecancel.
-      or_l; cancel.
-      match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
-      cancel. simpl; auto. auto.
-      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
-      eassumption.
-      eapply crash_xform_diskIs_trans; eauto.
-
-
-      safecancel.
-      or_r; cancel.
       match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
       cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
@@ -1693,27 +1534,13 @@ Hint Resolve Forall_nil.
       eapply crash_xform_diskIs_trans; eauto.
 
     - apply crash_xform_sep_star_dist in Hx.
-      rewrite crash_xform_or_dist in Hx.
-      apply sep_star_or_distr in Hx;
-      destruct Hx; autorewrite with crash_xform in H0.
-
-      rewrite GLog.crash_xform_cached in H0.
-      destruct_lift H0.
+      rewrite GLog.crash_xform_cached in Hx.
+      destruct_lift Hx.
       safecancel.
-      or_l; cancel.
+      cancel.
       match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
       cancel. simpl; auto. auto.
       eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto.
-      eassumption.
-      eapply crash_xform_diskIs_trans; eauto.
-
-      rewrite GLog.crash_xform_rollback in H0.
-      destruct_lift H0.
-      safecancel.
-      or_r; cancel.
-      match goal with |- context [?x] => eassign (mk_mstate (Map.empty handle) x) end.
-      cancel. simpl; auto. auto.
-      eapply sm_ds_valid_synced, sm_vs_valid_crash_xform; eauto; eauto.
       eassumption.
       eapply crash_xform_diskIs_trans; eauto.
   Unshelve.
@@ -1771,7 +1598,6 @@ Hint Resolve Forall_nil.
     subst; pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto.
     cancel.
-    erewrite GLog.rep_hashmap_subset; eauto.
     solve_hashmap_subset.
     unfold rep_inner in *.
     destruct_lift H11.
@@ -1809,7 +1635,6 @@ Hint Resolve Forall_nil.
 
     step.
     step.
-    erewrite GLog.rep_hashmap_subset; eauto.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     solve_hashmap_subset.
@@ -1896,7 +1721,6 @@ Hint Resolve Forall_nil.
 
     step.
     step.
-    erewrite GLog.rep_hashmap_subset; eauto.
     subst.
     eapply Forall_cons; unfold handle_valid; intuition eauto.
     clear H30; eapply handles_valid_subset_trans; eauto.
@@ -1919,7 +1743,6 @@ Hint Resolve Forall_nil.
     
     step.
     step.
-    erewrite GLog.rep_hashmap_subset; eauto.
     apply handles_valid_rev_eq; auto.
     solve_hashmap_subset.
     
@@ -2042,7 +1865,6 @@ Hint Resolve Forall_nil.
 
     step.
     step.
-    erewrite GLog.rep_hashmap_subset; eauto.
     clear H22; eapply handles_valid_subset_trans; eauto.
     erewrite vsupsyn_range_progress; simpl; eauto.
     erewrite extract_blocks_subset_trans; eauto.
@@ -2056,7 +1878,6 @@ Hint Resolve Forall_nil.
 
     step.
     step.
-    apply GLog.rep_hashmap_subset; eauto.
     subst; pred_apply; cancel.
     erewrite <- extract_blocks_length; eauto.
     rewrite firstn_exact; eauto.
@@ -2068,105 +1889,7 @@ Hint Resolve Forall_nil.
     Unshelve. exact tt.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
-
-
-  (* like read_range, but stops when cond is true *)
-  (* condition should apply to reverse order *)
-  (* I am not sure what the condition is used for so for noww I will comment out this function
-  Definition read_cond xp a nr (cond : list handle -> bool) ms :=
-    let^ (ms, pf, ret) <- ForN i < nr
-    Blockmem bm
-    Hashmap hm
-    Ghost [ F Fm crash ds sm m vs ms0 ]
-    Loopvar [ ms pf ret ]
-    Invariant
-      rep xp F (ActiveTxn ds m) ms sm bm hm *
-      [[[ m ::: (Fm * arrayP a vs) ]]] *
-      [[ ret = None ->
-        cond pf = false ]] *
-      [[ forall v, ret = Some v ->
-              cond v = true ]] *
-      [[ ret = None ->
-         handles_valid bm pf ]] *
-      [[ ret = None ->
-         extract_blocks bm (rev pf) = firstn i (map fst vs) ]] *
-      [[ forall v, ret = Some v ->
-              handles_valid bm v ]] *
-      [[ forall v, ret = Some v ->
-         extract_blocks bm (rev v) = firstn i (map fst vs) ]] *
-      [[ (exists ms00, readOnly ms00 ms0) -> readOnly ms0 ms ]]
-    OnCrash  crash
-    Begin
-      If (is_some ret) {
-        Ret ^(ms, pf, ret)
-      } else {
-        let^ (ms, v) <- read_array xp a i ms;;
-            let pf' := v::pf in
-            If (bool_dec (cond (rev pf')) true) {
-                Ret ^(ms, pf', Some pf')
-            } else {
-                Ret ^(ms, pf', None)
-            }
-      }
-    Rof ^(ms, nil, None);;
-    Ret ^(ms, ret).
-
-  Theorem read_cond_ok :
-    forall A xp a nr cond ms pr,
-    {< F Fm ds sm m vs,
-    PERM:pr   
-    PRE:bm, hm,
-      rep xp F (ActiveTxn ds m) ms sm bm hm *
-      [[ nr <= length vs /\ cond nil = false ]] *
-      [[[ m ::: (Fm * arrayP a vs) ]]]
-    POST:bm', hm', RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' sm bm' hm' *
-      ( exists v, [[ r = Some v /\ cond v = true ]] \/
-      [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]]) *
-      [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
-    CRASH:hm'
-      exists ms', rep xp F (ActiveTxn ds m) ms' sm hm'
-    >} read_cond xp a nr vfold v0 cond ms.
-  Proof.
-    unfold read_cond; intros.
-    step.
-
-    safestep.
-    safestep.
-    safestep.
-
-    unfold rep_inner; cancel.
-    denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
-    eauto.
-    eapply lt_le_trans; eauto.
-    denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
-    subst; pred_apply; cancel.
-
-    step; step.
-    apply not_true_is_false; auto.
-    rewrite firstn_S_selN_expand with (def := $0).
-    rewrite fold_left_app; simpl.
-    erewrite selN_map by omega; subst; auto.
-    rewrite map_length; omega.
-
-    pimpl_crash. unfold rep_inner; norm. cancel. intuition simpl. pred_apply.
-    eassign (mk_mstate (MSTxn a1) (MSGLog ms'_1)); cancel.
-    eexists.
-    eapply hashmap_subset_trans; eauto.
-
-    destruct a2.
-    safestep.
-    or_l; cancel.
-    safestep.
-    or_r; cancel.
-    eassign raw; pred_apply; cancel.
-    apply GLog.rep_hashmap_subset; eauto.
-    eauto.
-
-    Unshelve. all: eauto; try exact tt; try exact nil.
-  Qed.
-
-  Hint Extern 1 ({{_}} Bind (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog. *)
+  
   Hint Extern 1 ({{_|_}} Bind (read_range _ _ _ _) _) => apply read_range_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write_range _ _ _ _) _) => apply write_range_ok : prog.
 
@@ -2347,7 +2070,6 @@ Hint Resolve Forall_nil.
     
     step.
     safestep; subst.
-    erewrite GLog.rep_hashmap_subset; eauto.
     apply handles_valid_map_empty.
     apply map_empty_hmap0.
     apply map_valid_map0.
@@ -2411,7 +2133,6 @@ Hint Resolve Forall_nil.
 
     step.
     safestep; subst; try rewrite dssync_vecs_latest.
-    erewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     clear H17; eapply handles_valid_list_subset_trans; eauto.
     apply map_valid_vssync_vecs; auto.
@@ -2502,7 +2223,6 @@ Hint Resolve Forall_nil.
 
     step.
     safestep; subst; try rewrite dssync_vecs_latest.
-    erewrite GLog.rep_hashmap_subset; eauto.
     eapply Forall_public_subset_trans; eauto.
     clear H18; eapply handles_valid_list_subset_trans; eauto.
     apply map_valid_vssync_vecs; auto.
@@ -2549,24 +2269,6 @@ Hint Resolve Forall_nil.
     unfold idempred, recover_any, after_crash, before_crash; safecancel.
     rewrite rep_hashmap_subset by eauto.
     or_l; cancel.
-    rewrite rep_inner_hashmap_subset in * by eauto.
-    or_r. safecancel.
-    rewrite rep_inner_hashmap_subset in * by eauto.
-    denote or as Hor; apply sep_star_or_distr in Hor.
-    destruct Hor.
-    or_r; or_r.
-    norm. cancel.
-    intuition.
-    pred_apply. norm. cancel.
-    or_l; cancel.
-    intuition simpl; eauto.
-    or_r; or_r.
-    norm. cancel.
-    intuition.
-    pred_apply. norm. cancel.
-    rewrite rep_inner_hashmap_subset by eauto.
-    or_r; cancel.
-    intuition simpl; eauto.
   Qed.
 
   Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F sm ds al hm bm,

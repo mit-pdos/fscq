@@ -490,7 +490,24 @@ Module AFS.
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
     end.
-  
+
+   Definition update_fblock fsxp inum off v ams :=
+   let^ (ams, r) <- update_fblock_d' fsxp inum ams;;
+    match r with
+    | OK t =>                
+      h <- Seal t v;;
+      ams <- DIRTREE.write fsxp inum off h ams;;
+      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);;
+      If (bool_dec ok true)
+      {
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), OK tt)
+      } else {
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
+      }       
+    | Err e =>
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
+    end.    
 
   (* sync only data blocks of a file. *)
   Definition file_sync fsxp inum ams :=

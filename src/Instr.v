@@ -376,87 +376,6 @@ Proof.
   }
 Qed.
 
-Theorem hash_ok:
-  forall sz (buf : word sz) pr,
-  {!< F,
-  PERM: pr
-  PRE:bm, hm,
-    F
-  POST:bm', hm',
-    RET:h     F * [[ bm' = bm ]] *
-              [[ hash_safe hm h buf ]] *
-              [[ h = hash_fwd buf ]] *
-              [[ hm' = upd_hashmap' hm h buf ]]
-  CRASH:bm'', hm'',
-    false_pred (* Can't crash *)                            
-  >!} Hash buf.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup;
-  try rewrite app_nil_r.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-  split_ors; cleanup; inv_exec_perm;
-  try rewrite app_nil_r.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-  split_ors; cleanup; inv_exec_perm;
-  try rewrite app_nil_r.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-Qed.
-
-
-Theorem hash2_ok:
-  forall sz1 sz2 (buf1 : word sz1) (buf2 : word sz2) pr,
-  {!< F,
-  PERM: pr
-  PRE:bm, hm,
-    F
-  POST:bm', hm',
-    RET:h     F * [[ bm' = bm ]] *
-              [[ hash_safe hm h (Word.combine buf1 buf2) ]] *
-              [[ h = hash_fwd (Word.combine buf1 buf2) ]] *
-              [[ hm' = upd_hashmap' hm h (Word.combine buf1 buf2) ]]
-  CRASH:bm'', hm'',
-    false_pred (* Can't crash *)           
-  >!} Hash2 buf1 buf2.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup;
-  try rewrite app_nil_r.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-  split_ors; cleanup; inv_exec_perm;
-  try rewrite app_nil_r.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-  split_ors; cleanup; inv_exec_perm;
-  try rewrite app_nil_r.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    solve_hashmap_subset.
-  }
-Qed.
-
 Lemma ret_secure:
   forall T pr (v: T),
      {!< F,
@@ -690,8 +609,6 @@ Hint Extern 1 (corr2 _ _ (Bind (Seal _ _) _)) => apply seal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Unseal _) _)) => apply unseal_secure : prog.
 Hint Extern 1 (corr2_weak _ _ (Bind (Seal _ _) _)) => apply seal_secure_weak : prog.
 Hint Extern 1 (corr2_weak _ _ (Bind (Unseal _) _)) => apply unseal_secure_weak : prog.
-Hint Extern 1 ({{_|_}} Bind (Hash _) _) => apply hash_ok : prog.
-Hint Extern 1 ({{_|_}} Bind (Hash2 _ _) _) => apply hash2_ok : prog.
 Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply auth_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.

@@ -44,10 +44,6 @@ Ltac inv_exec' :=
     inv_exec'' H
   | [ H: exec _ _ _ _ Sync _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Hash _) _ _ |- _ ] =>
-    inv_exec'' H
-  | [ H: exec _ _ _ _ (Hash2 _ _) _ _ |- _ ] =>
-    inv_exec'' H
   | [ H: exec _ _ _ _ (Auth _) _ _ |- _ ] =>
     inv_exec'' H
   end.
@@ -91,6 +87,7 @@ Ltac some_subst :=
   | [H: Some _ = Some _ |- _] => inversion H; subst; clear H; repeat some_subst
   | [H: Finished _ _ _ _ = Finished _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
   | [H: Crashed _ _ _ = Crashed _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Failed _ _ _ = Failed _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
   end.
 
 Ltac clear_dup:=
