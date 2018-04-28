@@ -206,7 +206,7 @@ Module LogRecArray (RA : RASig).
     erewrite selN_val2block_equiv.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.
     apply ipack_selN_divmod; auto.
     apply list_chunk_wellformed; auto.
@@ -252,8 +252,8 @@ Module LogRecArray (RA : RASig).
     step.
     safestep.
     erewrite LOG.rep_blockmem_subset; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
+
     eassign F_; eassign F; eassign m0; eassign m; cancel.
     rewrite upd_eq; eauto.
     eauto.
@@ -268,10 +268,6 @@ Module LogRecArray (RA : RASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-
-    pred_apply.
-    cancel.
     rewrite synced_list_updN; f_equal; simpl.
     rewrite block2val_updN_val2block_equiv.
     setoid_rewrite <- combine_updN.
@@ -338,7 +334,7 @@ Module LogRecArray (RA : RASig).
     step.
     step.
     rewrite LOG.rep_blockmem_subset; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.   
     
     cleanup; rewrite synced_list_map_fst.
@@ -375,8 +371,7 @@ Module LogRecArray (RA : RASig).
 
     safestep.
     rewrite LOG.rep_blockmem_subset; [|eauto].
-    erewrite LOG.rep_hashmap_subset; eauto.
-    
+    rewrite LOG.rep_hashmap_subset; eauto.    
     cleanup.
     rewrite map_fst_combine by apply repeat_length.
     rewrite Forall_forall; intros x Hin.
@@ -399,9 +394,9 @@ Module LogRecArray (RA : RASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst; clear H16.
-    pred_apply; cancel.
+    cancel.
     rewrite vsupsyn_range_synced_list; auto.
     erewrite <- extract_blocks_subset_trans; eauto.
     cleanup; auto.
@@ -447,7 +442,8 @@ Module LogRecArray (RA : RASig).
 
     safestep.
     rewrite LOG.rep_blockmem_subset; [|eauto].
-    erewrite LOG.rep_hashmap_subset; eauto.
+    rewrite LOG.rep_hashmap_subset; eauto.
+    
     cleanup.
     rewrite map_fst_combine by (repeat rewrite repeat_length; auto).
     rewrite Forall_forall; intros x Hin.
@@ -463,8 +459,7 @@ Module LogRecArray (RA : RASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     rewrite vsupsyn_range_synced_list; auto.
     erewrite <- extract_blocks_subset_trans; eauto.
     cleanup; auto.
@@ -527,7 +522,7 @@ Module LogRecArray (RA : RASig).
     safestep.
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.
     cancel.
 
@@ -553,12 +548,12 @@ Module LogRecArray (RA : RASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.
     solve_hashmap_subset.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.
     solve_hashmap_subset.
     cancel.
@@ -570,14 +565,13 @@ Module LogRecArray (RA : RASig).
     step.
     step.
     
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     destruct a; cancel.
     match goal with
     | [ H: forall _, Some _ = Some _ -> _ |- _ ] =>
       edestruct H; eauto
     end.
     or_r; cancel.
-    or_l; cancel.
     solve_hashmap_subset.
     eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred.
     unfold false_pred; cancel.
@@ -629,7 +623,7 @@ Module LogRecArray (RA : RASig).
     unfold get_array.
     hoare.
     eapply list2nmem_ptsto_bound; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst; apply eq_sym.
     eapply list2nmem_sel; eauto.
     solve_hashmap_subset.
@@ -660,7 +654,7 @@ Module LogRecArray (RA : RASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.  
+
     eapply list2nmem_updN; eauto.
     solve_hashmap_subset.
   Qed.
@@ -723,7 +717,7 @@ Module LogRecArray (RA : RASig).
     unfold read_array.
     hoare.
     eapply read_array_length_ok; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.  
+
     subst; eapply read_array_list_ok; eauto.
     solve_hashmap_subset.
   Qed.
@@ -746,12 +740,7 @@ Module LogRecArray (RA : RASig).
   Proof.
     unfold ifind_array; intros.
     hoare.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    cancel.
-    or_l; cancel.
     solve_hashmap_subset.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    cancel.
     or_r; cancel.
     apply list2nmem_ptsto_cancel; auto.
     solve_hashmap_subset.
@@ -1190,7 +1179,7 @@ Module LogRecArrayCache (RA : RASig).
   Proof.
     unfold get_array, get, rep.
     hoare.
-    all: try erewrite LOG.rep_hashmap_subset; eauto.
+
     all: solve_hashmap_subset.
     all: eauto using cache_rep_some, cache_rep_add.
   Qed.
@@ -1215,9 +1204,7 @@ Module LogRecArrayCache (RA : RASig).
     unfold put_array, put, rep.
     hoare.
     eapply list2nmem_ptsto_bound; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    solve_hashmap_subset.
-    pred_apply; cancel.
+
     eapply cache_rep_updN; eauto.
     eapply list2nmem_ptsto_bound; eauto.
     eapply list2nmem_updN; eauto.

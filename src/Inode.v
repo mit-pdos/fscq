@@ -584,15 +584,15 @@ Qed.
     cbv; auto.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; unfold IRec.rep. cancel.
+
+    unfold IRec.rep. cancel.
     eassign (repeat IRec.LRA.Defs.item0 (IRecSig.RALen xp * IRecSig.items_per_val)).
     cancel.
     erewrite combine_repeat.
     apply inode_match_init_ok.
     apply IRec.cache_rep_empty.
-    symmetry; apply Ind.pred_fold_left_repeat_emp.
     repeat rewrite repeat_length; auto.
+    apply Ind.pred_fold_left_repeat_emp.
   Qed.
 
   Theorem getlen_ok :
@@ -625,7 +625,7 @@ Qed.
     step.
     step.
 
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst.
     rewrite listmatch_isolate with (i:= inum) in H0 by simplen.
     unfold inode_match at 2 in H0.
@@ -669,7 +669,7 @@ Qed.
     step.
     step.
 
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst.
     rewrite H16.
     rewrite listmatch_isolate with (i:= inum) in H0 by simplen.
@@ -715,8 +715,7 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply.
+
     cancel.
     erewrite listmatch_updN_selN; simplen.
     rewrite <- combine_updN.
@@ -773,9 +772,7 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply.
-    cancel.
+
     erewrite listmatch_updN_selN; simplen.
     rewrite <- combine_updN.
     eauto.
@@ -837,7 +834,7 @@ Qed.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite <- H1; cancel; eauto.
     Unshelve.
     all: eauto.
@@ -884,7 +881,7 @@ Qed.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite <- H1; cancel; eauto.
     Unshelve.
     all: eauto.
@@ -920,7 +917,7 @@ Qed.
     step.
     step.
 
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst.
     rewrite listmatch_isolate with (i:= inum) in H0 by simplen.
     unfold inode_match at 2 in H0.
@@ -965,9 +962,7 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply.
-    cancel.
+
     erewrite listmatch_updN_selN; simplen.
     rewrite <- combine_updN.
     eauto.
@@ -1044,11 +1039,8 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply.
-    4: eauto.
-    2: eapply list2nmem_updN; eauto.
-    2: eassign (pred_fold_left (removeN dummy0 inum) * IFs')%pred; cancel.
+    5: eauto.
+    4: eapply list2nmem_updN; eauto.
     rewrite listmatch_isolate with (i := inum) in H.
     unfold inode_match, Ind.rep in H; 
     erewrite selN_combine in H; eauto.
@@ -1067,15 +1059,15 @@ Qed.
     cleanup; unfold BPtrSig.IRLen; auto.
     rewrite combine_length_eq; auto.
     rewrite <- H10; eauto.
+    rewrite combine_length_eq; auto.
+    rewrite <- H10; eauto.
     erewrite pred_fold_left_selN with (l:= updN dummy0 inum IFs').
     rewrite selN_updN_eq.
     rewrite removeN_updN; eauto.
+    apply sep_star_comm.
     rewrite <- H12; eauto.
     rewrite length_updN, <- H12; eauto.
     repeat rewrite length_updN; auto.
-    rewrite combine_length_eq; auto.
-    rewrite <- H10; eauto.
-    auto.
     
     all: rewrite <- H1; cancel; eauto.
 
@@ -1140,13 +1132,11 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply.
-    4: eauto.
-    4: eauto.
-    2: eapply list2nmem_updN; eauto.
-    2: eassign (pred_fold_left (removeN dummy0 inum) * IFs')%pred; cancel.
-    2:auto.
+
+    5: eauto.
+    5: eauto.
+    4: eapply list2nmem_updN; eauto.
+    auto.
     rewrite listmatch_isolate with (i := inum) in H.
     unfold inode_match, Ind.rep in H; 
     erewrite selN_combine in H; eauto.
@@ -1165,14 +1155,15 @@ Qed.
     cleanup; unfold BPtrSig.IRLen; auto.
     rewrite combine_length_eq; auto.
     rewrite <- H10; eauto.
+    rewrite combine_length_eq; auto.
+    rewrite <- H10; eauto.
     erewrite pred_fold_left_selN with (l:= updN dummy0 inum IFs').
     rewrite selN_updN_eq.
     rewrite removeN_updN; eauto.
+    apply sep_star_comm.
     rewrite <- H12; eauto.
     rewrite length_updN, <- H12; eauto.
     repeat rewrite length_updN; auto.
-    rewrite combine_length_eq; auto.
-    rewrite <- H10; eauto.
 
     all: rewrite <- H1; cancel; eauto.
 
@@ -1261,7 +1252,7 @@ cancel.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     or_r; cancel.
     4: eapply list2nmem_updN; eauto.
     2: eassign (updN dummy0 inum a4)%pred; 
@@ -1292,8 +1283,7 @@ cancel.
     all: try (rewrite <- H1; cancel; eauto).
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    or_l; cancel.
+
 
     Unshelve. all: eauto. exact emp.
   Qed.

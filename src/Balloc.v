@@ -841,9 +841,8 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     unfold init, rep; intros.
     step.
     step.
-    step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+    safestep.
+
     eapply seq_NoDup.
     apply freelist_bmap_equiv_init_ok.
     eauto.
@@ -896,8 +895,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     constructor.
     unfold freelist_bmap_equiv; intuition; intros.
     denote (Avail _) as Hx; unfold Avail in Hx.
@@ -933,7 +931,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     eapply itemlist_to_freelist_no_zero; eauto.
     rewrite firstn_oob by (erewrite Bmp.items_length_ok; eauto).
     apply itemlist_to_freelist_nodup.
@@ -985,9 +983,7 @@ Hint Resolve can_access_repeat_public_selN.
     step.
     step.
     safestep.
-
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.     
+   
     eapply NoDup_remove; eauto.
     rewrite to_bits_updN_set_avail by auto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
@@ -1046,19 +1042,13 @@ Hint Resolve can_access_repeat_public_selN.
     destruct p, p.    
     safestep.
     
-    erewrite LOG.rep_hashmap_subset; eauto.
-    2: subst; eauto.
-    subst.
-    denote (ifind_byte _ = Some _) as Hb.
-    apply ifind_byte_inb in Hb as ?; auto.
-    auto.
-    auto.
+    subst; eauto.
+    cancel.
 
     step.
     step.
     or_r; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     eapply NoDup_remove; eauto.
     rewrite to_bits_set_bit; auto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
@@ -1101,16 +1091,11 @@ Hint Resolve can_access_repeat_public_selN.
     step.
     step.
     step.
-    or_l; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    solve_hashmap_subset.
+
     solve_hashmap_subset.
 
     step.
     step.
-    or_l; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    solve_hashmap_subset.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
@@ -1144,8 +1129,7 @@ Hint Resolve can_access_repeat_public_selN.
 
     eapply bmap_rep_length_ok2; eauto.
     eapply bmap_rep_length_ok2; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     constructor; eauto.
     intro Hin.
     denote (freepred <=p=> _) as Hfp.
@@ -1431,8 +1415,6 @@ Module BmapAllocCache (Sig : AllocSig).
     step.
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel; eauto.
     auto.
     eauto.
     solve_hashmap_subset.
@@ -1456,8 +1438,6 @@ Module BmapAllocCache (Sig : AllocSig).
     safestep.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel; eauto.
     solve_hashmap_subset.
   Qed.
 
@@ -1477,9 +1457,9 @@ Module BmapAllocCache (Sig : AllocSig).
   Proof.
     unfold get_free_blocks, rep.
     hoare.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite Heqb. auto.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     unfold cache_rep.
     intros ? Hs. inversion Hs; intuition subst; auto.
     auto using permutation_comm.
@@ -1512,7 +1492,7 @@ Module BmapAllocCache (Sig : AllocSig).
     safestep.
     safestep.
     or_l; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.
     cancel.
     eassign Fm; cancel.
@@ -1524,8 +1504,7 @@ Module BmapAllocCache (Sig : AllocSig).
     step.
     step.
     or_r. cancel; apply_cache_rep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     eauto using cache_rep_remove_cons.
     subst; cbn in *; intuition.
     eapply Alloc.rep_impl_bn_ok with (freelist := freelist); eauto.
@@ -1568,8 +1547,7 @@ Module BmapAllocCache (Sig : AllocSig).
     eauto.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     unfold cache_free_block.
     destruct MSCache eqn:?; auto.
     eapply cache_rep_add_cons; eauto.
@@ -1602,8 +1580,7 @@ Module BmapAllocCache (Sig : AllocSig).
     eauto.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     solve_hashmap_subset.
     eauto.
   Qed.
@@ -1760,11 +1737,9 @@ Module BALLOC.
     safestep.
     erewrite listpred_seq_smrep in H7; eauto.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst.
-    pred_apply; cancel.
     erewrite H13; eauto.
-    eassign freepred; cancel.
     solve_hashmap_subset.
     cancel.
   Qed.
@@ -1790,11 +1765,8 @@ Module BALLOC.
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst.
-    pred_apply; cancel.
-    eassign FP;
-    eassign (emp (AT:= addr)(AEQ:=addr_eq_dec)(V:= valuset)); cancel.
     solve_hashmap_subset.
   Qed.
 
@@ -1821,7 +1793,7 @@ Module BALLOC.
     all: eauto.
     step.
     prestep. norm. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     intuition simpl.
     pred_apply.
     denote pimpl as Hx; rewrite Hx.
@@ -1856,15 +1828,14 @@ Module BALLOC.
   Proof.
     unfold alloc, rep, bn_valid.
     hoare.
-    or_l; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.
     match goal with
     | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
     end.
     unfold smrep.
     or_r; norm. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     intuition eauto.
     pred_apply; cancel.
     eassign a3; cancel.
@@ -1894,12 +1865,12 @@ Module BALLOC.
     hoare.
     eassign (Fm * dummy0 * bn |-> (dummy0_cur, dummy0_old))%pred; cancel.
     exists (list2nmem m); pred_apply; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     unfold FP in *; eauto.
-    rewrite sep_star_assoc.
+    rewrite sep_star_assoc with (p1:= Fm).
+    rewrite sep_star_comm with (p1:= dummy0).
     specialize (H13 (dummy0_cur, dummy0_old) I).
-    rewrite H13; eassign freepred'; cancel.
+    eassign freepred'. rewrite H13; cancel.
     solve_hashmap_subset.
   Qed.
 
@@ -1985,8 +1956,7 @@ Module BALLOC.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply;
+
     rewrite removeN_0_skipn; cancel.
     rewrite selN_cons_fold.
     replace ([n]) with (rev [n]) by auto.
@@ -2008,8 +1978,6 @@ Module BALLOC.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply;
     rewrite firstn_oob by auto.
     rewrite skipn_oob by auto.
     cancel.
@@ -2241,10 +2209,6 @@ Module BALLOCC.
     safestep.
     erewrite listpred_seq_smrep in H7; eauto.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    subst.
-    pred_apply; cancel.
-    erewrite H13; eauto.
     solve_hashmap_subset.
     cancel.
   Qed.
@@ -2270,9 +2234,8 @@ Module BALLOCC.
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst.
-    pred_apply; cancel.
     solve_hashmap_subset.
   Qed.
 
@@ -2297,7 +2260,7 @@ Module BALLOCC.
     step.
     step.
     prestep. norm. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     intuition simpl.    
     pred_apply.
     denote pimpl as Hx; rewrite Hx.
@@ -2332,15 +2295,14 @@ Module BALLOCC.
   Proof.
     unfold alloc, rep, bn_valid, MSLog.
     hoare.
-    or_l; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     solve_hashmap_subset.
     match goal with
     | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
     end.
     unfold smrep.
     or_r; norm. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     intuition eauto.
     pred_apply; cancel.
     pred_apply; unfold smrep.
@@ -2368,11 +2330,8 @@ Module BALLOCC.
     unfold free, rep, bn_valid, MSLog.
     hoare.
     exists (list2nmem m); pred_apply; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
+
     unfold FP in *; eauto.
-    rewrite sep_star_comm.
-    specialize (H13 (dummy0_cur, dummy0_old) I); auto.
     solve_hashmap_subset.
   Qed.
 
@@ -2459,8 +2418,7 @@ Module BALLOCC.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply;
+
     rewrite removeN_0_skipn; cancel.
     rewrite selN_cons_fold.
     replace ([n]) with (rev [n]) by auto.
@@ -2482,8 +2440,7 @@ Module BALLOCC.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply;
+
     rewrite firstn_oob by auto.
     rewrite skipn_oob by auto.
     cancel.
