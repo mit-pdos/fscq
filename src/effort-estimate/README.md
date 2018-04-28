@@ -6,4 +6,4 @@
 - Split that with `./file-diffs.py security.diff -o diffs`
 - Update the `diffs` directory by re-running; reports diffs that actually
   changed so they can be re-processed
-- run `counts.sh [diffs]` to add up deleted/added lines
+- run `counts.py diffs/b/src/*.diff*` to add up deleted/added lines (see the file for the categorization)
