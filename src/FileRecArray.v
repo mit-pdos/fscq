@@ -228,7 +228,7 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     safestep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     erewrite selN_val2block_equiv.
     apply ipack_selN_divmod; auto.
     apply list_chunk_wellformed; auto.
@@ -284,7 +284,7 @@ Module FileRecArray (FRA : FileRASig).
     step.
     Opaque corr2.
     safelightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     erewrite LOG.rep_blockmem_subset; eauto; cancel.
     pred_apply; cancel.
     eauto.
@@ -302,9 +302,8 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     cleanup.
-    pred_apply; cancel.
     cleanup. cancel.
     eauto.
     unfold RAData in *. simpl in *. pred_apply.
@@ -404,7 +403,7 @@ Module FileRecArray (FRA : FileRASig).
     lightstep.
     Opaque corr2.
     safelightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     erewrite LOG.rep_blockmem_subset; eauto; cancel.
     pred_apply; cancel.
     eauto.
@@ -432,8 +431,8 @@ Module FileRecArray (FRA : FileRASig).
     step.
     safestep.
     or_r; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    msalloc_eq; pred_apply; cancel.
+
+    msalloc_eq; cancel.
     eauto.
     simpl;
     rewrite BFILE.rep_length_pimpl in H19; destruct_lift H19.
@@ -461,7 +460,7 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     or_l; cancel.
 
     all: intros; rewrite <- H2; cancel; eauto.
@@ -531,7 +530,7 @@ Module FileRecArray (FRA : FileRASig).
     msalloc_eq.
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     erewrite LOG.rep_blockmem_subset; eauto; cancel.
     cleanup.
     subst; rewrite synced_list_map_fst, firstn_oob, map_snd_combine; auto.
@@ -593,9 +592,8 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     msalloc_eq.
-    pred_apply; cancel.
     eauto.
     unfold RAData; simpl.
 
@@ -660,7 +658,7 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
 
     
     prestep.
@@ -694,7 +692,7 @@ Module FileRecArray (FRA : FileRASig).
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     unfold items_valid, RALen in *; intuition.
     eapply ifind_result_inbound; eauto.
     eapply ifind_result_item_ok; eauto.
@@ -704,7 +702,7 @@ Module FileRecArray (FRA : FileRASig).
     all: try solve [unfold false_pred; rewrite <- H2; cancel; eauto].
 
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     eapply ifind_block_none_progress; eauto.
     eapply repeat_length.
     setoid_rewrite synced_list_selN.
@@ -717,7 +715,7 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     msalloc_eq.
     destruct a1.
     match goal with
@@ -791,7 +789,7 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     subst; apply eq_sym.
     eapply list2nmem_sel; eauto.
     intros; rewrite <- H2; cancel; eauto.
@@ -837,7 +835,7 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     eapply list2nmem_updN; eauto.
     intros; rewrite <- H2; cancel; eauto.
   Qed.
@@ -888,12 +886,13 @@ Module FileRecArray (FRA : FileRASig).
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
+
 
     step.
     
-    erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
 
+    rewrite LOG.rep_hashmap_subset; eauto;
+     or_r; cancel.
     rewrite block0_repeat.
     fold Rec.data.
     replace (updN (repeat item0 items_per_val) 0 e) with
@@ -947,11 +946,11 @@ Module FileRecArray (FRA : FileRASig).
     repeat monad_simpl_one.
     eapply pimpl_ok2. eauto with prog.
     safecancel.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     or_l; cancel.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     or_r; cancel.
     apply list2nmem_ptsto_cancel; auto.
   Qed.

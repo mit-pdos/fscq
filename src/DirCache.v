@@ -261,7 +261,6 @@ Module CacheOneDir.
     lightstep.
     msalloc_eq; lightstep.
     msalloc_eq; lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto.
     cbn in *. subst_cache.
     eauto using fill_cache_correct.
     all: rewrite <- H2; cancel; eauto.
@@ -295,10 +294,8 @@ Module CacheOneDir.
     lightstep.
     step.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto.
     lightstep.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto.
     all: rewrite <- H2; cancel; eauto.
     Unshelve. all: eauto.
   Qed.
@@ -332,7 +329,6 @@ Module CacheOneDir.
     lightstep.
     lightstep.
     lightstep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
     subst_cache.
     denote (Dcache.find) as Hf.
     denote (BFILE.BFCache _ = _) as Hb.
@@ -381,7 +377,6 @@ Module CacheOneDir.
     eapply inode_owner_public; eauto.
     lightstep.
     lightstep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
     cancel.
   Qed.
 
@@ -413,7 +408,6 @@ Module CacheOneDir.
     lightstep.
     lightstep.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto.
     msalloc_eq.
     subst; pred_apply; cancel.
     simpl in *.
@@ -427,7 +421,6 @@ Module CacheOneDir.
 
     lightstep.
     lightstep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
     cbn in *.
     rewrite mem_except_none; eauto.
     denote (Dcache.find) as Hf.

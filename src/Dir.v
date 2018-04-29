@@ -519,7 +519,6 @@ Module DIR.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
     eapply listpred_dmatch_no_0_inum; eauto.
     eapply ptsto_valid'.
@@ -532,7 +531,6 @@ Module DIR.
     cancel.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     apply lookup_notindomain; auto.
     cancel.
@@ -563,7 +561,6 @@ Module DIR.
     unfold Dent.RA.RAData; eauto.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
     apply readmatch_ok.
   Qed.
 
@@ -626,7 +623,6 @@ Module DIR.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
     unfold Dent.RA.RAData in *; eauto.
     eexists; split; eauto.
     subst.
@@ -644,7 +640,6 @@ Module DIR.
 
     step.
     simpl.
-    erewrite LOG.rep_hashmap_subset; eauto.
     rewrite <- notindomain_mem_eq; auto.
     eapply lookup_notindomain; eauto.
     eapply lookup_notindomain; eauto.
@@ -747,7 +742,6 @@ Module DIR.
     
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
 
     step.
     intros mz Hmz; pose proof Hmz as Htemp; pred_apply.
@@ -845,7 +839,6 @@ Module DIR.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
 
     step.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
@@ -904,7 +897,6 @@ Module DIR.
     step.
     step; msalloc_eq.
     simpl.
-    erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
 
     step.
     erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.

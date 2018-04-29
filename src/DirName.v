@@ -645,18 +645,13 @@ Module SDIR.
   Proof. 
     unfold lookup.
     hoare.
-
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     resolve_valid_preds.
     eapply mem_atrans_inv_notindomain; eauto.
-
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
     resolve_valid_preds.
     eapply mem_atrans_inv_ptsto; eauto.
 
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     resolve_valid_preds; auto.
     apply notindomain_not_indomain; auto.
@@ -720,7 +715,6 @@ Module SDIR.
     step.
     simpl.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     eapply readdir_trans_addr_ok; eauto.
   Qed.
 
@@ -745,7 +739,6 @@ Module SDIR.
     unfold unlink.
     hoare; resolve_valid_preds.
 
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     subst; eexists.
     split; [ eauto | split ]; [ intros ? Hx | split; [ intros ? Hx | ] ].
     apply indomain_mem_except_indomain in Hx; auto.
@@ -753,8 +746,6 @@ Module SDIR.
     eapply mem_ainv_mem_except; eauto.
     apply mem_except_notindomain.
     eapply mem_atrans_inv_indomain; eauto.
-
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     rewrite <- notindomain_mem_eq.
     subst; eexists.
     apply notindomain_not_indomain; eauto.

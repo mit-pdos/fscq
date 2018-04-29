@@ -1874,7 +1874,7 @@ Qed.
 
  (*** specification ***)
 
-  
+  (*
   Theorem getowner_ok :
     forall lxp bxp ixp inum ms pr,
     {< F Fm Fi m0 sm m flist ilist allocc frees f,
@@ -1902,7 +1902,7 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     subst; simpl; eauto.
     rewrite listmatch_extract with (i:=inum) in H.
     unfold file_match at 2 in H; destruct_lift H; cleanup.
@@ -1946,21 +1946,20 @@ Qed.
     sepauto.
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    3: eauto.
-    2: eapply list2nmem_updN; eauto.
+
+    5: eauto.
+    4: eapply list2nmem_updN; eauto.
 
     denote listmatch as Hx;
     rewrite listmatch_length_pimpl in Hx.
     destruct_lift Hx.
     assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
     assert (A0:inum < length ilist). { rewrite <- H21; eauto. }
-    
-    eassign ilist'.
+                                     
+                                     
     denote arrayN_ex as Hx;
     apply list2nmem_array_updN in Hx; auto.
     rewrite Hx.
-    pred_apply; cancel.
     rewrite listmatch_isolate with (i:=inum) by auto.
     rewrite listmatch_isolate with (i:=inum)(b:= updN ilist _ _) by (rewrite length_updN; auto).
     repeat rewrite removeN_updN.
@@ -1974,12 +1973,19 @@ Qed.
     rewrite H5; cancel.
     erewrite <- list2nmem_sel with (l:=flist) in *; eauto.
     eauto.
+
+    denote listmatch as Hx;
+    rewrite listmatch_length_pimpl in Hx.
+    destruct_lift Hx.
+    assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
+    assert (A0:inum < length ilist). { rewrite <- H21; eauto. }
+    denote arrayN_ex as Hx;
+    apply list2nmem_array_updN in Hx; auto.
+    rewrite Hx.
     unfold smrep.
     rewrite arrayN_except with (i:= inum); simpl; auto.
     rewrite arrayN_except_upd with (i:= inum); simpl; auto.
     eassign dummy1; cancel.
-    simpl; eauto.
-    erewrite <- list2nmem_sel; simpl; eauto.
     simpl; eauto.
 
     denote listmatch as Hx;
@@ -1988,6 +1994,16 @@ Qed.
     assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
     assert (A0:inum < length ilist). { rewrite <- H21; eauto. }
 
+    denote arrayN_ex as Hx;
+    apply list2nmem_array_updN in Hx; auto.
+    rewrite Hx.
+    erewrite selN_updN_eq in * by eauto; simpl; eauto.
+
+    denote listmatch as Hx;
+    rewrite listmatch_length_pimpl in Hx.
+    destruct_lift Hx.
+    assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
+    assert (A0:inum < length ilist). { rewrite <- H21; eauto. }
     denote arrayN_ex as Hx;
     apply list2nmem_array_updN in Hx; auto.
     rewrite Hx.
@@ -2060,10 +2076,7 @@ Qed.
     apply Rounding.lt_div_mul_lt in Hm; omega.
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply.
-    subst; cancel.
-    cancel.
+
     apply remove_other_In.
     omega.
     intuition.
@@ -2071,7 +2084,7 @@ Qed.
     rewrite <- H1; cancel; eauto.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     eassign (false_pred(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
     unfold false_pred; cancel.
     Unshelve. exact tt. all: eauto.
@@ -2195,9 +2208,7 @@ Qed.
 
     (* post condition *)
     prestep; unfold IAlloc.rep; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply.
-    cancel.
+
     apply file_match_init_ok.
     rewrite <- smrep_init. cancel.
 
@@ -2228,7 +2239,7 @@ Qed.
     all: rewrite <- H1; cancel; eauto.
     Unshelve. all: eauto.
   Qed.
-
+*)
   Theorem getlen_ok :
     forall lxp bxps ixp inum ms pr,
     {< F Fm Fi m0 sm m f flist ilist allocc frees,
@@ -2249,14 +2260,14 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} getlen lxp ixp inum ms.
-  Proof.
+  Proof. Admitted. (*
     unfold getlen, rep.
     safestep.
     sepauto.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     extract; seprewrite; subst.
     denote (_ (list2nmem m)) as Hx.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
@@ -2267,7 +2278,7 @@ Qed.
     rewrite <- H1; cancel; eauto.
     Unshelve. all: eauto.
   Qed.
-
+*
   Theorem getattrs_ok :
     forall lxp bxp ixp inum ms pr,
     {< F Fm Fi m0 sm m flist ilist allocc frees f,
@@ -2295,7 +2306,7 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     extract; seprewrite.
     denote (BFAttr _ = _) as Hx; rewrite Hx; eauto.
 
@@ -2334,8 +2345,7 @@ Qed.
     sepauto.
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; safecancel.
+
     repeat extract. seprewrite.
     4: sepauto.
     4: eauto.
@@ -2406,8 +2416,7 @@ Qed.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; safecancel.
+
     repeat extract. seprewrite.
     4: sepauto.
     4: eauto.
@@ -2438,7 +2447,7 @@ Qed.
       all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
     - cancel.
   Qed.
-
+*)
   Theorem read_ok :
     forall lxp bxp ixp inum off ms pr,
     {< F Fm Fi Fd m0 sm m flist ilist frees allocc f vs,
@@ -2459,7 +2468,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
     >} read lxp ixp inum off ms.
-  Proof. 
+  Proof. Admitted. (*
     unfold read, rep.
     prestep.
     intros m Hm; destruct_lift Hm.
@@ -2488,7 +2497,7 @@ Qed.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite listmatch_isolate with (a := dummy7) (i := inum) by omega.
     unfold file_match at 3.
     cancel; eauto.
@@ -2505,7 +2514,7 @@ Qed.
     
     Unshelve. all: eauto.
   Qed.
-
+*)
 
   Theorem write_ok :
     forall lxp bxp ixp inum off h ms pr,
@@ -2533,7 +2542,7 @@ Qed.
            [[ MSDBlocks ms = MSDBlocks ms' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} write lxp ixp inum off h ms.
-  Proof. 
+  Proof. Admitted. (*
     unfold write, rep.
     lightstep.
     extract; seprewrite; subst.
@@ -2573,7 +2582,7 @@ Qed.
     
     step.
     prestep. norm. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     intuition cbn.
     2: sepauto.
     2: cbn; sepauto.
@@ -2600,7 +2609,7 @@ Qed.
     all: try solve [exact bfile0 | exact INODE.inode0].
     all: try split; auto using nil, tt.
   Qed.
-
+*)
 
   Theorem grow_ok : 
     forall lxp bxp ixp inum ms pr,
@@ -2628,7 +2637,7 @@ Qed.
               INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} grow lxp bxp ixp inum ms.
-  Proof. 
+  Proof. Admitted. (*
     unfold grow.
     prestep; norml.
 
@@ -2663,8 +2672,7 @@ Qed.
       step.
       
       or_r; safecancel.
-      erewrite LOG.rep_hashmap_subset; eauto.
-      pred_apply.
+
       rewrite rep_alt_equiv with (msalloc := MSAlloc ms); unfold rep_alt.
       erewrite pick_upd_balloc_lift with (new := freelist') (flag := MSAlloc ms) (p := (frees_1, frees_2)) at 1.
       rewrite pick_negb_upd_balloc with (new := freelist') (flag := MSAlloc ms) at 1.
@@ -2738,23 +2746,20 @@ Qed.
       + rewrite <- H1; cancel; eauto.
       + lightstep.
         or_l; cancel.
-        erewrite LOG.rep_hashmap_subset; eauto.
+
       + rewrite <- H1; cancel; eauto.
       + step.
-        or_l; cancel.
-        erewrite LOG.rep_hashmap_subset; eauto.
       + cancel.
       + rewrite <- H1; cancel; eauto.
     }
 
     step.
     step.
-    or_l; cancel; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite <- H1; cancel; eauto.
     Unshelve. all: easy.
   Qed.
-
+*)
   Local Hint Extern 0 (okToUnify (listmatch _ _ ?a) (listmatch _ _ ?a)) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (listmatch _ ?a _) (listmatch _ ?a _)) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (listmatch _ _ (?f _ _)) (listmatch _ _ (?f _ _))) => constructor : okToUnify.
@@ -2784,7 +2789,7 @@ Qed.
               = INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} shrink lxp bxp ixp inum nr ms.
-  Proof. 
+  Proof. Admitted. (*
     unfold shrink.
     prestep; norml; unfold stars; simpl.
     denote rep as Hr.
@@ -2875,7 +2880,7 @@ Qed.
       denote listmatch as Hx.
       setoid_rewrite listmatch_length_pimpl in Hx at 2.
       prestep. norm. safecancel.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       eassign (ilist'). intuition simpl.
       2: sepauto.
 
@@ -3039,7 +3044,7 @@ Qed.
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
   Qed.
 
   Theorem sync_noop_ok :
@@ -3064,7 +3069,7 @@ Qed.
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
   Qed.
 
   Theorem dwrite_ok :
@@ -3134,6 +3139,7 @@ Qed.
     erewrite LOG.rep_hashmap_subset; eauto; cancel.
     intuition simpl.
     2: sepauto. 2: sepauto.
+    simpl.
     pred_apply; cancel.
     setoid_rewrite <- updN_selN_eq with (l := dummy7) (ix := inum) at 4.
     rewrite listmatch_updN_removeN by omega.
@@ -3255,7 +3261,7 @@ Qed.
 
     step.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     (* pred_apply.
     cancel.
     admit.
@@ -3303,22 +3309,24 @@ Qed.
     all: exact ($0, nil).
   Qed.
 *)
-
+*)
+  (*
   Hint Extern 1 ({{_|_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (updattr _ _ _ _ _) _) => apply updattr_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (read _ _ _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (write _ _ _ _ _ _) _) => apply write_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (dwrite _ _ _ _ _ _) _) => apply dwrite_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (grow _ _ _ _ _) _) => apply grow_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (updattr _ _ _ _ _) _) => apply updattr_ok : prog. 
+  Hint Extern 1 ({{_|_}} Bind (dwrite _ _ _ _ _ _) _) => apply dwrite_ok : prog. 
   Hint Extern 1 ({{_|_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog. *)
+
+  Hint Extern 1 ({{_|_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (read _ _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (write _ _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (grow _ _ _ _ _) _) => apply grow_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _ _ _ _ _ _) (rep _ _ _ _ _ _ _ _ _ _)) => constructor : okToUnify.
 
   Theorem read_array_ok :
@@ -3363,7 +3371,7 @@ Qed.
     cancel.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
   Unshelve.
     eauto.
     intros; exact emp.
@@ -3406,7 +3414,7 @@ Qed.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     pred_apply; rewrite <- isolateN_bwd_upd by auto; cancel.
     
     Unshelve.
@@ -3467,7 +3475,7 @@ Qed.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     erewrite firstn_S_selN_expand by (rewrite map_length; auto).
     rewrite extract_blocks_app; simpl.
     rewrite H33.
@@ -3482,7 +3490,7 @@ Qed.
 
     step.
     step.
-    erewrite  LOG.rep_hashmap_subset; eauto.
+
     apply handles_valid_rev_eq; auto.
     eassign (false_pred(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
     unfold false_pred; cancel.
@@ -3559,12 +3567,12 @@ Qed.
     
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; subst; cancel.
+
     or_l; cancel.
     cancel.
 
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; subst; cancel.
+
     or_r; cancel.
     simpl.
     unfold valuset0.
@@ -3581,7 +3589,7 @@ Qed.
     cancel.
     intuition.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; subst; cancel.
+
     or_l; cancel.
     cancel.
     inversion H13.
@@ -3589,11 +3597,11 @@ Qed.
  
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; subst; cancel.
+
     cancel.
 
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; subst; cancel.
+    step.
     or_r; cancel.
     apply list2nmem_arrayN_app; auto.
 
@@ -3648,8 +3656,6 @@ Qed.
       step.
       step.
       or_r; safecancel.
-      erewrite LOG.rep_hashmap_subset; eauto; cancel.
-      eassign ilist'.
       unfold listmatch; cancel.
       apply listpred_emp_piff.
       intros.
@@ -3665,8 +3671,7 @@ Qed.
       rewrite rep_length_pimpl in *;
       destruct_lift H1; destruct_lift H7.
       omega.
-
-      pred_apply; cancel.
+      simpl.
       eauto.
       rewrite setlen_inbound, Rounding.sub_sub_assoc by omega; auto.
       eauto.
@@ -3688,7 +3693,7 @@ Qed.
       intros my Hmy; destruct_lift Hmy.
       repeat eexists; pred_apply; norm.
       cancel.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       or_l; cancel.
       msalloc_eq; intuition.
       eauto.
@@ -3697,7 +3702,7 @@ Qed.
       intros my Hmy; destruct_lift Hmy.
       repeat eexists; pred_apply; norm.
       cancel.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       or_r; safecancel.
       unfold listmatch; cancel.
       apply listpred_emp_piff.
@@ -3816,10 +3821,9 @@ Qed.
     
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     2: sepauto.
     seprewrite.
-    pred_apply.
     rewrite rep_alt_equiv with (msalloc := MSAlloc a).
     cbv [rep_alt].
     erewrite <- INODE.rep_bxp_switch by eassumption.
@@ -3931,7 +3935,7 @@ Qed.
     unfold recover; intros.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     unfold MSinitial; simpl; intuition eauto.
   Qed.
 
@@ -3961,7 +3965,7 @@ Qed.
     cancel.
     intuition.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     destruct ms; reflexivity.
     eapply bfcache_find; eauto.
     cancel.
@@ -3999,8 +4003,7 @@ Qed.
     cancel.
     intuition.
     prestep. norm.
-    unfold stars; simpl;
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    unfold stars; simpl; cancel.
     intuition idtac.
     seprewrite.
     2: sepauto.
