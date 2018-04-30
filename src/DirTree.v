@@ -285,7 +285,6 @@ Module DIRTREE.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
     msalloc_eq; cancel.
     rewrite <- subtree_fold by eauto. pred_apply; cancel.
     rewrite<- H2; cancel; eauto.
@@ -353,7 +352,6 @@ Module DIRTREE.
     (* subtree is a directory *)
     rewrite tree_dir_extract_subdir in Hx by eauto; destruct_lift Hx.
     norm. cancel. intuition simpl.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     intuition simpl.
     rewrite cons_app. rewrite app_assoc. reflexivity.
 
@@ -393,7 +391,6 @@ Module DIRTREE.
     (* subtree is a file *)
     rewrite tree_dir_extract_file in Hx by eauto. destruct_lift Hx.
     norm; unfold stars; simpl. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
     intuition idtac.
     rewrite cons_app. rewrite app_assoc. reflexivity.
     3: pred_apply; cancel.
@@ -436,7 +433,6 @@ Module DIRTREE.
     (* dslookup = None *)
     step.
     prestep. norm; msalloc_eq. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
     intuition idtac.
     all: try solve [ exfalso; congruence ].
     rewrite cons_app. rewrite app_assoc. reflexivity.
@@ -472,7 +468,6 @@ Module DIRTREE.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
     rewrite cons_app. rewrite app_assoc. reflexivity.
 
     (* Ret : OK *)
@@ -481,8 +476,6 @@ Module DIRTREE.
     pred_apply. unfold rep. cancel.
 
     step; safestep; msalloc_eq.
-
-    erewrite LOG.rep_hashmap_subset; eauto.
     rewrite sep_star_comm.
     rewrite subtree_absorb.
     rewrite update_subtree_same.
@@ -494,7 +487,6 @@ Module DIRTREE.
     unfold find_name; rewrite Hx.
     destruct tree0; reflexivity.
 
-    erewrite LOG.rep_hashmap_subset; eauto.
     left; intuition.
     denote (find_subtree (fndone ++ _) _ = _) as Hx.
     unfold find_name; rewrite Hx; eauto.
@@ -546,7 +538,6 @@ Module DIRTREE.
     prestep; norml; inv_option_eq; msalloc_eq.
 
     cancel.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     match goal with a: IAlloc.Alloc.memstate |- _
       => destruct a; cbn in *; subst
     end.
@@ -563,8 +554,7 @@ Module DIRTREE.
     eauto.
     cancel.
     step. step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
+
     rewrite <- H1; cancel; eauto.
     step. step.
     erewrite LOG.rep_hashmap_subset; eauto; unfold IAlloc.MSLog; cancel.
@@ -684,7 +674,6 @@ Module DIRTREE.
       => destruct a; cbn in *; subst
     end.
     msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
     eapply dirname_not_in; eauto.
 
@@ -708,15 +697,11 @@ Module DIRTREE.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     all: try solve [rewrite <- H1; cancel; eauto].
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     Unshelve.
     all: eauto.
@@ -870,7 +855,6 @@ Module DIRTREE.
     (* post conditions *)
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; safecancel.
     
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
@@ -904,8 +888,7 @@ Module DIRTREE.
     
     unfold IAlloc.MSLog in *; cancel.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l. cancel.
+
     cancel.
 
     (* case 2: is_dir: check empty *)
@@ -926,7 +909,6 @@ Module DIRTREE.
     destruct_lift Hmx.
     exists F_, F; do 2 eexists;  exists mbase, sm, m.
     pred_apply; cancel.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     eauto.
     step.
     step.
@@ -939,7 +921,6 @@ Module DIRTREE.
     step.
 
     (* post conditions *)
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
     
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
@@ -978,18 +959,12 @@ Module DIRTREE.
     all: try solve [intros; rewrite <- H1; cancel; eauto].
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     Unshelve.
     all: try match goal with | [ |- DirTreePred.SDIR.rep _ _ ] => eauto end.
@@ -1037,7 +1012,6 @@ Module DIRTREE.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
     cancel.
 
     rewrite <- subtree_fold by eauto.
@@ -1045,7 +1019,7 @@ Module DIRTREE.
 
     rewrite <- H2; cancel; eauto.
   Qed.
-(** Checked until here **)
+
   Theorem dwrite_ok :
     forall fsxp inum off h mscs pr,
     {< F ds sm pathname Fm Ftop tree f Fd v vs ilist frees,
@@ -1154,11 +1128,9 @@ Module DIRTREE.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    
-    pred_apply; cancel.
-    rewrite <- subtree_absorb by eauto.
     cancel.
+    rewrite <- subtree_absorb by eauto.
+    pred_apply; cancel.
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file.
   Qed.
@@ -1184,7 +1156,6 @@ Module DIRTREE.
   Proof. 
     unfold sync, rep.
     hoare.
-    erewrite LOG.rep_hashmap_subset; eauto.
   Qed.
 
   
@@ -1205,7 +1176,6 @@ Module DIRTREE.
   Proof. 
     unfold sync_noop, rep.
     hoare.
-    erewrite LOG.rep_hashmap_subset; eauto.
   Qed.
 
   Theorem truncate_ok :
@@ -1253,11 +1223,8 @@ Module DIRTREE.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     intros mt Hmt; pose proof Hmt as Htemp; pred_apply.
     or_r; cancel.
     apply listmatch_emp.
@@ -1298,7 +1265,6 @@ Module DIRTREE.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
     cancel.
     rewrite <- subtree_fold by eauto. pred_apply; cancel.
     rewrite<- H2; cancel; eauto.
@@ -1333,7 +1299,6 @@ Module DIRTREE.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
     cancel.
     rewrite <- subtree_fold by eauto. pred_apply; cancel.
     rewrite<- H2; cancel; eauto.
@@ -1380,10 +1345,9 @@ Module DIRTREE.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
-    pred_apply; cancel.
-    rewrite <- subtree_absorb by eauto.
     cancel.
+    rewrite <- subtree_absorb by eauto.
+    pred_apply; cancel.
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file_trans; auto.
   Qed.
@@ -1398,7 +1362,7 @@ Module DIRTREE.
   Hint Extern 1 ({{_|_}} Bind (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattr _ _ _) _) => apply getattr_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _) _) => apply getowner_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (setattr _ _ _ _) _) => apply setattr_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (setattr _ _ _ _) _) => apply setattr_ok : prog. 
 
  
   Theorem delete_ok :
@@ -1424,7 +1388,7 @@ Module DIRTREE.
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
     >} delete fsxp dnum name mscs.
-  Proof.
+  Proof. 
     intros; eapply pimpl_ok2. apply delete_ok'.
 
     intros; norml; unfold stars; simpl.
@@ -1718,10 +1682,8 @@ Module DIRTREE.
 
     step.
     safestep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     safestep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel; eauto.
     simpl.
     erewrite subtree_graft_absorb_delete; eauto.
@@ -1754,7 +1716,6 @@ Module DIRTREE.
 
     safestep.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     cancel.
 
@@ -1773,11 +1734,9 @@ Module DIRTREE.
 
     step.
     safestep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
 
     safestep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel; eauto.
 
     erewrite subtree_graft_absorb; eauto.
@@ -1797,28 +1756,18 @@ Module DIRTREE.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     Unshelve.
     all: try exact unit.
