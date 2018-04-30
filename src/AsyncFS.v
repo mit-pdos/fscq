@@ -699,7 +699,6 @@ Module AFS.
     eassign (SB.rep fsxp).
     cancel.
     erewrite LOG.rep_inner_blockmem_subset; eauto.
-    or_l; cancel.
     auto.
     intuition simpl; eauto.
     safecancel.

@@ -1426,6 +1426,10 @@ Lemma combine_eq_r:
     repeat rewrite helper_add_sub_0 by auto.
     cancel.
   Qed.
+
+
+
+  
 (** Specs **)
 
   Definition avail_ok :
@@ -1823,11 +1827,14 @@ Definition extend xp (log: input_contents) cs :=
       cs <- Desc.write_aligned xp ndesc ahl cs;;
       (* I need handles to be supplied to me to write data blocks back *) 
       cs <- Data.write_aligned xp ndata (map ent_handle log) cs;;
-      cs <- DiskLogHdr.write xp (ndesc + nndesc, ndata + nndata) cs;;
       (* Extended *)
       cs <- CacheDef.begin_sync cs;;
       cs <- Desc.sync_aligned xp ndesc nndesc cs;;
       cs <- Data.sync_aligned xp ndata nndata cs;;
+      cs <- CacheDef.end_sync cs;;
+      
+      cs <- DiskLogHdr.write xp (ndesc + nndesc, ndata + nndata) cs;;
+      cs <- CacheDef.begin_sync cs;;
       cs <- DiskLogHdr.sync xp cs;;
       cs <- CacheDef.end_sync cs;;
       (* Synced *)

@@ -1097,12 +1097,12 @@ Qed.
   Proof. 
     induction indlvl; simpl.
     + repeat safestep; autorewrite with core; eauto.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       rewrite indrep_n_helper_0 in *. destruct_lifts. auto.
       rewrite indrep_n_helper_valid by omega. cancel.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
     + repeat safestep; autorewrite with core; try eassumption; clear IHindlvl.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
     - erewrite indrep_n_tree_length in H5; eauto. (* by eauto. *)
       erewrite indrep_n_tree_repeat_concat; eauto.
       all: rewrite indrep_n_helper_0 in *; destruct_lifts;
@@ -1177,15 +1177,15 @@ Theorem indread_ok :
   Proof. 
     induction indlvl; simpl.
     + hoare.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       - rewrite indrep_n_helper_0 in *. destruct_lifts. rewrite mult_1_r. auto.
       - rewrite indrep_n_helper_valid by auto; eassign Fm; cancel.
-      - erewrite LOG.rep_hashmap_subset; eauto.
+
       - rewrite indrep_n_helper_length_piff in *.
         destruct_lifts. unfold IndRec.Defs.item in *; simpl in *.
         rewrite firstn_oob by omega. auto.
     + hoare.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       - erewrite indrep_n_tree_repeat_concat; eauto. auto.
         rewrite indrep_n_helper_0 in *; destruct_lifts; cleanup;
         rewrite repeat_length; auto.
@@ -1206,7 +1206,7 @@ Theorem indread_ok :
         all: rewrite indrep_n_helper_length_piff in *; destruct_lifts.
         all : autorewrite with list in *; cbn -[Nat.div] in *; try omega.
         rewrite combine_length_eq; autorewrite with list; cbn; omega.
-      - erewrite LOG.rep_hashmap_subset; eauto.
+
       - rewrite firstn_oob in * by indrep_n_tree_bound; subst.
         rewrite rev_eq_iff, rev_app_distr in *; cbn [rev] in *; subst.
         rewrite listmatch_length_pimpl in *; destruct_lifts.
@@ -1221,7 +1221,7 @@ Theorem indread_ok :
         autorewrite with list in *; cbn [length] in *; omega.
         autorewrite with list; cbn [length]. omega.
       - rewrite <- H1; cancel; eauto.
-      - erewrite LOG.rep_hashmap_subset; eauto.
+
       - eassign (false_pred(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
         unfold false_pred; cancel.
     Grab Existential Variables.
@@ -1291,8 +1291,7 @@ Theorem indclear_all_ok :
       + step.
         step.
         step.
-        erewrite LOG.rep_hashmap_subset; eauto.
-        pred_apply;
+
         repeat rewrite indrep_n_helper_0. cancel.        
         erewrite indrep_n_helper_0 in *.
         denote lift_empty as Hf; destruct_lift Hf.
@@ -1301,7 +1300,7 @@ Theorem indclear_all_ok :
         step.
         prestep; norm.
         unfold stars; simpl.
-        eassign F_; erewrite LOG.rep_hashmap_subset; eauto.
+
         cancel.
         intuition eauto.
         pred_apply.      
@@ -1329,8 +1328,7 @@ Theorem indclear_all_ok :
         2: pred_apply; cancel.
         intuition eauto.
         step.
-        erewrite LOG.rep_hashmap_subset; eauto.
-        pred_apply. cancel.
+
         symmetry.
         eapply indrep_n_tree_repeat_Fs with (m := list2nmem m); eauto.
         erewrite indrep_n_helper_0 in *;
@@ -1372,7 +1370,7 @@ Theorem indclear_all_ok :
           reflexivity.
           step.
           prestep. norm.
-          unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+          cancel.
           Opaque block_mem_subset.
           repeat split.         
           autorewrite with lists; cbn [length].
@@ -1405,7 +1403,7 @@ Theorem indclear_all_ok :
           
           prestep. norm.          
           unfold stars; simpl.
-          eassign F_; erewrite LOG.rep_hashmap_subset; eauto.
+
           cancel.
           intuition; eauto.
           pred_apply; cancel.
@@ -1534,7 +1532,7 @@ Theorem indclear_all_ok :
           omega.
         + step.
           prestep; norm.
-          unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+          cancel.
           repeat split.
           repeat rewrite <- H5.
           autorewrite with lists. cbn [length].
@@ -1641,17 +1639,14 @@ Theorem update_block_ok :
     rewrite indrep_n_helper_pts_piff by auto. cancel.
     + step.
       safestep.
-      erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
       or_l; cancel.
       subst.
-      pred_apply; rewrite indrep_n_helper_0 by auto.
+      rewrite indrep_n_helper_0 by auto.
       cancel; eauto.
-      simpl; cancel.
-      auto.
     + step.
       prestep. norm. repeat cancel.
-      erewrite LOG.rep_hashmap_subset; eauto; cancel.
-      or_r; cancel.
+
       intuition idtac.
       pred_apply. cancel.
       pred_apply; cancel.
@@ -1662,8 +1657,7 @@ Theorem update_block_ok :
       rewrite indrep_n_helper_valid by auto; eassign indbns; cancel.
       step.
       prestep. norm. repeat cancel.
-      erewrite LOG.rep_hashmap_subset; eauto; cancel.
-      or_r; cancel.
+
       intuition idtac.
       rewrite indrep_n_helper_valid by auto.
       pred_apply; cancel; eauto.
@@ -1743,7 +1737,7 @@ Theorem indclear_from_aligned_ok :
     induction indlvl.
     + simpl. step.
       step; step.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       pose proof listmatch_indrep_n_tree_forall_length 0 as H'.
       simpl in H'. rewrite H' in *.
       denote combine as Hc. destruct_lift Hc. rewrite mult_1_r in *.
@@ -1752,7 +1746,7 @@ Theorem indclear_from_aligned_ok :
       assert (start / NIndirect < length indbns) by indrep_n_tree_bound.
       cancel.
     - step; step.
-       erewrite LOG.rep_hashmap_subset; eauto.
+
         rewrite listmatch_extract in *.
         erewrite selN_combine in * by auto.
         cbn [fst snd] in *.
@@ -1784,24 +1778,22 @@ Theorem indclear_from_aligned_ok :
         * rewrite pred_fold_left_selN_removeN with (i := start / NIndirect).
           cancel. eassign (Fs * pred_fold_left (removeN fsl (start / NIndirect)))%pred; cancel.
         * step; safestep.
-          erewrite LOG.rep_hashmap_subset; eauto; cancel.
-        **  pred_apply; rewrite combine_updN, listmatch_updN_removeN.
+
+        **  rewrite combine_updN, listmatch_updN_removeN.
             cancel. all: indrep_n_tree_bound.
         **  erewrite upd_range_concat_hom_start_aligned; eauto. omega.
         **  indrep_n_tree_bound.
         **  autorewrite with lists; omega.
-        **  auto.
         **  rewrite pred_fold_left_selN_removeN with (l := updN _ _ _).
             rewrite selN_updN_eq, removeN_updN by omega. cancel.
-        ** erewrite LOG.rep_hashmap_subset; eauto.
-        **  subst; pred_apply. rewrite natToWord_wordToNat. rewrite combine_updN.
+
+        **  subst; rewrite natToWord_wordToNat. rewrite combine_updN.
             rewrite listmatch_updN_removeN by (eauto; indrep_n_tree_bound).
             eassign (upd_range (selN l_part (start / NIndirect) nil) 0 len $ (0)); simpl.
             cancel.
         **  erewrite upd_range_concat_hom_start_aligned by (eauto; omega). auto.
         **  indrep_n_tree_bound.
         **  autorewrite with lists; omega.
-        **  auto.
         **  rewrite pred_fold_left_selN_removeN with (l := updN _ _ _).
              rewrite selN_updN_eq, removeN_updN by omega. cancel.
         * rewrite <- H1; cancel; eauto.
@@ -1821,7 +1813,7 @@ Theorem indclear_from_aligned_ok :
       cancel.
       step.
       step.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       
       prestep. norml.
       assert (start / (NIndirect ^ S (S indlvl)) < length l_part) by indrep_n_tree_bound.
@@ -1829,7 +1821,7 @@ Theorem indclear_from_aligned_ok :
       cancel.
       step.
       step.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       {
         rewrite listmatch_extract in *.
         erewrite selN_combine in * by auto. cbn [fst snd] in *.
@@ -1904,12 +1896,12 @@ Theorem indclear_from_aligned_ok :
       pred_apply; cancel.
       - step; clear IHindlvl.
         safestep.
-        erewrite LOG.rep_hashmap_subset; eauto.
-        6: match goal with |- context [removeN _ ?i] =>
+
+        5: match goal with |- context [removeN _ ?i] =>
           erewrite pred_fold_left_selN_removeN with (l := updN fsl i (pred_fold_left fsl'0));
           rewrite selN_updN_eq, removeN_updN by omega
         end.
-        * pred_apply; rewrite indrep_n_helper_0. cancel.
+        * rewrite indrep_n_helper_0. cancel.
           rewrite combine_updN, listmatch_updN_removeN.
           norm. cancel. eassign IFs'. rewrite indrep_n_helper_0. cancel.
           intuition eauto.
@@ -1924,15 +1916,13 @@ Theorem indclear_from_aligned_ok :
           rewrite mult_comm, <- Nat.div_mod; auto.
         * autorewrite with lists; auto.
         * autorewrite with lists; omega.
-        * auto.
         * denote (indrep_n_helper _ _ 0) as Hi. rewrite indrep_n_helper_0 in Hi.
           destruct_lift Hi. denote (IFs' <=p=> emp) as Hf. rewrite Hf. cancel.
         * safestep.
-          erewrite LOG.rep_hashmap_subset; eauto.
-        ** pred_apply; rewrite natToWord_wordToNat. rewrite combine_updN.
+
+        ** rewrite natToWord_wordToNat. rewrite combine_updN.
           rewrite listmatch_updN_removeN. cancel. reflexivity.
           indrep_n_tree_bound.
-          reflexivity.
           all: rewrite ?combine_length_eq; omega.
         ** denote (concat _ = _) as Hc. rewrite Hc.
           symmetry. erewrite upd_range_concat_hom_start_aligned by (eauto; mult_nonzero; omega).
@@ -1942,7 +1932,6 @@ Theorem indclear_from_aligned_ok :
           rewrite mult_comm with (n := len / _), <- Nat.div_mod; auto.
         ** autorewrite with lists; auto.
         ** autorewrite with lists; auto.
-        ** auto.
         ** rewrite pred_fold_left_selN_removeN with (l := updN _ _ _).
           rewrite selN_updN_eq, removeN_updN by omega. cancel.
       - rewrite <- H1; cancel; eauto.
@@ -2017,7 +2006,7 @@ Theorem indclear_from_aligned_ok :
     intros.
     + simpl in *. subst N. rewrite mult_1_r in *.
       step. hoare.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       {
         unfold roundup. rewrite divup_eq_div by auto.
         rewrite mul_div by auto. autorewrite with core lists. auto.
@@ -2035,7 +2024,7 @@ Theorem indclear_from_aligned_ok :
       cancel.
       step.  
       prestep. norm.
-      unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
       intuition auto.
       Focus 2. {
         rewrite roundup_eq, minus_plus by auto.
@@ -2088,7 +2077,7 @@ Theorem indclear_from_aligned_ok :
         cancel. instantiate (1 := emp). cancel.
       - step.
         safestep.
-        erewrite LOG.rep_hashmap_subset; eauto.
+
         * pred_apply. erewrite combine_updN. rewrite listmatch_updN_removeN. cancel. all: omega.
         * rewrite roundup_eq by auto. rewrite minus_plus.
           erewrite upd_range_concat_hom_small; eauto.
@@ -2100,7 +2089,7 @@ Theorem indclear_from_aligned_ok :
           cancel.
         * autorewrite with lists; auto.
         * safestep.
-          erewrite LOG.rep_hashmap_subset; eauto.
+
         ** pred_apply; rewrite natToWord_wordToNat. rewrite combine_updN.
            rewrite listmatch_updN_removeN.
            eassign  (upd_range (selN l_part (start / NIndirect) nil) (start mod NIndirect)
@@ -2127,7 +2116,7 @@ Theorem indclear_from_aligned_ok :
       pose proof listmatch_indrep_n_tree_forall_length (S indlvl) as H'.
       simpl in H'. match goal with H: _ |- _ => rewrite H' in H; destruct_lift H end.
       cancel. hoare.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       {
         unfold roundup. rewrite divup_eq_div by auto. rewrite mul_div by mult_nonzero.
         autorewrite with core. auto.
@@ -2140,7 +2129,7 @@ Theorem indclear_from_aligned_ok :
         edestruct le_lt_eq_dec; [> | eauto |]; eauto.
         subst. rewrite Nat.mod_mul in * by auto. intuition.
       cancel. step. prestep. norm. cancel.
-      erewrite LOG.rep_hashmap_subset; eauto.  
+
       instantiate (1 := updN _ _ _). intuition auto.
       {
         erewrite <- updN_selN_eq with (l := indbns) at 1.
@@ -2223,7 +2212,7 @@ Theorem indclear_from_aligned_ok :
       pred_apply; cancel.
       pred_apply; cancel.
       step. safestep; clear IHindlvl.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       - pred_apply; rewrite indrep_n_helper_0. cancel.
         rewrite combine_updN, listmatch_updN_removeN.
         norm. cancel. rewrite indrep_n_helper_0'. cancel.
@@ -2250,7 +2239,7 @@ Theorem indclear_from_aligned_ok :
         rewrite combine_length_eq in * by omega. omega.
       - autorewrite with lists; auto.
       - safestep.
-        erewrite LOG.rep_hashmap_subset; eauto.
+
       * pred_apply; rewrite natToWord_wordToNat.
         unfold roundup. rewrite <- Nat.mul_sub_distr_r. repeat rewrite Nat.div_mul by auto.
         rewrite combine_updN.
@@ -2427,12 +2416,12 @@ Theorem indclear_from_aligned_ok :
         rewrite indrep_n_helper_length_piff in Hi; destruct_lift Hi.
         step.
         step.
-        erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
         or_l; cancel.
         rewrite indrep_n_helper_0 in *. destruct_lifts.
         autorewrite with lists; auto.
         - hoare.
-          erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
           or_l; cancel.
         - step.
           rewrite indrep_n_helper_valid by auto; eassign l; cancel.
@@ -2440,7 +2429,7 @@ Theorem indclear_from_aligned_ok :
           step.
           prestep; norm.
           unfold stars; simpl; eassign F_;
-          erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
           intuition eauto.
           pred_apply; cancel.
           prestep; norm.
@@ -2456,7 +2445,7 @@ Theorem indclear_from_aligned_ok :
           rewrite <- H1; cancel; eauto.
       + cbn [indclear].
         step. step. step.
-        erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
         or_l; cancel.
         {
           pred_apply.
@@ -2472,7 +2461,7 @@ Theorem indclear_from_aligned_ok :
         step.
         step.
         step.
-        erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
         or_l; cancel.
         pred_apply; cancel.
 
@@ -2496,7 +2485,7 @@ Theorem indclear_from_aligned_ok :
           instantiate (1 := emp). cancel.
           safestep; rewrite ?natToWord_wordToNat, ?updN_selN_eq.
           * prestep. norm.
-            unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             intuition eauto.
             pred_apply; cancel.
             pred_apply; cancel.
@@ -2552,7 +2541,7 @@ Theorem indclear_from_aligned_ok :
             rewrite <- H1; cancel; eauto.
           * cancel.
           * prestep. norm.
-            unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             intuition auto.
             pred_apply. norm; intuition.
             unfold stars; simpl.
@@ -2671,7 +2660,7 @@ Theorem indclear_from_aligned_ok :
       step.
       step.
       step.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       destruct_lifts. auto.
       step.
       step.
@@ -2712,7 +2701,7 @@ Theorem indclear_from_aligned_ok :
     apply repeat_length.
     apply repeat_spec in H; subst; auto.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     erewrite LOG.rep_blockmem_subset; eauto.
     cleanup.
     rewrite Forall_forall; intros x Hin.
@@ -2730,7 +2719,7 @@ Theorem indclear_from_aligned_ok :
     auto.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     pred_apply.
     rewrite vsupsyn_range_synced_list; auto.
     erewrite <- extract_blocks_subset_trans; eauto.
@@ -2779,7 +2768,7 @@ Theorem indclear_from_aligned_ok :
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     pred_apply; rewrite natToWord_wordToNat. rewrite updN_selN_eq. cancel.
 
     step.
@@ -2869,7 +2858,7 @@ Theorem indput_ok :
           * pred_apply;  cancel.
           * step.
             step.
-            erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_r; cancel.
             unfold BALLOCC.bn_valid in *; intuition.
             rewrite indrep_n_helper_0. rewrite indrep_n_helper_valid by omega.
@@ -2880,7 +2869,7 @@ Theorem indput_ok :
           * unfold stars; simpl; eauto.
           * intuition.
             step.
-            erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_l; cancel.
             cancel.
       - step.
@@ -2891,14 +2880,14 @@ Theorem indput_ok :
         step.
         prestep; norm.
         unfold stars; simpl; eassign F_;
-        erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
         intuition.
         eauto.
         pred_apply; rewrite indrep_n_helper_valid by omega. cancel.
 
         step.
         step.
-        erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
         or_r. cancel.
         rewrite indrep_n_helper_valid in * by omega. cancel.
         match goal with [H : context [?P] |- ?P] => destruct_lift H end. auto.
@@ -2910,7 +2899,7 @@ Theorem indput_ok :
           cancel. intuition auto.
           prestep; norm.
           unfold stars; simpl; eassign F_;
-          erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
           intuition.
           { rewrite repeat_selN'. pred_apply. cancel.
             rewrite indrep_n_helper_0, indrep_n_tree_0.
@@ -2926,13 +2915,13 @@ Theorem indput_ok :
           step.
           step.
           step.
-          erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
           or_l; cancel.
 
           step.
           step.
           step.
-          erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
           or_l; cancel.
           step.
           step.
@@ -2950,7 +2939,7 @@ Theorem indput_ok :
           auto.
           prestep. cancel.
           step.
-          * erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_r.
             safecancel.
             unfold BALLOCC.bn_valid in *.
@@ -3023,7 +3012,7 @@ Theorem indput_ok :
             cancel.
             repeat split.
             step.
-            erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_l; cancel.
             cancel.
           * step.
@@ -3034,14 +3023,14 @@ Theorem indput_ok :
             cancel.
             repeat split.
             step.
-            erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_l; cancel.
             cancel.
         - prestep; norm.
           cancel.
           repeat split; [ |cancel].
           (* prestep; norm.
-          unfold stars; simpl; rewrite LOG.rep_hashmap_subset; eauto; cancel.
+
           repeat split.*)
           prestep.
           intros mx Hmx.
@@ -3049,7 +3038,7 @@ Theorem indput_ok :
           inversion H17; subst; clear H17.
           exists F_, F; eexists; exists m0, sm, m, bxp, dummy, dummy0.
           pred_apply. safecancel.
-          rewrite LOG.rep_hashmap_subset; eauto; cancel.
+
           prestep; norm.
           cancel.
           repeat split.
@@ -3074,7 +3063,7 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-            unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_l; cancel.
             repeat (split; eauto).
      
@@ -3088,7 +3077,7 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-            all: try (unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel).
+
             all: try (or_l; cancel).
             all: repeat (split; eauto).
           }
@@ -3102,7 +3091,7 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-            unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_r; cancel.
             match goal with [H : context [indrep_n_helper] |- _] =>
                pose proof H; rewrite indrep_n_helper_length_piff,
@@ -3131,7 +3120,7 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-            unfold stars; simpl; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
             or_r. safecancel.
             rewrite combine_updN. rewrite listmatch_updN_removeN. cbn [fst snd].
             rewrite wordToNat_natToWord_idempotent' by auto.
@@ -3442,7 +3431,7 @@ Theorem indput_ok :
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     eapply rep_selN_direct_ok; eauto.
     prestep; norml.
     rewrite rep_piff_indirect in * by omega.
@@ -3492,7 +3481,7 @@ Theorem indput_ok :
     step; denote rep as Hx.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite rep_piff_direct in Hx; unfold rep_direct in Hx; destruct_lift Hx.
     substl; substl (length l); auto.
     unfold rep in H0; destruct_lift H0; omega.
@@ -3504,7 +3493,7 @@ Theorem indput_ok :
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite app_assoc with (l := firstn _ _).
     rewrite <- firstn_sum_split. rewrite firstn_skipn.
     congruence.
@@ -3580,7 +3569,7 @@ Theorem indput_ok :
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     replace (_ - (_ - _)) with 0 by omega. rewrite upd_range_0. auto.
   Qed.
 
@@ -3617,7 +3606,7 @@ Theorem indput_ok :
     step.
     step.
     safestep.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     repeat rewrite app_length in *.
     indrep_n_tree_extract_lengths.
     autorewrite with core.
@@ -3681,7 +3670,7 @@ Theorem indput_ok :
     + (* case 1: all in direct blocks *)
       step.
       step.
-      erewrite LOG.rep_hashmap_subset; eauto.
+
       pred_apply. unfold rep.
       autorewrite with core. cancel.
       - apply upd_len_direct_indrep.
@@ -3716,7 +3705,7 @@ Theorem indput_ok :
         
       - step.
         safestep.
-        erewrite LOG.rep_hashmap_subset; eauto.
+
         pred_apply; unfold rep, indrep. autorewrite with core; auto.
         safecancel; rewrite mult_1_r in *.
         rewrite indrep_n_length_pimpl with (indlvl := 0).
@@ -3833,12 +3822,12 @@ Theorem indput_ok :
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     or_l; cancel.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     match goal with |- context [?a = 0] =>
       destruct (addr_eq_dec a 0); [or_l|or_r]; cancel
@@ -3846,7 +3835,7 @@ Theorem indput_ok :
     repeat rewrite updN_app2 by omega; try rewrite updN_app1 by omega; congruence.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     match goal with |- context [?a = 0] =>
       destruct (addr_eq_dec a 0); [or_l|or_r]; cancel
@@ -3863,12 +3852,12 @@ Theorem indput_ok :
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     or_l; cancel.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     match goal with |- context [?a = 0] =>
       destruct (addr_eq_dec a 0); [or_l|or_r]; cancel
@@ -3876,7 +3865,7 @@ Theorem indput_ok :
     repeat rewrite updN_app2 by omega; try rewrite updN_app1 by omega; congruence.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     match goal with |- context [?a = 0] =>
       destruct (addr_eq_dec a 0); [or_l|or_r]; cancel
@@ -3886,13 +3875,13 @@ Theorem indput_ok :
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     or_l; cancel.
     
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     match goal with |- context [?a = 0] =>
       destruct (addr_eq_dec a 0); [or_l|or_r]; cancel
@@ -3900,7 +3889,7 @@ Theorem indput_ok :
     repeat rewrite updN_app2 by omega; try rewrite updN_app1 by omega; congruence.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     cancel.
     match goal with |- context [?a = 0] =>
       destruct (addr_eq_dec a 0); [or_l|or_r]; cancel
@@ -3945,7 +3934,7 @@ Theorem indput_ok :
     cancel.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     or_r; cancel.
     rewrite rep_piff_direct by (autorewrite with lists; simpl; omega).
     unfold rep_direct; autorewrite with core lists; simpl.
@@ -3964,7 +3953,7 @@ Theorem indput_ok :
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     + (* write 0 block *)
       unfold rep in *. destruct_lift Hx.
       rewrite indrep_length_pimpl in *. unfold indrep in *. destruct_lifts.
@@ -3998,7 +3987,7 @@ Theorem indput_ok :
       - step.
         step.
         step.
-        erewrite LOG.rep_hashmap_subset; eauto.
+
         or_l; cancel.
 
         step.
@@ -4008,7 +3997,7 @@ Theorem indput_ok :
         rewrite <- skipn_skipn' in *. repeat rewrite firstn_skipn in *.
         indrep_n_tree_extract_lengths.
         or_r. 
-        erewrite LOG.rep_hashmap_subset; eauto.
+
         safecancel; autorewrite with core.
         eauto.
         autorewrite with core.
