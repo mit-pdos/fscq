@@ -1977,7 +1977,7 @@ Theorem indclear_from_aligned_ok :
         end
       }
     }.
-
+(** HERE **)
   Theorem indclear_to_aligned_ok :
     forall indlvl lxp bxp indbns start ms pr,
     let N := NIndirect ^ S indlvl in

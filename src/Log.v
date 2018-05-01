@@ -525,7 +525,6 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
           CacheDef.rep cs d bm *
           [[ (F * arrayS (DataStart xp) m * arrayS (LogHeader xp) l)%pred d ]] *
-          [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) l ]] *
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
              length m = (LogHeader xp) - (DataStart xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\

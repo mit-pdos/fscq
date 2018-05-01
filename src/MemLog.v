@@ -114,10 +114,10 @@ Module MLog.
           (unsync_rep xp (extract_blocks_map bm mm) d0))
       \/ ((DiskLog.rep xp (DiskLog.Truncated log) hm) *
           (synced_rep xp d)))
-    | Recovering d =>
+    | Recovering d => exists na,
         [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
         synced_rep xp d0 *
-        DiskLog.rep xp (DiskLog.Recovering log) hm
+        DiskLog.rep xp (DiskLog.Synced na log) hm
     end)%pred.
 
 
@@ -476,8 +476,6 @@ Qed.
   Proof.
     unfold rep; intros.
     cancel; eauto.
-    rewrite DiskLog.rep_synced_pimpl; eauto.
-    cancel.
   Qed.
 
 
@@ -515,10 +513,6 @@ Qed.
     would_recover_either xp d ents bm hm.
   Proof.
     unfold would_recover_either; intros.
-    (** FIXME:
-     * `cancel` works slowly when there are existentials.
-     *  (when calling `apply finish_frame`)
-     *)
     norm; unfold stars; simpl; auto.
     or_r; or_l; cancel.
   Qed.
@@ -2064,65 +2058,6 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
       unfold diskIs; auto.
       apply equal_unless_in_refl.
   Qed.
-(*
-  Lemma crash_xform_applying_applying : forall xp d ms bm hm,
-    crash_xform (rep xp (Applying d) ms bm hm) =p=>
-      exists d' ms', rep xp (Applying d') ms' bm hm *
-      [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
-  Proof.
-    intros.
-    unfold rep, synced_rep, unsync_rep, map_replay; intros.
-    xform_norml.
-    - rewrite DiskLog.xform_rep_synced.
-      rewrite crash_xform_arrayN_subset.
-      cancel; eauto.
-      or_l; cancel; eauto.
-      unfold equal_unless_in in *.
-      cleanup; intuition.
-      erewrite synced_list_length, <- possible_crash_list_length; eauto.
-      unfold possible_crash_list in *.
-      intros.
-      
-      simplen.
-      rewrite <- H0; setoid_rewrite H5; auto.
-      eapply length_eq_map_valid; eauto. simplen.
-      rewrite <- H0; setoid_rewrite H5; auto.
-
-      Focus 2.
-      unfold crash_xform.
-      unfold diskIs; eauto.
-      eexists; split; eauto.
-
-    - rewrite DiskLog.xform_rep_truncated.
-      rewrite crash_xform_arrayN_subset.
-      cancel; eauto; try solve [simplen].
-
-      simplen.
-      rewrite <- H2.
-      rewrite replay_disk_length; auto.
-      
-      eapply length_eq_map_valid; eauto; simplen.
-      rewrite <- H2.
-      rewrite replay_disk_length; auto.
-      eapply list2nmem_replay_disk_crash_xform; eauto.
-      rewrite replay_disk_twice; auto.
-      unfold diskIs; auto.
-
-      
-      simplen.
-      apply MapFacts.Equal_refl.
-      simplen.
-      rewrite <- H1.
-      rewrite replay_disk_length; auto.
-      apply map_valid_map0.
-      eapply list2nmem_replay_disk_crash_xform; eauto.
-      unfold diskIs; cbn; auto.
-      
-    rewrite crash_xform_applying; eauto.
-    norml; unfold stars; simpl.
-    rewrite synced_applying; cancel.
-  Qed.
-*)
 
   Lemma crash_xform_flushing : forall xp d ents ms bm hm,
     crash_xform (rep xp (Flushing d ents) ms bm hm) =p=>
@@ -2130,7 +2065,7 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
         (exists nr, rep xp (Synced nr d') ms' bm hm *
           ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
            [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])).
-  Proof. Admitted. (** Fix Later **) (*
+  Proof.
     unfold rep, synced_rep, unsync_rep, map_replay; intros.
     xform_norml.
 
@@ -2151,13 +2086,13 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
       cancel.
       clear H2 H4.
       or_l. cancel; eauto; try solve [simplen].
-      or_l; cancel.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
+      eauto.
+      auto.
       rewrite synced_list_length.
       erewrite <- possible_crash_list_length; eauto.
       eapply length_eq_map_valid; eauto; simplen.
 
-      or_l. cancel; eauto; try solve [simplen].
       or_r; cancel.
       (* eassign (replay_mem (Map.elements ms ++ ents) vmap0). *)
       erewrite replay_disk_replay_mem in *; auto.
@@ -2165,38 +2100,28 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
       rewrite H2.
       rewrite replay_mem_app; eauto.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
+      auto.
+      auto.
       erewrite synced_list_length, <- possible_crash_list_length; eauto.
       rewrite H2.
       eapply map_valid_replay_mem_app; eauto.
-
-      clear H2 H4.
-      or_r; cancel; eauto; try solve [simplen].
-      erewrite synced_list_length, <- possible_crash_list_length; eauto.
-      eapply length_eq_map_valid; eauto; simplen.
-      eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
-*)
+  
   Lemma crash_xform_recovering' : forall xp d ms bm hm,
     crash_xform (rep xp (Recovering d) ms bm hm) =p=>
       exists d' ms',
         ((exists nr, rep xp (Synced nr d') ms' bm hm)) *
         [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
-  Proof. Admitted. (** Fix Later **) (*
+  Proof.
     unfold rep, synced_rep, map_replay; intros.
     xform_norml.
-    rewrite DiskLog.xform_rep_recovering, crash_xform_arrayN_subset.
-    cancel.
-    or_r; cancel; eauto; try solve [simplen].
-    simplen; rewrite <- H2; auto.
-    eapply length_eq_map_valid; eauto; simplen.
-    eapply list2nmem_replay_disk_crash_xform; eauto; easy.
-
-    or_l; cancel; eauto; try solve [simplen].
+    rewrite DiskLog.xform_rep_synced, crash_xform_arrayN_subset.
+    cancel; eauto.
     simplen; rewrite <- H2; auto.
     eapply length_eq_map_valid; eauto; simplen.
     eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
-*)
+
 
   Lemma crash_xform_before : forall xp d bm hm,
     crash_xform (would_recover_before xp d bm hm) =p=>
@@ -2214,7 +2139,6 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
       (exists nr, rep xp (Synced nr d') ms' bm hm *
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])))%pred.
-
 
   Lemma crash_xform_either : forall xp d ents bm hm,
     crash_xform (would_recover_either xp d ents bm hm) =p=>
@@ -2397,7 +2321,6 @@ Qed.
     cancel.
     rewrite <- H1; cancel; eauto.
     cancel; eauto.
-    rewrite DiskLog.rep_synced_pimpl; cancel; eauto.
     or_l; cancel; eauto.
     erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.
@@ -2474,7 +2397,6 @@ Qed.
     cancel.
     rewrite <- H1; cancel; eauto.
     cancel; eauto.
-    rewrite DiskLog.rep_synced_pimpl; cancel; eauto.
     or_r; cancel; eauto.
     erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.

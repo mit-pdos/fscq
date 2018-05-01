@@ -22,13 +22,8 @@ Inductive state :=
 | Synced (navail : nat) (l: contents)
 (* The log has been truncated; but the length (0) is unsynced *)
 | Truncated  (old: contents)
-(* The log is being extended; only the content has been updated (unsynced) *)
-| ExtendedUnsync (old: contents)
 (* The log has been extended; the new contents are synced but the length is unsynced *)
-| Extended  (old: contents) (new: contents)
-(* In the process of recovering. Recovery will definitely end with these
-  contents on disk. *)
-| Recovering (l: contents).
+| Extended  (old: contents) (new: contents).
 
 Definition rep_common l (padded: contents) : rawpred :=
   ([[ l = log_nonzero padded /\
@@ -43,17 +38,40 @@ Definition rep xp st hm :=
    | Truncated l =>
      exists padded, rep_common l padded *
      DiskLogPadded.rep xp (DiskLogPadded.Truncated padded) hm
-   | ExtendedUnsync l =>
-     exists padded, rep_common l padded *
-     DiskLogPadded.rep xp (DiskLogPadded.Synced padded) hm
    | Extended l new =>
      exists padded, rep_common l padded *
      DiskLogPadded.rep xp (DiskLogPadded.Extended padded new) hm
-   | Recovering l =>
-     exists padded, rep_common l padded *
-     DiskLogPadded.rep xp (DiskLogPadded.Synced padded) hm
    end)%pred.
 
+
+(** API **)
+
+  Definition read xp cs :=
+    r <- DiskLogPadded.read xp cs;;
+      Ret r.
+
+  Definition init xp cs :=
+    cs <- DiskLogPadded.init xp cs;;
+    Ret cs.
+
+  Definition trunc xp cs :=
+    cs <- DiskLogPadded.trunc xp cs;;
+    Ret cs.
+
+  Definition avail xp cs :=
+    r <- DiskLogPadded.avail xp cs;;
+    Ret r.
+
+  Definition extend xp new cs :=
+    r <- DiskLogPadded.extend xp new cs;;
+    Ret r.
+
+  Definition recover xp cs :=
+    cs <- DiskLogPadded.recover xp cs;;
+    Ret cs.
+
+
+(** Helpers **)
   Theorem sync_invariant_rep : forall xp st hm,
     sync_invariant (rep xp st hm).
   Proof.
@@ -63,12 +81,43 @@ Definition rep xp st hm :=
   Hint Resolve sync_invariant_rep.
   Local Hint Unfold rep rep_common : hoare_unfold.
   Hint Resolve DescDefs.items_per_val_gt_0 DescDefs.items_per_val_not_0.
-(*
+
+    Lemma xform_rep_synced : forall xp na l hm,
+    crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) hm.
+  Proof.
+    unfold rep, rep_common; intros.
+    xform; cancel.
+    apply xform_rep_synced.
+  Qed.
+
+  Lemma xform_rep_truncated : forall xp l hm,
+    crash_xform (rep xp (Truncated l) hm) =p=> exists na,
+      rep xp (Synced na l) hm \/ rep xp (Synced (LogLen xp) nil) hm.
+  Proof.
+    unfold rep, rep_common; intros.
+    xform; cancel.
+    rewrite xform_rep_truncated.
+    cancel.
+    or_r; cancel.
+    rewrite roundup_0; auto.
+  Qed.
+
+
+  Lemma rep_hashmap_subset : forall xp hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp st hm
+        =p=> rep xp st hm'.
+  Proof.
+    unfold rep; intros.
+    destruct st; cancel;
+    try erewrite rep_hashmap_subset; eauto.
+    all: cancel; eauto.
+  Qed.
+  
   Lemma xform_rep_extended : forall xp old new hm,
     crash_xform (rep xp (Extended old new) hm) =p=>
        (exists na, rep xp (Synced na old) hm) \/
-       (exists na, rep xp (Synced na (old ++ new)) hm) \/
-       (rep xp (Rollback old) hm).
+       (exists na, rep xp (Synced na (old ++ new)) hm).
   Proof.
     unfold rep, rep_common; intros.
     xform.
@@ -77,7 +126,7 @@ Definition rep xp st hm :=
     rewrite DiskLogPadded.xform_rep_extended.
     cancel.
     rewrite DiskLogPadded.rep_synced_app_pimpl.
-    or_r; or_l; cancel.
+    or_r; cancel.
     rewrite log_nonzero_app.
     repeat rewrite log_nonzero_padded_log; eauto.
     rewrite entry_valid_vals_nonzero with (l:=new); auto.
@@ -86,13 +135,12 @@ Definition rep xp st hm :=
     unfold roundup.
     rewrite divup_divup; eauto.
   Qed.
-*)
+
+
+
+  (** Specs **)
   Section UnifyProof.
   Hint Extern 0 (okToUnify (DiskLogPadded.rep _ _) (DiskLogPadded.rep _ _)) => constructor : okToUnify.
-
-  Definition read xp cs :=
-    r <- DiskLogPadded.read xp cs;;
-    Ret r.
 
   Definition read_ok :
     forall xp cs pr,
@@ -118,13 +166,6 @@ Definition rep xp st hm :=
     rewrite <- H1; cancel; eauto.
   Qed.
 
-  Definition init xp cs :=
-    cs <- DiskLogPadded.init xp cs;;
-    Ret cs.
-
-  Definition trunc xp cs :=
-    cs <- DiskLogPadded.trunc xp cs;;
-    Ret cs.
 
 Hint Resolve rep_hashmap_subset.
   
@@ -151,7 +192,7 @@ Hint Resolve rep_hashmap_subset.
     eauto.
     step.
     safestep.
-    apply rep_hashmap_subset; eauto.
+    apply DiskLogPadded.rep_hashmap_subset; eauto.
     eauto.
     simpl; unfold roundup; rewrite divup_0; omega.
     simpl; omega.
@@ -166,10 +207,6 @@ Hint Resolve rep_hashmap_subset.
     or_r; cancel.
   Qed.
 
-
-  Definition avail xp cs :=
-    r <- DiskLogPadded.avail xp cs;;
-    Ret r.
 
   Definition avail_ok :
     forall xp cs pr,
@@ -281,10 +318,6 @@ Hint Resolve rep_hashmap_subset.
 
   Local Hint Resolve extend_length_ok helper_extend_length_ok log_nonzero_padded_app.
 
-  Definition extend xp new cs :=
-    r <- DiskLogPadded.extend xp new cs;;
-    Ret r.
-
   Definition rounded n := roundup n DescSig.items_per_val.
 
   Definition entries_valid {B} (l: @generic_contents B) := Forall entry_valid l.
@@ -344,7 +377,7 @@ Hint Resolve rep_hashmap_subset.
                  (extract_blocks bm (map ent_handle new)))).
     cancel; auto.
     rewrite rep_synced_app_pimpl.
-    eapply rep_hashmap_subset; eauto.
+    eapply DiskLogPadded.rep_hashmap_subset; eauto.
     intuition.
     rewrite log_nonzero_app;
     repeat rewrite log_nonzero_padded_log.
@@ -377,24 +410,20 @@ Hint Resolve rep_hashmap_subset.
   Hint Extern 1 ({{_|_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
 
-  Definition recover xp cs :=
-    cs <- DiskLogPadded.recover xp cs;;
-    Ret cs.
-
   Definition recover_ok :
     forall xp cs pr,
-    {< F nr l,
+    {< F nr l d,
     PERM:pr   
     PRE:bm, hm,
-      exists d, CacheDef.rep cs d bm * (
+          CacheDef.rep cs d bm * (
           [[ (F * rep xp (Synced nr l) hm)%pred d ]]) *
           [[ sync_invariant F ]]
-    POST:bm', hm', RET:cs' exists d',
-          CacheDef.rep cs' d' bm' *
-          [[ (F * exists nr', rep xp (Synced nr' l) hm')%pred d' ]]
-    XCRASH:bm'', hm'', exists cs' d',
-          CacheDef.rep cs' d' bm'' * (
-          [[ (F * rep xp (Recovering l) hm'')%pred d' ]])
+    POST:bm', hm', RET:cs'
+          CacheDef.rep cs' d bm' *
+          [[ (F * rep xp (Synced nr l) hm')%pred d ]]
+    XCRASH:bm'', hm'', exists cs',
+          CacheDef.rep cs' d bm'' * (
+          [[ (F * rep xp (Synced nr l) hm'')%pred d ]])
     >} recover xp cs.
   Proof.
     unfold recover.
@@ -416,52 +445,3 @@ Hint Resolve rep_hashmap_subset.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (recover _ _) _) => apply recover_ok : prog.
-
-  Lemma xform_rep_synced : forall xp na l hm,
-    crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) hm.
-  Proof.
-    unfold rep, rep_common; intros.
-    xform; cancel.
-    apply xform_rep_synced.
-  Qed.
-
-  Lemma xform_rep_truncated : forall xp l hm,
-    crash_xform (rep xp (Truncated l) hm) =p=> exists na,
-      rep xp (Synced na l) hm \/ rep xp (Synced (LogLen xp) nil) hm.
-  Proof.
-    unfold rep, rep_common; intros.
-    xform; cancel.
-    rewrite xform_rep_truncated.
-    cancel.
-    or_r; cancel.
-    rewrite roundup_0; auto.
-  Qed.
-
-  Lemma xform_rep_extended_unsync : forall xp l hm,
-    crash_xform (rep xp (ExtendedUnsync l) hm) =p=> exists na, rep xp (Synced na l) hm.
-  Proof.
-    unfold rep, rep_common; intros.
-    xform; cancel.
-    apply DiskLogPadded.xform_rep_synced.
-  Qed.
-
-
-  Lemma rep_synced_pimpl : forall xp nr l hm,
-    rep xp (Synced nr l) hm =p=>
-    rep xp (Recovering l) hm.
-  Proof.
-    unfold rep; intros.
-    cancel.
-    eassign padded; cancel.
-  Qed.
-
-  Lemma rep_hashmap_subset : forall xp hm hm',
-    (exists l, hashmap_subset l hm hm')
-    -> forall st, rep xp st hm
-        =p=> rep xp st hm'.
-  Proof.
-    unfold rep; intros.
-    destruct st; cancel;
-    try erewrite rep_hashmap_subset; eauto.
-    all: cancel; eauto.
-  Qed.
