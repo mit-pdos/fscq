@@ -81,7 +81,7 @@ if test -e "$ORIGFSCQ/src/fuse"; then
   run_benchmark \
     "origfscq" \
     "dd if=/dev/zero of=$DEV bs=4096 count=$OLDFSCQBLOCKS; $ORIGFSCQ/src/mkfs $DEV" \
-    "$ORIGFSCQ/src/fuse $DEV -s -f $MOUNT &" \
+    "$ORIGFSCQ/src/fuse $DEV -o big_writes,atomic_o_trunc -f $MOUNT &" \
     "fusermount -u $MOUNT"
 fi
 
