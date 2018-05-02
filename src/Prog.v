@@ -126,22 +126,26 @@ Inductive exec:
 
 Inductive recover_outcome (TF TR: Type) :=
   | RFinished (m: tagged_disk) (bm: block_mem) (hm: hashmap) (v: TF)
-  | RRecovered (m: tagged_disk) (bm: block_mem) (hm: hashmap) (v: TR).
+  | RRecovered (m: tagged_disk) (bm: block_mem) (hm: hashmap) (v: TR)
+  | RFailed (m: tagged_disk) (bm: block_mem) (hm: hashmap).
 
 Inductive exec_recover (TF TR: Type)
     : perm ->  tagged_disk -> block_mem -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> trace -> Prop :=
 | XRFinished : forall pr tr' m bm hm p1 p2 m' bm' hm' (v: TF),
        exec pr m bm hm p1 (Finished m' bm' hm' v) tr'
-    -> exec_recover pr m bm hm p1 p2 (RFinished TR m' bm' hm' v) tr'
+       -> exec_recover pr m bm hm p1 p2 (RFinished TR m' bm' hm' v) tr'
+| XRFailed : forall pr tr' m bm hm p1 p2 m' bm' hm',
+       exec pr m bm hm p1 (Failed m' bm' hm') tr'
+    -> exec_recover pr m bm hm p1 p2 (RFailed TF TR m' bm' hm') tr'
 | XRCrashedFinished : forall pr tr' tr'' m bm hm p1 p2 m' bm' hm' m'r m'' bm'' hm'' (v: TR),
        exec pr m bm hm p1 (Crashed m' bm' hm') tr'
     -> possible_crash m' m'r
-    -> @exec_recover TR TR pr m'r bm' hm' p2 p2 (RFinished TR m'' bm'' hm'' v) tr''
+    -> @exec_recover TR TR pr m'r empty_mem hm' p2 p2 (RFinished TR m'' bm'' hm'' v) tr''
     -> exec_recover pr m bm hm p1 p2 (RRecovered TF m'' bm'' hm'' v) (tr''++tr')
 | XRCrashedRecovered : forall pr tr' tr'' m bm hm p1 p2 m' bm' hm' m'r m'' bm'' hm'' (v: TR),
        exec pr m bm hm p1 (Crashed m' bm' hm') tr'
     -> possible_crash m' m'r
-    -> @exec_recover TR TR pr m'r bm' hm' p2 p2 (RRecovered TR m'' bm'' hm'' v) tr''
+    -> @exec_recover TR TR pr m'r empty_mem hm' p2 p2 (RRecovered TR m'' bm'' hm'' v) tr''
     -> exec_recover pr m bm hm p1 p2 (RRecovered TF m'' bm'' hm'' v) (tr''++tr').
 
 

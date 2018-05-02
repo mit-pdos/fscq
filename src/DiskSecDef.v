@@ -106,7 +106,31 @@ Proof.
   induction l; simpl; intuition.
 Qed.
 
+Lemma blockmem_equivalent_for_refl:
+  forall tag bm,
+    blockmem_equivalent_for tag bm bm.
+Proof.
+  unfold blockmem_equivalent_for; intros.
+  destruct (bm a); intuition.
+  right; exists t, t; intuition eauto.
+Qed.
 
+Lemma blockmem_equivalent_for_empty_mem:
+  forall pr, 
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag empty_mem empty_mem).
+Proof.
+  intros; apply blockmem_equivalent_for_refl.
+Qed.
+
+Lemma blockmem_same_except_refl:
+  forall tag bm,
+    blockmem_same_except tag bm bm.
+Proof.
+  unfold blockmem_same_except; intros.
+  destruct (bm a); eauto.
+  right; exists t, t; intuition eauto.
+Qed.
+    
 Lemma same_except_refl:
   forall t d, same_except t d d.
 Proof.
@@ -167,24 +191,6 @@ Proof.
   inv_exec_perm; eauto.
   repeat eexists; eauto.
 Qed.  
-
-(*
-Lemma exec_blockmem_subset_upd:
-        forall T (p: prog T) pr d bm hm h v d1 bm1 hm1 r1 tr,
-          exec pr d (upd bm h v) hm p (Finished d1 bm1 hm1 r1) tr ->
-          exists bm1', bm1 = upd bm1' h v /\ (bm h = None -> bm1' h = None). 
-  Proof.
-    induction p; intros; inv_exec_perm;
-    try solve [ eexists; intuition eauto ];
-    try solve [ destruct (handle_eq_dec h r1); subst;
-    [ rewrite upd_eq in *; eauto; congruence
-    | rewrite upd_comm; eauto; eexists;
-      intuition eauto; rewrite upd_ne; eauto] ].
-    specialize IHp with (1:=H0); cleanup.
-    specialize H with (1:=H1); cleanup.
-    eexists; intuition eauto.
-  Qed.
-*)
 
 
   Lemma blockmem_same_except_upd_same:

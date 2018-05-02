@@ -14,7 +14,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Prog Hashmap Blockmem \
 	      ProgAuto Sec \
 	      ProgMonad Hoare HoareWeak SepAuto \
-	      MemPred \
+	      Idempotent MemPred \
 	      Instr ProgLoop ProgList \
               CacheDef CacheLemmas CacheSec CacheRangeSec \
 	      DiskLogHdr DiskLogPadded DiskLog \

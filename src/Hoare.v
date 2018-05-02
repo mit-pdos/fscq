@@ -256,7 +256,7 @@ Definition corr3 (TF TR: Type) pr (pre: block_mem -> hashmap -> donecond TF -> d
   -> exec_recover pr m bm hm p1 p2 out tr
   -> ((exists m' bm' hm' v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
     (exists m' bm' hm' v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))
-/\ trace_secure pr tr.
+/\ only_public_operations tr.
 
 Notation "{{ pr | pre }} p1 >> p2" := (corr3 pr pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
@@ -275,7 +275,7 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
      [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ pr | fun bm' hm' done'_ crash'_ => post F_ r_ *
+        {{ pr | fun done'_ crash'_ bm' hm' => post F_ r_ *
           [[ exists l, hashmap_subset l hm hm' ]] *
           [[ done'_ = done_ ]] *
           [[ bm c= bm' ]] *
@@ -286,7 +286,7 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
             =p=> F_ * idemcrash bm_crash hm_crash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ pr | fun bm_rec hm_rec done'_ crash'_ => crash F_ r_ *
+        {{ pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ *
           [[ exists l, hashmap_subset l hm hm_rec ]] *
           [[ done'_ = crashdone_ ]] *
           [[ bm c= bm_rec ]] *
@@ -300,7 +300,8 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
    (Bind p1 rxOK)%pred
    (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
-   hm at level 0, hm' at level 0, bm_rec at level 0, hm_rec at level 0,
+   bm at level 0, bm' at level 0, hm at level 0,
+   hm' at level 0, bm_rec at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
 
 Notation "{X<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'REC' : bm_rec , hm_rec , crash >>X} p1 >> p2" :=
@@ -313,13 +314,13 @@ Notation "{X<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' ,
      [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ pr | fun bm' hm' done'_ crash'_ => post F_ r_ *
+        {{ pr | fun done'_ crash'_ bm' hm' => post F_ r_ *
           [[ exists l, hashmap_subset l hm hm' ]] *
           [[ done'_ = done_ ]] *
           [[ bm c= bm' ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ pr | fun bm_rec hm_rec done'_ crash'_ => crash F_ r_ *
+        {{ pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ *
           [[ exists l, hashmap_subset l hm hm_rec ]] *
           [[ done'_ = crashdone_ ]] *
           [[ bm c= bm_rec ]]
@@ -328,7 +329,8 @@ Notation "{X<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' ,
    (Bind p1 rxOK)%pred
    (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
-   hm at level 0, hm' at level 0, bm_rec at level 0, hm_rec at level 0,
+   bm at level 0, bm' at level 0, hm at level 0, hm' at level 0,
+   bm_rec at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
 
 
@@ -375,7 +377,7 @@ Qed.
 
 Theorem pre_false3:
   forall TF TR pr pre (p: prog TF) (r: prog TR),
-  (forall vm hm done crashdone, pre vm hm done crashdone =p=> [False])
+  (forall bm hm done crashdone, pre bm hm done crashdone =p=> [False])
   -> {{pr| pre }} p >> r.
 Proof.
   unfold corr3; intros; exfalso.
@@ -385,8 +387,8 @@ Qed.
 
 Theorem corr3_exists:
   forall T RF RR pr pre (p: prog RF) (r: prog RR),
-  (forall (a:T), {{ pr|fun vm hm done crashdone => pre vm hm done crashdone a }} p >> r)
-  -> {{ pr|fun vm hm done crashdone => exists a:T, pre vm hm done crashdone a }} p >> r.
+  (forall (a:T), {{ pr|fun bm hm done crashdone => pre bm hm done crashdone a }} p >> r)
+  -> {{ pr|fun bm hm done crashdone => exists a:T, pre bm hm done crashdone a }} p >> r.
 Proof.
   unfold corr3; intros.
   destruct H0.
@@ -395,8 +397,8 @@ Qed.
 
 
 Theorem corr3_forall: forall T RF RR pr pre (p: prog RF) (r: prog RR),
-  {{ pr|fun vm hm done crashdone => exists a:T, pre vm hm done crashdone a }} p >> r
-  -> forall (a:T), {{ pr|fun vm hm done crashdone => pre vm hm done crashdone a }} p >> r.
+  {{ pr|fun bm hm done crashdone => exists a:T, pre bm hm done crashdone a }} p >> r
+  -> forall (a:T), {{ pr|fun bm hm done crashdone => pre bm hm done crashdone a }} p >> r.
 Proof.
   unfold corr3; intros.
   eapply H; eauto.

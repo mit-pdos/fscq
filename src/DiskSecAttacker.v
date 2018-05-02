@@ -338,6 +338,25 @@ Proof.
   econstructor; eauto.
 Qed.
 
+Theorem exec_equivalent_rfailed:
+  forall T T' (p1: prog T) (p2: prog T') pr tr d1 d2 bm1 bm2 hm d1' bm1' hm',
+    exec_recover pr d1 bm1 hm p1 p2 (RFailed T T' d1' bm1' hm') tr ->
+    (forall tag, can_access pr tag -> equivalent_for tag d1 d2) ->
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1 bm2) ->
+    trace_secure pr tr ->
+    exists d2' bm2',
+      exec_recover pr d2 bm2 hm p1 p2 (RFailed T T' d2' bm2' hm') tr /\
+      (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+      (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2').
+Proof.
+  intros.
+  inversion H; subst.
+  eapply exec_equivalent_failed in H13; eauto; cleanup.
+  exists x, x0; split; eauto.
+  econstructor; eauto.
+Qed.
+
+
 
 Theorem exec_equivalent_recover:
   forall T T' (p1: prog T) (p2: prog T') pr tr d1 bm1 hm out,
@@ -349,6 +368,11 @@ Theorem exec_equivalent_recover:
     
     (exists d1' bm1' hm' r, out = RFinished T' d1' bm1' hm' r /\
      exists d2' bm2', exec_recover pr d2 bm2 hm p1 p2 (RFinished T' d2' bm2' hm' r) tr /\
+    (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
+    (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
+
+    (exists d1' bm1' hm', out = RFailed T T' d1' bm1' hm' /\
+     exists d2' bm2', exec_recover pr d2 bm2 hm p1 p2 (RFailed T T' d2' bm2' hm') tr /\
     (forall tag, can_access pr tag -> equivalent_for tag d1' d2') /\
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bm1' bm2')) \/
     
@@ -363,6 +387,11 @@ Proof.
     eapply exec_equivalent_rfinished; eauto.
     econstructor; eauto.
   }
+  { (** p1 Finished **)
+    right; left; do 3 eexists; split; eauto.
+    eapply exec_equivalent_rfailed; eauto.
+    econstructor; eauto.
+  }
   { (** p1 Crashed then p2 Finished **)
     clear IHexec_recover.
     inversion H1; subst; clear H1.
@@ -370,17 +399,18 @@ Proof.
     eapply exec_equivalent_crashed in H; eauto; cleanup.
     eapply possible_crash_equivalent in H5 as Hx; eauto; cleanup.
     eapply exec_equivalent_finished in H16 as Hp2; eauto; cleanup.
-    right; do 4 eexists; split; eauto.
+    right; right; do 4 eexists; split; eauto.
     do 2 eexists; split; eauto.
     econstructor; eauto.
     econstructor; eauto.
+    apply blockmem_equivalent_for_empty_mem.
   }
   { (** p1 Crashed then p2 Crashed **)
-    right; do 4 eexists; split; eauto.
+    right; right; do 4 eexists; split; eauto.
     apply trace_secure_app_split in H2; cleanup.
     eapply exec_equivalent_crashed in H; eauto; cleanup.
     eapply possible_crash_equivalent in H6 as Hx; eauto; cleanup.
-    specialize IHexec_recover with (1:=H2)(2:=H9)(3:=H7).
+    specialize IHexec_recover with (1:=H2)(2:=H9)(3:=@blockmem_equivalent_for_empty_mem pr).
     intuition; cleanup; try congruence.
     inversion H10; subst; clear H10.
     do 2 eexists; split; eauto.

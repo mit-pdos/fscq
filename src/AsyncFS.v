@@ -166,7 +166,6 @@ Module AFS.
      PERM:pr
      PRE:bm, hm,
        arrayS 0 disk *
-       [[ Forall (fun vs => Forall (fun tb => fst tb = Public) (vsmerge vs)) disk ]] *
        [[ cachesize <> 0 /\ data_bitmaps <> 0 /\ inode_bitmaps <> 0 ]] *
        [[ data_bitmaps <= valulen * valulen /\ inode_bitmaps <= valulen * valulen ]] *
        [[ length disk = 1 +
@@ -206,9 +205,6 @@ Module AFS.
     simpl.
     rewrite sep_star_comm.
     apply sep_star_assoc.
-    apply forall_skipn;
-    destruct disk; cleanup;
-    inversion H7; eauto.
 
     rewrite skipn_length.
     setoid_rewrite skipn_length with (n := 1).
@@ -701,13 +697,6 @@ Module AFS.
     erewrite LOG.rep_inner_blockmem_subset; eauto.
     auto.
     intuition simpl; eauto.
-    safecancel.
-    erewrite LOG.rep_inner_blockmem_subset; eauto.
-    rewrite LOG.rep_inner_hashmap_subset.
-    or_r; cancel.
-    auto.
-    eauto.
-    auto.
     intuition.
 
     step.
@@ -734,70 +723,33 @@ Module AFS.
     
     rewrite <- H1; cancel; eauto.
     unfold LOG.before_crash.
-    denote or as Hor; apply sep_star_or_distr in Hor.
-    destruct Hor as [ Hor | Hor ];
+    denote LOG.rep_inner as Hor.
     rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
-
+    erewrite LOG.rep_inner_blockmem_subset in Hor; eauto.
     rewrite LOG.rep_inner_notxn_pimpl in Hor.
     destruct_lift Hor.
     norm. cancel.
     intuition.
     pred_apply.
     safecancel.
-    erewrite LOG.rep_inner_blockmem_subset; eauto.
-    eauto.
-    eauto.
-
-    rewrite LOG.rep_inner_rollbacktxn_pimpl in Hor.
-    norm. cancel.
-    intuition.
-    pred_apply.
-    safecancel.
-    erewrite LOG.rep_inner_blockmem_subset; eauto.
-    eauto.
-    eauto.
 
     rewrite <- H1; cancel; eauto.
     unfold LOG.before_crash.
-    denote or as Hor; apply sep_star_or_distr in Hor.
-    destruct Hor as [ Hor | Hor ];
+    denote LOG.rep_inner as Hor.
     rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
-
+    erewrite LOG.rep_inner_blockmem_subset in Hor; eauto.
     rewrite LOG.rep_inner_notxn_pimpl in Hor.
     destruct_lift Hor.
     norm. cancel.
     intuition.
     pred_apply.
     safecancel.
-    erewrite LOG.rep_inner_blockmem_subset; eauto.
-    eauto.
-    eauto.
 
-    rewrite LOG.rep_inner_rollbacktxn_pimpl in Hor.
-    norm. cancel.
-    intuition.
-    pred_apply.
-    safecancel.
-    erewrite LOG.rep_inner_blockmem_subset; eauto.
-    eauto.
-    eauto.
     Unshelve. all: eauto.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (recover _) _) => apply recover_ok : prog.
 
- (* 
-  Ltac recover_ro_ok := intros;
-    repeat match goal with
-      | [ |- forall_helper _ ] => unfold forall_helper; intros; eexists; intros
-      | [ |- corr3 ?pre' _ _ ] => eapply corr3_from_corr2_rx; eauto with prog
-      | [ |- corr3 _ _ _ ] => eapply pimpl_ok3; intros
-      | [ |- corr2 _ _ ] => step
-      | [ H: crash_xform ?x =p=> ?x |- context [ crash_xform ?x ] ] => rewrite H
-      | [ H: diskIs _ _ |- _ ] => unfold diskIs in *
-      | [ |- pimpl (crash_xform _) _ ] => progress autorewrite with crash_xform
-    end.
-  *)
   Hint Extern 0 (okToUnify (LOG.idempred _ _ _ _) (LOG.idempred _ _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (LOG.after_crash _ _ _ _ _) (LOG.after_crash _ _ _ _ _)) => constructor : okToUnify.
 
@@ -874,7 +826,6 @@ Module AFS.
     safestep.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     rewrite <- H1; cancel; eauto.
     apply LOG.notxn_idempred.
     intros; rewrite <- H1; cancel; eauto.
@@ -909,7 +860,6 @@ Module AFS.
     eauto.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
@@ -1016,15 +966,12 @@ Module AFS.
     erewrite <- list2nmem_sel with (l:=DFData f)in Hx;
     [|pred_apply; cancel]; simpl in *.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
     clear H35; eapply block_mem_subset_extract_some; eauto.
     unfold tagged_block0 in *; cleanup.
     inversion H26; subst; eauto.
 
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_r; cancel.
-    clear H35; eapply block_mem_subset_extract_some; eauto.
+    simpl.
     erewrite subtree_extract in H26; eauto.
     unfold tree_pred in H26; destruct_lift H26.
     erewrite <- list2nmem_sel with (l:=dummy);
@@ -1046,7 +993,6 @@ Module AFS.
     safelightstep; eauto.
     safelightstep; eauto.
     safelightstep; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     intros; cancel.
     intros; rewrite <- H1; cancel; eauto.
@@ -1184,14 +1130,11 @@ Module AFS.
     inversion H7; eauto.
     weakstep.
     weakstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_r; cancel.
+
     cancel.
 
     weakstep.
     weakstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
     safecancel.
     
     intros; simpl.
