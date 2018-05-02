@@ -47,7 +47,7 @@ Module AFS_RECOVER.
 
 
   Theorem file_getattr_recover_ok : forall pr fsxp inum mscs,
-  {X<< ds sm pathname Fm Ftop tree f ilist frees,
+  {<< ds sm pathname Fm Ftop tree f ilist frees,
   PERM:pr     
   PRE:bm, hm,
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
@@ -60,31 +60,37 @@ Module AFS_RECOVER.
          exists d sm' n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' bm'' hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-  >>X} file_get_attr fsxp inum mscs >> recover cachesize.
+  >>} file_get_attr fsxp inum mscs >> recover cachesize.
   Proof.
     unfold forall_helper.
-    recover_ro_ok.
+    intros.
     destruct v.
+    eexists.
+    recover_ro_ok.    
     cancel.
     eauto.
     step.
 
     norm'l. unfold stars; simpl.
     cancel.
-    eassign_idempred.
-
-    simpl_idempred_l.
-    xform_norml;
-      rewrite SB.crash_xform_rep;
-      (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs);
-      try eassumption.
-    cancel.
-
-    safestep; subst. 2: eauto.
-    simpl_idempred_r.
+    eassign (fun bm' hm' => LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, l) v0 bm' hm' ✶ F_)%pred.
+    simpl; eauto.
+    
+    xform_norml.
+    rewrite LOG.idempred_idem.
+    rewrite H3.
+    safecancel.
+    rewrite SB.crash_xform_rep.
     eauto.
-    simpl_idempred_r.
+    eauto.
+
+    lightstep.
+    pred_apply.
+    erewrite Nat.min_l; eauto.
+
+    xcrash.
     rewrite <- LOG.before_crash_idempred.
+    Search crash_xform.
     cancel. auto.
 
     cancel.

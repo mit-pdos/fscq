@@ -176,39 +176,38 @@ Lemma corr3_from_corr2_recovered:
      [[ bmr c= bm' ]])
       =p=> ppre crashdone_p crash bm' hm')
   -> (forall bm' hm', crash_xform (crash bm' hm'
-      * [[ exists l, hashmap_subset l hmr hm' ]])
+     * [[ exists l, hashmap_subset l hmr hm' ]]
+     * [[ bmr c= bm' ]])
       =p=> rpre crashdone_r crash bm' hm')
-  -> (forall bm hm, crash bm hm =p=> crash Mem.empty_mem hm)
   -> {{ pr | ppre }} p
   -> {{ pr | rpre }} r
   -> crashdone_r m' bm' hm' v /\ only_public_operations tr.
 Proof.
   induction 1; intros; try congruence.
   - inversion H2; subst; clear H2.
-    edestruct H9; eauto.
+    edestruct H8; eauto.
     eapply H6; eapply crash_xform_apply; eauto.
     pred_apply; cancel.
     solve_hashmap_subset.
     split_ors; cleanup; try congruence.
     inversion H1; subst.
-    edestruct H10; eauto.
+    edestruct H9; eauto.
     
     eapply H7; eapply crash_xform_apply; eauto.
     pred_apply; cancel.
-    eauto.
     eapply exec_crashed_hashmap_subset; eauto.
+    eapply exec_crashed_blockmem_subset; eauto.
     split_ors; cleanup; try congruence.
     split; eauto.
     apply only_public_operations_app_merge; eauto.
     
   - inversion H2; subst; clear H2.
-    edestruct H9; eauto.
+    edestruct H8; eauto.
     eapply H6; eapply crash_xform_apply; eauto.
     pred_apply; cancel.
     solve_hashmap_subset.
     split_ors; cleanup; try congruence.
     edestruct IHexec_recover; eauto.
-    eapply H8; eauto.
 
     intros.
     repeat rewrite crash_xform_sep_star_dist.
@@ -216,9 +215,16 @@ Proof.
     rewrite <- H7; cancel.
     rewrite crash_xform_sep_star_dist.
     cancel.
-    rewrite crash_xform_lift_empty; cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
+    rewrite crash_xform_sep_star_dist.
+    cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
     eapply hashmap_subset_some_list_trans; eauto.
     eapply exec_crashed_hashmap_subset; eauto.
+    intros _ _.
+    eapply block_mem_subset_trans.
+    eapply exec_crashed_blockmem_subset; eauto.
+    eauto.
 
     intros.
     repeat rewrite crash_xform_sep_star_dist.
@@ -226,11 +232,21 @@ Proof.
     rewrite <- H7; cancel.
     rewrite crash_xform_sep_star_dist.
     cancel.
-    rewrite crash_xform_lift_empty; cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
+    rewrite crash_xform_sep_star_dist.
+    cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
     eapply hashmap_subset_some_list_trans; eauto.
     eapply exec_crashed_hashmap_subset; eauto.
+    intros _ _.
+    eapply block_mem_subset_trans.
+    eapply exec_crashed_blockmem_subset; eauto.
+    eauto.
+    
     split; eauto.
     apply only_public_operations_app_merge; eauto.
+    Unshelve.
+    all: unfold Mem.EqDec; apply handle_eq_dec.
 Qed.
 
 Theorem corr3_from_corr2:
@@ -239,10 +255,10 @@ Theorem corr3_from_corr2:
   -> {{ pr | rpre }} r                 
   -> {{ pr | fun bm hm done crashdone => exists crash,
         ppre done crash bm hm
-        * [[ forall bm hm, crash bm hm =p=> crash Mem.empty_mem hm ]]
         * [[ forall bm' hm',
           crash_xform (crash bm' hm'
-          * [[ exists l, hashmap_subset l hm hm' ]])
+          * [[ exists l, hashmap_subset l hm hm' ]]
+          * [[ bm c= bm' ]])
           =p=> rpre crashdone crash bm' hm' ]] }} p >> r.
 Proof.
   unfold corr3; intros.
@@ -259,13 +275,14 @@ Proof.
   - edestruct H; eauto; repeat deex; try congruence.
     split_ors; cleanup; try congruence.
     clear H H1 H2 ppre.    
-    inversion H7; subst.
+    inversion H6; subst.
     edestruct H0; eauto.
     eapply H5.
     eapply crash_xform_apply; eauto.
     pred_apply; cancel.
     eauto.
     eapply exec_crashed_hashmap_subset; eauto.
+    eapply exec_crashed_blockmem_subset; eauto.
     split_ors; cleanup; try congruence.
     split.
     right; repeat eexists; eauto.
@@ -275,9 +292,8 @@ Proof.
     split_ors; cleanup; try congruence.
     clear H H1 H2 ppre.
     edestruct corr3_from_corr2_recovered.
-    apply H7.
+    apply H6.
     all: eauto.
-    eapply H6; eauto.
 
     intros.
     repeat rewrite crash_xform_sep_star_dist.
@@ -285,9 +301,16 @@ Proof.
     rewrite <- H5; cancel.
     rewrite crash_xform_sep_star_dist.
     cancel.
-    rewrite crash_xform_lift_empty; cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
+    rewrite crash_xform_sep_star_dist.
+    cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
     eapply hashmap_subset_some_list_trans; eauto.
     eapply exec_crashed_hashmap_subset; eauto.
+    intros _ _.
+    eapply block_mem_subset_trans.
+    eapply exec_crashed_blockmem_subset; eauto.
+    eauto.
 
     intros.
     repeat rewrite crash_xform_sep_star_dist.
@@ -295,12 +318,23 @@ Proof.
     rewrite <- H5; cancel.
     rewrite crash_xform_sep_star_dist.
     cancel.
-    rewrite crash_xform_lift_empty; cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
+    rewrite crash_xform_sep_star_dist.
+    cancel.
+    repeat rewrite crash_xform_lift_empty; cancel.
     eapply hashmap_subset_some_list_trans; eauto.
     eapply exec_crashed_hashmap_subset; eauto.
+    intros _ _.
+    eapply block_mem_subset_trans.
+    eapply exec_crashed_blockmem_subset; eauto.
+    eauto.
+    
     split; eauto.
     right; repeat eexists; eauto.
     apply only_public_operations_app_merge; eauto.
+
+    Unshelve.
+    all: unfold Mem.EqDec; apply handle_eq_dec.
 Qed.
 
 Theorem corr3_from_corr2_rx :
@@ -310,11 +344,11 @@ Theorem corr3_from_corr2_rx :
   {{ pr | ppre }} Bind p rxp
   -> {{ pr | rpre }} Bind r rxr
   -> {{ pr | fun bm hm done crashdone => exists crash,
-        ppre done crash bm hm
-        * [[ forall bm hm, crash bm hm =p=> crash Mem.empty_mem hm ]]        
+        ppre done crash bm hm        
         * [[ forall bm' hm',
           crash_xform (crash bm' hm'
-          * [[ exists l, hashmap_subset l hm hm' ]])
+          * [[ exists l, hashmap_subset l hm hm' ]]
+          * [[ bm c= bm' ]])
           =p=> rpre crashdone crash bm' hm']] }} Bind p rxp >> Bind r rxr.
 Proof.
   intros.

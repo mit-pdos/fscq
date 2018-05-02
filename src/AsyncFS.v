@@ -1181,8 +1181,6 @@ Module AFS.
     eauto.
     intros; step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_r; cancel.
     intros; rewrite <- H2; cancel; eauto.
     rewrite LOG.intact_idempred; eauto.
 
@@ -1191,8 +1189,6 @@ Module AFS.
 
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
 
     rewrite <- H2; cancel; eauto.
 
@@ -1654,7 +1650,7 @@ Module AFS.
     step.
     step.
     step.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    
     rewrite <- H1; cancel; eauto.
     xcrash_solve.
     {
@@ -1677,7 +1673,7 @@ Module AFS.
     step.
     step.
     step.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred.
     xform_norm. cancel.
@@ -1739,12 +1735,14 @@ Module AFS.
     step.
     step.
     lightstep.
-    or_r; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
+    step.
     step.
     step.
     step.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    or_l; cancel.
     rewrite <- H1; cancel; eauto.
     xcrash.
     {
@@ -1756,7 +1754,9 @@ Module AFS.
     }
     step.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
+    erewrite LOG.rep_hashmap_subset; eauto.
+    or_l; cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
@@ -1766,7 +1766,9 @@ Module AFS.
     safestep.
     step.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+
+    erewrite LOG.rep_hashmap_subset; eauto.
+    or_l; cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
@@ -1822,7 +1824,8 @@ Module AFS.
     step.
     step.
     prestep; norm. cancel.
-    or_r; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    or_r; cancel.
     intuition. eauto.
     rewrite <- H1; cancel; eauto.
     rewrite <- crash_xform_idem.
@@ -1840,7 +1843,8 @@ Module AFS.
     step.
     step.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    erewrite LOG.rep_hashmap_subset; eauto.
+    or_l; cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
@@ -1880,7 +1884,7 @@ Module AFS.
     step.
     step.
     step using auto.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite <- H1; cancel; eauto.
     xcrash.
     rewrite LOG.recover_any_idempred.
@@ -1910,7 +1914,7 @@ Module AFS.
     step.
     step.
     step.
-    erewrite LOG.rep_hashmap_subset; eauto.
+
     rewrite <- H1; cancel; eauto.
     xcrash.
     rewrite LOG.recover_any_idempred.
@@ -1948,14 +1952,12 @@ Module AFS.
     step.
     step.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_l; cancel.
     rewrite <- H1; cancel; eauto.
     apply LOG.notxn_idempred.
 
     step.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
     or_r; cancel.
     rewrite <- H1; cancel; eauto.
     apply LOG.notxn_idempred.

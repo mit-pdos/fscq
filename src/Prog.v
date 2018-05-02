@@ -140,12 +140,12 @@ Inductive exec_recover (TF TR: Type)
 | XRCrashedFinished : forall pr tr' tr'' m bm hm p1 p2 m' bm' hm' m'r m'' bm'' hm'' (v: TR),
        exec pr m bm hm p1 (Crashed m' bm' hm') tr'
     -> possible_crash m' m'r
-    -> @exec_recover TR TR pr m'r empty_mem hm' p2 p2 (RFinished TR m'' bm'' hm'' v) tr''
+    -> @exec_recover TR TR pr m'r bm' hm' p2 p2 (RFinished TR m'' bm'' hm'' v) tr''
     -> exec_recover pr m bm hm p1 p2 (RRecovered TF m'' bm'' hm'' v) (tr''++tr')
 | XRCrashedRecovered : forall pr tr' tr'' m bm hm p1 p2 m' bm' hm' m'r m'' bm'' hm'' (v: TR),
        exec pr m bm hm p1 (Crashed m' bm' hm') tr'
     -> possible_crash m' m'r
-    -> @exec_recover TR TR pr m'r empty_mem hm' p2 p2 (RRecovered TR m'' bm'' hm'' v) tr''
+    -> @exec_recover TR TR pr m'r bm' hm' p2 p2 (RRecovered TR m'' bm'' hm'' v) tr''
     -> exec_recover pr m bm hm p1 p2 (RRecovered TF m'' bm'' hm'' v) (tr''++tr').
 
 
