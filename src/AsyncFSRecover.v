@@ -46,8 +46,60 @@ Module AFS_RECOVER.
   Notation MSAlloc := BFILE.MSAlloc.
 
 
+
+    Ltac eassign_idempred :=
+    match goal with
+    | [ H : crash_xform ?realcrash =p=> crash_xform ?body |- ?realcrash =p=> (_ ?bm' ?hm') ] =>
+      let t := eval pattern hm' in body in
+      match eval pattern hm' in body with
+      | ?bodyf bm' hm' =>
+        instantiate (1 := (fun bm hm => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf bm hm) ]])%pred))
+      end
+    | [ |- ?body =p=> (_ ?bm ?hm) ] =>
+      let t := eval pattern hm in body in
+      match eval pattern hm in body with
+      | ?bodyf bm hm =>
+        instantiate (1 := (fun bm' hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf bm' hm') ]])%pred));
+        try (cancel; xform_norm; cancel)
+      end
+    end.
+
+  (* Dumb and fast version of intuition *)
+  Ltac intuition' :=
+    match goal with
+    | [|- _ /\ _]  => split; intuition'
+    | [|- True] => auto
+    | _ => idtac
+  end.
+
+  (* Try to simplify a pimpl with idempred on the left side. *)
+  Ltac simpl_idempred_l :=
+    simpl;
+    repeat xform_dist;
+    repeat xform_deex_l;
+    xform_dist;
+    rewrite crash_xform_lift_empty;
+    norml; unfold stars; simpl;
+    match goal with
+    | [ H: crash_xform ?x =p=> crash_xform _ |- context[crash_xform ?x] ] => rewrite H
+    end;
+    repeat xform_dist;
+    try rewrite sep_star_or_distr;
+    rewrite LOG.crash_xform_idempred.
+
+  (* Try to simplify a pimpl with idempred on the right side. *)
+  Ltac simpl_idempred_r :=
+      (*recover_ro_ok;*)
+      (norml; unfold stars; simpl);
+      (norm'r; unfold stars; simpl);
+      try (cancel);
+      intuition';
+      repeat xform_dist;
+      repeat rewrite crash_xform_idem.
+
+
   Theorem file_getattr_recover_ok : forall pr fsxp inum mscs,
-  {<< ds sm pathname Fm Ftop tree f ilist frees,
+  {X<< ds sm pathname Fm Ftop tree f ilist frees,
   PERM:pr     
   PRE:bm, hm,
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
@@ -60,27 +112,27 @@ Module AFS_RECOVER.
          exists d sm' n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' bm'' hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-  >>} file_get_attr fsxp inum mscs >> recover cachesize.
+  >>X} file_get_attr fsxp inum mscs >> recover cachesize.
   Proof.
     unfold forall_helper.
-    intros.
+    recover_ro_ok.
     destruct v.
-    eexists.
-    recover_ro_ok.    
     cancel.
     eauto.
     step.
 
     norm'l. unfold stars; simpl.
     cancel.
-    eassign (fun bm' hm' => LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, l) v0 bm' hm' ✶ F_)%pred.
-    simpl; eauto.
-    
+    instantiate (1 := (fun bm' hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, l) v0 bm' hm' * F_) ]])%pred));
+        try (cancel; xform_norm; cancel).
+
+
+    simpl_idempred_l.  
     xform_norml.
-    rewrite LOG.idempred_idem.
+    rewrite LOG.notxn_after_crash_diskIs.
+    rewrite SB.crash_xform_rep.
     rewrite H3.
     safecancel.
-    rewrite SB.crash_xform_rep.
     eauto.
     eauto.
 
@@ -88,18 +140,12 @@ Module AFS_RECOVER.
     pred_apply.
     erewrite Nat.min_l; eauto.
 
-    xcrash.
-    rewrite <- LOG.before_crash_idempred.
-    Search crash_xform.
-    cancel. auto.
-
-    cancel.
-    safestep; subst. 2:eauto.
     simpl_idempred_r.
     eauto.
     simpl_idempred_r.
     rewrite <- LOG.before_crash_idempred.
-    cancel. auto.
+    cancel. eauto.
+    simpl; auto.
   Qed.
 
 

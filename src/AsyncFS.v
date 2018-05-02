@@ -872,56 +872,6 @@ Module AFS.
     end.
 
 
-  Ltac eassign_idempred :=
-    match goal with
-    | [ H : crash_xform ?realcrash =p=> crash_xform ?body |- ?realcrash =p=> (_ ?hm') ] =>
-      let t := eval pattern hm' in body in
-      match eval pattern hm' in body with
-      | ?bodyf hm' =>
-        instantiate (1 := (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm) ]])%pred))
-      end
-    | [ |- ?body =p=> (_ ?hm) ] =>
-      let t := eval pattern hm in body in
-      match eval pattern hm in body with
-      | ?bodyf hm =>
-        instantiate (1 := (fun hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm') ]])%pred));
-        try (cancel; xform_norm; cancel)
-      end
-    end.
-
-  (* Dumb and fast version of intuition *)
-  Ltac intuition' :=
-    match goal with
-    | [|- _ /\ _]  => split; intuition'
-    | [|- True] => auto
-    | _ => idtac
-  end.
-
-  (* Try to simplify a pimpl with idempred on the left side. *)
-  Ltac simpl_idempred_l :=
-    simpl;
-    repeat xform_dist;
-    repeat xform_deex_l;
-    xform_dist;
-    rewrite crash_xform_lift_empty;
-    norml; unfold stars; simpl;
-    match goal with
-    | [ H: crash_xform ?x =p=> crash_xform _ |- context[crash_xform ?x] ] => rewrite H
-    end;
-    repeat xform_dist;
-    try rewrite sep_star_or_distr;
-    rewrite LOG.crash_xform_idempred.
-
-  (* Try to simplify a pimpl with idempred on the right side. *)
-  Ltac simpl_idempred_r :=
-      (*recover_ro_ok;*)
-      (norml; unfold stars; simpl);
-      (norm'r; unfold stars; simpl);
-      try (cancel);
-      intuition';
-      repeat xform_dist;
-      repeat rewrite crash_xform_idem.
-
   Theorem read_fblock'_ok :
     forall fsxp inum off mscs pr,
     {< ds sm Fm Ftop tree pathname f Fd vs ilist frees,
