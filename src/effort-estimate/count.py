@@ -80,6 +80,7 @@ CATEGORIES = {
         "RecArrayUtils",
         "Word",
         "ProgMonad",
+        "ListUtils",
     ],
     "fs security": [
         "AsyncFSPost",
@@ -93,8 +94,10 @@ CATEGORIES = {
         "ExtractHaskell",
     ],
     "other": [],
-    "examples": [
+    "cp examples": [
         "CopyFile",
+    ],
+    "two exec example": [
         "TwoExecExample",
     ],
 }
