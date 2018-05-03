@@ -1198,7 +1198,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Qed.
   
 
-(*  
+ 
   (************* correctness theorems *)
   Definition init_ok :
     forall xp cs pr,
@@ -1652,7 +1652,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Hint Extern 1 ({{_|_}} Bind (submit _ _ _) _) => apply submit_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (flushall _ _) _) => apply flushall_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
-*)
+
   Theorem flushall_noop_ok:
     forall xp ms pr,
     {< F ds,
@@ -1666,7 +1666,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     XCRASH:bm', hm',
       << F, would_recover_any: xp ds bm' hm' -- >>
     >} flushall_noop xp ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold flushall_noop; intros.
     safestep.
     step.
@@ -1752,7 +1752,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (flushsync_noop _ _) _) => apply flushsync_noop_ok : prog.
-*)  Hint Extern 1 ({{_|_}} Bind (flushall_noop _ _) _) => apply flushall_noop_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (flushall_noop _ _) _) => apply flushall_noop_ok : prog.
   
   Theorem dwrite'_ok:
     forall xp a h ms pr,
@@ -1774,7 +1774,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       [[  d' = updN (fst (effective ds (length (MSTxns (fst ms))))) a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge vs)) ]]]
     >} dwrite' xp a h ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold dwrite', rep.
     step.
     erewrite dset_match_nthd_effective_fst; eauto.
@@ -1825,7 +1825,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     apply handles_valid_nested_empty.
     apply dset_match_nil.
   Qed.
-*)
+
   Hint Extern 1 ({{_|_}} Bind (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
 
   Theorem dwrite_ok:
