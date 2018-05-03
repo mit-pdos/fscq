@@ -1065,7 +1065,7 @@ Qed.
   Local Hint Extern 1 (IndRec.items_valid _ _) => match goal with
     [H : context [indrep_n_helper _ _ ?bn] |- IndRec.items_valid ?bn _] =>
     rewrite indrep_n_helper_items_valid in H; destruct_lift H end.
-
+ 
 
   (************* n-indirect program *)
 
@@ -1080,6 +1080,219 @@ Qed.
       | S indlvl' => indget indlvl' lxp (# v) (off mod divisor) ms
       end
   }.
+
+  Fixpoint indread (indlvl : nat) lxp (ir : addr) ms :=
+    If (addr_eq_dec ir 0) {
+      Ret ^(ms, repeat $0 (NIndirect ^ S indlvl))
+    } else {
+      let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;;
+      match indlvl with
+        | 0 => Ret ^(ms, indbns)
+        | S indlvl' =>
+          let N := (NIndirect ^ (S indlvl')) in
+          r <- ForEach b indbns' (rev indbns)
+            Blockmem bm
+            Hashmap hm
+            Ghost [ F Fm Fs fsl iblocks l_part l bxp crash m0 sm m ]
+            Loopvar [ ms r ]
+            Invariant
+              exists remlen, [[ remlen = length indbns' ]] *
+              LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+              [[[ m ::: Fm * indrep_n_helper Fs bxp ir iblocks *
+                        listmatch (fun x l' => indrep_n_tree indlvl' bxp (snd x) (# (fst x)) l')
+                          (combine iblocks fsl) l_part ]]] *
+              [[ r = skipn (remlen * (NIndirect ^ indlvl)) l ]]
+            OnCrash crash
+            Begin
+              let^ (ms, v) <- indread indlvl' lxp (# b) ms;;
+              Ret ^(ms, v ++ r)
+            Rof ^(ms, nil);;
+            Ret r
+      end
+    }.
+
+  
+  Fixpoint indclear_all indlvl lxp bxp root ms :=
+    If (addr_eq_dec root 0) {
+      Ret ms
+    } else {
+      let N := NIndirect ^ indlvl in
+      ms <- match indlvl with
+      | 0 => Ret ms
+      | S indlvl' =>
+        let^ (lms, indbns) <- IndRec.read lxp root 1 (BALLOCC.MSLog ms);;
+        let msn := BALLOCC.upd_memstate lms ms in
+        let^ (msn) <- ForEach bn indbns' indbns
+          Blockmem bm
+          Hashmap hm
+          Ghost [ F Fm Fs bxp crash m0 sm freelist l_part fsl ]
+          Loopvar [ msn ]
+          Invariant
+            exists m freelist',
+            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog msn) sm bm hm *
+            let n := length indbns - length indbns' in
+            [[[ m ::: Fm * listmatch (fun x l' => indrep_n_tree indlvl' bxp (snd x) (# (fst x)) l')
+                          (combine (skipn n indbns) (skipn n fsl)) (skipn n l_part)
+                         * BALLOCC.rep bxp freelist' msn ]]] *
+            [[ incl freelist freelist' ]] *
+            [[ (Fs * pred_fold_left (skipn n fsl) * BALLOCC.smrep freelist')%pred sm ]]
+          OnCrash crash
+          Begin
+            msn <- indclear_all indlvl' lxp bxp # bn msn;;
+            Ret ^(msn)
+          Rof ^(msn);;
+          Ret msn
+      end;;
+      BALLOCC.free lxp bxp root ms
+    }.    
+
+
+  
+  Definition indclear_aligned indlvl lxp bxp (indbns : list waddr) start len ms :=
+    let N := NIndirect ^ S indlvl in
+    let indbns := firstn (len / N) (skipn (start / N) indbns) in
+    ForEach bn rest indbns
+      Blockmem bm
+      Hashmap hm
+      Ghost [ F Fm Fs l_part fsl bxp crash m0 sm freelist ]
+      Loopvar [ ms ]
+      Invariant
+        exists l_part' indbns' fsl' freelist' m,
+        LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
+        let n := length indbns - length rest in
+        [[ l_part' = skipn n l_part ]] *
+        [[ indbns' = skipn n indbns ]] *
+        [[ fsl' = skipn n fsl ]] *
+        [[[ m ::: Fm * listmatch (fun x l' => indrep_n_tree indlvl bxp (snd x) # (fst x) l') (combine indbns' fsl') l_part' *
+                  BALLOCC.rep bxp freelist' ms ]]] *
+        [[ (Fs * pred_fold_left fsl' * BALLOCC.smrep freelist')%pred sm ]] *
+        [[ incl freelist freelist' ]]
+      OnCrash crash
+      Begin
+        ms <- indclear_all indlvl lxp bxp # bn ms;;
+        Ret ^(ms)
+      Rof ^(ms).
+
+
+  Definition update_block lxp bxp bn contents new ms :=
+    If (list_eq_dec waddr_eq_dec new (repeat $0 NIndirect)) {
+      ms <- BALLOCC.free lxp bxp bn ms;;
+      Ret ^(ms, 0)
+    } else {
+      If (list_eq_dec waddr_eq_dec contents new) {
+        Ret ^(ms, bn)
+      } else {
+        lms <- IndRec.write lxp bn new (BALLOCC.MSLog ms);;
+        Ret ^(BALLOCC.upd_memstate lms ms, bn)
+      }
+    }.
+                                                                         
+Lemma indrep_n_helper_valid_sm: forall Fs bxp ir l,
+  ir <> 0 ->
+  indrep_n_helper Fs bxp ir l =p=> indrep_n_helper Fs bxp ir l * (exists b, [[ Fs <=p=> ir |->b ]]).
+Proof.
+  unfold indrep_n_helper.
+  intros.
+  destruct addr_eq_dec; try congruence.
+  cancel; eauto.
+Qed.
+
+  Fixpoint indclear_from_aligned indlvl lxp bxp iblocks start len ms :=
+    (* indlvl is for each block in iblocks *)
+    If (addr_eq_dec len 0) {
+      Ret ^(ms, iblocks)
+    } else {
+      let N := (NIndirect ^ S indlvl) in
+      let ragged_bn := #(selN iblocks (start / N) $0) in
+      If (addr_eq_dec ragged_bn 0) {
+        Ret ^(ms, iblocks)
+      } else {
+        let^ (lms, indbns) <- IndRec.read lxp ragged_bn 1 (BALLOCC.MSLog ms);;
+        let ms := BALLOCC.upd_memstate lms ms in
+        match indlvl with
+        | 0 => 
+          let indbns' := upd_range indbns 0 len $0 in
+          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns' ms;;
+          Ret ^(ms, updN iblocks (start / N) $ v)
+        | S indlvl' =>
+          let N' := NIndirect ^ (S indlvl') in
+          let^ (ms) <- indclear_aligned indlvl' lxp bxp indbns 0 (len / N' * N') ms;;
+          let indbns' := upd_range indbns 0 (len / N') $0 in
+          let^ (ms, indbns'') <- indclear_from_aligned indlvl' lxp bxp indbns' (len / N' * N') (len mod N') ms;;
+          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns'' ms;;
+          Ret ^(ms, updN iblocks (start / N) $ v)
+        end
+      }
+ }.
+
+  Fixpoint indclear_to_aligned indlvl lxp bxp iblocks start ms :=
+    let N := (NIndirect ^ S indlvl) in
+    If (addr_eq_dec (start mod N) 0) {
+      Ret ^(ms, iblocks)
+    } else {
+      let ragged_bn := #(selN iblocks (start / N) $0) in
+      If (addr_eq_dec ragged_bn 0) {
+        Ret ^(ms, iblocks)
+      } else {
+        let^ (lms, indbns) <- IndRec.read lxp ragged_bn 1 (BALLOCC.MSLog ms);;
+        let ms := BALLOCC.upd_memstate lms ms in
+        match indlvl with
+        | 0 =>
+          let indbns' := upd_range indbns (start mod NIndirect) (NIndirect - (start mod NIndirect)) $0 in
+          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns' ms;;
+          Ret ^(ms, updN iblocks (start / N) $ v)
+        | S indlvl' =>
+          let N' := NIndirect ^ S indlvl' in
+          let start' := start mod N in
+          let^ (ms, indbns') <- indclear_to_aligned indlvl' lxp bxp indbns start' ms;;
+          let^ (ms) <- indclear_aligned indlvl' lxp bxp indbns' (roundup start' N') (N - (roundup start' N')) ms;;
+          let indbns'' := upd_range indbns' (divup start' N') (NIndirect - (divup start' N')) $0 in
+          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns'' ms;;
+          Ret ^(ms, updN iblocks (start / N) $ v)
+        end
+      }
+    }.
+
+  Definition indclear_multiple_blocks indlvl lxp bxp indbns start len ms :=
+    let N := NIndirect ^ S indlvl in
+    let^ (ms, indbns') <- indclear_to_aligned indlvl lxp bxp indbns start ms;;
+    let len' := len - (roundup start N - start) in
+    let start' := start + (roundup start N - start) in
+    let^ (ms) <- indclear_aligned indlvl lxp bxp indbns' start' (len' / N * N) ms;;
+    let indbns'' := upd_range indbns' (start' / N) (len' / N) $0 in
+    let start'' := start' + (len' / N * N) in
+    let len'' := len' mod N in
+    indclear_from_aligned indlvl lxp bxp indbns'' start'' len'' ms.
+
+
+  Fixpoint indclear indlvl lxp bxp (root : addr) start len ms :=
+    let N := NIndirect ^ indlvl in
+    If (addr_eq_dec root 0) {
+      Ret ^(ms, 0)
+    } else {
+      If (addr_eq_dec len 0) {
+        Ret ^(ms, root)
+      } else {
+        let^ (lms, indbns) <- IndRec.read lxp root 1 (BALLOCC.MSLog ms);;
+        let ms := BALLOCC.upd_memstate lms ms in
+        let^ (ms, indbns') <- match indlvl with
+        | 0 =>
+           Ret ^(ms, upd_range indbns start len $0)
+        | S indlvl' =>
+          If (le_lt_dec len (N - start mod N)) {
+            let^ (ms, v) <- indclear indlvl' lxp bxp #(selN indbns (start / N) $0) (start mod N) len ms;;
+            Ret ^(ms, updN indbns (start / N) $ v)
+          } else {
+            indclear_multiple_blocks indlvl' lxp bxp indbns start len ms
+          }
+        end;;
+        update_block lxp bxp root indbns indbns' ms
+      }
+    }.
+
+  (************* n-indirect specs *)
+
+
  Theorem indget_ok :
   forall indlvl lxp bxp bn off ms pr,
   {< F Fm Fs m0 sm m l,
@@ -1131,35 +1344,7 @@ Qed.
   Local Hint Extern 1 ({{_|_}} Bind (indget _ _ _ _ _ ) _) => apply indget_ok : prog.
   Opaque indget.
 
-  Fixpoint indread (indlvl : nat) lxp (ir : addr) ms :=
-    If (addr_eq_dec ir 0) {
-      Ret ^(ms, repeat $0 (NIndirect ^ S indlvl))
-    } else {
-      let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;;
-      match indlvl with
-        | 0 => Ret ^(ms, indbns)
-        | S indlvl' =>
-          let N := (NIndirect ^ (S indlvl')) in
-          r <- ForEach b indbns' (rev indbns)
-            Blockmem bm
-            Hashmap hm
-            Ghost [ F Fm Fs fsl iblocks l_part l bxp crash m0 sm m ]
-            Loopvar [ ms r ]
-            Invariant
-              exists remlen, [[ remlen = length indbns' ]] *
-              LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-              [[[ m ::: Fm * indrep_n_helper Fs bxp ir iblocks *
-                        listmatch (fun x l' => indrep_n_tree indlvl' bxp (snd x) (# (fst x)) l')
-                          (combine iblocks fsl) l_part ]]] *
-              [[ r = skipn (remlen * (NIndirect ^ indlvl)) l ]]
-            OnCrash crash
-            Begin
-              let^ (ms, v) <- indread indlvl' lxp (# b) ms;;
-              Ret ^(ms, v ++ r)
-            Rof ^(ms, nil);;
-            Ret r
-      end
-    }.
+
 
 Theorem indread_ok :
   forall indlvl lxp bxp ir ms pr,
@@ -1232,40 +1417,7 @@ Theorem indread_ok :
   Local Hint Extern 1 ({{_|_}} Bind (indread _ _ _ _ ) _) => apply indread_ok : prog.
   Opaque indread.
 
-  
-  Fixpoint indclear_all indlvl lxp bxp root ms :=
-    If (addr_eq_dec root 0) {
-      Ret ms
-    } else {
-      let N := NIndirect ^ indlvl in
-      ms <- match indlvl with
-      | 0 => Ret ms
-      | S indlvl' =>
-        let^ (lms, indbns) <- IndRec.read lxp root 1 (BALLOCC.MSLog ms);;
-        let msn := BALLOCC.upd_memstate lms ms in
-        let^ (msn) <- ForEach bn indbns' indbns
-          Blockmem bm
-          Hashmap hm
-          Ghost [ F Fm Fs bxp crash m0 sm freelist l_part fsl ]
-          Loopvar [ msn ]
-          Invariant
-            exists m freelist',
-            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog msn) sm bm hm *
-            let n := length indbns - length indbns' in
-            [[[ m ::: Fm * listmatch (fun x l' => indrep_n_tree indlvl' bxp (snd x) (# (fst x)) l')
-                          (combine (skipn n indbns) (skipn n fsl)) (skipn n l_part)
-                         * BALLOCC.rep bxp freelist' msn ]]] *
-            [[ incl freelist freelist' ]] *
-            [[ (Fs * pred_fold_left (skipn n fsl) * BALLOCC.smrep freelist')%pred sm ]]
-          OnCrash crash
-          Begin
-            msn <- indclear_all indlvl' lxp bxp # bn msn;;
-            Ret ^(msn)
-          Rof ^(msn);;
-          Ret msn
-      end;;
-      BALLOCC.free lxp bxp root ms
-    }.      
+
 
 Theorem indclear_all_ok :
     forall indlvl lxp bxp ir ms pr,
@@ -1439,32 +1591,6 @@ Theorem indclear_all_ok :
   Local Hint Extern 1 ({{_|_}} Bind (indclear_all _ _ _ _ _ ) _) => apply indclear_all_ok : prog.
 
 
-  
-  Definition indclear_aligned indlvl lxp bxp (indbns : list waddr) start len ms :=
-    let N := NIndirect ^ S indlvl in
-    let indbns := firstn (len / N) (skipn (start / N) indbns) in
-    ForEach bn rest indbns
-      Blockmem bm
-      Hashmap hm
-      Ghost [ F Fm Fs l_part fsl bxp crash m0 sm freelist ]
-      Loopvar [ ms ]
-      Invariant
-        exists l_part' indbns' fsl' freelist' m,
-        LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
-        let n := length indbns - length rest in
-        [[ l_part' = skipn n l_part ]] *
-        [[ indbns' = skipn n indbns ]] *
-        [[ fsl' = skipn n fsl ]] *
-        [[[ m ::: Fm * listmatch (fun x l' => indrep_n_tree indlvl bxp (snd x) # (fst x) l') (combine indbns' fsl') l_part' *
-                  BALLOCC.rep bxp freelist' ms ]]] *
-        [[ (Fs * pred_fold_left fsl' * BALLOCC.smrep freelist')%pred sm ]] *
-        [[ incl freelist freelist' ]]
-      OnCrash crash
-      Begin
-        ms <- indclear_all indlvl lxp bxp # bn ms;;
-        Ret ^(ms)
-      Rof ^(ms).
-
   Theorem indclear_aligned_ok :
     forall indlvl lxp bxp indbns start len ms pr,
     let N := NIndirect ^ S indlvl in
@@ -1581,30 +1707,6 @@ Theorem indclear_all_ok :
   Qed.
 
   Local Hint Extern 1 ({{_|_}} Bind (indclear_aligned _ _ _ _ _ _ _ ) _) => apply indclear_aligned_ok : prog.
-  
-
-  Definition update_block lxp bxp bn contents new ms :=
-    If (list_eq_dec waddr_eq_dec new (repeat $0 NIndirect)) {
-      ms <- BALLOCC.free lxp bxp bn ms;;
-      Ret ^(ms, 0)
-    } else {
-      If (list_eq_dec waddr_eq_dec contents new) {
-        Ret ^(ms, bn)
-      } else {
-        lms <- IndRec.write lxp bn new (BALLOCC.MSLog ms);;
-        Ret ^(BALLOCC.upd_memstate lms ms, bn)
-      }
-    }.
-                                                                         
-Lemma indrep_n_helper_valid_sm: forall Fs bxp ir l,
-  ir <> 0 ->
-  indrep_n_helper Fs bxp ir l =p=> indrep_n_helper Fs bxp ir l * (exists b, [[ Fs <=p=> ir |->b ]]).
-Proof.
-  unfold indrep_n_helper.
-  intros.
-  destruct addr_eq_dec; try congruence.
-  cancel; eauto.
-Qed.
 
 Theorem update_block_ok :
   forall lxp bxp ir indbns indbns' ms pr,
@@ -1668,35 +1770,6 @@ Theorem update_block_ok :
 
   Local Hint Extern 1 ({{_|_}} Bind (update_block _ _ _ _ _ _) _) => apply update_block_ok : prog.
 
-
-  
-  Fixpoint indclear_from_aligned indlvl lxp bxp iblocks start len ms :=
-    (* indlvl is for each block in iblocks *)
-    If (addr_eq_dec len 0) {
-      Ret ^(ms, iblocks)
-    } else {
-      let N := (NIndirect ^ S indlvl) in
-      let ragged_bn := #(selN iblocks (start / N) $0) in
-      If (addr_eq_dec ragged_bn 0) {
-        Ret ^(ms, iblocks)
-      } else {
-        let^ (lms, indbns) <- IndRec.read lxp ragged_bn 1 (BALLOCC.MSLog ms);;
-        let ms := BALLOCC.upd_memstate lms ms in
-        match indlvl with
-        | 0 => 
-          let indbns' := upd_range indbns 0 len $0 in
-          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns' ms;;
-          Ret ^(ms, updN iblocks (start / N) $ v)
-        | S indlvl' =>
-          let N' := NIndirect ^ (S indlvl') in
-          let^ (ms) <- indclear_aligned indlvl' lxp bxp indbns 0 (len / N' * N') ms;;
-          let indbns' := upd_range indbns 0 (len / N') $0 in
-          let^ (ms, indbns'') <- indclear_from_aligned indlvl' lxp bxp indbns' (len / N' * N') (len mod N') ms;;
-          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns'' ms;;
-          Ret ^(ms, updN iblocks (start / N) $ v)
-        end
-      }
- }.
                                                                          
 Lemma concat_repeat: forall T n k (x : T),
   concat (repeat (repeat x k) n) = repeat x (n * k).
@@ -1948,35 +2021,6 @@ Theorem indclear_from_aligned_ok :
   Hint Extern 1 ({{_|_}} Bind (indclear_from_aligned _ _ _ _ _ _ _) _) => apply indclear_from_aligned_ok : prog.
 
 
-  
-  
-  Fixpoint indclear_to_aligned indlvl lxp bxp iblocks start ms :=
-    let N := (NIndirect ^ S indlvl) in
-    If (addr_eq_dec (start mod N) 0) {
-      Ret ^(ms, iblocks)
-    } else {
-      let ragged_bn := #(selN iblocks (start / N) $0) in
-      If (addr_eq_dec ragged_bn 0) {
-        Ret ^(ms, iblocks)
-      } else {
-        let^ (lms, indbns) <- IndRec.read lxp ragged_bn 1 (BALLOCC.MSLog ms);;
-        let ms := BALLOCC.upd_memstate lms ms in
-        match indlvl with
-        | 0 =>
-          let indbns' := upd_range indbns (start mod NIndirect) (NIndirect - (start mod NIndirect)) $0 in
-          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns' ms;;
-          Ret ^(ms, updN iblocks (start / N) $ v)
-        | S indlvl' =>
-          let N' := NIndirect ^ S indlvl' in
-          let start' := start mod N in
-          let^ (ms, indbns') <- indclear_to_aligned indlvl' lxp bxp indbns start' ms;;
-          let^ (ms) <- indclear_aligned indlvl' lxp bxp indbns' (roundup start' N') (N - (roundup start' N')) ms;;
-          let indbns'' := upd_range indbns' (divup start' N') (NIndirect - (divup start' N')) $0 in
-          let^ (ms, v) <- update_block lxp bxp ragged_bn indbns indbns'' ms;;
-          Ret ^(ms, updN iblocks (start / N) $ v)
-        end
-      }
-    }.
 (** HERE **)
   Theorem indclear_to_aligned_ok :
     forall indlvl lxp bxp indbns start ms pr,
@@ -2267,16 +2311,7 @@ Theorem indclear_from_aligned_ok :
 
   Local Hint Extern 1 ({{_|_}} Bind (indclear_to_aligned _ _ _ _ _ _) _) => apply indclear_to_aligned_ok : prog.
 
-  Definition indclear_multiple_blocks indlvl lxp bxp indbns start len ms :=
-    let N := NIndirect ^ S indlvl in
-    let^ (ms, indbns') <- indclear_to_aligned indlvl lxp bxp indbns start ms;;
-    let len' := len - (roundup start N - start) in
-    let start' := start + (roundup start N - start) in
-    let^ (ms) <- indclear_aligned indlvl lxp bxp indbns' start' (len' / N * N) ms;;
-    let indbns'' := upd_range indbns' (start' / N) (len' / N) $0 in
-    let start'' := start' + (len' / N * N) in
-    let len'' := len' mod N in
-    indclear_from_aligned indlvl lxp bxp indbns'' start'' len'' ms.
+
 
   Theorem indclear_multiple_blocks_ok :
     forall indlvl lxp bxp indbns start len ms pr,
@@ -2302,7 +2337,7 @@ Theorem indclear_from_aligned_ok :
            [[ incl freelist freelist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} indclear_multiple_blocks indlvl lxp bxp indbns start len ms.
-  Proof. 
+  Proof.
     intros. subst N.
     unfold indclear_multiple_blocks.
     step.
@@ -2363,30 +2398,6 @@ Theorem indclear_from_aligned_ok :
 
   Local Hint Extern 1 ({{_|_}} Bind (indclear_multiple_blocks _ _ _ _ _ _ _) _) => apply indclear_multiple_blocks_ok : prog.
 
-  Fixpoint indclear indlvl lxp bxp (root : addr) start len ms :=
-    let N := NIndirect ^ indlvl in
-    If (addr_eq_dec root 0) {
-      Ret ^(ms, 0)
-    } else {
-      If (addr_eq_dec len 0) {
-        Ret ^(ms, root)
-      } else {
-        let^ (lms, indbns) <- IndRec.read lxp root 1 (BALLOCC.MSLog ms);;
-        let ms := BALLOCC.upd_memstate lms ms in
-        let^ (ms, indbns') <- match indlvl with
-        | 0 =>
-           Ret ^(ms, upd_range indbns start len $0)
-        | S indlvl' =>
-          If (le_lt_dec len (N - start mod N)) {
-            let^ (ms, v) <- indclear indlvl' lxp bxp #(selN indbns (start / N) $0) (start mod N) len ms;;
-            Ret ^(ms, updN indbns (start / N) $ v)
-          } else {
-            indclear_multiple_blocks indlvl' lxp bxp indbns start len ms
-          }
-        end;;
-        update_block lxp bxp root indbns indbns' ms
-      }
-    }.
 
  Theorem indclear_ok :
     forall indlvl lxp bxp ir start len ms pr,
@@ -2417,19 +2428,16 @@ Theorem indclear_from_aligned_ok :
         step.
         step.
 
-        or_l; cancel.
         rewrite indrep_n_helper_0 in *. destruct_lifts.
         autorewrite with lists; auto.
         - hoare.
 
-          or_l; cancel.
         - step.
           rewrite indrep_n_helper_valid by auto; eassign l; cancel.
           rewrite firstn_oob by indrep_n_tree_bound.
           step.
           prestep; norm.
-          unfold stars; simpl; eassign F_;
-
+          unfold stars; simpl; eassign F_; cancel.
           intuition eauto.
           pred_apply; cancel.
           prestep; norm.
@@ -2445,26 +2453,18 @@ Theorem indclear_from_aligned_ok :
           rewrite <- H1; cancel; eauto.
       + cbn [indclear].
         step. step. step.
-
-        or_l; cancel.
         {
-          pred_apply.
           denote indrep_n_helper as Hi.
           rewrite indrep_n_helper_0 in Hi. destruct_lift Hi.
           rewrite listmatch_indrep_n_tree_empty'' in H0.
           destruct_lift H0.
           erewrite concat_hom_repeat by eauto using Forall_repeat.
-          autorewrite with lists. cancel.
-          rewrite concat_repeat; auto.
+          autorewrite with lists; auto.
           rewrite repeat_length in *; auto.
         }
         step.
         step.
         step.
-
-        or_l; cancel.
-        pred_apply; cancel.
-
         step.
         { rewrite indrep_n_helper_valid by auto. eassign dummy; cancel. }
         rewrite indrep_n_helper_length_piff in *. destruct_lifts.
@@ -2485,7 +2485,7 @@ Theorem indclear_from_aligned_ok :
           instantiate (1 := emp). cancel.
           safestep; rewrite ?natToWord_wordToNat, ?updN_selN_eq.
           * prestep. norm.
-
+            cancel.
             intuition eauto.
             pred_apply; cancel.
             pred_apply; cancel.
@@ -2541,7 +2541,7 @@ Theorem indclear_from_aligned_ok :
             rewrite <- H1; cancel; eauto.
           * cancel.
           * prestep. norm.
-
+            cancel.
             intuition auto.
             pred_apply. norm; intuition.
             unfold stars; simpl.
@@ -2720,7 +2720,6 @@ Theorem indclear_from_aligned_ok :
     step.
     step.
 
-    pred_apply.
     rewrite vsupsyn_range_synced_list; auto.
     erewrite <- extract_blocks_subset_trans; eauto.
     rewrite H16.
@@ -2769,7 +2768,7 @@ Theorem indclear_from_aligned_ok :
     step.
     step.
 
-    pred_apply; rewrite natToWord_wordToNat. rewrite updN_selN_eq. cancel.
+    rewrite natToWord_wordToNat. rewrite updN_selN_eq. cancel.
 
     step.
     unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence.
@@ -2870,7 +2869,6 @@ Theorem indput_ok :
           * intuition.
             step.
 
-            or_l; cancel.
             cancel.
       - step.
         prestep; norm; try congruence.
@@ -2879,7 +2877,7 @@ Theorem indput_ok :
         
         step.
         prestep; norm.
-        unfold stars; simpl; eassign F_;
+        unfold stars; simpl; eassign F_; cancel.
 
         intuition.
         eauto.
@@ -2898,7 +2896,7 @@ Theorem indput_ok :
         - step. prestep. norm; try congruence. 
           cancel. intuition auto.
           prestep; norm.
-          unfold stars; simpl; eassign F_;
+          unfold stars; simpl; eassign F_; cancel.
 
           intuition.
           { rewrite repeat_selN'. pred_apply. cancel.
@@ -2915,14 +2913,9 @@ Theorem indput_ok :
           step.
           step.
           step.
-
-          or_l; cancel.
-
           step.
           step.
           step.
-
-          or_l; cancel.
           step.
           step.
           prestep; norm.
@@ -3013,7 +3006,6 @@ Theorem indput_ok :
             repeat split.
             step.
 
-            or_l; cancel.
             cancel.
           * step.
           * rewrite <- H1; cancel; eauto.
@@ -3024,7 +3016,6 @@ Theorem indput_ok :
             repeat split.
             step.
 
-            or_l; cancel.
             cancel.
         - prestep; norm.
           cancel.
@@ -3063,10 +3054,9 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-
+            unfold stars; simpl. cancel.
             or_l; cancel.
             repeat (split; eauto).
-     
             prestep; norm.
           }
           
@@ -3077,8 +3067,7 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-
-            all: try (or_l; cancel).
+            all: try (cancel; or_l; cancel).
             all: repeat (split; eauto).
           }
 
@@ -3091,7 +3080,7 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-
+            cancel.
             or_r; cancel.
             match goal with [H : context [indrep_n_helper] |- _] =>
                pose proof H; rewrite indrep_n_helper_length_piff,
@@ -3120,7 +3109,7 @@ Theorem indput_ok :
             repeat split.
             2: cancel.
             prestep; norm.
-
+            cancel.
             or_r. safecancel.
             rewrite combine_updN. rewrite listmatch_updN_removeN. cbn [fst snd].
             rewrite wordToNat_natToWord_idempotent' by auto.
@@ -3445,7 +3434,6 @@ Theorem indput_ok :
     all : repeat rewrite skipn_selN.
     all : repeat (congruence || omega || f_equal).
     
-    step.
     step.
     all : try substl l.
     all : repeat rewrite selN_app2 by omega.
