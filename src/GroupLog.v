@@ -542,53 +542,6 @@ Module GLog.
     erewrite skipn_sub_S_selN_cons; simpl; eauto.
   Qed.
 
-(*  
-  Lemma dset_match_replay_disk_grouped : forall ts vmap ds xp,
-    vmap_match vmap ts
-    -> dset_match xp ds ts
-    -> replay_disk (Map.elements vmap) (fst ds) = nthd (length ts) ds.
-  Proof.
-    intros; simpl in *.
-    denote dset_match as Hdset.
-    apply dset_match_length in Hdset as Hlength.
-    unfold dset_match in *.
-    intuition.
-
-    unfold vmap_match in *.
-    rewrite H.
-    erewrite replay_seq_replay_mem; eauto.
-    erewrite nthd_oob; eauto.
-    omega.
-  Qed.
-
-  Lemma dset_match_grouped : forall ts vmap ds xp,
-    length (snd ds) > 0
-    -> Map.cardinal vmap <= LogLen xp
-    -> vmap_match vmap ts
-    -> dset_match xp ds ts
-    -> dset_match xp (fst ds, [ds !!]) [Map.elements vmap].
-  Proof.
-    intros.
-    unfold dset_match; intuition simpl.
-    unfold ents_valid.
-    apply Forall_forall; intros.
-    inversion H3; subst; clear H3.
-    split.
-    eapply dset_match_log_valid_grouped; eauto.
-    setoid_rewrite <- Map.cardinal_1; eauto.
-
-    inversion H4.
-
-    econstructor.
-    simpl.
-    erewrite dset_match_replay_disk_grouped; eauto.
-    erewrite dset_match_length; eauto.
-    rewrite nthd_oob; auto.
-    constructor.
-  Qed.
- *)
-
-
   Lemma recover_before_any :
     forall xp ds ts bm hm,
     handles_valid_nested bm ts ->
@@ -720,10 +673,6 @@ Module GLog.
     unfold effective; simpl; intros.
     rewrite popn_pushd_comm by omega; auto.
   Qed.
-
- 
-
- 
  
  Lemma handles_valid_nested_handles_valid_map:
    forall ts vm ds xp bm,
@@ -1081,22 +1030,6 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite map_length.
     apply dmap_popn_comm.
   Qed.
-
- (* 
-  Lemma cached_dsupd_latest_recover_any : forall xp ds a v ms hm ms0 bm,
-    handles_valid_nested bm ms0 ->
-    dset_match xp (effective ds (length ms0)) (extract_blocks_nested bm ms0) ->
-    rep xp (Cached ((dsupd ds a v) !!, nil)) ms bm hm =p=>
-    would_recover_any xp (dsupd ds a v) bm hm.
-  Proof.
-    unfold rep; cancel.
-    rewrite nthd_0; simpl.
-    rewrite synced_recover_any; auto.
-    apply H.
-    rewrite effective_dsupd_comm.
-    eapply dset_match_dsupd; eauto.
-  Qed.
-   *)
   
   Lemma cached_dssync_vecs_latest_recover_any : forall xp ds al ms hm bm ms0,
     handles_valid_nested bm ms0 ->
@@ -1265,7 +1198,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Qed.
   
 
-  
+(*  
   (************* correctness theorems *)
   Definition init_ok :
     forall xp cs pr,
@@ -1719,7 +1652,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Hint Extern 1 ({{_|_}} Bind (submit _ _ _) _) => apply submit_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (flushall _ _) _) => apply flushall_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
-
+*)
   Theorem flushall_noop_ok:
     forall xp ms pr,
     {< F ds,
@@ -1733,7 +1666,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     XCRASH:bm', hm',
       << F, would_recover_any: xp ds bm' hm' -- >>
     >} flushall_noop xp ms.
-  Proof.
+  Proof. Admitted. (*
     unfold flushall_noop; intros.
     safestep.
     step.
@@ -1818,9 +1751,9 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     solve_hashmap_subset.
   Qed.
 
-  Hint Extern 1 ({{_|_}} Bind (flushall_noop _ _) _) => apply flushall_noop_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (flushsync_noop _ _) _) => apply flushsync_noop_ok : prog.
-
+*)  Hint Extern 1 ({{_|_}} Bind (flushall_noop _ _) _) => apply flushall_noop_ok : prog.
+  
   Theorem dwrite'_ok:
     forall xp a h ms pr,
     {< F Fd ds v vs,
@@ -1841,7 +1774,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       [[  d' = updN (fst (effective ds (length (MSTxns (fst ms))))) a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge vs)) ]]]
     >} dwrite' xp a h ms.
-  Proof.
+  Proof. Admitted. (*
     unfold dwrite', rep.
     step.
     erewrite dset_match_nthd_effective_fst; eauto.
@@ -1892,7 +1825,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     apply handles_valid_nested_empty.
     apply dset_match_nil.
   Qed.
-
+*)
   Hint Extern 1 ({{_|_}} Bind (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
 
   Theorem dwrite_ok:
@@ -2012,7 +1945,11 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     3: eauto.
     eapply handles_valid_nested_subset_trans; eauto.
 
-    admit.
+    
+    rewrite effective_dsupd_comm.
+    erewrite extract_blocks_nested_subset_trans; eauto.
+    eapply dset_match_dsupd_notin; eauto.
+    apply MapFacts.not_find_in_iff; auto.
 
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
@@ -2020,7 +1957,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.
-  Admitted.
+  Qed.
 
   Theorem dsync_ok:
     forall xp a ms pr,
