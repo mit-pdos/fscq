@@ -1328,7 +1328,7 @@ Qed.
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} indget indlvl lxp bn off ms.
-  Proof. Admitted. (*
+  Proof. 
     induction indlvl; simpl.
     + repeat safestep; autorewrite with core; eauto.
 
@@ -1380,7 +1380,7 @@ Theorem indread_ok :
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
     >} indread indlvl lxp ir ms.
-  Proof. Admitted. (*
+  Proof. 
     induction indlvl; simpl.
     + hoare.
 
@@ -1434,10 +1434,9 @@ Theorem indread_ok :
     all : eauto.
     exact tt.
   Qed.
-*)
+
   Local Hint Extern 1 ({{_|_}} Bind (indread _ _ _ _ ) _) => apply indread_ok : prog.
   Opaque indread.
-(*
 
 
 Theorem indclear_all_ok :
@@ -2418,7 +2417,7 @@ Theorem indclear_from_aligned_ok :
   Qed.
 
   Local Hint Extern 1 ({{_|_}} Bind (indclear_multiple_blocks _ _ _ _ _ _ _) _) => apply indclear_multiple_blocks_ok : prog.
-*)
+
 
  Theorem indclear_ok :
     forall indlvl lxp bxp ir start len ms pr,
@@ -2440,7 +2439,7 @@ Theorem indclear_from_aligned_ok :
            ([[ ir = ir' ]] \/ [[ ir' = 0 ]])
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} indclear indlvl lxp bxp ir start len ms.
-    Proof. Admitted. (*
+    Proof. 
       induction indlvl.
       + cbn -[Nat.div].
         prestep. norml.
@@ -2651,10 +2650,10 @@ Theorem indclear_from_aligned_ok :
     all : eauto.
     all: try constructor; solve [exact $0 | exact emp].
   Qed.
-*)
+
   Local Hint Extern 1 ({{_|_}} Bind (indclear _ _ _ _ _ _ _ ) _) => apply indclear_ok : prog.
   Opaque indclear.
-(*
+
 
 
  Theorem indput_get_blocks_ok :
@@ -2787,7 +2786,7 @@ Theorem indclear_from_aligned_ok :
 
   
   Local Hint Extern 1 ({{_|_}} Bind (indput_upd_if_necessary _ _ _ _ _ _) _) => apply indput_upd_if_necessary_ok : prog.
-*)
+
   Fixpoint indput indlvl lxp bxp root off bn ms :=
     let N := NIndirect ^ indlvl in
     let is_alloc := (addr_eq_dec root 0) in
@@ -2850,7 +2849,7 @@ Theorem indput_ok :
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]])
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} indput indlvl lxp bxp ir off bn ms.
-    Proof. Admitted. (*
+    Proof. 
       induction indlvl; intros; simpl.
       + step.
       - step.
@@ -3139,7 +3138,7 @@ Theorem indput_ok :
     Grab Existential Variables. all : eauto.
         all: solve [exact nil | exact valuset0].
   Qed.
-*)
+
   Local Hint Extern 0 ({{_|_}} Bind (indput _ _ _ _ _ _ _) _) => apply indput_ok : prog.
   Opaque indput.
 
@@ -3406,7 +3405,7 @@ Theorem indput_ok :
         }
       }
     }.
-(*
+
   Theorem get_ok :
     forall lxp bxp ir off ms pr,
     {< F Fm IFs m0 sm m l,
@@ -3496,7 +3495,7 @@ Theorem indput_ok :
     Unshelve.
     all: eauto.
   Qed.
-*)
+
 
   Lemma indrec_ptsto_pimpl : forall ibn indrec,
     IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
@@ -3556,7 +3555,7 @@ Theorem indput_ok :
            [[ incl freelist freelist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} indshrink_helper indlvl lxp bxp bn nl ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold indshrink_helper.
     prestep. norml.
     indrep_n_tree_extract_lengths.
@@ -3566,10 +3565,10 @@ Theorem indput_ok :
 
     replace (_ - (_ - _)) with 0 by omega. rewrite upd_range_0. auto.
   Qed.
-*)
+
 
   Local Hint Extern 1 ({{_|_}} Bind (indshrink_helper _ _ _ _ _ _ ) _) => apply indshrink_helper_ok : prog.
-(*
+
   Theorem indshrink_ok :
     forall lxp bxp ir nl ms pr,
     {< F Fm Fs IFs0 IFs1 IFs2 m0 sm m l0 l1 l2 freelist,
@@ -3762,7 +3761,7 @@ Theorem indput_ok :
     Grab Existential Variables.
     all: eauto.
   Qed.
-*)
+
 
 
   Theorem indgrow_ok :
@@ -3788,7 +3787,7 @@ Theorem indput_ok :
            [[ incl freelist' freelist ]])
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} indgrow lxp bxp ir off bn ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold indgrow. prestep. norml.
     indrep_n_tree_extract_lengths.
     prestep.
@@ -3865,7 +3864,7 @@ Theorem indput_ok :
     end.
     repeat rewrite updN_app2 by omega; try rewrite updN_app1 by omega; congruence.
   Qed.
- *) 
+
        
   Local Hint Extern 1 ({{_|_}} Bind (indgrow _ _ _ _ _ _) _) => apply indgrow_ok : prog.
 
