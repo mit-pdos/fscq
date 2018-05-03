@@ -2238,9 +2238,11 @@ Lemma extend_crash_helper_full_synced:
     Forall entry_valid new ->
     handles_valid bm (map ent_handle new) ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
-((Desc.array_rep xp (ndesc_log old)
-      (Desc.Synced (addr_tags (ndesc_log new))
-         (map ent_addr (padded_log_gen dummy_handle new)))
+((((Desc.array_rep xp (ndesc_log old)
+        (Desc.Synced (addr_tags (ndesc_log new))
+           (map ent_addr (padded_log_gen dummy_handle new)))
+      ✶ Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log old)) (map ent_addr old)))
+     ✶ Data.array_rep xp 0 (Data.Synced (tags_nonzero old) (vals_nonzero old)))
     ✶ Desc.avail_rep xp
         (ndesc_log old + divup (length (map ent_addr new)) DescSig.items_per_val)
         (LogDescLen xp - ndesc_log old - ndesc_log new))
@@ -2254,28 +2256,53 @@ Lemma extend_crash_helper_full_synced:
   ✶ Data.array_rep xp (ndata_log old)
       (Data.Synced (map fst (extract_blocks bm (map ent_handle new)))
          (map ent_valu (combine (map fst new) (extract_blocks bm (map ent_handle new)))))
-  ⇨⇨ Desc.avail_rep xp (ndesc_log old) (LogDescLen xp - ndesc_log old)
-     ✶ Data.avail_rep xp (ndata_log old) (LogLen xp - ndata_log old).
+  ⇨⇨ ((Desc.array_rep xp 0
+         (Desc.Synced (addr_tags (ndesc_log (padded_log old) + ndesc_list new))
+            (map ent_addr
+               (padded_log old ++
+                combine (map fst new) (extract_blocks bm (map ent_handle new)))))
+       ✶ Data.array_rep xp 0
+           (Data.Synced
+              (tags_nonzero
+                 (padded_log old ++
+                  combine (map fst new) (extract_blocks bm (map ent_handle new))))
+              (vals_nonzero
+                 (padded_log old ++
+                  combine (map fst new) (extract_blocks bm (map ent_handle new))))))
+      ✶ Desc.avail_rep xp (ndesc_log (padded_log old) + ndesc_list new)
+          (LogDescLen xp - (ndesc_log (padded_log old) + ndesc_list new)))
+     ✶ Data.avail_rep xp (ndata_log (padded_log old) + ndata_log new)
+         (LogLen xp - (ndata_log (padded_log old) + ndata_log new)).
 Proof.
   intros.
-  rewrite Desc.array_rep_avail, Data.array_rep_avail.
-  unfold Data.nr_blocks, Desc.nr_blocks.
-  repeat rewrite map_length; repeat rewrite padded_log_length.
+  repeat rewrite map_app; repeat rewrite addr_tags_app.
+  repeat rewrite vals_nonzero_app, tags_nonzero_app.
+  rewrite <- Data.array_rep_synced_app, <- Desc.array_rep_synced_app; simpl.
+  unfold padded_log; rewrite tags_nonzero_padded_log, vals_nonzero_padded_log; cancel.
+  rewrite ndesc_log_padded_log; cancel.
+  repeat rewrite desc_padding_synced_piff.
+  cancel.
+  unfold ndesc_list.
+  repeat rewrite map_length; repeat rewrite padded_log_length; cancel.
+  unfold ndesc_log at 5; repeat rewrite Nat.sub_add_distr; cancel.
+  repeat rewrite ndata_log_padded_log.
   unfold roundup; rewrite divup_divup.
-  rewrite  Desc.avail_rep_merge; eauto.
+  unfold ndata_log at 6.
+  rewrite nonzero_addrs_entry_valid; eauto.
+  rewrite combine_length_eq.
+  rewrite map_length, divup_1.
   cancel.
-  rewrite Data.avail_rep_merge; eauto.
-  apply helper_loglen_desc_valid_extend in H1 as Hx; auto.
-  unfold ndesc_log at 1 in Hx.
-  rewrite combine_length_eq by
-      (apply length_map_fst_extract_blocks_eq; eauto).
-  rewrite map_length.
-  rewrite Hx.
-  
-  rewrite divup_1.
-  rewrite helper_loglen_data_valid_extend_entry_valid; auto.
-  cancel.
-  eauto.  
+  rewrite map_ent_addr_combine_eq; auto.
+  unfold ndesc_log at 1 2; cancel.
+  rewrite vals_nonzero_combine_entry_valid; auto.
+  rewrite tags_nonzero_combine_entry_valid; auto.
+  unfold ndata_log.
+  rewrite divup_1, vals_nonzero_addrs; eauto.
+  apply length_map_fst_extract_blocks_eq; eauto.
+  eauto.
+  unfold padded_log; rewrite map_length, padded_log_length.
+  unfold roundup; eauto.
+  rewrite Nat.mul_1_r; eauto.
 Qed.
 
 
@@ -2484,22 +2511,37 @@ Qed.
       solve [unfold false_pred; cancel].
 
       rewrite <- H1; cancel.
+      repeat rewrite ndesc_log_app, ndata_log_app.
       repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       cancel.
       or_r; cancel.
       apply extend_crash_helper_full_synced; auto.
+      apply Forall_append; eauto.
+      apply addr_valid_padded; auto.
+      apply ent_valid_addr_valid.
       apply Forall_entry_valid_combine; auto.
+      apply Forall_entry_valid_combine; auto.
+      unfold padded_log; rewrite padded_log_length.
+      unfold roundup; rewrite divup_divup; auto.
       solve_hashmap_subset.
       solve_blockmem_subset.
 
       rewrite <- H1; cancel.
+      repeat rewrite ndesc_log_app, ndata_log_app.
       repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       cancel.
       or_r; cancel.
       apply extend_crash_helper_full_synced; auto.
+      apply Forall_append; eauto.
+      apply addr_valid_padded; auto.
+      apply ent_valid_addr_valid.
       apply Forall_entry_valid_combine; auto.
+      apply Forall_entry_valid_combine; auto.
+      unfold padded_log; rewrite padded_log_length.
+      unfold roundup; rewrite divup_divup; auto.
       solve_hashmap_subset.
       solve_blockmem_subset.
+
 
       rewrite <- H1; cancel.
       solve_hashmap_subset.
@@ -2507,11 +2549,18 @@ Qed.
       repeat (eapply block_mem_subset_trans; eauto).
       xcrash.
       eassign cs'; eassign d'4; cancel.
+     repeat rewrite ndesc_log_app, ndata_log_app.
       repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       or_r; cancel.
-      
       apply extend_crash_helper_full_synced; auto.
+      apply Forall_append; eauto.
+      apply addr_valid_padded; auto.
+      apply ent_valid_addr_valid.
       apply Forall_entry_valid_combine; auto.
+      apply Forall_entry_valid_combine; auto.
+      unfold padded_log; rewrite padded_log_length.
+      unfold roundup; rewrite divup_divup; auto.
+
       
       (* Crash 2 *)
       rewrite <- H1; cancel.
@@ -2520,11 +2569,17 @@ Qed.
       repeat (eapply block_mem_subset_trans; eauto).
       xcrash.
       eassign x; eassign x0; cancel.
+           repeat rewrite ndesc_log_app, ndata_log_app.
       repeat rewrite ndesc_log_combine_eq, ndata_log_combine_eq; auto.
       or_r; cancel.
-      
       apply extend_crash_helper_full_synced; auto.
+      apply Forall_append; eauto.
+      apply addr_valid_padded; auto.
+      apply ent_valid_addr_valid.
       apply Forall_entry_valid_combine; auto.
+      apply Forall_entry_valid_combine; auto.
+      unfold padded_log; rewrite padded_log_length.
+      unfold roundup; rewrite divup_divup; auto.
 
 
       (* before writes *)

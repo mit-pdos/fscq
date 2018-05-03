@@ -282,13 +282,12 @@ Set Implicit Arguments.
       eapply exec_same_except_finished in H17 as Hp2; eauto; cleanup.
       right; right; do 6 eexists; repeat split; eauto.
       repeat (econstructor; eauto).
-      apply blockmem_same_except_refl.
     }
     { (** p1 crashed then p2 crashed **)
       apply only_public_operations_app in H4; cleanup.
       eapply exec_same_except_crashed in H; eauto; cleanup.
       eapply possible_crash_same_except in H7 as Hx; eauto; cleanup.
-      specialize IHexec_recover with (1:=H10)(2:=@blockmem_same_except_refl t empty_mem)
+      specialize IHexec_recover with (1:=H10)(2:=H8)
                                      (3:=H4)(4:=H5).
       repeat split_ors; cleanup; try congruence.
       inversion H11; subst; clear H11.

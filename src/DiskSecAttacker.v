@@ -403,14 +403,13 @@ Proof.
     do 2 eexists; split; eauto.
     econstructor; eauto.
     econstructor; eauto.
-    apply blockmem_equivalent_for_empty_mem.
   }
   { (** p1 Crashed then p2 Crashed **)
     right; right; do 4 eexists; split; eauto.
     apply trace_secure_app_split in H2; cleanup.
     eapply exec_equivalent_crashed in H; eauto; cleanup.
     eapply possible_crash_equivalent in H6 as Hx; eauto; cleanup.
-    specialize IHexec_recover with (1:=H2)(2:=H9)(3:=@blockmem_equivalent_for_empty_mem pr).
+    specialize IHexec_recover with (1:=H2)(2:=H9)(3:=H7).
     intuition; cleanup; try congruence.
     inversion H10; subst; clear H10.
     do 2 eexists; split; eauto.
