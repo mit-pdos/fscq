@@ -1361,7 +1361,7 @@ Qed.
       all: eauto.
       exact ($0, emp).
   Qed.
-*)
+
   Local Hint Extern 1 ({{_|_}} Bind (indget _ _ _ _ _ ) _) => apply indget_ok : prog.
   Opaque indget.
 
