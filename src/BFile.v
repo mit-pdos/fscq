@@ -1666,7 +1666,7 @@ Qed.
     cancel.
   Qed.
   
-
+(*
   Lemma xform_file_match : forall f ino,
     crash_xform (file_match f ino) =p=> 
       exists f', [[ file_crash f f' ]] * file_match f' ino.
@@ -1720,8 +1720,8 @@ Qed.
     apply Forall2_cons; auto.
     simpl; omega.
   Qed.
-*)
-  (*
+
+ 
   Lemma xform_rep : forall bxp ixp flist ilist IFs frees allocc  mscache icache,
     crash_xform (rep bxp IFs ixp flist ilist frees allocc mscache icache) =p=>
       exists flist', [[ flist_crash flist flist' ]] *
@@ -1863,7 +1863,7 @@ Qed.
     eapply possible_crash_list_length in H1.
     destruct vs; simpl in *; eauto.
     omega.
-  Qed. 
+  Qed. *)
 
   Lemma freepred_bfile0 : freepred bfile0.
   Proof.
