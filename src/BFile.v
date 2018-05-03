@@ -134,7 +134,7 @@ Module BFILE.
     | None => dblocks
     | Some dirty =>
       let dirty' := (fold_right SS.remove dirty bns) in
-      Map.add inum dirty dblocks
+      Map.add inum dirty' dblocks
     end.
 
   Definition clear_dirty inum (dblocks : DBlocks_type) :=
@@ -1666,7 +1666,7 @@ Qed.
     cancel.
   Qed.
   
-(*
+
   Lemma xform_file_match : forall f ino,
     crash_xform (file_match f ino) =p=> 
       exists f', [[ file_crash f f' ]] * file_match f' ino.
@@ -1863,7 +1863,7 @@ Qed.
     eapply possible_crash_list_length in H1.
     destruct vs; simpl in *; eauto.
     omega.
-  Qed. *)
+  Qed. 
 
   Lemma freepred_bfile0 : freepred bfile0.
   Proof.
@@ -1874,7 +1874,7 @@ Qed.
 
  (*** specification ***)
 
-  
+
   Theorem getowner_ok :
     forall lxp bxp ixp inum ms pr,
     {< F Fm Fi m0 sm m flist ilist allocc frees f,
@@ -2765,6 +2765,193 @@ Qed.
   Local Hint Extern 0 (okToUnify (listmatch _ _ (?f _ _)) (listmatch _ _ (?f _ _))) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (listmatch _ (?f _ _) _) (listmatch _ (?f _ _) _)) => constructor : okToUnify.
 
+            Lemma in_nodup_firstn_not_skipn: forall T (l : list T) n x,
+  NoDup l ->
+  In x (firstn n l) -> ~In x (skipn n l).
+Proof.
+  intros.
+  erewrite <- firstn_skipn in H.
+  eapply not_In_NoDup_app; eauto.
+Qed.
+
+      Lemma in_nodup_split : forall T (a : T) l1 l2,
+  In a (l1 ++ l2) -> NoDup (l1 ++ l2) -> ~ In a l2 -> In a l1.
+Proof.
+  induction l1; simpl; intros; eauto.
+  intuition; subst.
+  inversion H0; subst; eauto.
+Qed.
+      
+      Lemma in_nodup_not_skipn_firstn: forall T (l : list T) n x,
+  NoDup l -> In x l ->
+  ~In x (skipn n l) -> In x (firstn n l).
+Proof.
+  intros.
+  eapply in_nodup_split; rewrite ?firstn_skipn; eauto.
+Qed. 
+      
+       Lemma smrep_single_helper_split_tail: forall inum ino ino' dblocks n,
+    INODE.IBlocks ino' = firstn n (INODE.IBlocks ino) ->
+    NoDup (map (@wordToNat addrlen) (INODE.IBlocks ino)) ->
+    let removed := map (@wordToNat addrlen) (skipn n (INODE.IBlocks ino)) in
+    smrep_single_helper dblocks inum ino =p=>
+    smrep_single_helper (remove_dirty inum removed dblocks) inum ino' *
+    listpred (fun a => a |->?) removed.
+  Proof.
+    cbn; intros.
+    unfold remove_dirty, smrep_single_helper.
+    rewrite listpred_map.
+    destruct Map.find eqn:Hfind.
+    rewrite M.find_add_eq.
+    unfold smrep_single.
+    rewrite H.
+    rewrite listpred_split with (n := n).
+    unfold SS.For_all.
+    - cancel.
+      rewrite listpred_pimpl_replace with (l := firstn _ _).
+      rewrite listpred_pimpl_replace with (l := skipn _ _).
+      solve [apply pimpl_refl | apply sep_star_comm].
+      cancel.
+      cancel.
+      denote (b = true) as Hb. apply Hb.
+      intros Ha.
+      denote (In _ (map _ _)) as Hi. eapply Hi in Ha as Hc.
+      denote False as Hf. eapply Hf.
+      eapply in_fold_right_remove_notin.
+      rewrite InA_alt.
+      intuition repeat deex.
+      eapply in_nodup_firstn_not_skipn; eauto.
+      all: rewrite ?firstn_map_comm, ?skipn_map_comm; eauto.
+      eauto using in_map.
+      denote SS.remove as Hr.
+      eapply in_fold_right_remove in Hr.
+      rewrite InA_alt in Hr.
+      intuition repeat deex.
+      erewrite <- firstn_map_comm.
+      eapply in_nodup_not_skipn_firstn; eauto.
+      denote False as Hf.
+      intuition; apply Hf. eexists; intuition eauto.
+      rewrite <- skipn_map_comm; auto.
+    - rewrite Hfind.
+      unfold smrep_single.
+      rewrite H.
+      cancel.
+      rewrite listpred_split with (n := n).
+      cancel.
+      apply listpred_pimpl_replace; cancel.
+      unfold SS.For_all.
+      setoid_rewrite SetFacts.empty_iff.
+      intuition.
+  Unshelve.
+    all: eauto; constructor.
+  Qed.
+
+  Lemma listmatch_nodup: forall AT AEQ V (a : list AT) (b : list V) (F : @pred AT AEQ V) m,
+  (F * listmatch (fun x y => x |-> y) a b)%pred m -> NoDup a.
+Proof.
+  induction a; cbn; intros.
+  constructor.
+  destruct b; cbn in *.
+  unfold listmatch in *. destruct_lifts. congruence.
+  rewrite listmatch_cons in H.
+  constructor.
+  unfold listmatch in H.
+  intro H'.
+  eapply in_selN_exists in H'.
+  destruct H' as [? [? Hs] ].
+  destruct_lifts.
+  rewrite listpred_pick in H.
+  unfold pprd, prod_curry in *.
+  2: eapply in_selN.
+  erewrite selN_combine in H by auto.
+  2: rewrite combine_length_eq; eauto.
+  rewrite Hs in H.
+  destruct_lifts.
+  eapply ptsto_conflict_F with (a := a) (m := m).
+  pred_apply. cancel.
+  eapply IHa with (b := b) (m := m). pred_apply. cancel.
+Unshelve.
+  all: eauto.
+Qed.
+      
+      Lemma file_match_no_dup: forall ilist flist F inum m,
+    (F * listmatch file_match flist ilist)%pred m ->
+    NoDup (map (@wordToNat addrlen) (INODE.IBlocks (selN ilist inum INODE.inode0))).
+  Proof.
+    intros.
+    destruct (ge_dec inum (length ilist)).
+    rewrite selN_oob by omega.
+    constructor.
+    rewrite listmatch_extract with (i := inum) in H.
+    unfold file_match in H.
+    rewrite listmatch_map_r in H.  
+    eapply listmatch_nodup.
+    pred_apply' H.
+    cancel.
+    rewrite listmatch_map_l.
+    rewrite listmatch_sym.
+    cancel. apply pimpl_refl.
+    erewrite listmatch_length_r by (pred_apply' H; apply pimpl_refl).
+    omega.
+  Unshelve.
+    exact bfile0.
+  Qed.     
+
+        Lemma smrep_single_helper_add_oob: forall inum dirty dblocks st ino,
+    inum <> st ->
+    smrep_single_helper (Map.add inum dirty dblocks) st ino <=p=>
+    smrep_single_helper dblocks st ino.
+  Proof.
+    unfold smrep_single_helper.
+    unfold put_dirty.
+    intros.
+    rewrite MapFacts.add_neq_o by auto.
+    auto.
+  Qed.
+      
+      Lemma arrayN_smrep_single_helper_add_oob: forall ilist st inum dirty dblocks,
+    inum < st \/ inum >= st + length ilist ->
+    arrayN (smrep_single_helper (Map.add inum dirty dblocks)) st ilist <=p=>
+    arrayN (smrep_single_helper dblocks) st ilist.
+  Proof.
+    induction ilist; cbn.
+    split; cancel.
+    intros.
+    rewrite smrep_single_helper_add_oob by omega.
+    rewrite IHilist by omega.
+    auto.
+  Qed.
+      
+      Lemma arrayN_ex_smrep_single_helper_add: forall ilist inum dirty dblocks,
+    arrayN_ex (smrep_single_helper (Map.add inum dirty dblocks)) ilist inum <=p=>
+    arrayN_ex (smrep_single_helper dblocks) ilist inum.
+  Proof.
+    unfold arrayN_ex.
+    intros.
+    destruct (lt_dec inum (length ilist)).
+    - rewrite arrayN_smrep_single_helper_add_oob.
+      rewrite arrayN_smrep_single_helper_add_oob.
+      auto.
+      autorewrite with core. omega.
+      rewrite firstn_length_l; omega.
+    - rewrite skipn_oob by omega.
+      rewrite firstn_oob by omega.
+      rewrite arrayN_smrep_single_helper_add_oob by omega.
+      rewrite arrayN_smrep_single_helper_add_oob by omega.
+      auto.
+  Qed.
+      
+        Lemma arrayN_ex_smrep_single_helper_remove_dirty: forall ilist inum bn dblocks,
+    arrayN_ex (smrep_single_helper (remove_dirty inum bn dblocks)) ilist inum <=p=>
+    arrayN_ex (smrep_single_helper dblocks) ilist inum.
+  Proof.
+    unfold remove_dirty.
+    intros.
+    destruct Map.find; auto.
+    auto using arrayN_ex_smrep_single_helper_add.
+  Qed.
+  
+  
   Theorem shrink_ok :
     forall lxp bxp ixp inum nr ms pr,
     {< F Fm Fi m0 sm m flist ilist frees f,
@@ -2789,14 +2976,12 @@ Qed.
               = INODE.IOwner(selN ilist inum INODE.inode0) ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} shrink lxp bxp ixp inum nr ms.
-  Proof. 
-    unfold shrink.
+  Proof.
+     unfold shrink.
     prestep; norml; unfold stars; simpl.
     denote rep as Hr.
     rewrite rep_alt_equiv with (msalloc := MSAlloc ms) in Hr.
-    unfold rep_alt in Hr; destruct_lift Hr.
-    (* rewrite smrep_equiv with (b := MSAlloc ms) in *. *)
-    unfold smrep in *.
+    unfold rep_alt, smrep in Hr; destruct_lift Hr.
     cancel.
     sepauto.
     extract; seprewrite; subst; denote removeN as Hx.
@@ -2810,62 +2995,17 @@ Qed.
       denote Forall as Hv; specialize (Hv inum); subst.
       rewrite <- Forall_map.
       apply forall_skipn; apply Hv; eauto.
-      
       erewrite <- listmatch_ptsto_listpred.
       rewrite listmatch_extract with (i := inum) (a := flist) by omega.
       unfold file_match at 2.
       setoid_rewrite listmatch_split at 2.
       rewrite skipn_map_comm; cancel.
-
-      rewrite arrayN_except with (i:= inum).
-      unfold smrep_single_helper at 2, smrep_single.
-      erewrite <- firstn_skipn with (l:= (INODE.IBlocks (selN ilist inum _)))
-                                   (n:=(length (INODE.IBlocks ilist ⟦ inum ⟧) - nr)) at 1 .
-      rewrite listpred_app.
-      rewrite listpred_map.
-      eassign ((dummy1 ✶ dummy0)
-   ✶ BALLOCC.smrep (pick_balloc (frees_1, frees_2) (MSAlloc ms))
-  ✶ (arrayN_ex (smrep_single_helper (MSDBlocks ms)) ilist inum
-     ✶ (⟦⟦ SS.For_all
-             (fun bn : SS.elt =>
-              In bn
-                 (map (wordToNat (sz:=addrlen)) (INODE.IBlocks
-                                                   (selN ilist inum INODE.inode0))))
-             match Map.find inum (MSDBlocks ms) with
-             | Some d => d
-             | None => SS.empty
-             end ⟧⟧
-        ✶ listpred
-             (fun bn : waddr =>
-              exists b0 : bool,
-                # (bn) |-> b0
-                ✶ ⟦⟦ ~
-                     SS.In # (bn)
-                       match Map.find inum (MSDBlocks ms) with
-                       | Some d => d
-                       | None => SS.empty
-                       end -> b0 = true ⟧⟧)
-             (firstn (length (INODE.IBlocks  (selN ilist inum INODE.inode0)) - nr)
-                (INODE.IBlocks  (selN ilist inum INODE.inode0))))))%pred.
-      setoid_rewrite listpred_pimpl_replace with
-          (F:=(fun bn : waddr =>
-                exists b0 : bool,
-                  # (bn) |-> b0
-                  ✶ ⟦⟦ ~
-                       SS.In # (bn)
-                         match Map.find inum (MSDBlocks ms) with
-                         | Some d => d
-                         | None => SS.empty
-                         end -> b0 = true ⟧⟧)%pred)
-          (G:=(fun a0 : waddr => #(a0) |->?)%pred) at 2.
-      cancel.
-      intros; cancel.
-      eauto.
-      
+      rewrite arrayN_except with (i := inum) by omega.      
+      rewrite smrep_single_helper_split_tail. cancel.
+      instantiate (1 := INODE.mk_inode _ _ _). cbn; eauto.
+      eapply file_match_no_dup.
+      pred_apply' H. cancel.
       destruct_lift Hx; denote (length (BFData _)) as Heq.
-      (* rewrite arrayN_except with (i := inum) by omega.      
-      unfold smrep_single_helper at 2. *)
-
       prestep.
       norm.
       cancel.
@@ -2874,14 +3014,12 @@ Qed.
       pred_apply.
       erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
-      pred_apply; cancel.
+      pred_apply. cancel.
 
       step.
       denote listmatch as Hx.
-      setoid_rewrite listmatch_length_pimpl in Hx at 2.
-      prestep. norm. safecancel.
-
-      eassign (ilist'). intuition simpl.
+      setoid_rewrite listmatch_length_pimpl in Hx at 2.      
+      prestep; norm. cancel. eassign ilist'. intuition simpl.
       2: sepauto.
 
       rewrite rep_alt_equiv with (msalloc := MSAlloc ms); unfold rep_alt.
@@ -2907,86 +3045,18 @@ Qed.
       seprewrite.
       unfold cuttail.
       rewrite firstn_map_comm.
-      (*eapply dirty_blocks_rep_firstn; cbn; eauto.*)
-      eauto.
-      apply forall_firstn; auto.
-      eapply bfcache_upd; eauto.
-
-      
-      unfold smrep; simpl.
-      denote (list2nmem ilist') as Hilist'.
-      assert (inum < length ilist) by simplen.
-      apply arrayN_except_upd in Hilist'; eauto.
-      apply list2nmem_array_eq in Hilist'; subst.
-      rewrite arrayN_except with (i:= inum).
-      rewrite arrayN_ex_updN_eq.
-
-      rewrite selN_updN_eq.
-      unfold smrep_single_helper at 3, smrep_single; simpl.
-      unfold cuttail.
-      unfold remove_dirty.
-      erewrite listpred_pimpl_replace with
-          (G:= (fun bn : waddr =>
-                exists b0 : bool,
-                  # (bn) |-> b0
-                  ✶ ⟦⟦ ~
-                       SS.In # (bn)
-                         match
-                           Map.find inum
-                             match Map.find inum (MSDBlocks ms) with
-                             | Some dirty => Map.add inum dirty (MSDBlocks ms)
-                             | None => MSDBlocks ms
-                             end
-                         with
-                         | Some d => d
-                         | None => SS.empty
-                         end -> b0 = true ⟧⟧)%pred).
-      eassign dummy1; cancel.
-      
-      unfold arrayN_ex; repeat rewrite arrayN_piff_replace with
-      (p:= (smrep_single_helper (MSDBlocks ms)))
-      (q:= (smrep_single_helper
-          match Map.find inum (MSDBlocks ms) with
-          | Some dirty => Map.add inum dirty (MSDBlocks ms)
-          | None => MSDBlocks ms
-          end)); eauto.
-      destruct (MSAlloc ms); simpl in *; cancel.
-      
-      intros.
-      rewrite <- H24.
-      unfold smrep_single_helper.
-      destruct (Map.find inum (MSDBlocks ms)).
-      rewrite M.find_add_ne; eauto.
-      omega.
-      eauto.
-
-      intros.
-      rewrite <- H24.
-      unfold smrep_single_helper.
-      destruct (Map.find inum (MSDBlocks ms)); eauto.
-      rewrite Nat.add_0_r.
-      rewrite M.find_add_ne; eauto.
-      rewrite firstn_length_l in H21; simpl; try omega.
-
-
-      (*
-      denote SS.For_all as Hfa. 
-      destruct (Map.find inum (MSDBlocks ms)) eqn:D; eauto.
-      rewrite M.find_add_eq in H21; eauto.
-      specialize Hfa with (1:=H21).
-      rewrite <- firstn_map_comm.
-      eapply in_firstn_in; auto.
-       *)
-      admit.
-      intros;
       cancel.
-      eapply H29; intros.
-      eapply H24.
-      destruct (Map.find inum (MSDBlocks ms)) eqn:D; subst; eauto.
-      rewrite M.find_add_eq; eauto.
-      rewrite D; auto.
-      auto.
-      rewrite length_updN; auto.
+      eapply forall_firstn; eauto.
+      eapply bfcache_upd; eauto.
+      unfold smrep.
+      seprewrite.
+      rewrite arrayN_except_upd.
+      rewrite arrayN_ex_smrep_single_helper_remove_dirty.
+      cancel.
+      unfold cuttail.
+      eassign dummy1; destruct MSAlloc;  cancel.
+      omega.
+      3: eauto.
 
       denote (list2nmem ilist') as Hilist'.
       assert (inum < length ilist) by simplen.
@@ -2996,31 +3066,33 @@ Qed.
       destruct (MSAlloc ms); simpl in *; eapply incl_refl.
       left.
       destruct (addr_eq_dec inum inum0); subst.
-      all: eauto; try solve [rewrite <- H1; cancel; eauto].
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
         rewrite cuttail_length in *. omega.
         rewrite selN_cuttail in *; auto.
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-      + denote (list2nmem ilist') as Hilist'.
-        assert (inum < length ilist) by simplen.
-        apply arrayN_except_upd in Hilist'; eauto.
-        apply list2nmem_array_eq in Hilist'; subst.
+      + erewrite list2nmem_array_updN with (nl := ilist') (i := inum).
         erewrite selN_updN_ne; eauto.
+        pred_apply; cancel.
+        omega.
       + denote (list2nmem ilist') as Hilist'.
         assert (inum < length ilist) by simplen.
         apply arrayN_except_upd in Hilist'; eauto.
         apply list2nmem_array_eq in Hilist'; subst.
         rewrite selN_updN_eq; auto.
+      + eauto.
+      + eauto.
+      + rewrite <- H1; cancel; eauto.
+      + rewrite <- H1; cancel; eauto.
     }
 
     rewrite <- H1; cancel; eauto.
 
   Unshelve.
     all : try easy.
-    all : solve [ exact bfile0 | exact INODE.inode0 ].
-  Admitted.
+    all : solve [ exact bfile0 | intros; exact emp | exact nil].
+Qed.
 
   Theorem sync_ok :
     forall lxp ixp ms pr,
@@ -3227,7 +3299,132 @@ Qed.
     Unshelve.
     all: try easy.
   Qed.
+  
 
+      Lemma listpred_exis_listmatch:
+      forall A B AT AEQ V (a : list A) (prd: A -> B -> @pred AT AEQ V),
+    listpred (fun a => exists b, prd a b) a =p=> exists b, listmatch prd a b.
+  Proof.
+    induction a; cbn; intros.
+    exists nil.
+    unfold listmatch. pred_apply; cancel.
+    rewrite IHa.
+    cancel.
+    rewrite listmatch_cons with (b := b0).
+    cancel.
+  Qed.
+
+    Lemma elements_spec1 : forall s x,
+    In x (AddrSet_AVL.elements s) <-> AddrSet_AVL.In x s.
+  Proof.
+    intros.
+    rewrite <- AddrSet_AVL.elements_spec1.
+    rewrite InA_alt.
+    intuition.
+    eexists; eauto.
+    destruct H; intuition (subst; auto).
+  Qed.
+  
+      Lemma smrep_single_helper_to_listmatch: forall dblocks inum ino,
+    smrep_single_helper dblocks inum ino =p=> exists l,
+      listmatch (fun b a => a |-> b) l (map (@wordToNat addrlen) (INODE.IBlocks ino)) *
+      [[ forall i, i < length (INODE.IBlocks ino) -> SS.In #(selN (INODE.IBlocks ino) i $0) (get_dirty inum dblocks) \/
+        selN l i false = true ]] * [[ incl (SS.elements (get_dirty inum dblocks)) (map (wordToNat (sz:=addrlen)) (INODE.IBlocks ino)) ]].
+  Proof.
+    intros.
+    unfold smrep_single_helper, smrep_single.
+    norml.
+    cbv [stars fold_left pred_fold_left].
+    rewrite listpred_exis_listmatch.
+    norml.
+    cbv [stars fold_left pred_fold_left].
+    erewrite listmatch_lift with (P := fun x y => (~SS.In #x (get_dirty inum dblocks)) -> y = true).
+    rewrite listmatch_length_pimpl.
+    cancel.
+    rewrite listmatch_map_r.
+    rewrite listmatch_sym. apply pimpl_refl.
+    denote Forall2 as Hf.
+    eapply forall2_forall in Hf.
+    rewrite Forall_forall in Hf.
+    rewrite <- SS.mem_spec.
+    destruct SS.mem eqn:Hm; auto.
+    rewrite <- SetFacts.not_mem_iff in *.
+    right.
+    specialize (Hf (selN (INODE.IBlocks ino) i $0, selN b i false)).
+    eapply Hf; auto.
+    rewrite <- selN_combine by auto.
+    apply in_selN.
+    rewrite combine_length_eq; omega.
+    unfold incl.
+    denote SS.For_all as Hs.
+    intros a.
+    rewrite elements_spec1.
+    auto.
+    split; cancel.
+  Qed.
+
+
+        Lemma nodup_elements: forall t,
+    NoDup (AddrSet_AVL.elements t).
+  Proof.
+    intros.
+    rewrite <- NoDup_NoDupA_eq.
+    apply AddrSet_AVL.elements_spec2w.
+    intuition.
+  Qed.
+
+  
+    Lemma smrep_single_helper_remove_oob: forall inum dblocks st ino,
+    inum <> st ->
+    smrep_single_helper (Map.remove inum dblocks) st ino <=p=>
+    smrep_single_helper dblocks st ino.
+  Proof.
+    unfold smrep_single_helper.
+    unfold put_dirty.
+    intros.
+    rewrite MapFacts.remove_neq_o by auto.
+    auto.
+  Qed.
+
+    Lemma arrayN_smrep_single_helper_remove_oob: forall ilist st inum dblocks,
+    inum < st \/ inum >= st + length ilist ->
+    arrayN (smrep_single_helper (Map.remove inum dblocks)) st ilist <=p=>
+    arrayN (smrep_single_helper dblocks) st ilist.
+  Proof.
+    induction ilist; cbn.
+    split; cancel.
+    intros.
+    rewrite smrep_single_helper_remove_oob by omega.
+    rewrite IHilist by omega.
+    auto.
+  Qed.
+    
+    Lemma arrayN_ex_smrep_single_helper_remove: forall ilist inum dblocks,
+    arrayN_ex (smrep_single_helper (Map.remove inum dblocks)) ilist inum <=p=>
+    arrayN_ex (smrep_single_helper dblocks) ilist inum.
+  Proof.
+    unfold arrayN_ex.
+    intros.
+    destruct (lt_dec inum (length ilist)).
+    - rewrite arrayN_smrep_single_helper_remove_oob.
+      rewrite arrayN_smrep_single_helper_remove_oob.
+      auto.
+      autorewrite with core. omega.
+      rewrite firstn_length_l; omega.
+    - rewrite skipn_oob by omega.
+      rewrite firstn_oob by omega.
+      rewrite arrayN_smrep_single_helper_remove_oob by omega.
+      rewrite arrayN_smrep_single_helper_remove_oob by omega.
+      auto.
+  Qed.
+    
+    Lemma arrayN_ex_smrep_single_helper_clear_dirty: forall ilist inum dblocks,
+    arrayN_ex (smrep_single_helper (clear_dirty inum dblocks)) ilist inum <=p=>
+    arrayN_ex (smrep_single_helper dblocks) ilist inum.
+  Proof.
+    unfold clear_dirty.
+    auto using arrayN_ex_smrep_single_helper_remove.
+  Qed.
   
   Theorem datasync_ok :
     forall lxp bxp ixp inum ms pr,
@@ -3251,64 +3448,86 @@ Qed.
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]]
     CRASH:bm', hm', LOG.recover_any lxp F ds sm bm' hm'
     >} datasync lxp ixp inum ms.
-  Proof. Admitted. (* this needs to be corrected from master. 
+  Proof. 
     unfold datasync, synced_file, rep.
-    step.
-  
-    (* I don't know how to solve these obligations *)
-    admit.
-    admit.
-
-    step.
-    lightstep.
-
-    (* pred_apply.
-    cancel.
-    admit.
-    3: eapply list2nmem_updN; eauto.
-    eauto.
-    admit.
-    
-    erewrite arrayN_except by (autorewrite with core; sepauto).
-    erewrite selN_combine by eauto.
-    cbn; cancel.
-
-    seprewrite.
-    rewrite arrayN_file_match_length_piff in * by (autorewrite with core; sepauto).
-    rewrite arrayN_file_match_iattr_pimpl in * by (autorewrite with core; sepauto).
+    (* use the spec that "syncs" additional blocks not given as arguments *)
+    intros.
+    monad_simpl.
+    eapply pimpl_ok2.
+    apply LOG.dsync_vecs_additional_ok.
+    unfold smrep. intros. norml.
+    rewrite arrayN_except with (i := inum) in *|- by sepauto.
+    denote arrayN_ex as Ha.
+    pose proof Ha as Ha'.
+    rewrite <- locked_eq with (x := _ sm) in Ha'.
+    rewrite smrep_single_helper_to_listmatch in *.
     destruct_lifts.
-    safestep.
-    *)
-
+    extract.
+    safecancel.
+    eauto.
+    cancel. solve [apply pimpl_refl].
+    cancel.
+    rewrite map_length in *.
+    erewrite selN_map by auto.
+    rewrite elements_spec1.
+    denote SS.In as Hs. eapply Hs; auto.
+    auto.
+    apply nodup_elements.
+    step.
+    prestep. norm. cancel.
+    intuition auto.
     2: sepauto.
-    pred_apply.
-    all: autorewrite with lists; eauto.
-    (* erewrite combine_updN_l, arrayN_except_upd by (autorewrite with core; sepauto). *)
-    cbn; cancel; eauto.
+    pred_apply. cancel.
+    seprewrite.
+    rewrite listmatch_isolate with (b := ilist) by sepauto.
+    rewrite removeN_updN, selN_updN_eq by sepauto.
     rewrite synced_list_map_fst_map.
-    rewrite listmatch_map_l; cancel.
-    autorewrite with lists; eauto.
+    unfold file_match. cancel.
+    rewrite listmatch_map_l.
+    cancel.
+    auto.
+    auto.
+    apply Forall_map; eauto.
+    eauto using bfcache_upd.
+    rewrite arrayN_except with (vs := ilist) by sepauto.   
+    rewrite arrayN_ex_smrep_single_helper_clear_dirty.
+    cancel.
+    unfold smrep_single_helper, clear_dirty, smrep_single.
+    rewrite M.find_remove_eq.
+    cancel.
+    rewrite listpred_map.
+    rewrite listpred_pimpl_replace.
+    cancel; solve [apply pimpl_refl | apply sep_star_comm].
+    cancel.
+    unfold SS.For_all.
+    setoid_rewrite SetFacts.empty_iff.
+    intuition.
+    seprewrite.
+    symmetry.
+    eapply listmatch_length_r with (m := list2nmem ds !!).
+    pred_apply; cancel.
 
-    admit.
-    admit.
-    admit.
-
-    unfold SS.elements.
-    (* erewrite selN_map by simplen. *)
+    erewrite selN_map by simplen.
     eapply block_belong_to_file_ok with (m := list2nmem ds!!); eauto.
-    eassign (bxp_1, bxp_2); pred_apply; unfold rep. cancel.
+    eassign (bxp_1, bxp_2); pred_apply; unfold rep. cancel; eauto.
     repeat erewrite fst_pair by eauto.
-    cancel. eauto. simplen. simplen.
+    cancel.
+    rewrite listmatch_isolate with (a := flist) by sepauto.
+    unfold file_match.
+    cancel.
+    rewrite locked_eq in Ha'.
+    pred_apply' Ha'.
+    unfold smrep.
+    rewrite arrayN_except by sepauto.
+    eassign dummy1; cancel.
+    eassign (MSDBlocks ms); cancel.
+    seprewrite.
     apply list2nmem_ptsto_cancel.
-    autorewrite with lists in *.
-    omega.
-
-    rewrite LOG.active_intact, LOG.intact_any; auto.
+    erewrite listmatch_length_l with (m := list2nmem ds !!); eauto.
+    pred_apply; cancel.
   Unshelve.
-    all: eauto.
-    all: exact ($0, nil).
+    all: solve [eauto | exact BFILE.bfile0 | exact (tagged_block0, nil)].
   Qed.
-*)
 
   Hint Extern 1 ({{_|_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
