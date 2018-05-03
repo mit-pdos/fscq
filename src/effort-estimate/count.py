@@ -14,6 +14,8 @@ CATEGORIES = {
         "Dir",
         "DirCache",
         "DiskSet",
+        "AsyncFSRecover",
+        "Idempotent",
 
         # rough categorization
         "DiskLog",
@@ -35,6 +37,17 @@ CATEGORIES = {
         "Hashmap",
         "MemMatch",
         "TreeCrash",
+
+
+        ## formerly distinguished as spec/rep invariant changes
+        "AsyncFS",
+        "BFile.spec",
+        "GroupLog.spec",
+        "MemLog.spec",
+        "SuperBlock",
+
+        # rough categorization
+        "FileRecArray",
     ],
     "core": [
         "AsyncDisk",
@@ -67,16 +80,6 @@ CATEGORIES = {
         "RecArrayUtils",
         "Word",
         "ProgMonad",
-    ],
-    "specs/rep invariants": [
-        "AsyncFS",
-        "BFile.spec",
-        "GroupLog.spec",
-        "MemLog.spec",
-        "SuperBlock",
-
-        # rough categorization
-        "FileRecArray",
     ],
     "fs security": [
         "AsyncFSPost",
