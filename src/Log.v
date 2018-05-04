@@ -2361,11 +2361,10 @@ Qed.
     assert (length sml = length all) by eauto using listmatch_length_r.
     assert (length vsl = length all) by eauto using listmatch_length_r.
     safecancel.
-    eassign F_; cancel.
 
     (* split synced from all in syncedmem *)
     eauto.
-    pred_apply; cancel.
+    cancel.
     unfold listmatch.
     erewrite listpred_partition with (f := fun x => inb al (snd x)).
     rewrite partition_eq_filter; cbn [fst snd].
@@ -2403,7 +2402,7 @@ Qed.
     intros. eapply in_combine_ex_l; eauto; omega.
 
     (* split unsynced from all on disk *)
-    pred_apply; unfold listmatch.
+    unfold listmatch.
     rewrite listpred_permutation.
     eassign Fm; cancel. (* solve [reflexivity]. *)
     shelve.
@@ -2421,12 +2420,10 @@ Qed.
     rewrite <- filter_r; auto.
     rewrite split_length_l.
     rewrite sort_by_index_length; auto.
-    eauto.
-    autorewrite with lists; auto.
     Unshelve.
-    3: autorewrite with lists.
-    3: replace (length vsl) with (length all) by auto.
-    3: erewrite filter_selN_length with (l := all); eauto.
+    2: autorewrite with lists.
+    2: replace (length vsl) with (length all) by auto.
+    2: erewrite filter_selN_length with (l := all); eauto.
     eapply pimpl_ok2. eauto.
     cancel.
 
@@ -2475,15 +2472,12 @@ Qed.
     apply Permutation.Permutation_app; try reflexivity.
     apply permutation_filter; auto.
     eauto.
-    rewrite <- H1; cancel; eauto.
     rewrite split_length_l.
     rewrite sort_by_index_length; auto.
   Unshelve.
     all: solve [exact 0 | exact (tagged_block0, [])].
   Qed.
 
-
-  
 
   Hint Extern 1 ({{_|_}} Bind (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
