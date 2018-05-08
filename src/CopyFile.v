@@ -1,4 +1,3 @@
-
 Require Import Word.
 Require Import Omega.
 Require Import Bool.
@@ -29,8 +28,6 @@ Require Import DiskSecDef DiskSecAttacker DiskSecVictim.
 Set Implicit Arguments.
 Import AFS.
 Import ListNotations.
-
-Check create.
 
 Definition copy_file fsxp inum1 inum2 ams :=
   let^ (ams, d) <- read_fblock fsxp inum1 0 ams;;
@@ -88,7 +85,7 @@ Lemma read_fblock_post:
     or_r; cancel.
     inv_exec_perm.
     cleanup; auto.
-    unfold trace_secure; eauto.
+    unfold Sec.trace_secure; eauto.
     eassign (fun (_:block_mem) (_:hashmap) (_:rawdisk) => True).
     intros; simpl; auto.
     econstructor; eauto.
@@ -101,6 +98,8 @@ Lemma read_fblock_post:
     pred_apply; cancel.
     or_l; cancel.
     or_r; cancel.
+    apply trace_secure_impl; auto.
+    inversion H1.
     inversion H1.
   Qed.
 
@@ -163,6 +162,7 @@ Proof.
     rewrite D; repeat econstructor; eauto.
     split; eauto.
   }
+  apply only_public_operations_impl; auto.
 Qed.
 
 Theorem update_fblock_d_same_except:
@@ -265,8 +265,10 @@ Proof.
     rewrite <- app_nil_l; repeat econstructor; eauto.
     split; eauto.
     eapply blockmem_same_except_upd_same; eauto.
+    apply only_public_operations_impl; auto.
   }
   congruence.
+  apply only_public_operations_impl; auto.
 Qed.
 
 
@@ -391,6 +393,7 @@ Proof.
     econstructor; eauto.
     econstructor.
     simpl in *; auto.
+    apply trace_secure_impl; auto.
   }
   {
     repeat inv_exec_perm.

@@ -19,6 +19,73 @@ Require Import ProgAuto.
 Import ListNotations.
 Set Implicit Arguments.
 
+(***** WEAKENING FOR PAPER *****)
+(* This is a weaker version of trace security that only checks for unseals. 
+ * I overloaded the definition here to match the paper. *)
+Fixpoint trace_secure pr tr :=
+  match tr with
+  | nil => True
+  |h::tl => match h with
+           | Uns t => can_access pr t
+           | _ => True
+           end /\ trace_secure pr tl
+  end.
+
+Lemma trace_secure_impl:
+  forall tr pr,
+    Sec.trace_secure pr tr -> trace_secure pr tr.
+Proof.
+  unfold Sec.trace_secure, trace_secure; induction tr; intros; simpl in *; auto.
+  unfold op_secure in *; logic_clean.
+  specialize (IHtr _ H0).
+  destruct a; auto.
+Qed.
+
+Lemma trace_secure_app_split:
+  forall tr1 tr2 pr,
+    trace_secure pr (tr1 ++ tr2) -> trace_secure pr tr1 /\ trace_secure pr tr2.
+Proof.
+  unfold trace_secure; induction tr1; intros; simpl in *; auto.
+  logic_clean.
+  specialize (IHtr1 _ _ H0).
+  destruct a; intuition.
+Qed.
+
+(* Overloaded weak version for paper *)
+Fixpoint only_public_operations tr:=
+  match tr with
+  | nil => True
+  | h::tl => match h with
+            | Uns t => t = Public
+            | _ => True
+            end /\ only_public_operations tl
+  end.
+
+Lemma only_public_operations_impl:
+  forall tr,
+    Sec.only_public_operations tr -> only_public_operations tr.
+Proof.
+  unfold Sec.only_public_operations, only_public_operations; induction tr; intros;
+  simpl in *; auto.
+  logic_clean.
+  specialize (IHtr H0).
+  destruct a; intuition.
+Qed.
+
+Lemma only_public_operations_app:
+  forall tr1 tr2,
+    only_public_operations (tr1++tr2) ->
+    only_public_operations tr1 /\
+    only_public_operations tr2.
+Proof.
+  unfold only_public_operations; induction tr1; intros; simpl in *; auto.
+  logic_clean.
+  specialize (IHtr1 _ H0).
+  destruct a; intuition.
+Qed.
+
+
+(****** DISKSEC ******)
 Definition equivalent_for tag (d1 d2: rawdisk) :=
   forall a,
     (d1 a = None /\ d2 a = None) \/
@@ -55,45 +122,6 @@ Definition blockmem_same_except tag (bm1 bm2: block_mem) :=
 
 Axiom can_access_dec: forall pr t, {can_access pr t}+{~can_access pr t}.
 
-
-
-
-Lemma inv_exec_if:
-  forall T P Q d bm hm pr tr (out: result) (b:{P}+{Q}) (p1 p2: prog T),
-    exec pr d bm hm (If_ b p1 p2) out tr ->
-    (P /\ exec pr d bm hm p1 out tr) \/
-    (Q /\ exec pr d bm hm p2 out tr).
-  intros.
-  unfold If_ in *; destruct b; eauto.
-Qed.
-
-
-Ltac inv_exec_highlvl :=
-  match goal with
-  |[H : exec _ _ _ _ (match ?x with | _ => _ end) _ _ |- _ ] =>
-   let D := fresh "D" in destruct x eqn:D; try setoid_rewrite D; simpl in *
-  |[H : exec _ _ _ _ (If_ _ _ _) _ _ |- _ ] =>
-   apply inv_exec_if in H; split_ors
-  |[H : exec _ _ _ _ _ _ _ |- _ ] => inv_exec_perm         
-  end.
-
-Ltac inv_exec_bind:=
-  match goal with
-  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => inv_exec_perm
-  |[H : exec _ _ _ _ (match ?x with | _ => _ end) _ _ |- _ ] =>
-   let D := fresh "D" in destruct x; simpl in *
-  |[H : exec _ _ _ _ (If_ _ _ _) _ _ |- _ ] =>
-   apply inv_exec_if in H; split_ors
-  end.
-
-Ltac invert_step := inv_exec_highlvl; unfold pair_args_helper in *; simpl in *.
-Ltac invert f:= unfold f in *; repeat invert_step.
-
-Ltac invert_step_bind := inv_exec_bind; unfold pair_args_helper in *; simpl in *.
-Ltac invert_bind f:= unfold f in *; repeat invert_step_bind.
-
-
-
 Lemma forall2_tag_refl:
   forall l, Forall2 (fun tb1 tb2 : tag * block => fst tb1 = fst tb2) l l.
 Proof.
@@ -104,6 +132,23 @@ Lemma forall2_tag_ne_refl:
   forall l t, Forall2 (fun tb1 tb2 : tag * block => fst tb1 <> t -> snd tb1 = snd tb2) l l.
 Proof.
   induction l; simpl; intuition.
+Qed.
+
+Lemma forall2_tag_eq_refl:
+  forall l t, Forall2 (fun tb1 tb2 : tag * block => fst tb1 = t -> snd tb1 = snd tb2) l l.
+Proof.
+  induction l; simpl; intuition.
+Qed.
+
+Lemma equivalent_for_refl:
+  forall tag d,
+    equivalent_for tag d d.
+Proof.
+  unfold equivalent_for; intros.
+  destruct (d a); eauto.
+  right; repeat eexists; eauto.
+  apply forall2_tag_refl.
+  eapply forall2_tag_eq_refl.
 Qed.
 
 Lemma blockmem_equivalent_for_refl:
@@ -154,43 +199,33 @@ Proof.
   right; repeat eexists; intuition eauto.
 Qed.
 
-
-Lemma foreach_invariant_pimpl:
-  forall (ITEM : Type) (L : Type) (G : Type) 
-    (l : list ITEM) (f : ITEM -> L -> prog L)
-    (I I' : G -> list ITEM -> L -> block_mem -> hashmap -> rawpred)
-    (C : G -> block_mem -> hashmap -> rawpred)
-    (x : L) pr d bm hm tr out,
-    exec pr d bm hm (ForEach_ f l I C x) out tr ->
-    exec pr d bm hm (ForEach_ f l I' C x) out tr.
+Theorem same_except_to_equivalent_for:
+  forall t1 t2 d1 d2,
+    same_except t1 d1 d2 ->
+    t1 <> t2 ->
+    equivalent_for t2 d1 d2.
 Proof.
-  induction l; simpl; intuition.
-  inv_exec_perm.
-  econstructor; eauto.
-  split_ors; cleanup.
-  econstructor; eauto.
-  econstructor; eauto.
-  split_ors; cleanup.
-  econstructor; eauto.
-  econstructor; eauto.
+  unfold equivalent_for, same_except; intros.
+  specialize (H a); split_ors; cleanup; eauto.
+  right; repeat eexists; eauto.
+  apply forall2_length in H3 as Hx.
+  apply forall2_forall in H3.
+  eapply forall_forall2; auto.
+  eapply Forall_impl; eauto.
+  simpl; intros; apply H4; subst; eauto.
 Qed.
 
-Lemma foreach_step:
-  forall (ITEM : Type) (L : Type) (G : Type) 
-    (l : list ITEM) (f : ITEM -> L -> prog L)
-    (I : G -> list ITEM -> L -> block_mem -> hashmap -> rawpred)
-    (C : G -> block_mem -> hashmap -> rawpred)
-    (x : L) pr d bm hm tr d1 bm1 hm1 r a,
-    exec pr d bm hm (ForEach_ f (a::l) I C x) (Finished d1 bm1 hm1 r) tr ->
-    exists d' bm' hm' r' tr' tr'',
-      tr = tr''++tr' /\
-      exec pr d bm hm (f a x) (Finished d' bm' hm' r') tr' /\
-      exec pr d' bm' hm' (ForEach_ f l I C r') (Finished d1 bm1 hm1 r) tr''.
+Theorem blockmem_same_except_to_equivalent_for:
+  forall t1 t2 d1 d2,
+    blockmem_same_except t1 d1 d2 ->
+    t1 <> t2 ->
+    blockmem_equivalent_for t2 d1 d2.
 Proof.
-  intros; simpl in *.
-  inv_exec_perm; eauto.
-  repeat eexists; eauto.
-Qed.  
+  unfold blockmem_equivalent_for, blockmem_same_except; intros.
+  specialize (H a); split_ors; cleanup; eauto.
+  right; repeat eexists; eauto.
+  intros; subst; eauto.
+Qed.
 
 
   Lemma blockmem_same_except_upd_same:
@@ -448,3 +483,5 @@ Proof.
   Unshelve.
   all: exact tagged_block0.
 Qed.
+  
+  

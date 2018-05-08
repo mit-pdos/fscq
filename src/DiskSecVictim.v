@@ -21,7 +21,7 @@ Require Import DiskSecDef.
 Import ListNotations.
 
 Set Implicit Arguments.
-
+  
   Lemma exec_same_except_finished:
   forall T (p: prog T) pr d d' bm bm' hm t d1 bm1 hm1 r1 tr,
     exec pr d bm hm p (Finished d1 bm1 hm1 r1) tr ->
@@ -36,7 +36,7 @@ Set Implicit Arguments.
   Proof.
     induction p; intros; inv_exec_perm;
     try solve [do 2 eexists; split; try econstructor; eauto].
-    {
+    { (** Read **)
       specialize (H1 r1) as Hx; split_ors; cleanup; try congruence.
       specialize (H0 n) as Hx; split_ors; cleanup; try congruence.
       destruct x0.
@@ -49,7 +49,7 @@ Set Implicit Arguments.
       rewrite H10; eauto.
       apply blockmem_same_except_upd_eq; auto.
     }
-    {
+    { (** Write **)
       destruct tb; cleanup.
       specialize (H1 h) as Hx; split_ors; cleanup; try congruence.
       destruct x0; simpl in *; cleanup.
@@ -62,12 +62,12 @@ Set Implicit Arguments.
       rewrite H6; eauto.
       eapply same_except_upd_eq; eauto.
     }
-    {
+    { (** Seal **)
       specialize (H1 r1) as Hx; split_ors; cleanup; try congruence.
       do 2 eexists; split; try econstructor; eauto.
       apply blockmem_same_except_upd_eq; auto.
     }
-    {
+    { (** Unseal **)
       destruct tb; cleanup.
       specialize (H1 h) as Hx; split_ors; cleanup; try congruence.
       do 2 eexists; split; try econstructor; eauto.
@@ -77,11 +77,11 @@ Set Implicit Arguments.
       simpl in *; cleanup.
       rewrite H6; intuition.
     }
-    {
+    { (** Sync **)
       do 2 eexists; split; try econstructor; eauto.
       apply same_except_sync_mem; auto.
     }
-    {
+    { (** Bind **)
       apply only_public_operations_app in H3; cleanup.
       specialize IHp with (1:=H0)(2:=H1)(3:=H2)(4:=H6)(5:=H4); cleanup.
       specialize H with (1:=H5)(2:=H8)(3:=H9)(4:=H3)(5:=H4); cleanup.
