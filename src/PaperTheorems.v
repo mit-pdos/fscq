@@ -48,7 +48,8 @@ Definition equivalent_state_for_principal {T} u (res0 res1: @result T) :=
     equivalent_for_principal u d0 bm0 hm0 d1 bm1 hm1 /\
     ((res0 = Crashed d0 bm0 hm0 /\ res1 = Crashed d1 bm1 hm1) \/
      (res0 = Failed d0 bm0 hm0 /\ res1 = Failed d1 bm1 hm1) \/
-     (exists v0 v1, res0= Finished d0 bm0 hm0 v0 /\ res1 = Finished d1 bm1 hm1 v1)).                            
+     (exists v0 v1, res0= Finished d0 bm0 hm0 v0 /\ res1 = Finished d1 bm1 hm1 v1)).
+
 Definition state_noninterference {T} (p: prog T):=
   forall viewer caller d0 bm0 hm0 res0 tr0 d1 bm1 hm1,
     exec caller d0 bm0 hm0 p res0 tr0 ->

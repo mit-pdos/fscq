@@ -113,9 +113,15 @@ Definition vsmerge (vs : valuset) : list tagged_block := fst vs :: snd vs.
 
 
 (* Hashing *)
+Parameter encoding_length: nat.
+Parameter encode: tagged_block -> word encoding_length.
+Parameter decode: word encoding_length -> tagged_block.
+Axiom encode_decode: forall b, decode (encode b) = b.
+Axiom decode_encode: forall w, encode (decode w) = w.
+
 Definition hashlen := 32.
 Parameter hash_fwd : forall sz, word sz -> word hashlen.
-Definition default_valu : valu := $0. 
+Definition default_valu := encode tagged_block0. 
 Definition default_hash := hash_fwd default_valu.
 
 (* A hashmap holds all keys that Hash has been called on, maps hash values to keys. *)
