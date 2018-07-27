@@ -68,15 +68,8 @@ Definition mem_merges_to {AT AEQ V1 V2} (tm : @Mem.mem AT AEQ V1)
 
 
 Inductive result {T: Type} : Type :=
-| Finished : blockdisk -> blockmem -> T -> result
-| Crashed : blockdisk -> blockmem -> result
-| Failed : blockdisk -> blockmem -> result.
-
-
-Inductive sec_result {T: Type} : Type :=
-| SFinished : tagdisk -> tagmem -> T -> sec_result
-| SCrashed : tagdisk -> tagmem -> sec_result
-| SFailed : tagdisk -> tagmem -> sec_result.
+| Finished : blockdisk -> tagdisk -> blockmem -> tagmem -> T -> result
+| Crashed : blockdisk -> tagdisk -> blockmem -> tagmem -> result.
 
 Inductive prog : Type -> Type :=
 | Read : addr -> prog handle
@@ -103,143 +96,76 @@ Fixpoint list_upd AT AEQ V (m : @mem AT AEQ (V * list V)) (v : V) (al: list AT) 
   | h::tl =>
     match m h with
     | None => list_upd m v tl
-    | Some vs => list_upd (upd m h (v, vsmerge vs)) v tl
+    | Some vs => list_upd (upd m h (v, snd vs)) v tl
     end
   end.
 
 Inductive exec:
-  forall T, perm -> blockdisk ->
-       blockmem -> prog T ->  @result T -> Prop :=
-| ExecRead    : forall pr d bm a i tb tbs,
+  forall T, perm -> blockdisk -> tagdisk ->
+       blockmem -> tagmem -> prog T ->  @result T -> trace -> Prop :=
+| ExecRead    : forall pr d dt bm bt a i bs ts,
                   bm i = None ->
-                  d a = Some (tb, tbs) ->
-                  exec pr d bm (Read a) (Finished d (upd bm i tb) i)
+                  bt i = None ->
+                  d a = Some bs ->
+                  dt a = Some ts ->
+                  exec pr d dt bm bt (Read a) (Finished d dt (upd bm i (fst bs)) (upd bt i (fst ts)) i) nil
                        
-| ExecWrite   : forall pr d bm a i tb tbs,
-                  bm i = Some tb ->
-                  d a = Some tbs ->
-                  exec pr d bm (Write a i) (Finished (upd d a (tb, vsmerge tbs)) bm tt)
+| ExecWrite   : forall pr d dt bm bt a i b bs t ts,
+                  bm i = Some b ->
+                  bt i = Some t ->
+                  d a = Some bs ->
+                  dt a = Some ts ->
+                  exec pr d dt bm bt (Write a i) (Finished (upd d a (b, vsmerge bs)) (upd dt a (t, vsmerge ts)) bm bt tt) nil
                        
-| ExecSeal : forall pr d bm i t b,
+| ExecSeal : forall pr d dt bm bt i t b,
                bm i = None ->
-               exec pr d bm (Seal t b) (Finished d (upd bm i b) i)
+               bt i = None ->
+               exec pr d dt bm bt (Seal t b) (Finished d dt (upd bm i b) (upd bt i t) i) nil
                     
-| ExecUnseal : forall pr d bm i tb,
-                 bm i = Some tb ->
-                 exec pr d bm (Unseal i) (Finished d bm tb)
+| ExecUnseal : forall pr d dt bm bt i b t,
+                 bm i = Some b ->
+                 bt i = Some t ->
+                 exec pr d dt bm bt (Unseal i) (Finished d dt bm bt b) [Uns t]
                       
-| ExecSync : forall pr d bm,
-               exec pr d bm (Sync) (Finished (sync_mem d) bm tt)
+| ExecSync : forall pr d dt bm bt,
+               exec pr d dt bm bt (Sync) (Finished (sync_mem d) (sync_mem dt) bm bt tt) nil
 
-| ExecAuthSucc : forall pr d bm t,
+| ExecAuthSucc : forall pr d dt bm bt t,
                can_access pr t ->
-               exec pr d bm (Auth t) (Finished d bm true)
+               exec pr d dt bm bt (Auth t) (Finished d dt bm bt true) nil
 
-| ExecAuthFail : forall pr d bm t,
+| ExecAuthFail : forall pr d dt bm bt t,
                ~can_access pr t ->
-               exec pr d bm (Auth t) (Finished d bm false)
+               exec pr d dt bm bt (Auth t) (Finished d dt bm bt false) nil
 
-| ExecChtag : forall pr d bm t al,
-               exec pr d bm (Chtag t al) (Finished d bm tt)
+| ExecChtag : forall pr d dt bm bt t al,
+               exec pr d dt bm bt (Chtag t al) (Finished d (list_upd dt t al) bm bt tt) nil
                     
-| ExecRet : forall T pr d bm (r: T),
-              exec pr d bm (Ret r) (Finished d bm r)
+| ExecRet : forall T pr d dt bm bt (r: T),
+              exec pr d dt bm bt (Ret r) (Finished d dt bm bt r) nil
                    
-| ExecBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm d' bm' v r,
-               exec pr d bm p1 (Finished d' bm' v) ->
-               exec pr d' bm' (p2 v) r ->
-               exec pr d bm (Bind p1 p2) r
+| ExecBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d dt bm bt d' dt' bm' bt' v r t1 t2,
+               exec pr d dt bm bt p1 (Finished d' dt' bm' bt' v) t1 ->
+               exec pr d' dt' bm' bt' (p2 v) r t2 ->
+               exec pr d dt bm bt (Bind p1 p2) r (t1++t2)
                       
-| CrashRead : forall pr d bm a,
-                exec pr d bm (Read a) (Crashed d bm)
+| CrashRead : forall pr d dt bm bt a,
+                exec pr d dt bm bt (Read a) (Crashed d dt bm bt) nil
                         
-| CrashWrite : forall pr d bm a i,
-                 exec pr d bm (Write a i) (Crashed d bm)
+| CrashWrite : forall pr d dt bm bt a i,
+                 exec pr d dt bm bt (Write a i) (Crashed d dt bm bt) nil
                        
-| CrashSync : forall pr d bm,
-                exec pr d bm (Sync) (Crashed d bm)
+| CrashSync : forall pr d dt bm bt,
+                exec pr d dt bm bt (Sync) (Crashed d dt bm bt) nil
 
-| CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d d' bm bm',
-                exec pr d bm p1 (@Crashed T d' bm') ->
-                exec pr d bm (Bind p1 p2) (@Crashed T' d' bm').
-
-
-Inductive exec_sec:
-  forall T, perm -> tagdisk -> tagmem -> prog T -> @sec_result T -> trace -> Prop :=
-(**
-   This non-deterministic return value can cause divergence between actual and secuity execution.
-   Changing this to the smallest empty handle can leak some information though. 
-   (eg. if some other user did a read or seal before you or not)
-**)
-| ExecSRead    : forall pr d bm a i tb tbs,
-                  bm i = None ->
-                  d a = Some (tb, tbs) ->
-                  exec_sec pr d bm (Read a) (SFinished d (upd bm i tb) i) nil
-                       
-| ExecSWrite   : forall pr d bm a i tb tbs,
-                  bm i = Some tb ->
-                  d a = Some tbs ->
-                  exec_sec pr d bm (Write a i) (SFinished (upd d a (tb, vsmerge tbs)) bm tt) nil
-
-(**
-   This non-deterministic return value can cause divergence between actual and secuity execution.
-   Changing this to the smallest empty handle can leak some information though. 
-   (eg. if some other user did a read or seal before you or not)
-**)
-| ExecSSeal : forall pr d bm i t b,
-               bm i = None ->
-               exec_sec pr d bm (Seal t b) (SFinished d (upd bm i t) i) nil
-
-(** 
-    This rule is a little weird because return value is non-deterministic 
-    and control flow may depend on this return value,
-    which result in actual execution and security execution following different paths.
-    Need to think more about this. 
-**)
-| ExecSUnseal : forall pr d bm i tb b,
-                 bm i = Some tb ->
-                 exec_sec pr d bm (Unseal i) (SFinished d bm b) [Uns tb]
-                      
-| ExecSSync : forall pr d bm,
-               exec_sec pr d bm (Sync) (SFinished (sync_mem d) bm tt) nil
-
-| ExecSAuthSucc : forall pr d bm t,
-               can_access pr t ->
-               exec_sec pr d bm (Auth t) (SFinished d bm true) nil
-
-| ExecSAuthFail : forall pr d bm t,
-               ~can_access pr t ->
-               exec_sec pr d bm (Auth t) (SFinished d bm false) nil
-
-| ExecSChtag : forall pr d bm t al,
-               exec_sec pr d bm (Chtag t al) (SFinished (list_upd d t al) bm tt) nil
-                    
-| ExecSRet : forall T pr d bm (r: T),
-              exec_sec pr d bm (Ret r) (SFinished d bm r) nil
-                   
-| ExecSBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm d' bm' v r tr1 tr2,
-               exec_sec pr d bm p1 (SFinished d' bm' v) tr1 ->
-               exec_sec pr d' bm' (p2 v) r tr2 ->
-               exec_sec pr d bm (Bind p1 p2) r (tr2++tr1)
-                      
-| CrashSRead : forall pr d bm a,
-                exec_sec pr d bm (Read a) (SCrashed d bm) nil
-                        
-| CrashSWrite : forall pr d bm a i,
-                 exec_sec pr d bm (Write a i) (SCrashed d bm) nil
-                       
-| CrashSSync : forall pr d bm,
-                exec_sec pr d bm (Sync) (SCrashed d bm) nil
-
-| CrashSBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d d' bm bm' tr,
-                exec_sec pr d bm p1 (@SCrashed T d' bm') tr ->
-                exec_sec pr d bm (Bind p1 p2) (@SCrashed T' d' bm') tr.
+| CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d dt d' dt' bm bt bm' bt' tr,
+                exec pr d dt bm bt p1 (@Crashed T d' dt' bm' bt') tr ->
+                exec pr d dt bm bt (Bind p1 p2) (@Crashed T' d' dt' bm' bt') tr.
 
 Notation "p1 :; p2" := (Bind p1 (fun _: unit => p2))
                               (at level 60, right associativity).
 Notation "x <- p1 ;; p2" := (Bind p1 (fun x => p2))
                              (at level 60, right associativity).
-
 
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 Notation "^( a )" := (pair a tt).
@@ -321,38 +247,34 @@ Ltac inv_exec'' H :=
 
 Ltac inv_exec' :=
   match goal with
-  | [ H: exec _ _ _ (Bind _ _) _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Bind _ _) _ _ |- _ ] =>
     idtac
-  | [ H: exec _ _ _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ _ _ _ |- _ ] =>
     inv_exec'' H
   end.
 
 Lemma bind_sep:
-  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm (ret: result),
-    exec pr d bm (Bind p1 p2) ret ->
+  forall T T' pr (p1: prog T) (p2: T -> prog T') d dt bm bt (ret: result) tr,
+    exec pr d dt bm bt (Bind p1 p2) ret tr ->
     match ret with
-    | Finished _ _ _ =>
-    (exists r1 d1 bm1,
-       exec pr d bm p1 (Finished d1 bm1 r1) /\
-       exec pr d1 bm1 (p2 r1) ret)
-  | Crashed d' bm' =>
-    (exec pr d bm p1 (Crashed d' bm') \/
-     (exists r1 d1 bm1,
-        exec pr d bm p1 (Finished d1 bm1 r1) /\
-        exec pr d1 bm1 (p2 r1) ret))
-   | Failed d' bm' =>
-    (exec pr d bm p1 (Failed d' bm') \/
-     (exists r1 d1 bm1,
-        exec pr d bm p1 (Finished d1 bm1 r1) /\
-        exec pr d1 bm1 (p2 r1) ret))
+    | Finished _ _ _ _ _ =>
+    (exists r1 d1 dt1 bm1 bt1 tr1 tr2,
+       exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
+       exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\
+       tr = tr1++tr2)
+  | Crashed d' dt' bm' bt' =>
+    exec pr d dt bm bt p1 (Crashed d' dt' bm' bt') tr \/
+     (exists r1 d1 dt1 bm1 bt1 tr1 tr2,
+       exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
+       exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\
+       tr = tr1++tr2)
     end.
 Proof.
   intros.
   inv_exec'' H; eauto.
   destruct ret.
-  do 4 eexists; eauto.
-  right; do 4 eexists; eauto.
-  right; do 4 eexists; eauto.
+  do 7 eexists; eauto.
+  right; do 7 eexists; eauto.
 Qed.
 
 Ltac logic_clean:=
@@ -364,13 +286,13 @@ Ltac logic_clean:=
 Ltac some_subst :=
   match goal with
   | [H: Some _ = Some _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Finished _ _ _ = Finished _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Crashed _ _ = Crashed _ _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Failed _ _ = Failed _ _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Finished _ _ _ _ _ = Finished _ _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Crashed _ _ _ _ = Crashed _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
   end.
 
 Ltac clear_dup:=
   match goal with
+  | [H: ?x = ?x |- _] => clear H; repeat clear_dup
   | [H: ?x, H0: ?x |- _] => clear H0; repeat clear_dup
   end.
 
@@ -424,22 +346,20 @@ Ltac split_ors:=
 
 Ltac inv_exec_perm :=
   match goal with
-  |[H : exec _ _ _ (Bind _ _) _ |- _ ] => apply bind_sep in H; repeat cleanup
-  |[H : exec _ _ _ _ _ |- _ ] => inv_exec'
-  |[H : exec_sec _ _ _ _ _ _ |- _ ] => inv_exec'' H
+  |[H : exec _ _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; repeat cleanup
+  |[H : exec _ _ _ _ _ _ _ _ |- _ ] => inv_exec'
   end.
 
-
+Ltac destruct_ id := let D := fresh "D" in destruct id eqn:D.
 
 Theorem exec_equivalent_finished:
-  forall T (p: prog T) pr d1 d2 bm1 bm2 d1' bm1' dt bt (r: T) dt' bt' rt tr,
-    exec pr d1 bm1 p (Finished d1' bm1' r) ->
+  forall T (p: prog T) pr d1 d2 bm1 bm2 d1' bm1' (r: T) dt bt dt' bt' tr,
+    exec pr d1 dt bm1 bt p (Finished d1' dt' bm1' bt' r) tr ->
     (forall tag, can_access pr tag -> equivalent_for tag dt d1 d2) ->
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bt bm1 bm2) ->
-    exec_sec pr dt bt p (SFinished dt' bt' rt) tr -> 
     trace_secure pr tr ->
     
-    exists d2' bm2', exec pr d2 bm2 p (Finished d2' bm2' r) /\
+    exists d2' bm2', exec pr d2 dt bm2 bt p (Finished d2' dt' bm2' bt' r) tr /\
     (forall tag, can_access pr tag -> equivalent_for tag dt' d1' d2') /\
     (forall tag, can_access pr tag -> blockmem_equivalent_for tag bt' bm1' bm2').
 Proof.
@@ -447,48 +367,77 @@ Proof.
   inv_exec_perm; cleanup; simpl in *;
   try solve [repeat eexists; [econstructor; eauto|eauto|eauto] ].
   { (** Read **)
-    inv_exec_perm.
     specialize H1 with (1:= can_access_public pr) as Hx;
       unfold blockmem_equivalent_for, mem_merges_to, memmatch in Hx; cleanup.
     specialize (H r); intuition; cleanup; try congruence.
-    specialize (H2 r); intuition; cleanup; try congruence.
+    specialize (H3 r); intuition; cleanup; try congruence.
     specialize (H4 r); intuition; cleanup; try congruence.
     2:{ destruct x1; specialize (H6 r t b); intuition; cleanup; congruence. }
 
     specialize H0 with (1:= can_access_public pr) as Hx;
       unfold equivalent_for, disk_merges_to, diskmatch in Hx; cleanup.    
+    specialize (H n); intuition; cleanup; try congruence.
+    specialize (H8 n); intuition; cleanup; try congruence.
+    specialize (H11 n x5 x4); intuition; cleanup.
+    specialize (H10 n x5 x6); intuition; cleanup.
     specialize (H9 n); intuition; cleanup; try congruence.
-    specialize (H15 n); intuition; cleanup; try congruence.
-    specialize (H17 n (tb0, tbs0) x4); intuition; cleanup.
-    specialize (H18 n (tb0, tbs0) (tb, tbs)); intuition; cleanup.
-    specialize (H16 n); intuition; cleanup; try congruence.
-    destruct x4; simpl in *.
     unfold vsmerge in *; simpl in *.
-    inversion H21; simpl in *; subst.
+    inversion H15; simpl in *; subst.
     do 2 eexists; split.
     econstructor; eauto.
     split; eauto.
     unfold blockmem_equivalent_for; intros.
-    specialize H1 with (1:= H9) as Hx.
+    specialize H1 with (1:= H) as Hx.
     unfold blockmem_equivalent_for in Hx; cleanup.
     do 2 eexists; split.
-    mem_merges_to_upd:
-      forall bm bt btb t b 
-    admit.
+    
+    Lemma mem_merges_to_upd:
+      forall (bm: blockmem) (bt: tagmem) (btb: taggedmem) t b r,
+        (mem_merges_to(AEQ:=handle_eq_dec)) bt bm btb ->
+        (mem_merges_to(AEQ:=handle_eq_dec)) (upd bt r t) (upd bm r b) ((upd(AEQ:=handle_eq_dec)) btb r (t,b)).
+    Proof.
+      unfold mem_merges_to, memmatch; intros; cleanup.
+      split; intros.
+      specialize (H h); specialize (H0 h); cleanup.
+      intuition.
+      destruct (handle_eq_dec r h); subst.
+      rewrite upd_eq in H; auto; congruence.
+      rewrite upd_ne; rewrite upd_ne in H; auto.
+      destruct (handle_eq_dec r h); subst.
+      rewrite upd_eq in H; auto; congruence.
+      rewrite upd_ne; rewrite upd_ne in H; auto.
+
+      split; intros; cleanup.
+      destruct (handle_eq_dec r h); subst.
+      rewrite upd_eq in H1, H2; auto.
+      rewrite upd_eq; auto.
+      cleanup; auto.      
+      rewrite upd_ne; rewrite upd_ne in H1, H2; auto.
+      apply H0; eauto.
+
+      destruct (handle_eq_dec r h); subst.
+      rewrite upd_eq in H1; auto; cleanup.
+      repeat rewrite upd_eq; auto.
+      repeat rewrite upd_ne; rewrite upd_ne in H1; auto.
+      apply H0; auto.
+    Qed.      
+
+    apply mem_merges_to_upd; eauto.
     split.
-    admit.
+    apply mem_merges_to_upd; eauto.
+    
     
     intros.
     destruct (handle_eq_dec a r); subst.
     right.
     repeat rewrite Mem.upd_eq; eauto.
     do 2 eexists; eauto.
-    split. eapply Mem.upd_eq; eauto.
-    split. eapply Mem.upd_eq; eauto.
-    split; eauto.
+    split. eauto.
+    split. eauto.
 
     simpl in *; eauto.
-    specialize (H24 a); intuition.
+    
+    specialize (H21 a); intuition.
     left; split; erewrite Mem.upd_ne with (a:=r).
     apply H24.
     all: eauto.
