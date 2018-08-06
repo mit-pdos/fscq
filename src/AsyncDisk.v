@@ -109,7 +109,7 @@ Defined.
 
 (* Async-disk *)
 Definition rawdisk := @mem addr addr_eq_dec valuset.
-Definition vsmerge (vs : valuset) : list tagged_block := fst vs :: snd vs.
+Definition vsmerge {T} (vs: T * list T) := fst vs :: snd vs.
 
 
 (* Hashing *)
@@ -195,13 +195,13 @@ Lemma hash_to_valu_inj : forall a b,
 Qed.
 
 
-Definition sync_mem AT AEQ (m : @mem AT AEQ valuset) : @mem AT AEQ valuset :=
+Definition sync_mem AT AEQ V (m : @mem AT AEQ (V * list V)) : @mem AT AEQ (V * list V) :=
   fun a => match m a with
     | None => None
     | Some (v, _) => Some (v, nil)
     end.
 
-Definition sync_addr AT AEQ (m : @mem AT AEQ valuset) a : @mem AT AEQ valuset :=
+Definition sync_addr AT AEQ V (m : @mem AT AEQ (V * list V)) a : @mem AT AEQ (V * list V) :=
   fun a' => if AEQ a a' then
     match m a with
     | None => None
