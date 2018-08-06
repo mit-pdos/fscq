@@ -4,20 +4,21 @@ Require Import FMapFacts.
 
 Require Export Prog.
 
+Definition block_mem V := @mem handle handle_eq_dec V.
 
-Definition block_mem_subset (bm' bm: block_mem) :=
+Definition block_mem_subset {V} (bm' bm: block_mem V) :=
   forall h, (bm h = None -> bm' h = None) /\ (forall b, bm' h = Some b -> bm h = Some b).
 
 Infix "c=" := block_mem_subset (at level 1, left associativity).
 
 Lemma block_mem_subset_refl:
-  forall bm, bm c= bm.
+  forall V (bm: block_mem V), bm c= bm.
 Proof.
   unfold block_mem_subset; intuition eauto.
 Qed.
 
 Lemma block_mem_subset_trans:
-  forall bm bm' bm'',
+  forall V (bm bm' bm'': block_mem V),
     bm c= bm' ->
     bm' c= bm'' ->
     bm c= bm''.
@@ -28,7 +29,7 @@ Proof.
 Qed.
 
 Lemma block_mem_subset_upd_none:
-  forall bm bm' h v,
+  forall V (bm bm': block_mem V) h v,
     bm h = None ->
     bm' c= bm ->
     bm' c= (upd bm h v).
@@ -43,7 +44,7 @@ Proof.
 Qed.
 
 Lemma block_mem_subset_upd_nop:
-  forall bm bm' h v,
+  forall V (bm bm': block_mem V) h v,
     bm h = Some v ->
     bm' c= bm ->
     bm' c= (upd bm h v).
@@ -61,7 +62,7 @@ Proof.
 Qed.
 
 Lemma block_mem_subset_upd_irrel:
-  forall bm bm' h v,
+  forall V (bm bm': block_mem V) h v,
     bm' h = None ->
     bm' c= bm ->
     bm' c= (upd bm h v).
@@ -76,7 +77,7 @@ Proof.
 Qed.
 
 Lemma block_mem_subset_extract_none:
-  forall bm bm' h,
+  forall V (bm bm': block_mem V) h,
     bm h = None ->
     bm' c= bm ->
     bm' h = None.
@@ -86,7 +87,7 @@ Proof.
 Qed.
 
 Lemma block_mem_subset_extract_some:
-  forall bm bm' h v,
+  forall V (bm bm': block_mem V) h v,
     bm' h = Some v ->
     bm' c= bm ->
     bm h = Some v.
@@ -104,10 +105,10 @@ Hint Resolve block_mem_subset_refl block_mem_subset_upd_none
 
 (* This portion is for extracting blocks with a list of handles 
  * Basically, list handle -> list tagged_block *)
-Definition handle_valid (bm: block_mem) h := exists tb, bm h = Some tb.
-Definition handles_valid bm hl:= Forall (handle_valid bm) hl.
+Definition handle_valid {V} (bm: block_mem V) h := exists tb, bm h = Some tb.
+Definition handles_valid {V} (bm: block_mem V) hl:= Forall (handle_valid bm) hl.
 
-Fixpoint extract_blocks (bm: block_mem) hl :=
+Fixpoint extract_blocks {V} (bm: block_mem V) hl :=
   match hl with
   | nil => nil
   | h::t => match bm h with
@@ -117,7 +118,7 @@ Fixpoint extract_blocks (bm: block_mem) hl :=
   end.
 
 Lemma handles_valid_subset_trans:
-  forall bm bm' l,
+  forall V (bm bm': block_mem V) l,
     handles_valid bm l ->
     bm c= bm' ->
     handles_valid bm' l.
@@ -129,7 +130,7 @@ Proof.
 Qed.
 
 Lemma handles_valid_upd:
-  forall bm l a v,
+  forall V (bm: block_mem V) l a v,
     handles_valid bm l ->
     handles_valid (upd bm a v) l.
 Proof.
@@ -143,7 +144,7 @@ Proof.
 Qed.
 
 Lemma handles_valid_rev_eq:
-  forall bm l,
+  forall V (bm: block_mem V) l,
     handles_valid bm l ->
     handles_valid bm (rev l).
 Proof.
@@ -154,7 +155,7 @@ Proof.
 Qed.
 
  Lemma handles_valid_app:
-   forall hl1 hl2 bm,
+   forall V hl1 hl2 (bm: block_mem V),
      handles_valid bm (hl1++hl2) ->
      handles_valid bm hl1 /\ handles_valid bm hl2.
  Proof.
@@ -164,18 +165,16 @@ Qed.
  Qed.
 
  Lemma handles_valid_cons:
-   forall h hl bm,
+   forall V h hl (bm: block_mem V),
      handles_valid bm (h::hl) ->
      handle_valid bm h /\ handles_valid bm hl.
  Proof.
    unfold handles_valid; intros.
    inversion H; eauto.
  Qed.
-
-
  
 Lemma extract_blocks_length:
-  forall bm l,
+  forall V (bm: block_mem V) l,
     handles_valid bm l ->
     length (extract_blocks bm l) = length l.
 Proof.
@@ -186,7 +185,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_app:
-  forall l1 l2 bm,
+  forall V l1 l2 (bm: block_mem V),
     extract_blocks bm (l1 ++ l2) = extract_blocks bm l1 ++ extract_blocks bm l2.
 Proof.
   induction l1; intros; simpl; auto.
@@ -196,7 +195,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_length_le:
-  forall bm l,
+  forall V (bm: block_mem V) l,
     length (extract_blocks bm l) <= length l.
 Proof.
   induction l; simpl in *; intros; eauto.
@@ -204,20 +203,20 @@ Proof.
 Qed.
 
 Lemma extract_blocks_length_lt:
-  forall l h bm,
+  forall V l h (bm: block_mem V),
     List.In h l ->
     bm h = None ->
     length (extract_blocks bm l) < length l.
 Proof.
   induction l; simpl in *; intros; intuition.
   subst; rewrite H0.
-  pose proof (extract_blocks_length_le bm l); omega.
+  pose proof (extract_blocks_length_le V bm l); omega.
   specialize (IHl _ _ H1 H0).
   destruct (bm a); simpl; omega.
 Qed.
 
 Lemma extract_blocks_rev_length_eq:
-  forall bm l,
+  forall V (bm: block_mem V) l,
     length (extract_blocks bm l) =
     length (extract_blocks bm (rev l)).
 Proof.
@@ -228,7 +227,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_upd_not_in:
-  forall l h tb bm,
+  forall V l h tb (bm: block_mem V),
     ~List.In h l ->
     extract_blocks (upd bm h tb) l = extract_blocks bm l.
 Proof.
@@ -238,7 +237,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_selN:
-  forall bm l a def deftb,
+  forall V (bm: block_mem V) l a def deftb,
     handles_valid bm l ->
     a < length l ->
     bm (selN l a def) = Some (selN (extract_blocks bm l) a deftb).
@@ -253,7 +252,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_subset_trans:
-  forall bm bm' hl,
+  forall V (bm bm': block_mem V) hl,
     handles_valid bm hl ->
     bm c= bm' ->
     extract_blocks bm hl = extract_blocks bm' hl.
@@ -270,7 +269,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_selN_inside:
-  forall bm l a def deftb,
+  forall V (bm: block_mem V) l a def deftb,
     handles_valid bm l ->
     a < length l ->
     selN (extract_blocks bm l) a deftb::nil = extract_blocks bm (selN l a def :: nil).
@@ -284,7 +283,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_firstn_length:
-  forall bm l n,
+  forall V (bm: block_mem V) l n,
     handles_valid bm l ->
     length (extract_blocks bm (firstn n l)) = length (firstn n l).
 Proof.
@@ -297,7 +296,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_selN_some:
-  forall l bm n v def1 def2,
+  forall V l (bm: block_mem V) n v def1 def2,
     n < length l ->
     handles_valid bm l ->
     bm (selN l n def1) = Some v ->
@@ -318,16 +317,16 @@ Qed.
 (* extracting blocks for list of (T, handle) pairs
  * list (T * handle) -> list (T * tagged_block) *)
 
-Definition handles_valid_list {T} bm (hl: list (T * handle)) :=
+Definition handles_valid_list {T V} (bm: block_mem V) (hl: list (T * handle)) :=
   handles_valid bm (map snd hl).
 
-Definition extract_blocks_list {T} bm (hl:list (T * handle)) := 
+Definition extract_blocks_list {T V} (bm: block_mem V) (hl:list (T * handle)) := 
   List.combine (map fst hl) (extract_blocks bm (map snd hl)).
 
 
 Lemma handles_valid_list_subset_trans:
-  forall T bm bm' l,
-    @handles_valid_list T bm l ->
+  forall T V (bm bm': block_mem V) l,
+    @handles_valid_list T V bm l ->
     bm c= bm' ->
     handles_valid_list bm' l.
 Proof.
@@ -336,8 +335,8 @@ Proof.
 Qed.
 
 Lemma handles_valid_list_upd:
-  forall T bm l a v,
-    @handles_valid_list T bm l ->
+  forall T V (bm: block_mem V) l a v,
+    @handles_valid_list T V bm l ->
     handles_valid_list (upd bm a v) l.
 Proof.
   unfold handles_valid_list; intros.
@@ -345,8 +344,8 @@ Proof.
 Qed.
 
 Lemma handles_valid_list_rev_eq:
-  forall T bm l,
-    @handles_valid_list T bm l ->
+  forall T V (bm: block_mem V) l,
+    @handles_valid_list T V bm l ->
     handles_valid_list bm (rev l).
 Proof.
   unfold handles_valid_list; intros.
@@ -355,8 +354,8 @@ Proof.
 Qed.
 
 Lemma extract_blocks_list_subset_trans:
-  forall T bm bm' hl,
-    @handles_valid_list T bm hl ->
+  forall T V (bm bm': block_mem V) hl,
+    @handles_valid_list T V bm hl ->
     bm c= bm' ->
     extract_blocks_list bm hl = extract_blocks_list bm' hl.
 Proof.
@@ -374,20 +373,20 @@ Qed.
 
 Import AddrMap Map MapFacts.
 
-Definition handles_valid_map bm hmap:=
+Definition handles_valid_map {V} (bm: block_mem V) hmap:=
   handles_valid_list bm (elements hmap) .
 
-Definition extract_block (bm: block_mem) h :=
+Definition extract_block {V} (bm: block_mem V) def h:=
   match bm h with
-  | None => tagged_block0
+  | None => def
   | Some tb => tb
   end.
 
-Definition extract_blocks_map bm hm :=
-  map (fun x => extract_block bm x) hm.
+Definition extract_blocks_map {V} (bm: block_mem V) def hm :=
+  map (extract_block bm def) hm.
 
 Lemma handles_valid_map_subset_trans:
-  forall hmap bm bm',
+  forall V hmap (bm bm': block_mem V),
     bm c= bm' ->
     handles_valid_map bm hmap ->
     handles_valid_map bm' hmap.
@@ -398,7 +397,7 @@ Qed.
 
 
 Lemma handles_valid_map_equal:
-  forall hmap hmap' bm,
+  forall V hmap hmap' (bm: block_mem V),
     Map.Equal hmap hmap' ->
     handles_valid_map bm hmap ->
     handles_valid_map bm hmap'.
@@ -408,13 +407,13 @@ Proof.
 Qed.
 
 Lemma handles_valid_map_extract_some:
-   forall vm a h bm,
+   forall V vm a h (bm: block_mem V),
      Map.find a vm = Some h ->
      handles_valid_map bm vm ->
      exists tb, bm h = Some tb.
  Proof.
    unfold Map.find, handles_valid_map, handles_valid_list;
-   intro vm; destruct vm; generalize dependent this; induction this;
+   intros V vm; destruct vm; generalize dependent this; induction this;
    simpl in *; intros; auto; try congruence.
    inversion is_bst; subst.
    unfold Map.elements, AddrMap_AVL.Raw.elements in *; simpl in *.
@@ -426,18 +425,18 @@ Lemma handles_valid_map_extract_some:
  Qed.
 
 Lemma extract_blocks_map_equal:
-  forall hmap hmap' bm,
+  forall V hmap hmap' (bm: block_mem V) def,
     Map.Equal hmap hmap' ->
-    Map.Equal (extract_blocks_map bm hmap) (extract_blocks_map bm hmap').
+    Map.Equal (extract_blocks_map bm def hmap) (extract_blocks_map bm def hmap').
 Proof.
   unfold extract_blocks_map; intros.
   apply MapFacts.map_m; eauto.
 Qed.
 
 Lemma empty_extract_blocks_map:
-  forall hmap bm,
+  forall V hmap (bm: block_mem V) def,
     Map.Empty hmap ->
-    Map.Empty (extract_blocks_map bm hmap).
+    Map.Empty (extract_blocks_map bm def hmap).
 Proof.
   unfold Map.Empty, not; intros.
   apply MapFacts.map_mapsto_iff in H0;
@@ -445,8 +444,8 @@ Proof.
 Qed.
 
 Lemma map_in_extract_blocks_map:
-  forall hmap a bm,
-    Map.In a (extract_blocks_map bm hmap) ->
+  forall V hmap a (bm: block_mem V) def,
+    Map.In a (extract_blocks_map bm def hmap) ->
     Map.In a hmap.
 Proof.
   unfold extract_blocks_map; intros; eapply Map.map_2; eauto.
@@ -454,14 +453,14 @@ Qed.
 
 
 Lemma map_find_extract_blocks_mem:
-  forall hmap bm a h,
+  forall V hmap (bm: block_mem V) a h def,
     find a hmap = Some h ->
     handles_valid_map bm hmap ->
-    find a (extract_blocks_map bm hmap) =
-    Some (extract_block bm h).
+    find a (extract_blocks_map bm def hmap) =
+    Some (extract_block bm def h).
 Proof.
   unfold handles_valid_map, handles_valid_list;
-  intro hmap; destruct hmap.
+  intros V hmap; destruct hmap.
   generalize dependent this;
   induction this; unfold Map.find, Map.elements in *; simpl in *;
   intros; try congruence.
@@ -476,13 +475,13 @@ Proof.
 Qed.
 
 Lemma extract_blocks_map_extract_blocks_eq:
-  forall hmap bm,
+  forall V hmap (bm: block_mem V) def,
     handles_valid_map bm hmap ->
-    List.map snd (elements (extract_blocks_map bm hmap)) =
+    List.map snd (elements (extract_blocks_map bm def hmap)) =
     extract_blocks bm (List.map snd (elements hmap)).
 Proof.
   unfold handles_valid_map, handles_valid_list;
-  intro hmap; destruct hmap.
+  intros V hmap; destruct hmap.
   generalize dependent this;
   induction this; simpl; intros; auto.
   inversion is_bst; subst.
@@ -518,11 +517,11 @@ Proof.
 Qed.
 
 Lemma map_find_In_elements_none:
-  forall hmap bm a,
+  forall V hmap (bm: block_mem V) a def,
     Map.find a hmap = None ->
-    Map.find a (extract_blocks_map bm hmap) = None.
+    Map.find a (extract_blocks_map bm def hmap) = None.
 Proof.
-  intro hmap; destruct hmap.
+  intros V hmap; destruct hmap.
   generalize dependent this;
   induction this; unfold Map.find, Map.elements in *;
   simpl in *; intros; auto; try congruence.
@@ -532,11 +531,11 @@ Proof.
 Qed.
 
 Lemma extract_blocks_map_subset_trans:
-  forall hmap bm bm',
+  forall V hmap (bm bm': block_mem V) def,
     handles_valid_map bm hmap ->
     bm c= bm' ->
-    Map.Equal (extract_blocks_map bm hmap)
-              (extract_blocks_map bm' hmap).
+    Map.Equal (extract_blocks_map bm def hmap)
+              (extract_blocks_map bm' def hmap).
 Proof.
   unfold handles_valid_map, handles_valid_list;
   intros.
@@ -555,13 +554,13 @@ Proof.
 Qed.
 
 Lemma map_add_extract_blocks_mem_comm:
-  forall hmap bm a x,
+  forall V hmap (bm: block_mem V) a x def,
     bm (snd a) = Some x ->
-    Map.Equal (Map.add (fst a) x (extract_blocks_map bm hmap))
-              (extract_blocks_map bm
+    Map.Equal (Map.add (fst a) x (extract_blocks_map bm def hmap))
+              (extract_blocks_map bm def
                                   (Map.add (fst a) (snd a) hmap)).
 Proof.
-  intro hmap; destruct hmap.
+  intros V hmap; destruct hmap.
   generalize dependent this;
   induction this;
   simpl in *; intros; auto; try congruence.
@@ -609,7 +608,7 @@ Lemma in_fst:
 
 
 Lemma extract_blocks_list_KNoDup:
-   forall a bm,
+   forall V a (bm: block_mem V),
      handles_valid_list bm a ->
      KNoDup (extract_blocks_list bm a) ->
      KNoDup a.
@@ -636,16 +635,16 @@ Lemma extract_blocks_list_KNoDup:
 
 
 
-Definition handles_valid_nested {T} bm (hl: list (list (T * handle))) :=
-  Forall (fun tl => handles_valid_list bm tl) hl.
+Definition handles_valid_nested {T V} (bm: block_mem V) (hl: list (list (T * handle))) :=
+  Forall (handles_valid_list bm) hl.
 
-Definition extract_blocks_nested {T} bm (hl: list (list (T * handle))) := 
-  List.map (fun tl => extract_blocks_list bm tl) hl.
+Definition extract_blocks_nested {T V} (bm: block_mem V) (hl: list (list (T * handle))) := 
+  List.map (extract_blocks_list bm) hl.
 
   Lemma handles_valid_nested_subset_trans:
-    forall T ts bm bm',
+    forall T V ts bm bm',
       bm c= bm' ->
-      @handles_valid_nested T bm ts ->
+      @handles_valid_nested T V bm ts ->
       handles_valid_nested bm' ts.
   Proof.
     unfold handles_valid_nested; intros.
@@ -656,9 +655,9 @@ Definition extract_blocks_nested {T} bm (hl: list (list (T * handle))) :=
 
 
   Lemma extract_blocks_nested_subset_trans:
-    forall T ts bm bm',
+    forall T V ts bm bm',
       bm c= bm' ->
-      @handles_valid_nested T bm ts ->
+      @handles_valid_nested T V bm ts ->
       extract_blocks_nested bm' ts =
       extract_blocks_nested bm ts.
   Proof.
@@ -669,8 +668,8 @@ Definition extract_blocks_nested {T} bm (hl: list (list (T * handle))) :=
   Qed.
 
 Lemma extract_blocks_nested_length:
-    forall T ts bm,
-      length (@extract_blocks_nested T bm ts) = length ts.
+    forall T V ts bm,
+      length (@extract_blocks_nested T V bm ts) = length ts.
   Proof.
     unfold extract_blocks_nested; intros.
     rewrite map_length; auto.
@@ -687,7 +686,7 @@ Proof.
 Qed.
 
 Lemma extract_blocks_list_cons:
-  forall T l (a:T) b bm v,
+  forall T V l (a:T) b bm (v:V),
     bm b = Some v ->
     extract_blocks_list bm ((a, b) :: l) = (a, v)::extract_blocks_list bm l.
 Proof.
@@ -697,7 +696,7 @@ Qed.
 
 
 Lemma KIn_extract_blocks_list:
-  forall l a v bm,
+  forall V l a v (bm: block_mem V),
     handles_valid_list bm l ->
     KIn (a, v) (extract_blocks_list bm l) ->
     exists t, KIn (a, t) l.
@@ -715,9 +714,10 @@ Proof.
 Qed.
 
 Lemma KIn_extract_blocks_list2:
-  forall l a t bm,
+  forall V l a t (bm: block_mem V),
     handles_valid_list bm l ->
     KIn (a, t) l ->
+    V ->
     exists v, KIn (a, v) (extract_blocks_list bm l). 
 Proof.
   unfold extract_blocks_list; intros.
@@ -728,13 +728,13 @@ Proof.
   rewrite map_fst_combine; simpl; eauto.
   rewrite extract_blocks_length; auto.
   repeat rewrite map_length; auto.
-  Unshelve. exact tagged_block0.
+  Unshelve. eauto.
 Qed.
 
 Lemma InA_extract_blocks_list:
-  forall l a b x bm,
+  forall V l a b x bm,
     handles_valid_list bm l ->
-    InA (Map.eq_key (elt:=tagged_block))
+    InA (Map.eq_key (elt:=V))
         (a, x) (extract_blocks_list bm l) ->
     InA (Map.eq_key (elt:=handle)) (a, b) l.
 Proof.
@@ -749,10 +749,10 @@ Proof.
 Qed.
 
 Lemma InA_extract_blocks_list2:
-  forall l a b x bm,
+  forall V l a b x bm,
     handles_valid_list bm l ->
     InA (Map.eq_key (elt:=handle)) (a, b) l ->
-    InA (Map.eq_key (elt:=tagged_block))
+    InA (Map.eq_key (elt:=V))
         (a, x) (extract_blocks_list bm l).
 Proof.
   unfold extract_blocks_list; intros.
@@ -766,10 +766,10 @@ Proof.
 Qed.
 
 Lemma NoDupA_combine:
-  forall l bm,
+  forall V l bm,
     handles_valid_list bm l ->
     NoDupA (Map.eq_key (elt:=handle)) l ->
-    NoDupA (Map.eq_key (elt:=tagged_block)) (extract_blocks_list bm l).
+    NoDupA (Map.eq_key (elt:=V)) (extract_blocks_list bm l).
 Proof.
   induction l; simpl in *; intuition.
   unfold extract_blocks_list; simpl; eauto.
@@ -782,9 +782,9 @@ Qed.
 
 
 Lemma NoDupA_combine2:
-  forall l bm,
+  forall V l bm,
     handles_valid_list bm l ->
-    NoDupA (Map.eq_key (elt:=tagged_block)) (extract_blocks_list bm l) ->
+    NoDupA (Map.eq_key (elt:=V)) (extract_blocks_list bm l) ->
     NoDupA (Map.eq_key (elt:=handle)) l.    
 Proof.
   induction l; simpl in *; intuition.
@@ -795,13 +795,14 @@ Proof.
   inversion H0; subst.
   constructor; intuition.
   eapply InA_extract_blocks_list2 in H1; eauto.
+  apply H5; eauto.
   eapply IHl; eauto.
 Qed.
 
 
 Lemma extract_blocks_list_length:
-  forall T l bm,
-    @handles_valid_list T bm l ->
+  forall T V l bm,
+    @handles_valid_list T V bm l ->
     length (extract_blocks_list bm l) = length l.
 Proof.
   induction l; simpl; intros; auto.
@@ -812,346 +813,345 @@ Qed.
 
 
 Lemma handles_valid_nested_selN:
-  forall T ts n bm def,
+  forall T V ts n bm def,
     handles_valid_nested bm ts ->
     n < length ts ->
-    @handles_valid_list T bm (selN ts n def).
+    @handles_valid_list T V bm (selN ts n def).
 Proof.
   unfold handles_valid_nested; intros.
   apply Forall_selN; auto.
 Qed.
 
 Lemma extract_blocks_list_nested_selN_comm:
-  forall T ts n bm def1 def2,
+  forall T V ts n bm def1 def2,
     n < length ts ->
     extract_blocks_list bm (selN ts n def1) =
-    selN (@extract_blocks_nested T bm ts) n def2.
+    selN (@extract_blocks_nested T V bm ts) n def2.
 Proof.
   unfold extract_blocks_nested; intros.
   erewrite selN_map; eauto.
 Qed.  
 
-  Lemma handles_valid_nested_empty:
-    forall T bm, @handles_valid_nested T bm nil.
-  Proof.
-    unfold handles_valid_nested, handles_valid_list;
-    simpl; intros; apply Forall_nil.
-  Qed.
-
-
-  Lemma extract_blocks_nested_in:
-    forall T ts x bm,
-      @handles_valid_nested T bm ts ->
-      List.In x ts ->
-      List.In (extract_blocks_list bm x) (extract_blocks_nested bm ts).
-  Proof.
-    induction ts; simpl in *; intros.
-    intuition.
-    inversion H; subst.
-    intuition.
-    subst; auto.
-  Qed.
-  
-  Lemma extract_blocks_list_map_fst:
-    forall T l bm,
-      @handles_valid_list T bm l ->
-      List.map fst (extract_blocks_list bm l) = List.map fst l.
-  Proof.
-    unfold extract_blocks_list; intros.
-    apply map_fst_combine.
-    rewrite extract_blocks_length; auto.
-    repeat rewrite map_length; auto.
-  Qed.
-  
-    Lemma Forall_extract_blocks_list_length_le:
-      forall T l bm (vs: list T),
-        handles_valid_list bm l ->
-        Forall (fun e : addr * handle => fst e < length vs) l ->
-        Forall (fun e : addr * tagged_block => fst e < length vs)
-               (extract_blocks_list bm l).
-    Proof.
-      intros; rewrite Forall_forall in *; intros.
-      destruct x; simpl in *.
-      apply in_fst_snd_map_split in H1.
-      destruct H1.
-      unfold extract_blocks_list in *.
-      rewrite map_fst_combine in H1.
-      apply in_map_fst_exists_snd in H1; destruct H1.
-      apply H0 in H1; eauto.
-      rewrite extract_blocks_length; auto.
-      repeat rewrite map_length; eauto.
-    Qed.
-
-  
-  Lemma combine_elements_eq:
-    forall hmap bm,
-      handles_valid bm (List.map snd (Map.elements hmap)) ->
-      List.combine (List.map fst (Map.elements hmap))
-                   (extract_blocks bm (List.map snd (Map.elements hmap))) =
-      (Map.elements (extract_blocks_map bm hmap)).
-  Proof.
-    intro hmap; destruct hmap.
-    generalize dependent this;
-    induction this;
-    simpl in *; intros; auto; try congruence.
-    unfold handles_valid, handle_valid, Map.elements,
-    AddrMap_AVL.Raw.elements in *; simpl in *;
-    unfold extract_block in *; subst; eauto.
-    repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
-    repeat rewrite map_app in *; simpl in *.
-    inversion is_bst; subst.
-    
-    rewrite extract_blocks_app; simpl.
-    rewrite combine_app.
-    repeat rewrite app_nil_r in *.
-    eapply forall_app_l in H as Hl.
-    apply forall_app_r in H as Hr.
-    inversion Hl; subst; simpl.
-    destruct H2; rewrite H0.
-    unfold AddrMap_AVL.Raw.elements;
-    erewrite IHthis1, IHthis2; auto; simpl.
-    rewrite extract_blocks_length; auto.
-    repeat rewrite map_length; eauto.
-    unfold handles_valid, handle_valid;
-    apply forall_app_r in H; auto.
-  Qed.
-      
-
-    
-
-Lemma extract_blocks_list_map:
-  forall hmap bm,
-    handles_valid_map bm hmap ->
-    Map.elements (extract_blocks_map bm hmap)
-    = extract_blocks_list bm (Map.elements hmap).
+Lemma handles_valid_nested_empty:
+  forall T V bm, @handles_valid_nested T V bm nil.
 Proof.
-  unfold extract_blocks_map, extract_blocks_list; intros.
-  rewrite combine_elements_eq; auto.
+  unfold handles_valid_nested, handles_valid_list;
+    simpl; intros; apply Forall_nil.
 Qed.
 
 
- Lemma in_fst_exists_snd:
-    forall A B (l: list (A * B)) x,
-      List.In x (List.map fst l) ->
-      exists y, List.In (x, y) l.
-  Proof.
-    induction l; simpl; intros; intuition.
-    destruct a; simpl in *; subst; eexists; eauto.
-    specialize (IHl x H0); destruct IHl; eauto.
-  Qed.
+Lemma extract_blocks_nested_in:
+  forall T V ts x bm,
+    @handles_valid_nested T V bm ts ->
+    List.In x ts ->
+    List.In (extract_blocks_list bm x) (extract_blocks_nested bm ts).
+Proof.
+  induction ts; simpl in *; intros.
+  intuition.
+  inversion H; subst.
+  intuition.
+  subst; auto.
+Qed.
 
-  Lemma in_snd_exists_fst:
-      forall A B  (l: list (A * B)) y,
-        List.In y (List.map snd l) ->
-        exists x, List.In (x, y) l.
-    Proof.
-      induction l; simpl; intuition.
-      simpl in *; subst.
-      eexists; intuition.
-      specialize (IHl _ H0).
-      destruct IHl.
-      eexists; right; eauto.
-    Qed.
+Lemma extract_blocks_list_map_fst:
+  forall T V l bm,
+    @handles_valid_list T V bm l ->
+    List.map fst (extract_blocks_list bm l) = List.map fst l.
+Proof.
+  unfold extract_blocks_list; intros.
+  apply map_fst_combine.
+  rewrite extract_blocks_length; auto.
+  repeat rewrite map_length; auto.
+Qed.
 
-  Lemma in_extract_blocks_map:
-    forall hmap bm x y b,
-      List.In (x,y) (Map.elements hmap) ->
-      bm y = Some b ->
-      List.In (x,b) (Map.elements (extract_blocks_map bm hmap)).
-  Proof.
-    intro hmap; destruct hmap.
-    generalize dependent this;
+Lemma Forall_extract_blocks_list_length_le:
+  forall T V l bm (vs: list T),
+    handles_valid_list bm l ->
+    Forall (fun e : addr * handle => fst e < length vs) l ->
+    Forall (fun e : addr * V => fst e < length vs)
+           (extract_blocks_list bm l).
+Proof.
+  intros; rewrite Forall_forall in *; intros.
+  destruct x; simpl in *.
+  apply in_fst_snd_map_split in H1.
+  destruct H1.
+  unfold extract_blocks_list in *.
+  rewrite map_fst_combine in H1.
+  apply in_map_fst_exists_snd in H1; destruct H1.
+  apply H0 in H1; eauto.
+  rewrite extract_blocks_length; auto.
+  repeat rewrite map_length; eauto.
+Qed.
+
+
+Lemma combine_elements_eq:
+  forall V hmap (bm: block_mem V) def,
+    handles_valid bm (List.map snd (Map.elements hmap)) ->
+    List.combine (List.map fst (Map.elements hmap))
+                 (extract_blocks bm (List.map snd (Map.elements hmap))) =
+    (Map.elements (extract_blocks_map bm def hmap)).
+Proof.
+  intros V hmap; destruct hmap.
+  generalize dependent this;
     induction this;
     simpl in *; intros; auto; try congruence.
-    unfold Map.elements,
-    AddrMap_AVL.Raw.elements in *; simpl in *;
+  unfold handles_valid, handle_valid, Map.elements,
+  AddrMap_AVL.Raw.elements in *; simpl in *;
+    unfold extract_block in *; subst; eauto.
+  repeat rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
+  repeat rewrite map_app in *; simpl in *.
+  inversion is_bst; subst.
+  
+  rewrite extract_blocks_app; simpl.
+  rewrite combine_app.
+  repeat rewrite app_nil_r in *.
+  eapply forall_app_l in H as Hl.
+  apply forall_app_r in H as Hr.
+  inversion Hl; subst; simpl.
+  destruct H2; rewrite H0.
+  unfold AddrMap_AVL.Raw.elements;
+    erewrite IHthis1, IHthis2; auto; simpl.
+  rewrite extract_blocks_length; auto.
+  repeat rewrite map_length; eauto.
+  unfold handles_valid, handle_valid;
+    apply forall_app_r in H; auto.
+Qed.
+
+
+Lemma extract_blocks_list_map:
+  forall V hmap (bm: block_mem V) def,
+    handles_valid_map bm hmap ->
+    Map.elements (extract_blocks_map bm def hmap)
+    = extract_blocks_list bm (Map.elements hmap).
+Proof.
+  unfold extract_blocks_map, extract_blocks_list; intros.
+  erewrite combine_elements_eq; eauto.
+  unfold extract_blocks_map, extract_blocks_list; eauto.
+Qed.
+
+Lemma in_fst_exists_snd:
+  forall A B (l: list (A * B)) x,
+    List.In x (List.map fst l) ->
+    exists y, List.In (x, y) l.
+Proof.
+  induction l; simpl; intros; intuition.
+  destruct a; simpl in *; subst; eexists; eauto.
+  specialize (IHl x H0); destruct IHl; eauto.
+Qed.
+
+Lemma in_snd_exists_fst:
+  forall A B  (l: list (A * B)) y,
+    List.In y (List.map snd l) ->
+    exists x, List.In (x, y) l.
+Proof.
+  induction l; simpl; intuition.
+  simpl in *; subst.
+  eexists; intuition.
+  specialize (IHl _ H0).
+  destruct IHl.
+  eexists; right; eauto.
+Qed.
+
+Lemma in_extract_blocks_map:
+  forall V hmap (bm: block_mem V) x y b def,
+    List.In (x,y) (Map.elements hmap) ->
+    bm y = Some b ->
+    List.In (x,b) (Map.elements (extract_blocks_map bm def hmap)).
+Proof.
+  intros V hmap; destruct hmap.
+  generalize dependent this;
+    induction this;
+    simpl in *; intros; auto; try congruence.
+  unfold Map.elements,
+  AddrMap_AVL.Raw.elements in *; simpl in *;
     unfold extract_block; eauto.
-    rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
-    apply in_app_iff.
-    apply in_app_iff in H.
-    inversion is_bst; subst.
-    intuition.
-    left; eapply H; eauto.
-    inversion H1.
-    inversion H3; subst; rewrite H0.
-    right; left; auto.
-    right; right; eapply H2; eauto.
-  Qed.
+  rewrite AddrMap_AVL.Raw.Proofs.elements_app in *.
+  apply in_app_iff.
+  apply in_app_iff in H.
+  inversion is_bst; subst.
+  intuition.
+  left; eapply H; eauto.
+  inversion H1.
+  inversion H3; subst; rewrite H0.
+  right; left; auto.
+  right; right; eapply H2; eauto.
+Qed.
 
-  Lemma Forall_extract_blocks_mem_addr_in_len:
-    forall A hmap bm (l: list A),
-      handles_valid bm (List.map snd (Map.elements hmap)) ->
-      Forall (fun e : addr * tagged_block => fst e < length l)
-             (Map.elements (extract_blocks_map bm hmap)) ->
-      Forall (fun e : addr * handle => fst e < length l)
-             (Map.elements hmap).
-  Proof.
-    unfold handles_valid, handle_valid; intros;
+Lemma Forall_extract_blocks_mem_addr_in_len:
+  forall A V hmap bm (l: list A) def,
+    handles_valid bm (List.map snd (Map.elements hmap)) ->
+    Forall (fun e : addr * V => fst e < length l)
+           (Map.elements (extract_blocks_map bm def hmap)) ->
+    Forall (fun e : addr * handle => fst e < length l)
+           (Map.elements hmap).
+Proof.
+  unfold handles_valid, handle_valid; intros;
     rewrite Forall_forall in *; intros.
-    destruct x ; simpl in *.
-    apply in_fst_snd_map_split in H1 as Hx; intuition.
-    specialize (H h H3); destruct H.
-    eapply in_extract_blocks_map in H1; eauto.
-    specialize (H0 _ H1); simpl in *; auto.
-  Qed.
+  destruct x ; simpl in *.
+  apply in_fst_snd_map_split in H1 as Hx; intuition.
+  specialize (H h H3); destruct H.
+  eapply in_extract_blocks_map in H1; eauto.
+  specialize (H0 _ H1); simpl in *; auto.
+Qed.
 
 
-  Lemma handles_valid_map_empty:
-    forall hmap bm,
-      Map.Empty hmap ->
-      handles_valid_map bm hmap.
-  Proof.
-    unfold handles_valid_map, handles_valid_list; intros.
-    apply MapProperties.elements_Empty in H; rewrite H;
+Lemma handles_valid_map_empty:
+  forall V hmap (bm: block_mem V),
+    Map.Empty hmap ->
+    handles_valid_map bm hmap.
+Proof.
+  unfold handles_valid_map, handles_valid_list; intros.
+  apply MapProperties.elements_Empty in H; rewrite H;
     simpl; apply Forall_nil.
-  Qed.
+Qed.
 
 
-  Lemma handles_valid_extract:
-    forall l h bm,
-      handles_valid bm l ->
-      List.In h l ->
-      exists v, bm h = Some v.
-  Proof.
-    unfold handles_valid, handle_valid; intros;
+Lemma handles_valid_extract:
+  forall V l h (bm: block_mem V),
+    handles_valid bm l ->
+    List.In h l ->
+    exists v, bm h = Some v.
+Proof.
+  unfold handles_valid, handle_valid; intros;
     rewrite Forall_forall in *; auto.
-  Qed.
+Qed.
 
-  Lemma handles_valid_list_extract:
-    forall T l a h bm,
-      @handles_valid_list T bm l ->
-      List.In (a, h) l ->
-      exists v, bm h = Some v.
-  Proof.
-    unfold handles_valid_list; intros.
-    apply in_fst_snd_map_split in H0.
-    destruct H0.
-    eapply handles_valid_extract; eauto.
-  Qed.
+Lemma handles_valid_list_extract:
+  forall T V l a h bm,
+    @handles_valid_list T V bm l ->
+    List.In (a, h) l ->
+    exists v, bm h = Some v.
+Proof.
+  unfold handles_valid_list; intros.
+  apply in_fst_snd_map_split in H0.
+  destruct H0.
+  eapply handles_valid_extract; eauto.
+Qed.
 
-  Lemma handles_valid_map_extract:
-    forall m a h bm,
-      handles_valid_map bm m ->
-      Map.find a m = Some h ->
-      exists v, bm h = Some v.
-  Proof.
-    unfold handles_valid_map, handles_valid_list; intros.
-    apply map_find_In_elements in H0.
-    eapply handles_valid_extract; eauto.
-  Qed.
+Lemma handles_valid_map_extract:
+  forall V m a h (bm: block_mem V),
+    handles_valid_map bm m ->
+    Map.find a m = Some h ->
+    exists v, bm h = Some v.
+Proof.
+  unfold handles_valid_map, handles_valid_list; intros.
+  apply map_find_In_elements in H0.
+  eapply handles_valid_extract; eauto.
+Qed.
 
-  
-  Lemma extract_block_map_some:
-    forall hmap a h bm,
-      handles_valid_map bm hmap ->
-      List.In (a, h) (Map.elements hmap) ->
-      List.In (a, extract_block bm h) (Map.elements (extract_blocks_map bm hmap)).
-  Proof.
-    unfold extract_block, handles_valid_map; intros.
-    eapply handles_valid_list_extract in H; eauto.
-    destruct H.
-    rewrite H.
-    eapply in_extract_blocks_map; eauto.
-  Qed.
 
-  Lemma map_find_elements_in:
-    forall T m a (x: T),
-      Map.find a m = Some x ->
-      List.In (a, x) (Map.elements m).
-  Proof.
-    intros.
-    apply Map.find_2 in H.
-    apply Map.elements_1 in H.
-    apply InA_eqke_In; auto.
-  Qed.
+Lemma extract_block_map_some:
+  forall V hmap a h (bm: block_mem V) def,
+    handles_valid_map bm hmap ->
+    List.In (a, h) (Map.elements hmap) ->
+    List.In (a, extract_block bm def h) (Map.elements (extract_blocks_map bm def hmap)).
+Proof.
+  unfold extract_block, handles_valid_map; intros.
+  eapply handles_valid_list_extract in H; eauto.
+  destruct H.
+  rewrite H.
+  eapply in_extract_blocks_map; eauto.
+Qed.
 
-  (* easier to use version for map proofs *)
-  Lemma handles_valid_map_transform:
-    forall m bm, handles_valid_map bm m <-> (forall a h, MapsTo a h m -> exists b, bm h = Some b).
-  Proof.
-    unfold handles_valid_map, handles_valid_list,
-    handles_valid, handle_valid;
+Lemma map_find_elements_in:
+  forall T m a (x: T),
+    Map.find a m = Some x ->
+    List.In (a, x) (Map.elements m).
+Proof.
+  intros.
+  apply Map.find_2 in H.
+  apply Map.elements_1 in H.
+  apply InA_eqke_In; auto.
+Qed.
+
+(* easier to use version for map proofs *)
+Lemma handles_valid_map_transform:
+  forall V m (bm: block_mem V),
+    handles_valid_map bm m <-> (forall a h, MapsTo a h m -> exists b, bm h = Some b).
+Proof.
+  unfold handles_valid_map, handles_valid_list,
+  handles_valid, handle_valid;
     intros; intuition.
-    apply elements_1 in H0.
-    apply InA_eqke_In in H0.
-    apply in_fst_snd_map_split in H0.
-    destruct H0.
-    rewrite Forall_forall in *; auto.
-    rewrite Forall_forall; intros.
-    apply in_snd_exists_fst in H0.
-    destruct H0.
-    eapply In_InA in H0.
-    apply elements_2 in H0; eauto.
-    intuition.
-  Qed.
-  
+  apply elements_1 in H0.
+  apply InA_eqke_In in H0.
+  apply in_fst_snd_map_split in H0.
+  destruct H0.
+  rewrite Forall_forall in *; auto.
+  rewrite Forall_forall; intros.
+  apply in_snd_exists_fst in H0.
+  destruct H0.
+  eapply In_InA in H0.
+  apply elements_2 in H0; eauto.
+  intuition.
+Qed.
 
-  Lemma handles_valid_map_add:
-      forall m a h v bm,
-        handles_valid_map bm m ->
-        bm h = Some v ->
-        handles_valid_map bm (Map.add a h m).
-  Proof.
-    intros.
-    apply handles_valid_map_transform.
-    intros.
-    apply add_mapsto_iff in H1; intuition.
-    subst; eauto.
-    eapply handles_valid_map_transform in H; eauto.
-  Qed.
 
-  Lemma handles_valid_map_remove:
-    forall hmap a bm,
-      handles_valid_map bm hmap ->
-      handles_valid_map bm (Map.remove a hmap).
-  Proof.
-    intros.
-    apply handles_valid_map_transform.
-    intros.
-    apply remove_mapsto_iff in H0; intuition.
-    eapply handles_valid_map_transform in H; eauto.
-  Qed.
+Lemma handles_valid_map_add:
+  forall V m a h v (bm: block_mem V),
+    handles_valid_map bm m ->
+    bm h = Some v ->
+    handles_valid_map bm (Map.add a h m).
+Proof.
+  intros.
+  apply handles_valid_map_transform.
+  intros.
+  apply add_mapsto_iff in H1; intuition.
+  subst; eauto.
+  eapply handles_valid_map_transform in H; eauto.
+Qed.
 
-  Lemma extract_blocks_map_remove:
-    forall hmap a bm,
-      Map.Equal  (extract_blocks_map bm (Map.remove a hmap))
-                 (Map.remove a (extract_blocks_map bm hmap)).
-  Proof.
-    intros; apply Equal_mapsto_iff; intuition.
-    - destruct (addr_eq_dec k a); subst.
-      apply find_1 in H.
-      assert (A: find a (extract_blocks_map bm (remove a hmap)) <> None). {
-        intuition.
-        rewrite H in H0; inversion H0.
-      }
-      apply in_find_iff in A.
-      unfold extract_blocks_map in *.
-      apply map_2 in A.
-      apply remove_in_iff in A; intuition.
+Lemma handles_valid_map_remove:
+  forall V hmap a (bm: block_mem V),
+    handles_valid_map bm hmap ->
+    handles_valid_map bm (Map.remove a hmap).
+Proof.
+  intros.
+  apply handles_valid_map_transform.
+  intros.
+  apply remove_mapsto_iff in H0; intuition.
+  eapply handles_valid_map_transform in H; eauto.
+Qed.
 
-      apply find_1 in H.
-      unfold extract_blocks_map in *.
-      rewrite map_o in H; unfold option_map in H.
-      apply remove_2.
+Lemma extract_blocks_map_remove:
+  forall V hmap a (bm: block_mem V) def,
+    Map.Equal  (extract_blocks_map bm def (Map.remove a hmap))
+               (Map.remove a (extract_blocks_map bm def hmap)).
+Proof.
+  intros; apply Equal_mapsto_iff; intuition.
+  - destruct (addr_eq_dec k a); subst.
+    apply find_1 in H.
+    assert (A: find a (extract_blocks_map bm def (remove a hmap)) <> None). {
       intuition.
-      apply find_2.
-      rewrite remove_neq_o in H; intuition.
-      rewrite map_o; unfold option_map; auto.
+      rewrite H in H0; inversion H0.
+    }
+    apply in_find_iff in A.
+    unfold extract_blocks_map in *.
+    apply map_2 in A.
+    apply remove_in_iff in A; intuition.
 
-    - apply remove_mapsto_iff in H; intuition.
-      unfold extract_blocks_map in *.
-      apply map_mapsto_iff in H1; destruct H1; intuition.
-      apply map_mapsto_iff; intuition.
-      eexists; intuition; eauto.
-      apply remove_2; intuition.
-  Qed.
+    apply find_1 in H.
+    unfold extract_blocks_map in *.
+    rewrite map_o in H; unfold option_map in H.
+    apply remove_2.
+    intuition.
+    apply find_2.
+    rewrite remove_neq_o in H; intuition.
+    rewrite map_o; unfold option_map; auto.
 
-  
-  Ltac solve_blockmem_subset:=
-    match goal with
-    | [|- block_mem_subset _ =p=> (fun _ : Mem.mem => _ c= _)] =>
-      unfold pimpl; intros; solve_blockmem_subset
-    | [|- _ c= _ ] =>
-      auto; eapply block_mem_subset_trans;
-      eauto; solve_blockmem_subset
-    end.
+  - apply remove_mapsto_iff in H; intuition.
+    unfold extract_blocks_map in *.
+    apply map_mapsto_iff in H1; destruct H1; intuition.
+    apply map_mapsto_iff; intuition.
+    eexists; intuition; eauto.
+    apply remove_2; intuition.
+Qed.
+
+
+Ltac solve_blockmem_subset:=
+  match goal with
+  | [|- block_mem_subset _ =p=> (fun _ : Mem.mem => _ c= _)] =>
+    unfold pimpl; intros; solve_blockmem_subset
+  | [|- _ c= _ ] =>
+    auto; eapply block_mem_subset_trans;
+    eauto; solve_blockmem_subset
+  end.
