@@ -32,48 +32,50 @@ Ltac inv_exec'' H :=
 
 Ltac inv_exec' :=
   match goal with
-  | [ H: exec _ _ _ _ (Ret _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Ret _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Read _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Read _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Write _ _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Write _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Seal _ _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Seal _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Unseal _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Unseal _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ Sync _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ Sync _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ (Auth _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ _ (Auth _) _ _ |- _ ] =>
+    inv_exec'' H
+  | [ H: exec _ _ _ _ _ (Chtag _ _) _ _ |- _ ] =>
     inv_exec'' H
   end.
 
 Lemma bind_sep:
-  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm hm (ret: result) tr',
-    exec pr d bm hm (Bind p1 p2) ret tr' ->
+  forall T T' pr (p1: prog T) (p2: T -> prog T') d dt bm bt (ret: result) tr',
+    exec pr d dt bm bt (Bind p1 p2) ret tr' ->
     match ret with
-    | Finished _ _ _ _ =>
-    (exists tr1 tr2 r1 d1 bm1 hm1,
-       exec pr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
-       exec pr d1 bm1 hm1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1)
-  | Crashed d' bm' hm' =>
-    (exec pr d bm hm p1 (Crashed d' bm' hm') tr' \/
-     (exists tr1 tr2 r1 d1 bm1 hm1,
-        exec pr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
-        exec pr d1 bm1 hm1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
-   | Failed d' bm' hm' =>
-    (exec pr d bm hm p1 (Failed d' bm' hm') tr' \/
-     (exists tr1 tr2 r1 d1 bm1 hm1,
-        exec pr d bm hm p1 (Finished d1 bm1 hm1 r1) tr1 /\
-        exec pr d1 bm1 hm1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
+    | Finished _ _ _ _ _ =>
+    (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
+       exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
+       exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1)
+  | Crashed d' =>
+    (exec pr d dt bm bt p1 (Crashed d') tr' \/
+     (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
+        exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
+        exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
+   | Failed d' =>
+    (exec pr d dt bm bt p1 (Failed d') tr' \/
+     (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
+        exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
+        exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
     end.
 Proof.
   intros.
   inv_exec'' H; eauto.
   destruct ret.
-  do 4 eexists; eauto.
-  right; do 4 eexists; eauto.
-  right; do 4 eexists; eauto.
+  do 7 eexists; eauto.
+  right; do 7 eexists; eauto.
+  right; do 7 eexists; eauto.
 Qed.
 
 Ltac logic_clean:=
@@ -85,13 +87,14 @@ Ltac logic_clean:=
 Ltac some_subst :=
   match goal with
   | [H: Some _ = Some _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Finished _ _ _ _ = Finished _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Crashed _ _ _ = Crashed _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Failed _ _ _ = Failed _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Finished _ _ _ _ _ = Finished _ _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Crashed _ = Crashed _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Failed _  = Failed _  |- _] => inversion H; subst; clear H; repeat some_subst
   end.
 
 Ltac clear_dup:=
   match goal with
+  | [H: ?x = ?x |- _] => clear H; repeat clear_dup
   | [H: ?x, H0: ?x |- _] => clear H0; repeat clear_dup
   end.
 
@@ -145,6 +148,6 @@ Ltac split_ors:=
 
 Ltac inv_exec_perm :=
   match goal with
-  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; repeat cleanup
-  |[H : exec _ _ _ _ _ _ _ |- _ ] => inv_exec'
+  |[H : exec _ _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; repeat cleanup
+  |[H : exec _ _ _ _ _ _ _ _ |- _ ] => inv_exec'
   end.
