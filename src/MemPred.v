@@ -338,10 +338,10 @@ Proof.
     end; eauto.
 Qed.
 
-(*
-Theorem xform_mem_pred : forall prd (hm : rawdisk),
-  crash_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
-  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => crash_xform (prd a v)) hm.
+Theorem xform_mem_pred : forall HighAT HighAEQ HighV LowAT LowAEQ LowV
+    (prd : HighAT -> _ -> @pred LowAT LowAEQ (LowV * list LowV)) (hm : @mem HighAT HighAEQ HighV),
+  crash_xform (mem_pred prd hm) <=p=>
+  mem_pred (fun a v => crash_xform (prd a v)) hm.
 Proof.
   unfold mem_pred; intros; split.
   xform_norm; subst.
@@ -354,11 +354,13 @@ Proof.
   cancel.
   eauto.
 Qed.
-*)
 
-Theorem sync_xform_mem_pred : forall prd (hm : rawdisk),
-  sync_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
-  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => sync_xform (prd a v)) hm.
+
+Theorem sync_xform_mem_pred :
+  forall HighAT HighAEQ HighV LowAT LowAEQ LowV
+    (prd : HighAT -> _ -> @pred LowAT LowAEQ (LowV * list LowV)) (hm : @mem HighAT HighAEQ HighV),
+  sync_xform (mem_pred prd hm) <=p=>
+  mem_pred (fun a v => sync_xform (prd a v)) hm.
 Proof.
   unfold mem_pred; intros; split.
   rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
@@ -372,9 +374,12 @@ Proof.
 Qed.
 
 
-Theorem sync_invariant_mem_pred : forall HighAT HighAEQ HighV (prd : HighAT -> HighV -> _) hm,
+Theorem sync_invariant_mem_pred :
+  forall HighAT HighAEQ HighV LowAT LowAEQ LowV
+    (prd : HighAT -> _ -> @pred LowAT LowAEQ (LowV * list LowV))
+    (hm : @mem HighAT HighAEQ HighV),
   (forall a v, sync_invariant (prd a v)) ->
-  sync_invariant (@mem_pred _ _ _ _ HighAEQ _ prd hm).
+  sync_invariant (mem_pred prd hm).
 Proof.
   unfold mem_pred; eauto.
 Qed.
@@ -542,14 +547,14 @@ End MEM_REGION.
 
 Section MEM_INCL.
 
-  Implicit Types m ma mb : rawdisk.
-
-  Definition mem_incl ma mb := forall a,
+  
+  Definition mem_incl {AT AEQ V} (ma mb: @mem AT AEQ (V * list V)) :=
+    forall a,
     (ma a = None /\ mb a = None) \/
     exists va vb, ma a = Some va /\ mb a = Some vb /\
     incl (vsmerge va) (vsmerge vb).
 
-  Lemma mem_incl_refl : forall m,
+  Lemma mem_incl_refl : forall AT AEQ V (m: @mem AT AEQ (V * list V)),
     mem_incl m m.
   Proof.
     unfold mem_incl; intros.
@@ -557,7 +562,7 @@ Section MEM_INCL.
     right; do 2 eexists; intuition.
   Qed.
 
-  Lemma mem_incl_trans : forall m ma mb,
+  Lemma mem_incl_trans : forall AT AEQ V (m ma mb: @mem AT AEQ (V * list V)),
     mem_incl ma m ->
     mem_incl m mb ->
     mem_incl ma mb.
@@ -571,7 +576,7 @@ Section MEM_INCL.
     eapply incl_tran; eauto.
   Qed.
 
-  Lemma possible_crash_incl_trans : forall m ma mb,
+  Lemma possible_crash_incl_trans : forall AT AEQ V (m ma mb: @mem AT AEQ (V * list V)),
     possible_crash ma m ->
     mem_incl ma mb ->
     possible_crash mb m.
@@ -584,14 +589,14 @@ Section MEM_INCL.
     do 2 eexists; intuition eauto.
   Qed.
 
-  Lemma mem_incl_upd : forall a va vb ma mb,
+  Lemma mem_incl_upd : forall AT AEQ V (ma mb: @mem AT AEQ (V * list V)) a va vb,
     mem_incl ma mb ->
     incl (vsmerge va) (vsmerge vb) ->
     mem_incl (upd ma a va) (upd mb a vb).
   Proof.
     unfold mem_incl; intros.
     specialize (H a0).
-    destruct (addr_eq_dec a a0); subst.
+    destruct (AEQ a a0); subst.
     repeat rewrite upd_eq by auto.
     intuition; repeat deex; intuition.
     right; do 2 eexists; eauto.
@@ -600,9 +605,9 @@ Section MEM_INCL.
     intuition.
   Qed.
 
-  Lemma mem_incl_listupd : forall la lb,
+  Lemma mem_incl_listupd : forall V la lb,
     Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) la lb ->
-    forall ma mb st,
+    forall (ma mb: @mem _ _ (V * list V)) st,
     mem_incl ma mb ->
     mem_incl (listupd ma st la) (listupd mb st lb).
   Proof.
@@ -611,9 +616,9 @@ Section MEM_INCL.
     apply mem_incl_upd; auto.
   Qed.
 
-  Lemma mem_incl_listupd_same : forall la lb,
+  Lemma mem_incl_listupd_same : forall V la lb,
     Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) la lb ->
-    forall m st,
+    forall (m: @mem _ _ (V * list V)) st,
     mem_incl (listupd m st la) (listupd m st lb).
   Proof.
     intros.

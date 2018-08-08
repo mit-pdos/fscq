@@ -56,7 +56,7 @@ Definition disk_merges_to {AT AEQ V1 V2} (td : @Mem.mem AT AEQ (V1 * list V1))
   diskmatch td bd
   /\ (forall a ts bs,
         td a = Some ts /\ bd a = Some bs <->
-    tgd a = Some ((fst ts, fst bs), List.combine (snd ts) (snd bs))).
+    (tgd a = Some ((fst ts, fst bs), List.combine (snd ts) (snd bs)) /\ length (snd ts) = length (snd bs))).
 
 Definition mem_merges_to {AT AEQ V1 V2} (tm : @Mem.mem AT AEQ V1)
                                     (bm: @Mem.mem AT AEQ V2) tgm :=

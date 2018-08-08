@@ -903,8 +903,8 @@ Proof.
   eapply H; eauto.
 Qed.
 
-Theorem xform_listpred : forall V (l : list V) prd,
-  crash_xform (listpred prd l) <=p=> listpred (fun x => crash_xform (prd x)) l.
+Theorem xform_listpred : forall V AT' AEQ' V' (l : list V) prd,
+  crash_xform (listpred prd l) <=p=> listpred (fun x => @crash_xform AT' AEQ' V' (prd x)) l.
 Proof.
   induction l; simpl; intros; split; auto; xform_dist; auto.
   rewrite IHl; auto.
@@ -912,7 +912,7 @@ Proof.
 Qed.
 
 
-Lemma crash_xform_pprd : forall A B (prd : A -> B -> rawpred),
+Lemma crash_xform_pprd : forall A B AT AEQ V (prd : A -> B -> @pred AT AEQ (V * list V)),
   (fun p => crash_xform (pprd prd p)) =
   (pprd (fun x y => crash_xform (prd x y))).
 Proof.
@@ -920,15 +920,15 @@ Proof.
   apply functional_extensionality; intros; destruct x; auto.
 Qed.
 
-Theorem xform_listmatch : forall A B (a : list A) (b : list B) prd,
+Theorem xform_listmatch : forall A B (a : list A) (b : list B) AT AEQ V (prd : A -> B -> @pred AT AEQ (V * list V)),
   crash_xform (listmatch prd a b) <=p=> listmatch (fun x y => crash_xform (prd x y)) a b.
 Proof.
   unfold listmatch; intros; split; xform_norm;
   rewrite xform_listpred; cancel;
-  rewrite crash_xform_pprd; auto.
+  setoid_rewrite crash_xform_pprd; auto.
 Qed.
 
-Theorem xform_listpred_idem_l : forall V (l : list V) prd,
+Theorem xform_listpred_idem_l : forall V (l : list V) AT AEQ V' (prd : V -> @pred AT AEQ (V' * list V')),
   (forall e, crash_xform (prd e) =p=> prd e) ->
   crash_xform (listpred prd l) =p=> listpred prd l.
 Proof.
@@ -939,7 +939,7 @@ Proof.
 Qed.
 
 
-Theorem xform_listpred_idem_r : forall V (l : list V) prd,
+Theorem xform_listpred_idem_r : forall V (l : list V) AT AEQ V' (prd : V -> @pred AT AEQ (V' * list V')),
   (forall e,  prd e =p=> crash_xform (prd e)) ->
   listpred prd l =p=> crash_xform (listpred prd l).
 Proof.
@@ -950,7 +950,7 @@ Proof.
   rewrite <- IHl; auto.
 Qed.
 
-Theorem xform_listpred_idem : forall V (l : list V) prd,
+Theorem xform_listpred_idem : forall V (l : list V) AT AEQ V' (prd : V -> @pred AT AEQ (V' * list V')),
   (forall e, crash_xform (prd e) <=p=> prd e) ->
   crash_xform (listpred prd l) <=p=> listpred prd l.
 Proof.
@@ -961,7 +961,7 @@ Proof.
   apply H.
 Qed.
 
-Theorem xform_listmatch_idem_l : forall A B (a : list A) (b : list B) prd,
+Theorem xform_listmatch_idem_l : forall A B (a : list A) (b : list B) AT AEQ V (prd : A -> B -> @pred AT AEQ (V * list V)),
   (forall a b, crash_xform (prd a b) =p=> prd a b) ->
   crash_xform (listmatch prd a b) =p=> listmatch prd a b.
 Proof.
@@ -971,7 +971,7 @@ Proof.
   destruct e; cbn; auto.
 Qed.
 
-Theorem xform_listmatch_idem_r : forall A B (a : list A) (b : list B) prd,
+Theorem xform_listmatch_idem_r : forall A B (a : list A) (b : list B) AT AEQ V (prd : A -> B -> @pred AT AEQ (V * list V)),
   (forall a b,  prd a b =p=> crash_xform (prd a b)) ->
   listmatch prd a b =p=> crash_xform (listmatch prd a b).
 Proof.
@@ -982,7 +982,7 @@ Proof.
   auto.
 Qed.
 
-Theorem xform_listmatch_idem : forall A B (a : list A) (b : list B) prd,
+Theorem xform_listmatch_idem : forall A B (a : list A) (b : list B) AT AEQ V (prd : A -> B -> @pred AT AEQ (V * list V)),
   (forall a b, crash_xform (prd a b) <=p=> prd a b) ->
   crash_xform (listmatch prd a b) <=p=> listmatch prd a b.
 Proof.
@@ -993,8 +993,8 @@ Proof.
   apply H.
 Qed.
 
-Lemma xform_listpred_ptsto : forall l,
-  crash_xform (listpred (fun a => a |->?) l) =p=>
+Lemma xform_listpred_ptsto : forall AT AEQ V l,
+  @crash_xform AT AEQ V (listpred (fun a => a |->?) l) =p=>
                listpred (fun a => a |->?) l.
 Proof.
   induction l; simpl.
@@ -1004,10 +1004,10 @@ Proof.
   auto.
 Qed.
 
-Lemma xform_listpred_ptsto_fp : forall FP,
-  (forall a, crash_xform (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
+Lemma xform_listpred_ptsto_fp : forall AT AEQ V FP,
+  (forall a, @crash_xform AT AEQ V (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
   forall l,
-  crash_xform (listpred (fun a => exists v, a |-> v * [[ FP v ]]) l) =p=>
+  @crash_xform AT AEQ V (listpred (fun a => exists v, a |-> v * [[ FP v ]]) l) =p=>
                listpred (fun a => exists v, a |-> v * [[ FP v ]]) l.
 Proof.
   induction l; simpl.
@@ -1019,8 +1019,8 @@ Proof.
 Qed.
 
 
-Lemma xform_listmatch_ptsto : forall al vl,
-  crash_xform (listmatch (fun v a => a |-> v) vl al) =p=>
+Lemma xform_listmatch_ptsto : forall AT AEQ al vl,
+  @crash_xform AT AEQ _ (listmatch (fun v a => a |-> v) vl al) =p=>
     exists l, [[ possible_crash_list vl l ]] *
     listmatch (fun v a => a |-> v) (synced_list l) al.
 Proof.
@@ -1035,18 +1035,22 @@ Proof.
     rewrite crash_xform_sep_star_dist, crash_xform_lift_empty in IHal.
     inversion H; subst.
     setoid_rewrite lift_impl with (Q := length vl = length al) at 3; intros; eauto.
+    rewrite crash_xform_sep_star_dist.
+    rewrite crash_xform_lift_empty.
     rewrite IHal; simpl.
 
-    cancel.
-    eassign (v' :: l); cancel.
-    simpl; cancel.
+    norml; intuition; cancel.
+    eassign ((v'_1, v'_2) :: l); cancel.
+    
     apply possible_crash_list_cons; simpl; auto.
     rewrite synced_list_length in *; simpl; omega.
+
+    simpl; eassign ((v'_1, v'_2) :: l); cancel.
     apply possible_crash_list_cons; simpl; auto.
     rewrite synced_list_length in *; simpl; omega.
 Qed.
 
-Theorem sync_invariant_listpred : forall T prd (l : list T),
+Theorem sync_invariant_listpred : forall T AT AEQ V' (prd : T -> @pred AT AEQ (V' * list V')) (l : list T),
   (forall x, sync_invariant (prd x)) ->
   sync_invariant (listpred prd l).
 Proof.
@@ -1055,7 +1059,7 @@ Qed.
 
 Hint Resolve sync_invariant_listpred.
 
-Theorem sync_xform_listpred : forall V (l : list V) prd,
+Theorem sync_xform_listpred : forall V (l : list V) AT AEQ V' (prd : V -> @pred AT AEQ (V' * list V')),
   sync_xform (listpred prd l) <=p=> listpred (fun x => sync_xform (prd x)) l.
 Proof.
   induction l; simpl; intros; split; auto.
@@ -1068,7 +1072,7 @@ Proof.
 Qed.
 
 
-Lemma sync_xform_listpred' : forall T (l : list T) p q,
+Lemma sync_xform_listpred' : forall T (l : list T) AT AEQ V' (p q : T -> @pred AT AEQ (V' * list V')),
   (forall x, sync_xform (p x) =p=> q x) ->
   sync_xform (listpred p l) =p=> listpred q l.
 Proof.
