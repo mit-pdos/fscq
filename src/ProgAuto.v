@@ -58,8 +58,8 @@ Lemma bind_sep:
     (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
        exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
        exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1)
-  | Crashed d' =>
-    (exec pr d dt bm bt p1 (Crashed d') tr' \/
+  | Crashed d' dt' bm' bt' =>
+    (exec pr d dt bm bt p1 (Crashed d' dt' bm' bt') tr' \/
      (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
         exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
         exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
@@ -88,7 +88,7 @@ Ltac some_subst :=
   match goal with
   | [H: Some _ = Some _ |- _] => inversion H; subst; clear H; repeat some_subst
   | [H: Finished _ _ _ _ _ = Finished _ _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Crashed _ = Crashed _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Crashed _ _ = Crashed _ _ |- _] => inversion H; subst; clear H; repeat some_subst
   | [H: Failed _  = Failed _  |- _] => inversion H; subst; clear H; repeat some_subst
   end.
 

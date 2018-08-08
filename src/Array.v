@@ -490,7 +490,7 @@ Proof.
     repeat rewrite firstn_length_l; omega.
 Qed.
 
-Lemma forall_incl_refl : forall vs,
+Lemma forall_incl_refl : forall V (vs: list (V * list V)),
   Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs vs.
 Proof.
   induction vs; auto.
@@ -1346,7 +1346,9 @@ Section ArrayCrashXform.
     induction l; simpl; intros.
     cancel.
     instantiate (1 := nil).
-    simpl; auto. auto.
+    simpl; auto.
+    apply crash_invariant_emp.
+    auto.
 
     xform.
     rewrite IHl.
@@ -1378,6 +1380,7 @@ Section ArrayCrashXform.
     crash_xform (arrayN pts st l) =p=> arrayN pts st l.
   Proof.
     induction l; simpl; auto; intros.
+    apply crash_invariant_emp.
     xform.
     rewrite IHl.
     cancel; subst.
@@ -1417,13 +1420,13 @@ End ArrayCrashXform.
 
 Section SubsetArray.
 
-  Theorem sync_invariant_arrayN_subset : forall vs a,
+  Theorem sync_invariant_arrayN_subset : forall V (vs: list (V * list V)) a,
     sync_invariant (arrayN ptsto_subset a vs).
   Proof.
     induction vs; simpl; auto.
   Qed.
 
-  Lemma arrayN_subset_oob': forall l a i m,
+  Lemma arrayN_subset_oob': forall V (l: list (V * list V)) a i m,
     i >= length l
     -> arrayN ptsto_subset a l m
     -> m (a + i) = None.
@@ -1450,7 +1453,7 @@ Section SubsetArray.
   Qed.
 
 
-  Lemma arrayN_subset_oob: forall l i m,
+  Lemma arrayN_subset_oob: forall V (l: list (V * list V)) i m,
     i >= length l
     -> arrayN ptsto_subset 0 l m
     -> m i = None.
@@ -1460,7 +1463,7 @@ Section SubsetArray.
     eapply arrayN_subset_oob'; eauto.
   Qed.
 
-   Lemma arrayN_selN_subset : forall F a st l m def,
+   Lemma arrayN_selN_subset : forall V F a st (l: list (V * list V)) m def,
     (F * arrayN ptsto_subset st l)%pred m ->
     a >= st ->
     a < st + length l ->
@@ -1473,13 +1476,13 @@ Section SubsetArray.
     eexists; split; try split.
     eapply ptsto_valid.
     pred_apply; replace (st + (a - st)) with a by omega.
-    eassign ((fst (selN l (a - st) (def_cur, def_old)), dummy)).
+    eassign ((fst (selN l (a - st) (def_1, def_2)), dummy)).
     cancel.
     simpl; auto.
     auto.
   Qed.
 
-  Lemma arrayN_subset_memupd : forall F l a i v vs vs' m,
+  Lemma arrayN_subset_memupd : forall V F (l: list (V * list V)) a i v vs vs' m,
     (F * arrayN ptsto_subset a l)%pred m ->
     incl vs' vs ->
     i < length l ->
@@ -1517,7 +1520,7 @@ Section SubsetArray.
     xform.
     rewrite IHl.
     rewrite crash_xform_ptsto_subset; unfold ptsto_subset, synced_list.
-    cancel; [ instantiate (1 := v' :: l') | .. ]; simpl; auto; try cancel;
+    cancel; [ instantiate (1 := (v'_1, v'_2) :: l') | .. ]; simpl; auto; try cancel;
     destruct i; simpl; auto;
     destruct (H4 i); try omega; simpl; auto.
   Qed.
@@ -1544,7 +1547,7 @@ Section SubsetArray.
 
   Hint Resolve incl_refl.
 
-  Lemma crash_xform_synced_arrayN_subset: forall l st,
+  Lemma crash_xform_synced_arrayN_subset: forall V (l: list (V * list V)) st,
     Forall (fun x => snd x = nil) l ->
     crash_xform (arrayN ptsto_subset st l) =p=> arrayN ptsto_subset st l.
   Proof.
@@ -1674,7 +1677,7 @@ End ListUpd.
 
 Section ListUpdSubset.
 
-  Lemma arrayN_listupd_subset : forall l m l0 base F,
+  Lemma arrayN_listupd_subset : forall V (l: list (V * list V)) m l0 base F,
     (F * arrayN ptsto_subset base l0 )%pred m ->
     length l0 = length l ->
     (F * arrayN ptsto_subset base l)%pred (listupd m base l).
@@ -1684,7 +1687,7 @@ Section ListUpdSubset.
     eapply IHl with (l0 := l0); eauto.
     setoid_rewrite sep_star_comm at 1.
     apply sep_star_assoc.
-    apply sep_star_comm; destruct a, v.
+    apply sep_star_comm; destruct a, p.
     eapply ptsto_subset_upd.
     pred_apply; cancel.
     apply incl_refl.

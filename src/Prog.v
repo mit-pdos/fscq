@@ -68,7 +68,7 @@ Definition mem_merges_to {AT AEQ V1 V2} (tm : @Mem.mem AT AEQ V1)
 
 Inductive result {T: Type} : Type :=
 | Finished : blockdisk -> tagdisk -> blockmem -> tagmem -> T -> result
-| Crashed : blockdisk -> result
+| Crashed : blockdisk -> tagdisk -> blockmem -> tagmem -> result
 | Failed : blockdisk -> result.
 
 Inductive prog : Type -> Type :=
@@ -146,17 +146,17 @@ Inductive exec:
                exec pr d dt bm bt (Bind p1 p2) r (t2++t1)
                       
 | CrashRead : forall pr d dt bm bt a,
-                exec pr d dt bm bt (Read a) (Crashed d) nil
+                exec pr d dt bm bt (Read a) (Crashed d dt bm bt) nil
                         
 | CrashWrite : forall pr d dt bm bt a i,
-                 exec pr d dt bm bt (Write a i) (Crashed d) nil
+                 exec pr d dt bm bt (Write a i) (Crashed d dt bm bt) nil
                        
 | CrashSync : forall pr d dt bm bt,
-                exec pr d dt bm bt (Sync) (Crashed d) nil
+                exec pr d dt bm bt (Sync) (Crashed d dt bm bt) nil
 
-| CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d dt d' bm bt tr,
-                exec pr d dt bm bt p1 (@Crashed T d') tr ->
-                exec pr d dt bm bt (Bind p1 p2) (@Crashed T' d') tr
+| CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d dt d' dt' bm bm' bt bt' tr,
+                exec pr d dt bm bt p1 (@Crashed T d' dt' bm' bt') tr ->
+                exec pr d dt bm bt (Bind p1 p2) (@Crashed T' d' dt' bm' bt') tr
 
 | FailRead    : forall pr d bm dt bt a,
                   d a = None ->
@@ -175,8 +175,6 @@ Inductive exec:
                 exec pr d dt bm bt (Bind p1 p2) (@Failed T' d') tr'.
 
 
-
-
 Inductive recover_outcome (TF TR: Type) :=
  | RFinished : blockdisk -> tagdisk -> blockmem -> tagmem -> TF -> recover_outcome TF TR
  | RRecovered : blockdisk -> tagdisk -> blockmem -> tagmem -> TR -> recover_outcome TF TR
@@ -190,15 +188,15 @@ Inductive exec_recover (TF TR: Type):
 | XRFailed : forall pr tr' d dt bm bt p1 p2 d',
        exec pr d dt bm bt p1 (@Failed TF d') tr'
     -> exec_recover pr d dt bm bt p1 p2 (RFailed TF TR d') tr'
-| XRCrashedFinished : forall pr tr' tr'' d dt bm bt p1 p2 d' d'r dt' d'' dt'' bm'' bt'' (v: TR),
-    exec pr d dt bm bt p1 (@Crashed TF d') tr'
+| XRCrashedFinished : forall pr tr' tr'' d dt bm bt p1 p2 d' dt' bm' bt' d'r dt'r d'' dt'' bm'' bt'' (v: TR),
+    exec pr d dt bm bt p1 (@Crashed TF d' dt' bm' bt') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r dt' empty_mem empty_mem  p2 p2 (RFinished TR d'' dt'' bm'' bt'' v) tr''
+    -> @exec_recover TR TR pr d'r dt'r empty_mem empty_mem  p2 p2 (RFinished TR d'' dt'' bm'' bt'' v) tr''
     -> exec_recover pr d dt bm bt p1 p2 (RRecovered TF d'' dt'' bm'' bt'' v) (tr''++tr')
-| XRCrashedRecovered : forall pr tr' tr'' d dt bm bt p1 p2 d' d'r dt' d'' dt'' bm'' bt'' (v: TR),
-    exec pr d dt bm bt p1 (@Crashed TF d') tr'
+| XRCrashedRecovered : forall pr tr' tr'' d dt bm bt p1 p2 d' dt' bm' bt' d'r dt'r d'' dt'' bm'' bt'' (v: TR),
+    exec pr d dt bm bt p1 (@Crashed TF d' dt' bm' bt') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r dt' empty_mem empty_mem  p2 p2 (RRecovered TR d'' dt'' bm'' bt'' v) tr''
+    -> @exec_recover TR TR pr d'r dt'r empty_mem empty_mem  p2 p2 (RRecovered TR d'' dt'' bm'' bt'' v) tr''
     -> exec_recover pr d dt bm bt p1 p2  (RRecovered TF d'' dt'' bm'' bt'' v) (tr''++tr').
 
 

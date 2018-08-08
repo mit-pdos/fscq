@@ -816,13 +816,13 @@ Theorem nop_ok :
                                        [[ bm = bm' ]] *
                                        [[ done' = done_ ]] *
                                        [[ crash' = crash_ ]])
-     (rx r_) ]] * [[ F =p=> crash_ bm hm]])%pred (rx v).
+     (rx r_) ]] * [[ F =p=> crash_ bm ]])%pred (rx v).
 Proof.
   unfold corr2, pimpl.
   intros.
-  destruct H.
-  destruct_lift H.
-  eapply H4; eauto.
+  destruct H1.
+  destruct_lift H1.
+  eapply H6; eauto.
   pred_apply.
   cancel.
 Qed.
@@ -835,13 +835,13 @@ Theorem nop_ok_weak :
                                        [[ bm = bm' ]] *
                                        [[ done' = done_ ]] *
                                        [[ crash' = crash_ ]])
-     (rx r_) ]] * [[ F =p=> crash_ bm hm]])%pred (rx v).
+     (rx r_) ]] * [[ F =p=> crash_ bm ]])%pred (rx v).
 Proof.
   unfold corr2_weak, pimpl.
   intros.
-  destruct H.
-  destruct_lift H.
-  eapply H4; eauto.
+  destruct H1.
+  destruct_lift H1.
+  eapply H6; eauto.
   pred_apply.
   cancel.
 Qed.
@@ -1084,7 +1084,7 @@ Ltac lightstep :=
     norm; [cancel|repeat split].
 
 
-
+(*
 Transparent corr2 corr2_weak.
 
    Theorem weak_conversion:
@@ -1115,22 +1115,23 @@ Transparent corr2 corr2_weak.
     monad_simpl_weak.
     unfold corr2, corr2_weak in *; intros.
     inv_exec_perm.
-    - destruct_lift H2.
-      edestruct H.
+    - destruct_lift H4.
+      specialize H with (1:=H2)(2:=H3); edestruct H.
       2: repeat econstructor; eauto.
       {
         pred_apply; safecancel.
         eassign dummy; cancel.
         eauto.
-        inv_exec'' H13.
-        destruct_lift H12.
+        inv_exec'' H18.
+        destruct_lift H17.
         eassign crashc.
-        left; repeat eexists; eauto.
-        eassign (fun d0 (bm0: block_mem) (hm0:hashmap) (r: T) =>
+        left; do 7  eexists; repeat (split; eauto).
+        (* Why doesn't this typecheck? *)
+        instantiate (1:= (fun bm0 r =>
                    (dummy * post dummy r dummy0 bm0 hm0 *
                     [[ exists l : list (word hashlen * {sz : addr & word sz}),
                          hashmap_subset l hm hm0 ]] *
-                    [[ bm c= bm0 ]])%pred d0);
+                    [[ btb c= bm0 ]])%pred)).
           simpl; pred_apply; cancel.
         eauto.
         inv_exec'' H13; simpl; eauto.
@@ -1805,3 +1806,4 @@ Transparent corr2 corr2_weak.
   Qed. 
 
   Opaque corr2 corr2_weak.
+*)

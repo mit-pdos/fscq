@@ -11,16 +11,26 @@ Set Implicit Arguments.
 
 (** ** Hoare logic *)
 
-Definition donecond (T: Type) := tagged_disk -> block_mem -> hashmap -> T -> Prop.
-Definition crashcond :=  block_mem -> hashmap -> @pred addr addr_eq_dec valuset .
+Definition tagged_disk := @mem addr addr_eq_dec valuset.
 
-Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> block_mem -> hashmap ->  @pred _ _ valuset) (p: prog T) :=
-  forall d bm hm tr donec crashc out,
-    pre donec crashc bm hm d
-  -> exec pr d bm hm p out tr
-  -> ((exists d' bm' hm' v, out = Finished d' bm' hm' v /\
-                  donec d' bm' hm' v) \/
-      (exists d' bm' hm', out = Crashed d' bm' hm' /\ crashc bm' hm' d'))/\
+Definition donecond (T: Type) := block_mem tagged_block  -> T -> rawpred tagged_block.
+Definition crashcond :=  block_mem tagged_block -> rawpred tagged_block.
+
+Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> block_mem tagged_block -> hashmap ->  rawpred tagged_block) (p: prog T) :=
+  forall d dt dtb bm bt btb hm tr donec crashc out,
+    disk_merges_to dt d dtb
+  -> mem_merges_to bt bm btb
+  -> pre donec crashc btb hm dtb      
+  -> exec pr d dt bm bt p out tr
+  -> ((exists d' dt' dtb' bm' bt' btb'  v,
+         out = Finished d' dt' bm' bt' v /\
+         (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
+         (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\                            
+         donec btb' v dtb') \/
+     (exists d' dt' dtb' bm' bt' btb', out = Crashed d' dt' bm' bt' /\
+         (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
+         (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\
+         crashc btb' dtb'))/\
     only_public_operations tr.
 
 
@@ -62,7 +72,7 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (F_ * crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -84,7 +94,7 @@ Notation "{< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH'
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (F_ * crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
    )%pred
    (Bind p1 rx)%pred)
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
@@ -102,7 +112,7 @@ Notation "{!< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -123,7 +133,7 @@ Notation "{!< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
    )%pred
    (Bind p1 rx)%pred)
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
@@ -146,7 +156,7 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
      [[ forall realcrash bm'' hm'',
           crash_xform realcrash =p=> crash_xform crash ->
           (F_ * realcrash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -157,18 +167,18 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
 
 
 Theorem pimpl_ok2:
-  forall T pr (pre pre':donecond T -> crashcond -> block_mem ->  hashmap -> @pred _ _ valuset) (p: prog T),
+  forall T pr (pre pre': donecond T -> crashcond -> block_mem tagged_block -> hashmap ->  rawpred tagged_block) (p: prog T),
   corr2 pr pre' p ->
   (forall done crash bm hm, pre done crash bm hm =p=>  pre' done crash bm hm) ->
   corr2 pr pre p.
 Proof.
   unfold corr2; intros.
   eapply H; eauto.
-  apply H0; auto.
+  apply H0; eauto.
 Qed.
 
 Theorem pimpl_ok2_cont :
-  forall T pr (pre pre': donecond T -> crashcond -> block_mem ->  hashmap ->  @pred _ _ valuset) A (k : A -> prog T) x y,
+  forall T pr (pre pre': donecond T -> crashcond -> block_mem tagged_block -> hashmap ->  rawpred tagged_block) A (k : A -> prog T) x y,
     corr2 pr pre' (k y) ->
     (forall done crash bm hm, pre done crash bm hm =p=>  pre' done crash bm hm) ->
     (forall done crash bm hm, pre done crash bm hm =p=> [x = y]) ->
@@ -177,11 +187,11 @@ Proof.
   unfold corr2; intros.
   edestruct H1; eauto.
   eapply H; eauto.
-  apply H0; auto.
+  apply H0; eauto.
 Qed.
 
 Theorem pimpl_pre2:
-  forall T pr pre' (pre: donecond T -> crashcond -> block_mem ->  hashmap ->  @pred _ _ valuset) (p: prog T),
+  forall T pr pre' (pre: donecond T -> crashcond -> block_mem tagged_block -> hashmap ->  rawpred tagged_block) (p: prog T),
     (forall done crash bm hm, pre done crash bm hm  =p=>  [corr2 pr (pre' done crash bm hm) p]) ->
     (forall done crash bm hm, pre done crash bm hm  =p=> pre' done crash bm hm done crash bm hm) ->
     corr2 pr pre p.
@@ -192,7 +202,7 @@ Proof.
 Qed.
 
 Theorem pre_false2:
-  forall T pr (pre: donecond T -> crashcond -> block_mem ->  hashmap ->  @pred _ _ valuset) (p: prog T),
+  forall T pr (pre: donecond T -> crashcond -> block_mem tagged_block -> hashmap ->  rawpred tagged_block) (p: prog T),
     (forall done crash bm hm, pre done crash bm hm =p=>  [False]) ->
     corr2 pr pre p.
 Proof.
@@ -206,7 +216,7 @@ Theorem corr2_exists:
     corr2 pr (fun done crash bm hm => exists a:T, pre done crash bm hm a)%pred p.
 Proof.
   unfold corr2; intros.
-  destruct H0.
+  destruct H2.
   eapply H; eauto.
 Qed.
 
@@ -217,7 +227,7 @@ Theorem corr2_forall:
 Proof.
   unfold corr2; intros.
   eapply H; eauto.
-  exists a; auto.
+  exists a; eauto.
 Qed.
 
 Theorem corr2_equivalence :
@@ -246,17 +256,27 @@ Proof.
   eapply pimpl_ok2; [| apply H1].
   unfold corr2 in *.
   intros.
-  destruct H2; eauto.
+  destruct H4; eauto.
 Qed.
 
 
-Definition corr3 (TF TR: Type) pr (pre: block_mem -> hashmap -> donecond TF -> donecond TR -> pred) (p1: prog TF) (p2: prog TR) :=
-  forall done crashdone m tr bm hm out,
-    pre bm hm done crashdone m
-  -> exec_recover pr m bm hm p1 p2 out tr
-  -> ((exists m' bm' hm' v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
-    (exists m' bm' hm' v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))
-/\ only_public_operations tr.
+Definition corr3 (TF TR: Type) pr (pre: donecond TF -> donecond TR -> block_mem tagged_block -> hashmap ->  rawpred tagged_block) (p1: prog TF) (p2: prog TR) :=
+  forall d dt dtb bm bt btb hm tr donec crashc out,
+    disk_merges_to dt d dtb
+  -> mem_merges_to bt bm btb
+  -> pre donec crashc btb hm dtb      
+  -> exec_recover pr d dt bm bt p1 p2 out tr
+  ->  ((exists d' dt' dtb' bm' bt' btb'  v,
+         out = RFinished TR d' dt' bm' bt' v /\
+         (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
+         (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\                            
+         donec btb' v dtb') \/
+      (exists d' dt' dtb' bm' bt' btb' v,
+          out = RRecovered TF  d' dt' bm' bt' v /\
+         (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
+         (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\
+         crashc btb' v dtb'))/\
+    only_public_operations tr.
 
 Notation "{{ pr | pre }} p1 >> p2" := (corr3 pr pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
@@ -280,10 +300,10 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
           [[ done'_ = done_ ]] *
           [[ bm c= bm' ]] *
           [[ forall bm_crash hm_crash,
-            crash'_ bm_crash hm_crash
+            crash'_ bm_crash
             * [[ exists l, hashmap_subset l hm hm_crash ]]
             * [[ bm c= bm_crash ]]
-            =p=> F_ * idemcrash bm_crash hm_crash ]]
+            =p=> F_ * idemcrash bm_crash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
         {{ pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ *
@@ -291,10 +311,10 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
           [[ done'_ = crashdone_ ]] *
           [[ bm c= bm_rec ]] *
           [[ forall bm_crash hm_crash,
-            crash'_ bm_crash hm_crash
+            crash'_ bm_crash
             * [[ exists l, hashmap_subset l hm hm_crash ]]
             * [[ bm c= bm_crash ]]
-            =p=> F_ * idemcrash bm_crash hm_crash ]]
+            =p=> F_ * idemcrash bm_crash ]]
         }} rxREC r_ ]]
    )%pred
    (Bind p1 rxOK)%pred
@@ -356,7 +376,7 @@ Theorem pimpl_ok3_cont :
 Proof.
   unfold corr3, pimpl; intros.
   edestruct H1; eauto.
-  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
+  eapply sep_star_lift_l in H6; [|instantiate (1:=([x=y])%pred)].
   unfold lift in *; subst; eauto.
   firstorder.
 Qed.
@@ -391,7 +411,7 @@ Theorem corr3_exists:
   -> {{ pr|fun bm hm done crashdone => exists a:T, pre bm hm done crashdone a }} p >> r.
 Proof.
   unfold corr3; intros.
-  destruct H0.
+  destruct H2.
   eapply H; eauto.
 Qed.
 
