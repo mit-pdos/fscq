@@ -75,7 +75,7 @@ Module AsyncRecArray (RA : RASig).
     | Unsync tags items => unsync_array xp start tags items
     end)%pred.
 
-  Definition avail_rep xp start nr : rawpred :=
+  Definition avail_rep xp start nr : rawpred tagged_block:=
     (exists vsl, [[ length vsl = nr ]] *
      arrayS ((RAStart xp) + start) vsl)%pred.
 
@@ -355,12 +355,11 @@ Module AsyncRecArray (RA : RASig).
     intros; destruct st; cancel; subst; autorewrite with lists.
     setoid_rewrite combine_length; auto.
     subst; rewrite min_l; auto.
-    setoid_rewrite combine_length; auto.
+    (*setoid_rewrite combine_length; auto.*)
     subst; rewrite min_r; auto.
     rewrite ipack_length; auto.
     rewrite H; auto.
-    rewrite H5; auto.
-    unfold nils at 2; rewrite repeat_length; auto.
+    unfold nils; rewrite repeat_length; auto.
     rewrite <- ipack_length.
     setoid_rewrite combine_length.
     rewrite Nat.min_l; simplen.
@@ -521,8 +520,9 @@ Module AsyncRecArray (RA : RASig).
     unfold read_all.
     step.
     rewrite synced_array_is, Nat.add_0_r; cancel.
+    eassign F; cancel.
     assert (A: length tags = length (ipack items)).
-    rewrite ipack_length, H0, divup_mul; auto.
+    rewrite ipack_length, H0, divup_mul; auto.    
     repeat setoid_rewrite combine_length_eq; auto.
     rewrite nils_length; auto.
 
@@ -580,7 +580,9 @@ Module AsyncRecArray (RA : RASig).
     rewrite  ipack_nopad_ipack_eq; auto.
     simplen.
     setoid_rewrite combine_length_eq; auto.
-    rewrite map_length; omega.
+    rewrite map_length, H1.
+    setoid_rewrite H0.
+    omega.
     simplen.
     setoid_rewrite combine_length_eq; auto.
     omega.

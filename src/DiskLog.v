@@ -25,7 +25,7 @@ Inductive state :=
 (* The log has been extended; the new contents are synced but the length is unsynced *)
 | Extended  (old: contents) (new: contents).
 
-Definition rep_common l (padded: contents) : rawpred :=
+Definition rep_common l (padded: contents) : rawpred tagged_block :=
   ([[ l = log_nonzero padded /\
       length padded = roundup (length padded) DescSig.items_per_val ]])%pred.
 

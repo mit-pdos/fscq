@@ -949,7 +949,7 @@ Require Import PredCrash AsyncDisk.
 Import ListNotations.
 
 
-Lemma list2nmem_crash_xform : forall vl vsl (F: rawpred),
+Lemma list2nmem_crash_xform : forall vl vsl (F: rawpred _),
   possible_crash_list vsl vl ->
   F (list2nmem vsl) ->
   crash_xform F (list2nmem (synced_list vl)).
@@ -1005,7 +1005,7 @@ Proof.
   Unshelve. all: eauto. exact valuset0.
 Qed.
 
-Lemma crash_xform_list2nmem_possible_crash_list : forall vl (F : rawpred),
+Lemma crash_xform_list2nmem_possible_crash_list : forall vl (F : rawpred _),
   crash_xform F (list2nmem vl) ->
   exists vsl, F (list2nmem vsl) /\ possible_crash_list vsl (map fst vl).
 Proof.
@@ -1073,7 +1073,7 @@ Proof.
 Qed.
 
 
-Lemma crash_xform_list2nmem_synced : forall vl (F : rawpred),
+Lemma crash_xform_list2nmem_synced : forall vl (F : rawpred _),
   crash_xform F (list2nmem vl) ->
   map snd vl = repeat (@nil tagged_block) (length vl).
 Proof.
@@ -1114,12 +1114,10 @@ Proof.
   apply list_selN_ext with (default := valuset0); intros.
   rewrite synced_list_length; auto.
   setoid_rewrite synced_list_selN.
-  specialize (Hx _ H0); unfold vsmerge in Hx.
+  specialize (Hx _ H0); unfold Prog.vsmerge in Hx.
   rewrite surjective_pairing at 1.
   erewrite <- selN_map with (f := snd) in * by auto.
-  assert (A: forall def1 def2, selN (map snd vsl) pos def1 = snd (selN vsl pos def2)).
-  intros; erewrite selN_map with (f := snd); auto.
-  erewrite <- A.
+  unfold tagged_block, block in *;
   rewrite H in *.
   rewrite repeat_selN in * by auto.
   simpl in *; intuition.
@@ -1127,8 +1125,8 @@ Proof.
   Unshelve. all: eauto.
 Qed.
 
-Lemma possible_crash_list2nmem_cons : forall l l' x y,
-  possible_crash (list2nmem (x :: l)) (list2nmem (y :: l'))
+Lemma possible_crash_list2nmem_cons : forall V l l' x y,
+  @possible_crash _ _ V(list2nmem (x :: l)) (list2nmem (y :: l'))
   -> possible_crash (list2nmem l) (list2nmem l').
 Proof.
   intros.
@@ -1148,8 +1146,8 @@ Proof.
   specialize (H (S a)); intuition.
 Qed.
 
-Lemma possible_crash_list2nmem_length : forall l l',
-  possible_crash (list2nmem l) (list2nmem l')
+Lemma possible_crash_list2nmem_length : forall V l l',
+  @possible_crash _ _ V (list2nmem l) (list2nmem l')
   -> length l = length l'.
 Proof.
   induction l; destruct l'; intros; simpl; auto.

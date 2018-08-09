@@ -82,10 +82,10 @@ Module MLog.
     length l1 = length l2 /\
     forall a,  ~ In a keys -> selN l1 a valuset0 = selN l2 a valuset0.
 
-  Definition synced_rep xp (d : diskstate) : rawpred :=
+  Definition synced_rep xp (d : diskstate) : rawpred tagged_block:=
     arrayS (DataStart xp) d.
 
-  Definition unsync_rep xp (ms : blockmap) (old : diskstate) : rawpred :=
+  Definition unsync_rep xp (ms : blockmap) (old : diskstate) : rawpred tagged_block :=
     (exists vs, [[ equal_unless_in (map_keys ms) old vs ]] *
      arrayS (DataStart xp) vs
     )%pred.
@@ -94,28 +94,28 @@ Module MLog.
   Definition rep xp st mm bm hm :=
     ( exists log d0,
       [[ handles_valid_map bm mm ]] *
-      [[ Map.Equal (extract_blocks_map bm mm) (replay_mem log bmap0) ]] *
-      [[ goodSize addrlen (length d0) /\ map_valid (extract_blocks_map bm mm) d0 ]] *
+      [[ Map.Equal (extract_blocks_map bm tagged_block0 mm) (replay_mem log bmap0) ]] *
+      [[ goodSize addrlen (length d0) /\ map_valid (extract_blocks_map bm tagged_block0 mm) d0 ]] *
     match st with
     | Synced na d =>
-        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
+        [[ map_replay (extract_blocks_map bm tagged_block0 mm) d0 d ]] *
         synced_rep xp d0 *
         DiskLog.rep xp (DiskLog.Synced na log) hm
     | Flushing d ents => exists na hle,
-       [[ log_valid ents d /\ map_replay (extract_blocks_map bm mm) d0 d ]] *
+       [[ log_valid ents d /\ map_replay (extract_blocks_map bm tagged_block0 mm) d0 d ]] *
        [[ handles_valid_map bm hle ]] *
-       [[ Map.Equal (extract_blocks_map bm hle) (replay_mem (log++ents) bmap0) ]] *
+       [[ Map.Equal (extract_blocks_map bm tagged_block0 hle) (replay_mem (log++ents) bmap0) ]] *
         synced_rep xp d0 *
         (DiskLog.rep xp (DiskLog.Synced na log) hm
          \/ DiskLog.rep xp (DiskLog.Extended log ents) hm)
     | Applying d => exists na,
-        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
+        [[ map_replay (extract_blocks_map bm tagged_block0 mm) d0 d ]] *
         (((DiskLog.rep xp (DiskLog.Synced na log) hm) *
-          (unsync_rep xp (extract_blocks_map bm mm) d0))
+          (unsync_rep xp (extract_blocks_map bm tagged_block0 mm) d0))
       \/ ((DiskLog.rep xp (DiskLog.Truncated log) hm) *
           (synced_rep xp d)))
     | Recovering d => exists na,
-        [[ map_replay (extract_blocks_map bm mm) d0 d ]] *
+        [[ map_replay (extract_blocks_map bm tagged_block0 mm) d0 d ]] *
         synced_rep xp d0 *
         DiskLog.rep xp (DiskLog.Synced na log) hm
     end)%pred.
@@ -246,7 +246,7 @@ Module MLog.
 
   Lemma extract_blocks_map_empty:
     forall bm,
-      Map.Equal (extract_blocks_map bm hmap0) bmap0.
+      Map.Equal (extract_blocks_map bm tagged_block0 hmap0) bmap0.
   Proof.
     unfold Map.Equal; intros;    
     unfold extract_blocks_map, bmap0, hmap0, gmap0, map0; simpl.
@@ -255,7 +255,7 @@ Module MLog.
   Qed.
 
 Lemma handles_valid_map_hmap0:
-  forall bm, handles_valid_map bm hmap0.
+  forall V (bm: block_mem V), handles_valid_map bm hmap0.
 Proof.      
   unfold handles_valid_map; intros.
   pose proof map_empty_hmap0 as Hx.
@@ -550,8 +550,8 @@ Lemma extract_blocks_map_replay_mem_comm:
   forall ents bm hmap,
     handles_valid_list bm ents ->
     Map.Equal (replay_mem (extract_blocks_list bm ents)
-                          (extract_blocks_map bm hmap))
-              (extract_blocks_map bm (replay_mem ents hmap)).
+                          (extract_blocks_map bm tagged_block0 hmap))
+              (extract_blocks_map bm tagged_block0 (replay_mem ents hmap)).
 Proof.
   unfold extract_blocks_list, handles_valid_list; 
   induction ents; simpl; intros; auto.
@@ -623,7 +623,7 @@ Proof.
 Qed.
 
 Lemma handles_valid_replay_mem:
-  forall ents hmap bm,
+  forall V ents hmap (bm: block_mem V),
     KNoDup ents ->
     handles_valid_list bm ents ->
     handles_valid_map bm hmap ->
@@ -731,7 +731,7 @@ Qed.
 
   Lemma map_keys_extract_blocks_map_eq:
     forall hmap bm,
-      map_keys (extract_blocks_map bm hmap) = map_keys hmap.
+      map_keys (extract_blocks_map bm tagged_block0 hmap) = map_keys hmap.
   Proof.
     intro hmap; destruct hmap.
     generalize dependent this;
@@ -1858,7 +1858,7 @@ Qed.
     apply equal_unless_in_sym; auto.
   Qed.
 
-  Lemma list2nmem_replay_disk_crash_xform : forall ents vsl vl (F : rawpred),
+  Lemma list2nmem_replay_disk_crash_xform : forall ents vsl vl (F : rawpred _),
     KNoDup ents ->
     possible_crash_list vsl vl ->
     F (list2nmem (replay_disk ents vsl)) ->
@@ -1908,7 +1908,7 @@ Qed.
       destruct (H0 _ _ H3); simplen.
   Qed.
 
-  Lemma in_vsmerge_incl_trans : forall v vs vs',
+  Lemma in_vsmerge_incl_trans : forall V (v:V) vs vs',
     In v (vsmerge vs) ->
     fst vs = fst vs' ->
     incl (snd vs) (snd vs') ->
@@ -2197,7 +2197,7 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
 
 Lemma overlap_extract_blocks_map:
   forall l hmap bm,
-    overlap l (extract_blocks_map bm hmap) = overlap l hmap.
+    overlap l (extract_blocks_map bm tagged_block0 hmap) = overlap l hmap.
 Proof.
   unfold extract_blocks_map; induction l;
   simpl in *; intros; auto.
@@ -2225,7 +2225,7 @@ Qed.
 
 
 Lemma handles_valid_replay_mem2:
-  forall l bm m,
+  forall V l (bm: block_mem V) m,
     handles_valid_list bm l ->
     handles_valid_map bm m ->
     handles_valid_map bm (replay_mem l m).

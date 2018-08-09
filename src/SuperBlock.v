@@ -149,7 +149,7 @@ Module SB.
     eapply wordToNat_natToWord_idempotent'_iff; eauto.
   Qed.
 
-  Definition rep (fsxp : fs_xparams) : rawpred :=
+  Definition rep (fsxp : fs_xparams) : rawpred tagged_block:=
     ([[ fs_xparams_ok fsxp ]] *
      [[ FSXPMagic fsxp = magic_number ]] *
      0 |+>((Public, v_pickle_superblock fsxp), nil))%pred.

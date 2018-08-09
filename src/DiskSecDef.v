@@ -95,7 +95,7 @@ Definition equivalent_for tag (d1 d2: rawdisk) :=
        Forall2 (fun tb1 tb2 => fst tb1 = tag -> snd tb1 = snd tb2) (vsmerge vs1) (vsmerge vs2)).
 
 
-Definition blockmem_equivalent_for tag (bm1 bm2: block_mem) :=
+Definition blockmem_equivalent_for tag (bm1 bm2: block_mem tagged_block) :=
   forall a,
     (bm1 a = None /\ bm2 a = None) \/
     (exists v1 v2,
@@ -112,7 +112,7 @@ Definition same_except tag (d1 d2: rawdisk) :=
        Forall2 (fun tb1 tb2 => fst tb1 = fst tb2) (vsmerge vs1) (vsmerge vs2) /\
        Forall2 (fun tb1 tb2 => fst tb1 <> tag -> snd tb1 = snd tb2) (vsmerge vs1) (vsmerge vs2)).
 
-Definition blockmem_same_except tag (bm1 bm2: block_mem) :=
+Definition blockmem_same_except tag (bm1 bm2: block_mem tagged_block) :=
   forall a,
     (bm1 a = None /\ bm2 a = None) \/
     (exists v1 v2,

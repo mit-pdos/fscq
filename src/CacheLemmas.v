@@ -58,6 +58,8 @@ Theorem sync_invariant_rep :
     sync_invariant (rep cs m bm).
 Proof.
   unfold rep; intros; eauto.
+  repeat (apply sync_invariant_sep_star; try apply sync_invariant_lift_empty).
+  apply sync_invariant_mem_pred; intros; eauto.
 Qed.
 
 Hint Resolve sync_invariant_rep.
@@ -66,7 +68,9 @@ Theorem sync_invariant_synrep' :
   forall cs m bm,
   sync_invariant (synrep' cs m bm).
 Proof.
-  unfold synrep'; eauto.
+  unfold synrep'; intros; eauto.
+  repeat (apply sync_invariant_sep_star; try apply sync_invariant_lift_empty).
+  apply sync_invariant_mem_pred; intros; eauto.
 Qed.
 
 Hint Resolve sync_invariant_synrep'.
@@ -75,7 +79,8 @@ Theorem sync_invariant_synrep :
   forall cs mbase m bm,
     sync_invariant (synrep cs mbase m bm).
 Proof.
-  unfold synrep; eauto.
+  unfold synrep; intros; eauto.
+  apply sync_invariant_and; eauto.
 Qed.
 
 Hint Resolve sync_invariant_synrep.
@@ -359,7 +364,7 @@ Qed.
   Qed.
 
 
-  Lemma incl_vsmerge_in : forall w v0 l l',
+  Lemma incl_vsmerge_in : forall V (w: V) v0 l l',
     incl l (vsmerge (w, (vsmerge (v0, l')))) ->
     List.In v0 (vsmerge (w, l')) ->
     incl l (vsmerge (w, l')).
@@ -369,7 +374,7 @@ Qed.
     specialize (H _ H0); intuition subst; auto.
   Qed.
 
-  Lemma incl_vsmerge_in' : forall w v0 l l',
+  Lemma incl_vsmerge_in' : forall V (w: V) v0 l l',
     incl l (vsmerge (w, (vsmerge (v0, l')))) ->
     List.In v0 l' ->
     incl l (vsmerge (w, l')).
@@ -379,7 +384,7 @@ Qed.
     right; auto.
   Qed.
 
-  Lemma incl_vsmerge_in'' : forall a v l,
+  Lemma incl_vsmerge_in'' : forall V (a:list V) v l,
     List.In v l ->
     incl a (vsmerge (v, l)) ->
     incl a l.
@@ -390,7 +395,7 @@ Qed.
 
 Hint Resolve incl_vsmerge_in incl_vsmerge_in' incl_vsmerge_in''.
 
-  Lemma in_vsmerge_hd : forall w l,
+  Lemma in_vsmerge_hd : forall V (w: V) l,
     List.In w (vsmerge (w, l)).
   Proof.
     unfold vsmerge; intuition.
@@ -405,7 +410,7 @@ Hint Resolve incl_vsmerge_in incl_vsmerge_in' incl_vsmerge_in''.
     specialize (H _ H0); auto.
   Qed.
 
-  Lemma incl_vsmerge_trans: forall a v l l',
+  Lemma incl_vsmerge_trans: forall V (a: list V) v l l',
     incl a (vsmerge (v, l')) ->
     incl l' l ->
     incl a (vsmerge (v, l)).
@@ -414,7 +419,7 @@ Hint Resolve incl_vsmerge_in incl_vsmerge_in' incl_vsmerge_in''.
     specialize (H _ H1); intuition.
   Qed.
 
-  Lemma incl_vsmerge_in_trans : forall a v l l',
+  Lemma incl_vsmerge_in_trans : forall V (a: list V) v l l',
     List.In v l ->
     incl l' l ->
     incl a (vsmerge (v, l')) ->
@@ -627,7 +632,7 @@ Hint Resolve in_vsmerge_hd incl_vsmerge_trans incl_vsmerge_in_trans.
   Qed.
 
 
-  Lemma rep_synrep : forall (F : rawpred) d0 cs bm,
+  Lemma rep_synrep : forall (F : rawpred _) d0 cs bm,
     F d0 ->
     sync_invariant F ->
     rep cs d0 bm =p=> exists d, synrep cs d0 d bm * 
@@ -650,8 +655,8 @@ Hint Resolve in_vsmerge_hd incl_vsmerge_trans incl_vsmerge_in_trans.
   Qed.
 
   Lemma sync_invariant_sync_xform:
-  forall P,
-    sync_invariant (sync_xform P).
+  forall AT AEQ V P,
+    @sync_invariant AT AEQ V (sync_xform P).
 Proof.
   unfold sync_xform, sync_invariant; simpl; intros.
   cleanup.
@@ -663,7 +668,7 @@ Qed.
 Notation arrayS := (arrayN ptsto_subset).
 
 Lemma sync_invariant_arrayS :
-  forall l a, sync_invariant (arrayS a l).
+  forall V l a, @sync_invariant _ _ V (arrayS a l).
 Proof.
   induction l; intros; simpl; eauto.
 Qed.
@@ -693,7 +698,7 @@ Qed.
       2: eapply mem_except_ptsto.
       3: eassumption.
       2: apply ptsto_valid in H; eauto.
-      rewrite ptsto_pimpl_ptsto_subset.
+      setoid_rewrite ptsto_pimpl_ptsto_subset.
       cancel.
 
       constructor; auto.
@@ -707,7 +712,7 @@ Qed.
       eapply ptsto_valid; eauto.
   Qed.
 
-  Lemma arrayS_arrayN : forall l start,
+  Lemma arrayS_arrayN : forall V (l: list (V * list V)) start,
     arrayS start l =p=> exists l', arrayN (@ptsto _ _ _) start l'.
   Proof.
     induction l; simpl; intros.
@@ -715,7 +720,7 @@ Qed.
     rewrite IHl.
     unfold ptsto_subset.
     norml; unfold stars; simpl.
-    exists ((a_cur, old) :: l'); simpl.
+    exists ((a_1, old) :: l'); simpl.
     pred_apply; cancel.
   Qed.
 
@@ -730,7 +735,7 @@ Lemma mem_pred_cachepred_refl_arrayS : forall l start bm m,
     eapply mem_pred_cachepred_refl_arrayN; eauto.
   Qed.
 
-  Lemma sync_xform_arrayS : forall l start,
+  Lemma sync_xform_arrayS : forall V (l: list (V * list V)) start,
     sync_xform (arrayS start l) =p=> arrayS start l.
   Proof.
     induction l; simpl; intros.
@@ -830,9 +835,9 @@ Lemma mem_pred_cachepred_refl_arrayS : forall l start bm m,
 
 
 
-Theorem sync_xform_mem_pred : forall prd (hm : rawdisk),
+Theorem sync_xform_mem_pred : forall V prd (hm : rawdisk),
   sync_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
-  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => sync_xform (prd a v)) hm.
+  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => @sync_xform _ _ V (prd a v)) hm.
 Proof.
   unfold mem_pred; intros; split.
   rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
@@ -848,7 +853,7 @@ Qed.
   
   Lemma sync_xform_mem_pred_cachepred : forall cm bm m,
     sync_xform (mem_pred (HighAEQ:=addr_eq_dec) (cachepred cm bm) m) =p=> exists m',
-      mem_pred (HighAEQ:=addr_eq_dec) (cachepred (Map.empty (handle * bool)) bm) m' * [[ possible_crash m m' ]].
+      mem_pred (HighAEQ:=addr_eq_dec) (cachepred (Map.empty (handle * bool)) bm) m' * [[ @possible_crash _ addr_eq_dec _ m m' ]].
   Proof.
     intros.
     rewrite sync_xform_mem_pred.
@@ -906,8 +911,8 @@ Qed.
   Qed.
 
 
-Theorem xform_listpred : forall V (l : list V) prd,
-  crash_xform (listpred prd l) <=p=> listpred (fun x => crash_xform (prd x)) l.
+Theorem xform_listpred : forall V AT' AEQ' V' (l : list V) prd,
+  crash_xform (listpred prd l) <=p=> listpred (fun x => @crash_xform AT' AEQ' V' (prd x)) l.
 Proof.
   induction l; simpl; intros; split; auto; xform_dist; auto.
   rewrite IHl; auto.
@@ -915,7 +920,7 @@ Proof.
 Qed.
 
 
-Lemma crash_xform_pprd : forall A B (prd : A -> B -> rawpred),
+Lemma crash_xform_pprd : forall A B V (prd : A -> B -> rawpred V),
   (fun p => crash_xform (pprd prd p)) =
   (pprd (fun x y => crash_xform (prd x y))).
 Proof.
@@ -923,17 +928,17 @@ Proof.
   apply functional_extensionality; intros; destruct x; auto.
 Qed.
 
-Theorem xform_listmatch : forall A B (a : list A) (b : list B) prd,
-  crash_xform (listmatch prd a b) <=p=> listmatch (fun x y => crash_xform (prd x y)) a b.
+Theorem xform_listmatch : forall A B V (a : list A) (b : list B) (prd: _ -> _ -> pred),
+  crash_xform (listmatch prd a b) <=p=> listmatch (fun x y => @crash_xform addr addr_eq_dec V (prd x y)) a b.
 Proof.
   unfold listmatch; intros; split; xform_norm;
-  rewrite xform_listpred; cancel;
-  rewrite crash_xform_pprd; auto.
+    rewrite xform_listpred; cancel;
+  setoid_rewrite crash_xform_pprd; auto.
 Qed.
 
-Theorem xform_listpred_idem_l : forall V (l : list V) prd,
+Theorem xform_listpred_idem_l : forall AT AEQ V (l : list V) prd,
   (forall e, crash_xform (prd e) =p=> prd e) ->
-  crash_xform (listpred prd l) =p=> listpred prd l.
+  @crash_xform AT AEQ V (listpred prd l) =p=> listpred prd l.
 Proof.
   induction l; simpl; intros; auto.
   xform_dist.
@@ -942,9 +947,9 @@ Proof.
 Qed.
 
 
-Theorem xform_listpred_idem_r : forall V (l : list V) prd,
+Theorem xform_listpred_idem_r : forall AT AEQ V (l : list V) prd,
   (forall e,  prd e =p=> crash_xform (prd e)) ->
-  listpred prd l =p=> crash_xform (listpred prd l).
+  listpred prd l =p=> @crash_xform AT AEQ V (listpred prd l).
 Proof.
   induction l; simpl; intros; auto.
   xform_dist; auto.
@@ -953,9 +958,9 @@ Proof.
   rewrite <- IHl; auto.
 Qed.
 
-Theorem xform_listpred_idem : forall V (l : list V) prd,
+Theorem xform_listpred_idem : forall AT AEQ V (l : list V) prd,
   (forall e, crash_xform (prd e) <=p=> prd e) ->
-  crash_xform (listpred prd l) <=p=> listpred prd l.
+  @crash_xform AT AEQ V (listpred prd l) <=p=> listpred prd l.
 Proof.
   split.
   apply xform_listpred_idem_l; intros.
@@ -964,9 +969,9 @@ Proof.
   apply H.
 Qed.
 
-Theorem xform_listmatch_idem_l : forall A B (a : list A) (b : list B) prd,
+Theorem xform_listmatch_idem_l : forall A B AT AEQ (a : list A) (b : list B) prd,
   (forall a b, crash_xform (prd a b) =p=> prd a b) ->
-  crash_xform (listmatch prd a b) =p=> listmatch prd a b.
+  @crash_xform AT AEQ (A * B) (listmatch prd a b) =p=> listmatch prd a b.
 Proof.
   unfold listmatch; intros.
   xform_norm; cancel.
@@ -974,9 +979,9 @@ Proof.
   destruct e; cbn; auto.
 Qed.
 
-Theorem xform_listmatch_idem_r : forall A B (a : list A) (b : list B) prd,
+Theorem xform_listmatch_idem_r : forall A B AT AEQ (a : list A) (b : list B) prd,
   (forall a b,  prd a b =p=> crash_xform (prd a b)) ->
-  listmatch prd a b =p=> crash_xform (listmatch prd a b).
+  listmatch prd a b =p=> @crash_xform AT AEQ (A * B) (listmatch prd a b).
 Proof.
   unfold listmatch; intros.
   cancel.
@@ -985,9 +990,9 @@ Proof.
   auto.
 Qed.
 
-Theorem xform_listmatch_idem : forall A B (a : list A) (b : list B) prd,
+Theorem xform_listmatch_idem : forall A B AT AEQ (a : list A) (b : list B) prd,
   (forall a b, crash_xform (prd a b) <=p=> prd a b) ->
-  crash_xform (listmatch prd a b) <=p=> listmatch prd a b.
+  @crash_xform AT AEQ (A * B) (listmatch prd a b) <=p=> listmatch prd a b.
 Proof.
   split.
   apply xform_listmatch_idem_l; auto.
@@ -996,8 +1001,8 @@ Proof.
   apply H.
 Qed.
 
-Lemma xform_listpred_ptsto : forall l,
-  crash_xform (listpred (fun a => a |->?) l) =p=>
+Lemma xform_listpred_ptsto : forall AT AEQ V l,
+  @crash_xform AT AEQ V (listpred (fun a => a |->?) l) =p=>
                listpred (fun a => a |->?) l.
 Proof.
   induction l; simpl.
@@ -1007,10 +1012,10 @@ Proof.
   auto.
 Qed.
 
-Lemma xform_listpred_ptsto_fp : forall FP,
-  (forall a, crash_xform (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
+Lemma xform_listpred_ptsto_fp : forall AT AEQ V FP,
+  (forall a, @crash_xform AT AEQ V (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
   forall l,
-  crash_xform (listpred (fun a => exists v, a |-> v * [[ FP v ]]) l) =p=>
+  @crash_xform AT AEQ V (listpred (fun a => exists v, a |-> v * [[ FP v ]]) l) =p=>
                listpred (fun a => exists v, a |-> v * [[ FP v ]]) l.
 Proof.
   induction l; simpl.
@@ -1021,17 +1026,17 @@ Proof.
   cancel.
 Qed.
 
-Theorem sync_invariant_listpred : forall T prd (l : list T),
+Theorem sync_invariant_listpred : forall T AT AEQ V prd (l : list T),
   (forall x, sync_invariant (prd x)) ->
-  sync_invariant (listpred prd l).
+  @sync_invariant AT AEQ V (listpred prd l).
 Proof.
   induction l; simpl; eauto.
 Qed.
 
 Hint Resolve sync_invariant_listpred.
 
-Theorem sync_xform_listpred : forall V (l : list V) prd,
-  sync_xform (listpred prd l) <=p=> listpred (fun x => sync_xform (prd x)) l.
+Theorem sync_xform_listpred : forall V AT' AEQ' V' (l : list V) prd,
+  sync_xform (listpred prd l) <=p=> listpred (fun x => @sync_xform AT' AEQ' V'(prd x)) l.
 Proof.
   induction l; simpl; intros; split; auto.
   apply sync_xform_emp.
@@ -1043,9 +1048,9 @@ Proof.
 Qed.
 
 
-Lemma sync_xform_listpred' : forall T (l : list T) p q,
+Lemma sync_xform_listpred' : forall T AT AEQ V (l : list T) p q,
   (forall x, sync_xform (p x) =p=> q x) ->
-  sync_xform (listpred p l) =p=> listpred q l.
+  @sync_xform AT AEQ V (listpred p l) =p=> listpred q l.
 Proof.
   induction l; simpl; intros; auto.
   apply sync_xform_emp.
@@ -1054,9 +1059,9 @@ Proof.
   rewrite H; auto.
 Qed.
 
-Theorem xform_mem_pred : forall prd (hm : rawdisk),
+Theorem xform_mem_pred : forall V prd (hm : rawdisk),
   crash_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
-  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => crash_xform (prd a v)) hm.
+  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => @crash_xform _ _ V (prd a v)) hm.
 Proof.
   unfold mem_pred; intros; split.
   xform_norm; subst.
@@ -1070,9 +1075,9 @@ Proof.
   eauto.
 Qed.
 
-Theorem sync_invariant_mem_pred : forall HighAT HighAEQ HighV (prd : HighAT -> HighV -> _) hm,
+Theorem sync_invariant_mem_pred : forall V HighAT HighAEQ HighV (prd : HighAT -> HighV -> _) hm,
   (forall a v, sync_invariant (prd a v)) ->
-  sync_invariant (@mem_pred _ _ _ _ HighAEQ _ prd hm).
+  @sync_invariant HighAT HighAEQ V (@mem_pred HighAT HighAEQ  _ _ HighAEQ _ prd hm).
 Proof.
   unfold mem_pred; eauto.
 Qed.
@@ -1234,7 +1239,7 @@ Qed.
 
  
   Lemma possible_crash_mem_match : forall (m1 m2 : rawdisk),
-    possible_crash m1 m2 ->
+    @possible_crash _ addr_eq_dec _ m1 m2 ->
     @mem_match _ _ addr_eq_dec m1 m2.
   Proof.
     unfold possible_crash, mem_match; intuition.
@@ -1273,7 +1278,7 @@ Qed.
 
   Lemma mem_pred_cachepred_some : forall m1 m2 cs bm a v,
     mem_pred (HighAEQ:= addr_eq_dec) (cachepred cs bm) m1 m2 ->
-    synced_mem m1 ->
+    @synced_mem _ addr_eq_dec _ m1 ->
     m1 a = Some v ->
     m2 a = Some v.
   Proof.
@@ -1292,7 +1297,7 @@ Qed.
 
   Lemma mem_pred_cachepred_eq : forall m1 m2 cs bm,
     mem_pred (HighAEQ:= addr_eq_dec) (cachepred cs bm) m1 m2 ->
-    synced_mem m1 ->
+    @synced_mem _ addr_eq_dec _ m1 ->
     m1 = m2.
   Proof.
     intros.
@@ -1349,13 +1354,13 @@ Qed.
 
 
 
-  Theorem sync_invariant_arrayN_subset : forall vs a,
-    sync_invariant (arrayN ptsto_subset a vs).
+  Theorem sync_invariant_arrayN_subset : forall V vs a,
+    @sync_invariant _ _ V (arrayN ptsto_subset a vs).
   Proof.
     induction vs; simpl; auto.
   Qed.
 
-  Lemma arrayN_subset_oob': forall l a i m,
+  Lemma arrayN_subset_oob': forall V (l: list (V * list V)) a i m,
     i >= length l
     -> arrayN ptsto_subset a l m
     -> m (a + i) = None.
@@ -1381,7 +1386,7 @@ Qed.
     auto.
   Qed.
 
-  Lemma arrayN_subset_oob: forall l i m,
+  Lemma arrayN_subset_oob: forall V (l: list (V * list V)) i m,
     i >= length l
     -> arrayN ptsto_subset 0 l m
     -> m i = None.
@@ -1406,7 +1411,7 @@ Qed.
     xform.
     rewrite IHl.
     rewrite crash_xform_ptsto_subset; unfold ptsto_subset, synced_list.
-    cancel; [ instantiate (1 := v' :: l') | .. ]; simpl; auto; try cancel;
+    cancel; [ instantiate (1 := (v'_1, v'_2) :: l') | .. ]; simpl; auto; try cancel;
     destruct i; simpl; auto;
     destruct (H4 i); try omega; simpl; auto.
   Qed.
@@ -1433,7 +1438,7 @@ Qed.
 
   Hint Resolve incl_refl.
 
-  Lemma crash_xform_synced_arrayN_subset: forall l st,
+  Lemma crash_xform_synced_arrayN_subset: forall V (l: list (V * list V)) st,
     Forall (fun x => snd x = nil) l ->
     crash_xform (arrayN ptsto_subset st l) =p=> arrayN ptsto_subset st l.
   Proof.

@@ -816,7 +816,7 @@ Theorem nop_ok :
                                        [[ bm = bm' ]] *
                                        [[ done' = done_ ]] *
                                        [[ crash' = crash_ ]])
-     (rx r_) ]] * [[ F =p=> crash_ bm ]])%pred (rx v).
+     (rx r_) ]] * [[ F =p=> crash_ bm hm ]])%pred (rx v).
 Proof.
   unfold corr2, pimpl.
   intros.
@@ -835,7 +835,7 @@ Theorem nop_ok_weak :
                                        [[ bm = bm' ]] *
                                        [[ done' = done_ ]] *
                                        [[ crash' = crash_ ]])
-     (rx r_) ]] * [[ F =p=> crash_ bm ]])%pred (rx v).
+     (rx r_) ]] * [[ F =p=> crash_ bm hm ]])%pred (rx v).
 Proof.
   unfold corr2_weak, pimpl.
   intros.

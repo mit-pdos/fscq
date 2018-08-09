@@ -26,9 +26,9 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      DirTreePath DirTreeDef DirTreePred DirTreeRep \
 	      DirTreeNames DirTreeInodes DirTreeSafe DirTree \
 	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock \
-	      AsyncFS AsyncFSProg \
-	      DiskSecDef DiskSecAttacker DiskSecVictim \
-	      PaperTheorems CopyFile
+	      AsyncFS \
+	      #DiskSecDef DiskSecAttacker DiskSecVictim \
+	      #PaperTheorems CopyFile
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

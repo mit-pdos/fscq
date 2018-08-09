@@ -1217,8 +1217,8 @@ Hint Resolve can_access_repeat_public_selN.
     rewrite Bmp.xform_rep; cancel.
   Qed.
 
-  Lemma xform_rep_rawpred : forall xp FP l p,
-    (forall a, crash_xform (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
+  Lemma xform_rep_rawpred : forall V xp FP l p,
+    (forall a, @crash_xform addr addr_eq_dec V (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
     crash_xform (rep FP xp l p) =p=> rep FP xp l p * [[ crash_xform p =p=> p ]].
   Proof.
     unfold rep; intros.
@@ -1605,8 +1605,8 @@ Module BmapAllocCache (Sig : AllocSig).
     rewrite Alloc.Bmp.xform_rep; cancel.
   Qed.
 
-  Lemma xform_rep_rawpred : forall xp FP l ms p,
-    (forall a, crash_xform (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
+  Lemma xform_rep_rawpred : forall V xp FP l ms p,
+    (forall a, @crash_xform addr addr_eq_dec V (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
     crash_xform (rep FP xp l p ms) =p=> (rep FP xp l p ms) * [[ crash_xform p =p=> p ]].
   Proof.
     unfold rep, Alloc.rep; intros.

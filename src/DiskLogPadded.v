@@ -122,7 +122,7 @@ Definition entry_valid {B} (ent : @generic_entry B) := fst ent <> 0 /\ addr_vali
 
 Definition addr_tags n := repeat Public n.
 
-Definition rep_contents xp (log : contents) : rawpred :=
+Definition rep_contents xp (log : contents) : rawpred tagged_block :=
   ( [[ Forall addr_valid log ]] *
     Desc.array_rep xp 0 (Desc.Synced (addr_tags (ndesc_log log)) (map ent_addr log)) *
     Data.array_rep xp 0 (Data.Synced (tags_nonzero log) (vals_nonzero log)) *
@@ -147,7 +147,7 @@ Definition loglen_invalid xp ndesc ndata :=
 Definition hide_or (P : Prop) := P.
 Opaque hide_or.
 
-Definition rep_inner xp (st : state) (hm: hashmap): rawpred :=
+Definition rep_inner xp (st : state) (hm: hashmap): rawpred tagged_block:=
   (match st with
    | Synced l =>
      DiskLogHdr.rep xp (DiskLogHdr.Synced (ndesc_log l, ndata_log l)) *
@@ -806,7 +806,7 @@ Qed.
 
 
 Lemma combine_nonzero_extract_blocks_comm:
-  forall al hl bm,
+  forall V al hl (bm: block_mem V),
     handles_valid bm hl ->
     nonzero_addrs al >= length hl ->
     extract_blocks bm (map snd (combine_nonzero al hl)) =
@@ -1304,7 +1304,7 @@ Qed.
   Qed.
 
   Lemma length_map_fst_extract_blocks_eq:
-    forall A bm (new: list (A * handle)),
+    forall A V (bm: block_mem V) (new: list (A * handle)),
       handles_valid bm (map ent_handle new) ->
       length (map fst new) = length (extract_blocks bm (map ent_handle new)).
   Proof.
@@ -1314,7 +1314,7 @@ Qed.
   Qed.
 
   Lemma ndesc_log_combine_eq:
-    forall bm new,
+    forall V (bm: block_mem V) new,
       handles_valid bm (map ent_handle new) ->
       ndesc_log (combine (map fst new)
                          (extract_blocks bm (map ent_handle new))) =
@@ -1328,7 +1328,7 @@ Qed.
   Qed.
       
   Lemma ndata_log_combine_eq:
-    forall bm new,
+    forall V (bm: block_mem V) new,
       handles_valid bm (map ent_handle new) ->
       ndata_log (combine (map fst new)
                          (extract_blocks bm (map ent_handle new))) =
@@ -1342,7 +1342,7 @@ Qed.
 
 
   Lemma map_ent_addr_combine_eq:
-  forall bm new,
+  forall V (bm: block_mem V) new,
     handles_valid bm (map ent_handle new) ->
     map ent_addr (combine (map fst new) (extract_blocks bm (map ent_handle new))) = map ent_addr new.
 Proof.
@@ -1354,7 +1354,7 @@ Proof.
 Qed.
 
 Lemma Forall_entry_valid_combine:
-  forall bm new,
+  forall V (bm: block_mem V) new,
     Forall entry_valid new ->
     Forall entry_valid (combine (map fst new) (extract_blocks bm (map ent_handle new))).
 Proof.
@@ -1368,7 +1368,7 @@ Proof.
 Qed.
 
 Lemma tags_nonzero_combine_entry_valid:
-  forall bm new,
+  forall (bm: block_mem _) new,
     Forall entry_valid new ->
     handles_valid bm (map ent_handle new) ->
     tags_nonzero (combine (map fst new) (extract_blocks bm (map ent_handle new)))
@@ -1440,7 +1440,7 @@ Lemma combine_eq_r:
       inversion H; subst; erewrite (IHlx ly l1 l2); eauto.
     Qed.
       
-   Lemma helper_sep_star_reorder : forall (a b c d : rawpred),
+   Lemma helper_sep_star_reorder : forall V (a b c d : rawpred V),
     a * b * c * d =p=> (a * c) * (b * d).
   Proof.
     intros; cancel.
@@ -2197,7 +2197,7 @@ Qed.
 
 
 Lemma extend_crash_helper_synced:
-  forall xp bm (old: contents) new,
+  forall V xp (bm: block_mem (V * valu)) (old: contents) new,
     Forall entry_valid new ->
     handles_valid bm (map ent_handle new) ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->

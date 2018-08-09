@@ -17,15 +17,16 @@ Definition corr2_weak (T: Type) pr (pre: donecond T -> crashcond -> block_mem ta
   -> mem_merges_to bt bm btb
   -> pre donec crashc btb hm dtb      
   -> exec pr d dt bm bt p out tr
-  -> ((exists d' dt' dtb' bm' bt' btb'  v,
+  -> ((exists d' dt' dtb' bm' bt' btb' hm' v,
          out = Finished d' dt' bm' bt' v /\
          (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
          (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\                            
-         donec btb' v dtb') \/
-     (exists d' dt' dtb' bm' bt' btb', out = Crashed d' dt' bm' bt' /\
+         donec btb' hm' v dtb') \/
+     (exists d' dt' dtb' bm' bt' btb' hm',
+         out = Crashed d' dt' bm' bt' /\
          (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
          (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\
-         crashc btb' dtb'))/\
+         crashc btb' hm' dtb'))/\
     trace_secure pr tr.
 
 Notation "'{{W' pr | pre 'W}}' p" := (corr2_weak pr pre p)
@@ -52,7 +53,7 @@ Notation "'{<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' 
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (F_ * crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' ]]
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -74,7 +75,7 @@ Notation "'{<W' 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRA
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (F_ * crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
    )%pred
    (Bind p1 rx)%pred)
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
@@ -92,7 +93,7 @@ Notation "'{!<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm'
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -112,7 +113,7 @@ Notation "'{!<W' 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CR
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
    )%pred
    (Bind p1 rx)%pred)
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
@@ -135,7 +136,7 @@ Notation "'{<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' 
      [[ forall realcrash bm'' hm'',
           crash_xform realcrash =p=> crash_xform crash ->
           (F_ * realcrash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' ]]
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)

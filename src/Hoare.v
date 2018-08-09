@@ -13,8 +13,8 @@ Set Implicit Arguments.
 
 Definition tagged_disk := @mem addr addr_eq_dec valuset.
 
-Definition donecond (T: Type) := block_mem tagged_block  -> T -> rawpred tagged_block.
-Definition crashcond :=  block_mem tagged_block -> rawpred tagged_block.
+Definition donecond (T: Type) := block_mem tagged_block  -> hashmap -> T -> rawpred tagged_block.
+Definition crashcond :=  block_mem tagged_block -> hashmap -> rawpred tagged_block.
 
 Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> block_mem tagged_block -> hashmap ->  rawpred tagged_block) (p: prog T) :=
   forall d dt dtb bm bt btb hm tr donec crashc out,
@@ -22,15 +22,15 @@ Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> block_mem tagged_
   -> mem_merges_to bt bm btb
   -> pre donec crashc btb hm dtb      
   -> exec pr d dt bm bt p out tr
-  -> ((exists d' dt' dtb' bm' bt' btb'  v,
+  -> ((exists d' dt' dtb' bm' bt' btb' hm' v,
          out = Finished d' dt' bm' bt' v /\
          (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
          (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\                            
-         donec btb' v dtb') \/
-     (exists d' dt' dtb' bm' bt' btb', out = Crashed d' dt' bm' bt' /\
+         donec btb' hm' v dtb') \/
+     (exists d' dt' dtb' bm' bt' btb' hm' , out = Crashed d' dt' bm' bt' /\
          (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
          (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\
-         crashc btb' dtb'))/\
+         crashc btb' hm' dtb'))/\
     only_public_operations tr.
 
 
@@ -72,7 +72,7 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (F_ * crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' ]]
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -94,7 +94,7 @@ Notation "{< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH'
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (F_ * crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
    )%pred
    (Bind p1 rx)%pred)
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
@@ -112,7 +112,7 @@ Notation "{!< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -133,7 +133,7 @@ Notation "{!< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (crash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                      [[ bm c= bm'' ]]) =p=> crash_ bm'' ]]
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
    )%pred
    (Bind p1 rx)%pred)
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
@@ -156,7 +156,7 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
      [[ forall realcrash bm'' hm'',
           crash_xform realcrash =p=> crash_xform crash ->
           (F_ * realcrash * [[ exists l, hashmap_subset l hm hm'' ]] *
-                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' ]]
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
    (Bind p1 rx)%pred)
@@ -266,16 +266,16 @@ Definition corr3 (TF TR: Type) pr (pre: donecond TF -> donecond TR -> block_mem 
   -> mem_merges_to bt bm btb
   -> pre donec crashc btb hm dtb      
   -> exec_recover pr d dt bm bt p1 p2 out tr
-  ->  ((exists d' dt' dtb' bm' bt' btb'  v,
+  ->  ((exists d' dt' dtb' bm' bt' btb' v hm',
          out = RFinished TR d' dt' bm' bt' v /\
          (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
          (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\                            
-         donec btb' v dtb') \/
-      (exists d' dt' dtb' bm' bt' btb' v,
+         donec btb' hm' v dtb') \/
+      (exists d' dt' dtb' bm' bt' btb' v hm',
           out = RRecovered TF  d' dt' bm' bt' v /\
          (disk_merges_to (AEQ:=addr_eq_dec)) dt' d' dtb' /\
          (mem_merges_to (AEQ:=handle_eq_dec)) bt' bm' btb' /\
-         crashc btb' v dtb'))/\
+         crashc btb' hm' v dtb'))/\
     only_public_operations tr.
 
 Notation "{{ pr | pre }} p1 >> p2" := (corr3 pr pre%pred p1 p2)
@@ -303,7 +303,7 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
             crash'_ bm_crash
             * [[ exists l, hashmap_subset l hm hm_crash ]]
             * [[ bm c= bm_crash ]]
-            =p=> F_ * idemcrash bm_crash ]]
+            =p=> F_ * idemcrash bm_crash hm_crash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
         {{ pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ *
@@ -314,7 +314,7 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
             crash'_ bm_crash
             * [[ exists l, hashmap_subset l hm hm_crash ]]
             * [[ bm c= bm_crash ]]
-            =p=> F_ * idemcrash bm_crash ]]
+            =p=> F_ * idemcrash bm_crash hm_crash ]]
         }} rxREC r_ ]]
    )%pred
    (Bind p1 rxOK)%pred

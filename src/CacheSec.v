@@ -392,7 +392,7 @@ Theorem begin_sync_ok :
     {< d F,
      PERM: pr   
      PRE:bm, hm,
-       rep cs d bm * [[ F d /\ sync_invariant F ]]
+       rep cs d bm * [[ F d /\ @sync_invariant _ addr_eq_dec _ F ]]
      POST:bm', hm', RET:cs
        exists d',
          synrep cs d d' bm * [[ bm' = bm ]] * [[ F d' ]]
@@ -441,7 +441,7 @@ Theorem end_sync_ok :
   
   Theorem sync_ok' :
     forall cs a pr,
-   {< d0 d (F F' : rawpred) v0 v',
+   {< d0 d (F F' : rawpred tagged_block) v0 v',
     PERM: pr   
     PRE:bm, hm,
       synrep cs d0 d bm * [[ sync_invariant F ]] *
@@ -642,7 +642,7 @@ Theorem end_sync_ok :
 
   Theorem sync_ok :
     forall cs pr a,
-   {< d0 d (F : rawpred) v0,
+   {< d0 d (F : rawpred tagged_block) v0,
     PERM: pr                 
     PRE:bm, hm,
       synrep cs d0 d bm *
@@ -732,7 +732,7 @@ Theorem init_load_ok :
       [[ F d ]] * [[ cachesize <> 0 ]]
     POST:bm', hm', RET:^(cs')
       exists d', rep cs' d' bm' * [[ bm' = bm ]] *
-             [[ (crash_xform F) d' ]]
+             [[ (@crash_xform _ addr_eq_dec _ F) d' ]]
     CRASH:bm'', hm'',
       exists cs, rep cs d bm''
     >} init_recover cachesize.
@@ -759,7 +759,7 @@ Theorem init_load_ok :
 
   Theorem write_ok :
     forall cs a h pr,
-    {< d (F : rawpred) v v0,
+    {< d (F : rawpred tagged_block) v v0,
     PERM: pr   
     PRE:bm, hm,
         rep cs d bm * [[ bm h = Some v ]] *
@@ -894,7 +894,7 @@ Theorem init_load_ok :
 
   Theorem sync_array_ok :
     forall a i cs pr,
-    {< d0 d (F : rawpred) vs,
+    {< d0 d (F : rawpred tagged_block) vs,
     PERM: pr
     PRE:bm, hm,
       synrep cs d0 d bm *

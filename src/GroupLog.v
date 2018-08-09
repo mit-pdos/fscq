@@ -707,7 +707,7 @@ Module GLog.
  Lemma extract_blocks_map_extract_blocks_nested:
    forall ts bm,
      handles_valid_nested bm ts ->
-     Map.Equal (extract_blocks_map bm (fold_right replay_mem hmap0 ts))
+     Map.Equal (extract_blocks_map bm tagged_block0 (fold_right replay_mem hmap0 ts))
                (fold_right replay_mem bmap0 (extract_blocks_nested bm ts)).
  Proof.
    induction ts; simpl; intros.
@@ -753,7 +753,7 @@ Module GLog.
 
 
 Lemma log_valid_extract_blocks_list:
-  forall l d bm,
+  forall V l d (bm: block_mem V),
     handles_valid_list bm l ->
     log_valid l d ->
     log_valid (extract_blocks_list bm l) d.
@@ -783,7 +783,7 @@ Qed.
 
 
 Lemma log_valid_extract_blocks_list2:
-  forall l d bm,
+  forall V l d (bm: block_mem V),
     handles_valid_list bm l ->
     log_valid (extract_blocks_list bm l) d ->
     log_valid l d.
@@ -1070,7 +1070,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     auto.
   Qed.
 
-  Lemma vmap_match_notin : forall ts vm a bm,
+  Lemma vmap_match_notin : forall V ts vm a (bm: block_mem V),
     Map.find a vm = None ->
     vmap_match vm ts ->
     handles_valid_nested bm ts ->
@@ -1146,7 +1146,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Qed.
 
   
-  Lemma vmap_match_nonoverlap : forall ts vm al bm,
+  Lemma vmap_match_nonoverlap : forall V ts vm al (bm: block_mem V),
     overlap al vm = false ->
     vmap_match vm ts ->
     handles_valid_nested bm ts ->
@@ -1457,7 +1457,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Opaque flushall_nomerge.
 
   Lemma handles_valid_nested_handles_valid_map_fold_right:
-        forall ts bm,
+        forall V ts (bm: block_mem V),
            handles_valid_nested bm ts ->
            handles_valid_map bm (fold_right replay_mem hmap0 ts).
       Proof.
@@ -1480,7 +1480,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     
 
     Lemma vmap_match_tags_public:
-      forall ts vm  bm,
+      forall ts vm (bm: block_mem tagged_block),
       handles_valid_nested bm ts ->
       vmap_match vm ts ->
       Forall

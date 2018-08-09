@@ -16,24 +16,15 @@ Theorem if_ok:
    * [[ corr2 pr (fun bm' hm' done' crash' => pre * [[Q]] * [[ hm = hm' ]] * [[ bm = bm' ]] * [[ done' = done ]] * [[ crash' = crash ]]) (Bind p2 p') ]]
   ))%pred (Bind (If_ b p1 p2) p').
 Proof.
-  unfold corr2, corr2, exis; intros; repeat deex.
-  repeat ( apply sep_star_lift2and in H; destruct H ).
+  unfold corr2, corr2, exis; intros; cleanup.
+  repeat ( apply sep_star_lift2and in H1; destruct H1 ).
   destruct b.
-  - eapply H2; eauto.
-    eapply pimpl_apply; [|apply H].
+  - eapply H4; eauto.
+    eapply pimpl_apply; [|apply H1].
     cancel.
-  - eapply H1; eauto.
-    eapply pimpl_apply; [|apply H].
+  - eapply H3; eauto.
+    eapply pimpl_apply; [|apply H1].
     cancel.
-  - unfold If_ in *.
-    repeat ( apply sep_star_lift2and in H; destruct H ).
-    destruct b.
-    + eapply H2; eauto.
-      eapply pimpl_apply; [|apply H].
-      cancel.
-    + eapply H1; eauto.
-      eapply pimpl_apply; [|apply H].
-      cancel.
 Qed.
 
 (* helper to use If with an option *)
@@ -71,8 +62,8 @@ Qed.
 
 Definition For_ (L : Type) (G : Type) (f : waddr -> L -> prog L)
                 (i n : waddr)
-                (nocrash : G -> waddr -> L -> block_mem -> hashmap -> rawpred)
-                (crashed : G -> block_mem -> hashmap -> rawpred)
+                (nocrash : G -> waddr -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+                (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
                 (l : L) : prog L.
 Proof.
   refine (Fix (@for_args_wf L) (fun _ => prog L)
@@ -127,8 +118,8 @@ Theorem for_ok':
   forall T (n i : waddr)
          (L : Type) (G : Type)
          (f: waddr -> L -> prog L) (rx: L -> prog T)
-         (nocrash : G -> waddr -> L -> block_mem -> hashmap -> rawpred)
-         (crashed : G -> block_mem -> hashmap -> rawpred)
+         (nocrash : G -> waddr -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+         (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
          (li : L) pr,
     {{ pr | fun done crash bm hm =>
       (exists F (g:G) bm' hm',
@@ -250,8 +241,8 @@ Theorem for_ok:
   forall T (n : waddr)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> waddr -> L -> block_mem -> hashmap -> rawpred)
-         (crashed : G -> block_mem -> hashmap -> rawpred)
+         (nocrash : G -> waddr -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+         (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
          (li : L) pr,
     {{ pr | fun done crash bm hm =>
          (exists F (g:G) bm' hm', F * nocrash g $0 li bm hm
@@ -354,8 +345,8 @@ Notation "'For' i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' 
 
 Fixpoint ForN_  (L : Type) (G : Type) (f : nat -> L -> prog L)
                 (i n : nat)
-                (nocrash : G -> nat -> L -> block_mem -> hashmap -> rawpred)
-                (crashed : G -> block_mem -> hashmap -> rawpred)
+                (nocrash : G -> nat -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+                (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
                 (l : L) : prog L :=
   match n with
   | 0 =>   Ret l
@@ -367,8 +358,8 @@ Theorem forN_ok':
   forall T (n i : nat)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> nat -> L -> block_mem -> hashmap -> pred)
-         (crashed : G -> block_mem -> hashmap -> pred)
+         (nocrash : G -> nat -> L -> block_mem tagged_block -> hashmap -> pred)
+         (crashed : G -> block_mem tagged_block -> hashmap -> pred)
          (li : L) pr,
   {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g i li bm hm
    * [[ exists l, hashmap_subset l hm' hm ]] * [[ bm' c= bm ]]
@@ -447,8 +438,8 @@ Theorem forN_ok:
   forall (n : nat)
          T (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> nat -> L -> block_mem -> hashmap -> pred)
-         (crashed : G -> block_mem -> hashmap -> pred)
+         (nocrash : G -> nat -> L -> block_mem tagged_block -> hashmap -> pred)
+         (crashed : G -> block_mem tagged_block -> hashmap -> pred)
          (li : L) pr,
   {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g 0 li bm hm
    * [[ exists l, hashmap_subset l hm' hm ]] * [[ bm' c= bm ]]
@@ -605,8 +596,8 @@ Notation "'ForN' x <= i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loo
 Fixpoint ForEach_ (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> prog L)
                 (lst : list ITEM)
-                (nocrash : G -> list ITEM -> L -> block_mem -> hashmap -> rawpred)
-                (crashed : G -> block_mem -> hashmap -> rawpred)
+                (nocrash : G -> list ITEM -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+                (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
                 (l : L) : prog L :=
   match lst with
   | nil => Ret l
@@ -619,8 +610,8 @@ Theorem foreach_ok:
   forall T ITEM (lst : list ITEM)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> list ITEM -> L -> block_mem -> hashmap -> pred)
-         (crashed : G -> block_mem -> hashmap -> pred)
+         (nocrash : G -> list ITEM -> L -> block_mem tagged_block -> hashmap -> pred)
+         (crashed : G -> block_mem tagged_block -> hashmap -> pred)
          (li : L) pr,
   {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g lst li bm hm
    * [[ exists l, hashmap_subset l hm' hm ]] * [[ bm' c= bm ]]

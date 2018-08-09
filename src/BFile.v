@@ -1533,7 +1533,7 @@ Qed.
   Qed.
 
   Lemma handles_valid_empty:
-    forall bm, handles_valid bm nil.
+    forall V (bm: block_mem V), handles_valid bm nil.
   Proof.
     unfold handles_valid; intros; apply Forall_nil.
   Qed.

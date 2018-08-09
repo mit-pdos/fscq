@@ -14,15 +14,15 @@ Proof.
   intros; solve_hashmap_subset.
 Qed.
 
-Lemma finished_val_eq : forall T m vm hm (v:T),
-    exists v', Finished m vm hm v = Finished m vm hm v'.
+Lemma finished_val_eq : forall T d dt bm bt (v:T),
+    exists v', Finished d dt bm bt v = Finished d dt bm bt v'.
 Proof. eauto. Qed.
 
 Hint Resolve finished_val_eq.
-
-Lemma exec_crashed_hashmap_subset' : forall T (p: prog T) m m' bm bm' hm hm' out tr pr,
-  exec pr m bm hm p out tr
-  -> (out = Crashed m' bm' hm' \/ exists v, out = Finished m' bm' hm' v)
+(*
+Lemma exec_crashed_hashmap_subset' : forall T (p: prog T) d dt d' dt' bm bt bm' bt' out tr pr,
+  exec pr d dt bm bt p out tr
+  -> (out = Crashed d' dt' bm' bt' \/ exists v, out = Finished d' dt' bm' bt' v)
   -> exists l, hashmap_subset l hm hm'.
 Proof.
   intros.
@@ -43,16 +43,17 @@ Proof.
     eauto 10 using hashmap_subset_some_list_trans.
     eauto 7 using hashmap_subset_some_list_trans.
 Qed.
-
-Lemma exec_crashed_blockmem_subset' : forall T (p: prog T) m m' bm bm' hm hm' out tr pr,
-  exec pr m bm hm p out tr
-  -> (out = Crashed m' bm' hm' \/ exists v, out = Finished m' bm' hm' v)
+*)
+Lemma exec_crashed_blockmem_subset' : forall T (p: prog T) d dt d' dt' bm bt bm' bt' out tr pr,
+  exec pr d dt bm bt p out tr
+  -> (out = Crashed d' dt' bm' bt' \/ exists v, out = Finished d' dt' bm' bt' v)
   -> bm c= bm'.
 Proof.
   intros.
   generalize dependent bm'.
-  generalize dependent hm'.
-  generalize dependent m'.
+  generalize dependent bt'.
+  generalize dependent dt'.
+  generalize dependent d'.
   
   
     induction H; subst; try solve [ intuition; repeat deex; try congruence;
@@ -68,6 +69,7 @@ Proof.
     eauto 7 using hashmap_subset_some_list_trans.
 Qed.
 
+(*
 Lemma exec_crashed_hashmap_subset : forall T (p: prog T) pr tr m m' bm hm bm' hm' out,
   exec pr m bm hm p out tr
   -> out = Crashed  m' bm' hm'
@@ -76,10 +78,11 @@ Proof.
   intros.
   eapply exec_crashed_hashmap_subset'; eauto.
 Qed.
+ *)
 
-Lemma exec_crashed_blockmem_subset : forall T (p: prog T) pr tr m m' bm hm bm' hm' out,
-  exec pr m bm hm p out tr
-  -> out = Crashed  m' bm' hm'
+Lemma exec_crashed_blockmem_subset : forall T (p: prog T) d dt d' dt' bm bt bm' bt' out tr pr,
+  exec pr d dt bm bt p out tr
+  -> out = Crashed d' dt' bm' bt'
   -> bm c= bm'.
 Proof.
   intros.
@@ -103,7 +106,7 @@ Ltac solve_hashmap_subset' :=
     end; solve_hashmap_subset
   ].
  *)
-
+(*
 Lemma corr3_from_corr2_failed:
   forall (TF TR: Type) pr tr m mr bmr hmr (p: prog TF) (r: prog TR) out
          (crash: block_mem -> hashmap -> pred) ppre rpre crashdone_p crashdone_r,
@@ -365,3 +368,4 @@ Qed.
       | [ H: diskIs _ _ |- _ ] => unfold diskIs in *
       | [ |- pimpl (crash_xform _) _ ] => progress autorewrite with crash_xform
     end.
+*)

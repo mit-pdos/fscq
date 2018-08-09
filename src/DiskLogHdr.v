@@ -82,7 +82,7 @@ Definition state_goodSize st :=
   | Unsync n o => hdr_goodSize n /\ hdr_goodSize o
   end.
 
-Definition rep xp state : @rawpred :=
+Definition rep xp state : @rawpred tagged_block:=
   ([[ state_goodSize state ]] *
    match state with
    | Synced n =>

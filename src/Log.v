@@ -79,7 +79,7 @@ Module LOG.
     | ActiveTxn ds cur =>
       [[ handles_valid_map bm cm ]] *
       [[ map_valid cm ds!! ]] *
-      [[ map_replay (extract_blocks_map bm cm) ds!! cur ]] *
+      [[ map_replay (extract_blocks_map bm tagged_block0 cm) ds!! cur ]] *
       [[ sm_ds_valid sm (pushd cur ds) ]] *
       GLog.rep xp (GLog.Cached ds) mm bm hm
     | FlushingTxn ds =>
@@ -209,7 +209,7 @@ Hint Resolve Forall_nil.
   Qed.
 
   Lemma Forall_public_subset_trans:
-    forall A bm bm' (hl: list (A * handle)),
+    forall A (bm bm': block_mem tagged_block) (hl: list (A * handle)),
       Forall (fun t : tag => t = Public)
              (map fst (extract_blocks bm (map snd hl))) ->
       handles_valid_list bm hl ->
@@ -449,8 +449,8 @@ Hint Resolve Forall_nil.
       apply list2nmem_oob; auto.
     Qed.
 
-  Lemma possible_crash_list2nmem_synced: forall d' d,
-    possible_crash d (list2nmem d') ->
+  Lemma possible_crash_list2nmem_synced: forall V d' d,
+    @possible_crash _ _ V d (list2nmem d') ->
     Forall (fun v => snd v = nil) d'.
   Proof.
     induction d' using rev_ind; intros.
@@ -679,8 +679,8 @@ Hint Resolve Forall_nil.
   Lemma replay_disk_extract_blocks_map_add :
     forall a h v hmap m bm,
       bm h = Some v ->
-      replay_disk (Map.elements (extract_blocks_map bm (Map.add a h hmap))) m =
-      updN (replay_disk (Map.elements (extract_blocks_map bm hmap)) m)  a (v, []).
+      replay_disk (Map.elements (extract_blocks_map bm tagged_block0 (Map.add a h hmap))) m =
+      updN (replay_disk (Map.elements (extract_blocks_map bm tagged_block0 hmap)) m)  a (v, []).
   Proof.
     intros.
     pose proof (map_add_extract_blocks_mem_comm hmap bm (a, h) v H); simpl in *.
@@ -698,7 +698,7 @@ Hint Resolve Forall_nil.
     Qed.
     
     Lemma add_forall_public:
-      forall a h bm v hmap,
+      forall a h (bm: block_mem tagged_block) v hmap,
         Forall (fun t : tag => t = Public)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
@@ -765,7 +765,7 @@ Hint Resolve Forall_nil.
   Set Regular Subst Tactic.
 
   Lemma remove_forall_public:
-      forall a bm hmap,
+      forall a (bm: block_mem tagged_block) hmap,
         Forall (fun t : tag => t = Public)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
@@ -1304,7 +1304,7 @@ Hint Resolve Forall_nil.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
   
-  Lemma after_crash_idem' : forall xp d ms sm bm hm (F : rawpred),
+  Lemma after_crash_idem' : forall xp d ms sm bm hm (F : rawpred _),
     F (list2nmem d) ->
     crash_xform (rep_inner xp (NoTxn (d, nil)) ms sm bm hm) =p=>
     exists d' ms' sm',(rep_inner xp (NoTxn (d', nil)) ms' sm' bm hm) *

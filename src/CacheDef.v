@@ -56,7 +56,7 @@ Definition addrs_clean cm al :=
   Forall (addr_clean cm) al.
 
 
-Definition cachepred (cache : cachemap) (bm: block_mem) (a : addr) (vs: valuset): @Pred.pred _ addr_eq_dec valuset :=
+Definition cachepred (cache : cachemap) (bm: block_mem tagged_block) (a : addr) (vs: valuset): @Pred.pred _ addr_eq_dec valuset :=
   (match find a cache with
    | None =>
      a |+> vs
@@ -66,12 +66,12 @@ Definition cachepred (cache : cachemap) (bm: block_mem) (a : addr) (vs: valuset)
      exists tb0, a |+> (tb0, snd vs) * [[ bm h = Some (fst vs) ]] * [[ List.In tb0 (snd vs) ]]
    end)%pred.
 
-Definition rep (cs : cachestate) (m : tagged_disk) (bm: block_mem): @Pred.pred _ addr_eq_dec valuset :=
+Definition rep (cs : cachestate) (m : tagged_disk) (bm: block_mem tagged_block): @Pred.pred _ addr_eq_dec valuset :=
   ([[ size_valid cs ]] *
    [[ addr_valid m (CSMap cs) ]] *
    mem_pred (HighAEQ:= addr_eq_dec) (cachepred (CSMap cs) bm) m)%pred.
 
-Definition synpred (cache : cachemap) (bm: block_mem) (a : addr) (vs : valuset) : @Pred.pred _ addr_eq_dec valuset :=
+Definition synpred (cache : cachemap) (bm: block_mem tagged_block) (a : addr) (vs : valuset) : @Pred.pred _ addr_eq_dec valuset :=
     (exists vsd, a |+> vsd *
     match Map.find a cache with
     | None =>
@@ -81,12 +81,12 @@ Definition synpred (cache : cachemap) (bm: block_mem) (a : addr) (vs : valuset) 
     | Some (h, true)  => exists tb, [[ vs = (tb, (fst vsd) :: nil) ]] * [[ bm h = Some tb ]]
     end)%pred.
 
-Definition synrep' (cs : cachestate) (m : tagged_disk) (bm: block_mem): @Pred.pred _ addr_eq_dec valuset :=
+Definition synrep' (cs : cachestate) (m : tagged_disk) (bm: block_mem tagged_block): @Pred.pred _ addr_eq_dec valuset :=
   ([[ size_valid cs ]] *
    [[ addr_valid m (CSMap cs) ]] *
    mem_pred (HighAEQ:= addr_eq_dec) (synpred (CSMap cs) bm) m)%pred.
 
-Definition synrep (cs : cachestate) (mbase m : tagged_disk) (bm: block_mem): rawpred :=
+Definition synrep (cs : cachestate) (mbase m : tagged_disk) (bm: block_mem tagged_block): rawpred tagged_block :=
   (rep cs mbase bm /\ synrep' cs m bm)%pred.
 
 
