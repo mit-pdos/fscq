@@ -7,7 +7,7 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-Definition seal_all (tl: list tag) (bl: list block):=
+Definition seal_all (tl: list handle) (bl: list block):=
   let^ (l) <- ForN i < length bl
   Blockmem bm
   Ghost [ crash ]
@@ -18,7 +18,7 @@ Definition seal_all (tl: list tag) (bl: list block):=
   OnCrash
     crash
   Begin
-    h <- Seal (selN tl i Public) (selN bl i $0);;
+    h <- Seal (selN tl i dummy_handle) (selN bl i $0);;
     Ret ^(h::hl)
   Rof ^(nil);;
   Ret (rev l).
@@ -45,8 +45,7 @@ Theorem seal_all_ok :
     {!< F,
     PERM: pr                      
     PRE:bm, hm,
-        F * [[ length tl = length bl ]] *
-        [[ forall t, In t tl -> t = Public ]]
+        F * [[ length tl = length bl ]]
     POST:bm', hm', RET: r
         F * [[ extract_blocks bm' r = combine tl bl ]] *
         [[ handles_valid bm' r ]]                
@@ -57,15 +56,11 @@ Proof.
   unfold seal_all; step.
   unfold handles_valid; auto.
   safestep.
-  apply H3.
-  apply in_selN with (n:= m).
-  omega.
-
   step.
   step.
   rewrite extract_blocks_app.
   rewrite extract_blocks_upd_not_in.
-  rewrite H5.
+  setoid_rewrite H4.
   simpl; rewrite upd_eq; auto.
   destruct (combine tl bl) eqn:D.
   apply length_zero_iff_nil in D.
@@ -78,24 +73,23 @@ Proof.
   setoid_rewrite combine_length_eq; omega.
   auto.
   unfold not; intros.
-  unfold handles_valid, handle_valid in H12; eapply Forall_forall in H12; eauto;
+  unfold handles_valid, handle_valid in H11; eapply Forall_forall in H11; eauto;
   cleanup; congruence.
   apply Forall_app.      
   apply handles_valid_upd; auto.
   unfold handle_valid; eexists; apply upd_eq; eauto.
-  solve_hashmap_subset.
   unfold false_pred; cancel.
 
   step.
   step.
-  rewrite H, <- H4.
+  setoid_rewrite H; rewrite <- H3.
   erewrite <- combine_length_eq, firstn_exact; auto.
-  solve_hashmap_subset.
   eassign (false_pred (AT:= addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred;
   unfold false_pred; cancel.
 
   Unshelve.
   exact tt.
+  all: unfold EqDec; apply handle_eq_dec.
 Qed.
 
 Theorem unseal_all_ok :
@@ -103,9 +97,10 @@ Theorem unseal_all_ok :
     {!< F tbl,
     PERM: pr                      
     PRE:bm, hm,
-        F * [[ tbl = extract_blocks bm hl ]] *
+        F * [[ hm dummy_handle = Some Public ]] *
+        [[ tbl = extract_blocks bm hl ]] *
         [[ handles_valid bm hl ]] *
-        [[ forall t, In t (map fst tbl) -> t = Public ]]
+        [[ forall t, In t (map fst tbl) -> t = dummy_handle ]]
     POST:bm', hm', RET: r
         F * [[ r = map snd tbl ]]
     CRASH:bm'', hm_crash,
@@ -114,6 +109,8 @@ Theorem unseal_all_ok :
   Proof.
     unfold unseal_all; step.
     safestep.
+    unfold subset in *.
+    edestruct H10; eauto.
     apply H3.
     apply in_selN with (n:= m).
     rewrite map_length.
@@ -135,7 +132,7 @@ Theorem unseal_all_ok :
 
     step.
     step.
-    rewrite H11.
+    rewrite H12.
     replace ([selN (map snd (extract_blocks bm hl)) m $0]) with
         (map snd [selN (extract_blocks bm hl) m tagged_block0]).
     rewrite <- map_app.
@@ -155,7 +152,7 @@ Theorem unseal_all_ok :
 
     step.
     step.
-    rewrite H9, firstn_exact.
+    rewrite H10, firstn_exact.
     erewrite <- extract_blocks_subset_trans; eauto.
     solve_hashmap_subset.
     eassign (false_pred (AT:= addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred;
@@ -163,9 +160,9 @@ Theorem unseal_all_ok :
     Unshelve.
     all: eauto.
     exact tt.
-    exact Public.
+    all: try exact dummy_handle.
     exact tagged_block0.
-    exact dummy_handle.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
 

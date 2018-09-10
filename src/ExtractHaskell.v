@@ -19,7 +19,7 @@ Extract Inlined Constant Prog.can_access =>
 "(\x y -> case y of
           Public -> Prelude.True
           Private n -> if x Prelude.== n then Prelude.True else Prelude.False)".
-Extract Inlined Constant Prog.handle => "Word.Coq_word".
+Extract Inlined Constant Blockmem.handle => "Word.Coq_word".
 Extract Inlined Constant AsyncDisk.owner => "Prelude.Int".
 Extract Inlined Constant AsyncDisk.dummy_owner => "0".
 Extract Inlined Constant AsyncDisk.owner_dec =>

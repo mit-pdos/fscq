@@ -103,14 +103,14 @@ Definition rep xp st hm :=
   Qed.
 
 
-  Lemma rep_hashmap_subset : forall xp hm hm',
-    (exists l, hashmap_subset l hm hm')
+  Lemma rep_domainmem_subset : forall xp hm hm',
+    subset hm hm'
     -> forall st, rep xp st hm
         =p=> rep xp st hm'.
   Proof.
     unfold rep; intros.
     destruct st; cancel;
-    try erewrite rep_hashmap_subset; eauto.
+    try erewrite rep_domainmem_subset; eauto.
     all: cancel; eauto.
   Qed.
   
@@ -167,7 +167,7 @@ Definition rep xp st hm :=
   Qed.
 
 
-Hint Resolve rep_hashmap_subset.
+Hint Resolve rep_domainmem_subset.
   
   Definition trunc_ok :
     forall xp cs pr,
@@ -192,7 +192,7 @@ Hint Resolve rep_hashmap_subset.
     eauto.
     step.
     safestep.
-    apply DiskLogPadded.rep_hashmap_subset; eauto.
+    apply DiskLogPadded.rep_domainmem_subset; eauto.
     eauto.
     simpl; unfold roundup; rewrite divup_0; omega.
     simpl; omega.

@@ -82,7 +82,7 @@ Inductive state :=
 Definition ent_addr {B} (e : @generic_entry B) := addr2w (fst e).
 Definition ent_handle {A} (e : A * handle) := snd e.
 Definition ent_block {A} (e : A * tagged_block) := snd e.
-Definition ent_tag {A C} (e : A * (tag * C)) := fst (snd e).
+Definition ent_tag {A C} (e : A * (handle * C)) := fst (snd e).
 Definition ent_valu {A B} (e : A * (B * valu)) := snd (snd e).
 
 Definition ndesc_log {T} (log : @generic_contents T) := (divup (length log) DescSig.items_per_val).
@@ -120,7 +120,7 @@ Definition addr_valid {B} (e : @generic_entry B) := goodSize addrlen (fst e).
 
 Definition entry_valid {B} (ent : @generic_entry B) := fst ent <> 0 /\ addr_valid ent.
 
-Definition addr_tags n := repeat Public n.
+Definition addr_tags n := repeat dummy_handle n.
 
 Definition rep_contents xp (log : contents) : rawpred tagged_block :=
   ( [[ Forall addr_valid log ]] *
@@ -147,7 +147,7 @@ Definition loglen_invalid xp ndesc ndata :=
 Definition hide_or (P : Prop) := P.
 Opaque hide_or.
 
-Definition rep_inner xp (st : state) (hm: hashmap): rawpred tagged_block:=
+Definition rep_inner xp (st : state) (hm: domainmem): rawpred tagged_block:=
   (match st with
    | Synced l =>
      DiskLogHdr.rep xp (DiskLogHdr.Synced (ndesc_log l, ndata_log l)) *
@@ -1293,8 +1293,8 @@ Qed.
     rewrite entry_valid_vals_nonzero; auto.
   Qed.
 
-    Lemma rep_hashmap_subset : forall xp hm hm',
-    (exists l, hashmap_subset l hm hm')
+    Lemma rep_domainmem_subset : forall xp hm hm',
+    subset hm hm'
     -> forall st, rep xp st hm
         =p=> rep xp st hm'.
   Proof.

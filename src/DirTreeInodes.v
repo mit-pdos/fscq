@@ -156,7 +156,7 @@ Import ListNotations.
     tree_names_distinct tree ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     off < length (DFData f) ->
-    let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f) in
+    let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f) (DFDomid f) in
     dirtree_update_inode tree inum off v =
     update_subtree pathname (TreeFile inum f') tree.
   Proof.
@@ -214,8 +214,8 @@ Import ListNotations.
         eauto.
   Qed.
 
-  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees ms sm,
-    (F * rep fsxp Ftop tree ilist frees ms sm)%pred m ->
+  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees ms sm dm,
+    (F * rep fsxp Ftop tree ilist frees ms sm dm)%pred m ->
     tree_inodes_distinct tree.
   Proof.
     unfold rep, tree_inodes_distinct; intros.
@@ -1534,8 +1534,8 @@ Import ListNotations.
         + eapply IHl; eauto.
   Qed.
 
-  Lemma rep_tree_distinct_impl : forall fsxp Ftop tree ilist frees ms sm,
-    rep fsxp Ftop tree ilist frees ms sm =p=> rep fsxp Ftop tree ilist frees ms sm *
+  Lemma rep_tree_distinct_impl : forall fsxp Ftop tree ilist frees ms sm dm,
+    rep fsxp Ftop tree ilist frees ms sm dm =p=> rep fsxp Ftop tree ilist frees ms sm dm *
       [[ tree_names_distinct tree ]] *
       [[ tree_inodes_distinct tree ]].
   Proof.
@@ -1628,9 +1628,9 @@ Import ListNotations.
   Qed.
 
   Lemma owner_match:
-      forall pathname tree fsxp inum f F Ff  sm ixp flist ilist frees cms mscache icache dblocks m,
+      forall pathname tree fsxp inum f F Ff  sm ixp flist ilist frees cms mscache icache dblocks dm m,
       find_subtree pathname tree = Some (TreeFile inum f) ->
-      (F  * BFILE.rep (FSXPBlockAlloc fsxp) sm ixp flist ilist frees cms mscache icache dblocks)%pred (list2nmem m) ->
+      (F  * BFILE.rep (FSXPBlockAlloc fsxp) sm ixp flist ilist frees cms mscache icache dblocks dm)%pred (list2nmem m) ->
       (Ff ✶ tree_pred fsxp tree)%pred (list2nmem flist) ->
       DFOwner f = BFILE.BFOwner (selN flist inum BFILE.bfile0).
     Proof.
@@ -1643,12 +1643,12 @@ Import ListNotations.
 
 
   
-  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms inum off v bn m f sm,
-    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
+  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms inum off v bn m f sm dm,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm dm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    fst (fst v) = DFOwner f ->
-    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
+    fst (fst v) = DFDomid f ->
+    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms sm dm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     apply rep_tree_names_distinct in H as Hnames.

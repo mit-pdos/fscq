@@ -17,13 +17,13 @@ Theorem if_ok:
   ))%pred (Bind (If_ b p1 p2) p').
 Proof.
   unfold corr2, corr2, exis; intros; cleanup.
-  repeat ( apply sep_star_lift2and in H1; destruct H1 ).
+  repeat ( apply sep_star_lift2and in H; destruct H).
   destruct b.
-  - eapply H4; eauto.
-    eapply pimpl_apply; [|apply H1].
+  - eapply H2; eauto.
+    eapply pimpl_apply; [|apply H].
     cancel.
-  - eapply H3; eauto.
-    eapply pimpl_apply; [|apply H1].
+  - eapply H1; eauto.
+    eapply pimpl_apply; [|apply H].
     cancel.
 Qed.
 
@@ -62,8 +62,8 @@ Qed.
 
 Definition For_ (L : Type) (G : Type) (f : waddr -> L -> prog L)
                 (i n : waddr)
-                (nocrash : G -> waddr -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
-                (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+                (nocrash : G -> waddr -> L -> taggedmem -> domainmem -> rawpred tagged_block)
+                (crashed : G -> taggedmem -> domainmem -> rawpred tagged_block)
                 (l : L) : prog L.
 Proof.
   refine (Fix (@for_args_wf L) (fun _ => prog L)
@@ -118,33 +118,33 @@ Theorem for_ok':
   forall T (n i : waddr)
          (L : Type) (G : Type)
          (f: waddr -> L -> prog L) (rx: L -> prog T)
-         (nocrash : G -> waddr -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
-         (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+         (nocrash : G -> waddr -> L -> taggedmem -> domainmem -> rawpred tagged_block)
+         (crashed : G -> taggedmem -> domainmem -> rawpred tagged_block)
          (li : L) pr,
     {{ pr | fun done crash bm hm =>
       (exists F (g:G) bm' hm',
-      F * nocrash g i li bm hm * [[ bm' c= bm ]] *
-      [[ exists l, hashmap_subset l hm' hm ]] *
+          F * nocrash g i li bm hm *
+          [[ bm' c= bm ]] * [[ hm' c= hm ]] *
       [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
       (forall lSm,
        {{ pr |  fun  done' crash' bm'' hm'' => F * nocrash g (m ^+ $1) lSm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]] *
      [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm''  => F * nocrash g (n ^+ i) lfinal bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]] *
      [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]] *
      [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] *
+         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
          [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (For_ f i n nocrash crashed li) rx.
 Proof.
@@ -168,9 +168,9 @@ Proof.
       apply pimpl_refl.
     + fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
       eassign (fun bm hm => (nocrash a0 i li bm hm * a)%pred); simpl; cancel.
-      eapply pimpl_ok2; eauto. intros; simpl. safecancel.
+      eapply pimpl_ok2. eauto. intros; simpl. safecancel.
       fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
-      eexists; eapply hashmap_subset_trans; eauto.
+      intros _ _; eauto.
       unfold false_pred; cancel; eauto.
 
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
@@ -199,14 +199,15 @@ Proof.
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
       apply pimpl_exists_r; exists a1.
+      apply pimpl_exists_r; exists a2.
       ring_simplify (i ^+ $1 ^+ (x ^- $1)).
       ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       cancel.
       eauto.
 
-      subst; apply H4; eauto.
-      intros; apply H10; clear H10.
-      apply wlt_lt in H14.
+      subst; eapply H4; eauto.
+      intros; apply H9; clear H9.
+      apply wlt_lt in H12.
       unfold wlt.
       repeat rewrite wordToN_nat.
       apply Nlt_in.
@@ -233,38 +234,40 @@ Proof.
 
       unfold not; intros; apply H7.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H10; simpl in H10; auto.
+      apply wlt_lt in H9; simpl in H9; auto.
     + cancel; eauto.
+      Unshelve.
+      unfold EqDec; apply handle_eq_dec.
 Qed.
 
 Theorem for_ok:
   forall T (n : waddr)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> waddr -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
-         (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+         (nocrash : G -> waddr -> L -> taggedmem -> domainmem -> rawpred tagged_block)
+         (crashed : G -> taggedmem -> domainmem -> rawpred tagged_block)
          (li : L) pr,
     {{ pr | fun done crash bm hm =>
-         (exists F (g:G) bm' hm', F * nocrash g $0 li bm hm
-   * [[ exists l, hashmap_subset l hm' hm ]] * [[ bm' c= bm ]]
+         (exists F (g:G) bm' hm', F * nocrash g $0 li bm hm * [[ hm' c= hm ]]
+   * [[ bm' c= bm ]]
    * [[forall m lm rxm,
       (m < n)%word ->
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (m ^+ $1) lSm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g n lfinal bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] *
+         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
          [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (For_ f $0 n nocrash crashed li) rx.
 Proof.
@@ -280,9 +283,10 @@ Proof.
   eauto.
   eauto.
   eauto.
-  rewrite <- H1; cancel; eauto.
+  eauto.
+
   Unshelve.
-  unfold EqDec; intros; apply handle_eq_dec.
+  all: unfold EqDec; intros; apply handle_eq_dec.
 Qed.
 
 Hint Extern 1 ({{_ | _}} Bind (For_ _ _ _ _ _ _) _) => apply for_ok : prog.
@@ -345,8 +349,8 @@ Notation "'For' i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' 
 
 Fixpoint ForN_  (L : Type) (G : Type) (f : nat -> L -> prog L)
                 (i n : nat)
-                (nocrash : G -> nat -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
-                (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+                (nocrash : G -> nat -> L -> taggedmem -> domainmem -> rawpred tagged_block)
+                (crashed : G -> taggedmem -> domainmem -> rawpred tagged_block)
                 (l : L) : prog L :=
   match n with
   | 0 =>   Ret l
@@ -358,31 +362,31 @@ Theorem forN_ok':
   forall T (n i : nat)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> nat -> L -> block_mem tagged_block -> hashmap -> pred)
-         (crashed : G -> block_mem tagged_block -> hashmap -> pred)
+         (nocrash : G -> nat -> L -> taggedmem -> domainmem -> pred)
+         (crashed : G -> taggedmem -> domainmem -> pred)
          (li : L) pr,
-  {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g i li bm hm
-   * [[ exists l, hashmap_subset l hm' hm ]] * [[ bm' c= bm ]]
+    {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm',
+   F * nocrash g i li bm hm * [[ hm' c= hm ]] 
+   * [[ bm' c= bm ]]
    * [[forall m lm rxm,
       i <= m ->
       m < n + i ->
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (S m) lSm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+           [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+           [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm''=> F * nocrash g (n + i) lfinal bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-        F * crashed g bm'' hm'' *
-        [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
+        F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] * [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (ForN_ f i n nocrash crashed li) rx.
 Proof.
   induction n; intros;
@@ -402,7 +406,7 @@ Proof.
       apply pimpl_refl.
       eapply pimpl_ok2; eauto.
       intros; cancel.
-      eexists; eapply hashmap_subset_trans; eauto.
+      eauto.
       unfold false_pred; cancel; auto.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + simpl.
@@ -417,7 +421,7 @@ Proof.
       cancel.
       apply pimpl_refl.
       eauto.
-      eassign a1; cancel.
+      eauto.
 
       apply H1.
       omega.
@@ -431,36 +435,36 @@ Proof.
       intros; apply pimpl_refl.
     + cancel; eauto.
  Unshelve.
- unfold EqDec; apply handle_eq_dec.     
+ all: unfold EqDec; apply handle_eq_dec.     
 Qed.
 
 Theorem forN_ok:
   forall (n : nat)
          T (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> nat -> L -> block_mem tagged_block -> hashmap -> pred)
-         (crashed : G -> block_mem tagged_block -> hashmap -> pred)
+         (nocrash : G -> nat -> L -> taggedmem -> domainmem -> pred)
+         (crashed : G -> taggedmem -> domainmem -> pred)
          (li : L) pr,
   {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g 0 li bm hm
-   * [[ exists l, hashmap_subset l hm' hm ]] * [[ bm' c= bm ]]
+   * [[ bm' c= bm ]] * [[ hm' c= hm ]] 
    * [[forall m lm rxm,
       m < n ->
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (S m) lSm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g n lfinal bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] *
+         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
          [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (ForN_ f 0 n nocrash crashed li) rx.
 Proof.
@@ -470,7 +474,7 @@ Proof.
   safecancel.
   cancel; apply pimpl_refl.
   eauto.
-  eassign bm'; cancel.
+  eauto.
   apply H3.
   omega.
   auto.
@@ -479,7 +483,7 @@ Proof.
   replace (n + 0) with n by omega; auto.
   rewrite <- H1; cancel; eauto.
   Unshelve.
-  unfold EqDec; apply handle_eq_dec.
+  all: unfold EqDec; apply handle_eq_dec.
 Qed.
 
 Hint Extern 1 ({{_ | _}} Bind (ForN_ _ _ _ _ _ _) _) => apply forN_ok : prog.
@@ -596,8 +600,8 @@ Notation "'ForN' x <= i < n 'Blockmem' bm 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loo
 Fixpoint ForEach_ (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> prog L)
                 (lst : list ITEM)
-                (nocrash : G -> list ITEM -> L -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
-                (crashed : G -> block_mem tagged_block -> hashmap -> rawpred tagged_block)
+                (nocrash : G -> list ITEM -> L -> taggedmem -> domainmem -> rawpred tagged_block)
+                (crashed : G -> taggedmem -> domainmem -> rawpred tagged_block)
                 (l : L) : prog L :=
   match lst with
   | nil => Ret l
@@ -610,29 +614,29 @@ Theorem foreach_ok:
   forall T ITEM (lst : list ITEM)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> list ITEM -> L -> block_mem tagged_block -> hashmap -> pred)
-         (crashed : G -> block_mem tagged_block -> hashmap -> pred)
+         (nocrash : G -> list ITEM -> L -> taggedmem -> domainmem -> pred)
+         (crashed : G -> taggedmem -> domainmem -> pred)
          (li : L) pr,
   {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g lst li bm hm
-   * [[ exists l, hashmap_subset l hm' hm ]] * [[ bm' c= bm ]]
+   * [[ bm' c= bm ]] * [[ hm' c= hm ]] 
    * [[forall elem lst' lm rxm,
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g lst' lSm bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+           [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]]  * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (elem :: lst') lm bm'' hm'' *
-         [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+         [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
          [[ exists prefix, prefix ++ elem :: lst' = lst ]] *
          [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f elem lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g nil lfinal bm'' hm'' *
-          [[ exists l, hashmap_subset l hm' hm'' ]] * [[ bm' c= bm'' ]] *
+          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] *
+         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
          [[ bm' c= bm ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (ForEach_ f lst nocrash crashed li) rx.
 Proof.
@@ -655,7 +659,6 @@ Proof.
       apply pimpl_refl.
       eapply pimpl_ok2; eauto.
       cancel; eauto.
-      eexists; eapply hashmap_subset_trans; eauto.
       unfold false_pred; cancel; eauto.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + simpl.
@@ -668,7 +671,7 @@ Proof.
       eassign lst.
       cancel; apply pimpl_refl.
       eauto.
-      eassign a2; cancel.
+      eauto.
       eapply pimpl_ok2.
       apply H1.
       intros.
@@ -681,7 +684,7 @@ Proof.
       eauto.
       exists nil; auto.
  Unshelve.
- unfold EqDec; apply handle_eq_dec.     
+ all: unfold EqDec; apply handle_eq_dec.     
 Qed.
 
 Hint Extern 1 ({{_ | _}} Bind (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.

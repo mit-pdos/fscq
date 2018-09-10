@@ -110,9 +110,9 @@ Module CacheOneDir.
     (forall cache hint, BFILE.BFCache f = Some (cache, hint) ->
     forall name, Dcache.find name cache = dsmap name).
 
-  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm : @pred _ addr_eq_dec valuset :=
+  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm dm : @pred _ addr_eq_dec valuset :=
     (exists flist,
-     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) ]]] *
+     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) dm ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
      [[ rep f dsmap ]])%pred.
 
@@ -210,10 +210,10 @@ Module CacheOneDir.
            end.
 
   Lemma inode_owner_public:
-      forall F Ff bxp lxp ixp flist ilist x ms m dnum f dl def,
+      forall F Ff bxp lxp ixp flist ilist x ms m dnum f dl def dm,
       (F * BFILE.rep bxp lxp ixp flist ilist
             x (MSAllocC ms) (MSCache ms) 
-            (SDIR.MSICache ms) (MSDBlocks ms))%pred m ->
+            (SDIR.MSICache ms) (MSDBlocks ms) dm)%pred m ->
       (Ff ✶ dnum |-> f)%pred (list2nmem flist) ->
       SDIR.rep f dl ->
       INODE.IOwner (selN ilist dnum def) = Public.
@@ -241,11 +241,11 @@ Module CacheOneDir.
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms', cache)
            exists f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
-           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm hm' *
            [[ BFILE.BFCache f' = Some cache ]] *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
@@ -277,11 +277,11 @@ Module CacheOneDir.
     PERM:pr 
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms', cache)
            exists f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
-           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm hm' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
@@ -308,11 +308,11 @@ Module CacheOneDir.
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms', r)
            exists f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
-           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm hm' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
@@ -359,9 +359,9 @@ Module CacheOneDir.
     PERM:pr   
     PRE:bm, hm,
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms', r)
-             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms' sm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms' sm hm' *
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
              [[ listpred SDIR.readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
@@ -386,10 +386,10 @@ Module CacheOneDir.
     PERM:pr   
     PRE:bm, hm,
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms', r) exists m' dmap' f',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
-             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist frees f' ms' sm *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist frees f' ms' sm hm' *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
@@ -441,7 +441,7 @@ Module CacheOneDir.
 
   Lemma sdir_rep_cache : forall f c m,
     SDIR.rep f m ->
-    SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c; BFILE.BFOwner := BFILE.BFOwner f |} m.
+    SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c; BFILE.BFOwner := BFILE.BFOwner f; BFILE.BFDomid := BFILE.BFDomid f |} m.
   Proof.
     unfold SDIR.rep, DIR.rep, DIR.Dent.rep, DIR.Dent.items_valid, DIR.Dent.RA.RALen; eauto.
   Qed.
@@ -454,7 +454,7 @@ Module CacheOneDir.
     PERM:pr   
     PRE:bm, hm,
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm *
              [[ notindomain name dmap ]] *
              [[ goodSize addrlen inum ]] *
              [[ inum <> 0 ]]
@@ -466,7 +466,7 @@ Module CacheOneDir.
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees' f',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
-             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist' frees' f' ms' sm *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist' frees' f' ms' sm hm' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
@@ -524,7 +524,7 @@ Module CacheOneDir.
     PERM:pr   
     PRE:bm, hm,
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm *
              [[ goodSize addrlen inum ]] *
              [[ inum <> 0 ]]
     POST:bm', hm', RET:^(ms', r) exists m',
@@ -535,7 +535,7 @@ Module CacheOneDir.
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees' f',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
-             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist' frees' f' ms' sm *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist' frees' f' ms' sm hm' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *

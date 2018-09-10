@@ -581,10 +581,10 @@ Module SDIR.
     /\ (forall s, indomain s dsmap -> sname_valid s)
     /\ mem_atrans wname2sname dmap dsmap wname_valid.
 
-  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm : @pred _ addr_eq_dec valuset :=
+  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm dm : @pred _ addr_eq_dec valuset :=
     (exists flist,
-     [[ INODE.IOwner (selN ilist inum INODE.inode0) = Public ]] *
-     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) ]]] *
+     [[ INODE.IDomid (selN ilist inum INODE.inode0) = dummy_handle ]] *
+     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) dm ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
      [[ rep f dsmap ]])%pred.
 
@@ -629,10 +629,10 @@ Module SDIR.
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms',r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' sm *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' sm hm' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
@@ -697,10 +697,10 @@ Module SDIR.
     PERM:pr   
     PRE:bm, hm,
               LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms', r)
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' sm *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' sm hm' *
              [[ listpred readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
@@ -723,10 +723,10 @@ Module SDIR.
     {< F Fm Fi m0 sm m dmap ilist frees,
     PERM:pr   
     PRE:bm, hm,   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-             exists f, rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm
+             exists f, rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm hm
     POST:bm', hm', RET:^(ms', hint, r) exists m' dmap' f',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees f' ms' sm *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees f' ms' sm hm' *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
@@ -775,7 +775,7 @@ Module SDIR.
     PERM:pr   
     PRE:bm, hm,
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-             exists f, rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm *
+             exists f, rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms sm hm *
              [[ notindomain name dmap ]] *
              [[ goodSize addrlen inum ]] *
              [[ inum <> 0 ]]
@@ -787,7 +787,7 @@ Module SDIR.
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees' f',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' f' ms' sm *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' f' ms' sm hm' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *

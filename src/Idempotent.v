@@ -14,8 +14,8 @@ Proof.
   intros; solve_hashmap_subset.
 Qed.
 
-Lemma finished_val_eq : forall T d dt bm bt (v:T),
-    exists v', Finished d dt bm bt v = Finished d dt bm bt v'.
+Lemma finished_val_eq : forall T d dm bm (v:T),
+    exists v', Finished d bm dm v = Finished d bm dm v'.
 Proof. eauto. Qed.
 
 Hint Resolve finished_val_eq.
@@ -43,10 +43,12 @@ Proof.
     eauto 10 using hashmap_subset_some_list_trans.
     eauto 7 using hashmap_subset_some_list_trans.
 Qed.
-*)
+ *)
+
+(*
 Lemma exec_crashed_blockmem_subset' : forall T (p: prog T) d dt d' dt' bm bt bm' bt' out tr pr,
-  exec pr d dt bm bt p out tr
-  -> (out = Crashed d' dt' bm' bt' \/ exists v, out = Finished d' dt' bm' bt' v)
+  exec pr d bm dm p out tr
+  -> (out = Crashed d' bm' dm' \/ exists v, out = Finished d' bm' dm' v)
   -> bm c= bm'.
 Proof.
   intros.
@@ -68,7 +70,7 @@ Proof.
     eauto 10 using hashmap_subset_some_list_trans.
     eauto 7 using hashmap_subset_some_list_trans.
 Qed.
-
+*)
 (*
 Lemma exec_crashed_hashmap_subset : forall T (p: prog T) pr tr m m' bm hm bm' hm' out,
   exec pr m bm hm p out tr
@@ -79,7 +81,7 @@ Proof.
   eapply exec_crashed_hashmap_subset'; eauto.
 Qed.
  *)
-
+(*
 Lemma exec_crashed_blockmem_subset : forall T (p: prog T) d dt d' dt' bm bt bm' bt' out tr pr,
   exec pr d dt bm bt p out tr
   -> out = Crashed d' dt' bm' bt'
@@ -88,7 +90,7 @@ Proof.
   intros.
   eapply exec_crashed_blockmem_subset'; eauto.
 Qed.
-
+*)
 (*
 Ltac solve_hashmap_subset' :=
   match goal with

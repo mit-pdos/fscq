@@ -69,7 +69,7 @@ Module LOG.
 
   Definition rep_inner xp st ms sm bm hm :=
   let '(cm, mm) := (MSTxn ms, MSGLog ms) in
-  ([[ Forall (fun t : tag => t = Public)
+  ([[ Forall (fun t => t = dummy_handle)
             (map fst (extract_blocks bm (map snd (Map.elements cm)))) ]] *  
   match st with
     | NoTxn ds =>
@@ -195,8 +195,8 @@ Hint Resolve Forall_nil.
     eexists; eauto.
   Qed.
 
-  Lemma rep_inner_hashmap_subset : forall xp ms hm sm hm' bm,
-    (exists l, hashmap_subset l hm hm')
+  Lemma rep_inner_domainmem_subset : forall xp ms hm sm hm' bm,
+    subset hm hm'
     -> forall st, rep_inner xp st ms sm bm hm
         =p=> rep_inner xp st ms sm bm hm'.
   Proof.
@@ -210,11 +210,11 @@ Hint Resolve Forall_nil.
 
   Lemma Forall_public_subset_trans:
     forall A (bm bm': block_mem tagged_block) (hl: list (A * handle)),
-      Forall (fun t : tag => t = Public)
+      Forall (fun t => t = dummy_handle)
              (map fst (extract_blocks bm (map snd hl))) ->
       handles_valid_list bm hl ->
       bm c= bm' ->
-      Forall (fun t : tag => t = Public)
+      Forall (fun t => t = dummy_handle)
              (map fst (extract_blocks bm' (map snd hl))).
   Proof.
     unfold handles_valid_list; intros.
@@ -251,8 +251,8 @@ Hint Resolve Forall_nil.
     eapply handles_valid_map_empty; auto.
   Qed.
 
-  Lemma rep_hashmap_subset : forall xp F ms hm sm bm hm',
-    (exists l, hashmap_subset l hm hm')
+  Lemma rep_domainmem_subset : forall xp F ms hm sm bm hm',
+    subset hm hm'
     -> forall st, rep xp F st ms sm bm hm
         =p=> rep xp F st ms sm bm hm'.
   Proof.
@@ -270,8 +270,8 @@ Hint Resolve Forall_nil.
   Qed.
   
 
-  Lemma intact_hashmap_subset : forall xp F ds hm sm hm' bm,
-    (exists l, hashmap_subset l hm hm')
+  Lemma intact_domainmem_subset : forall xp F ds hm sm hm' bm,
+    subset hm hm'
     -> intact xp F ds sm bm hm
         =p=> intact xp F ds sm bm hm'.
   Proof.
@@ -699,12 +699,12 @@ Hint Resolve Forall_nil.
     
     Lemma add_forall_public:
       forall a h (bm: block_mem tagged_block) v hmap,
-        Forall (fun t : tag => t = Public)
+        Forall (fun t => t = dummy_handle)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
         bm h = Some v ->
-        fst v = Public ->
-        Forall (fun t : tag => t = Public)
+        fst v = dummy_handle ->
+        Forall (fun t => t = dummy_handle)
                (map fst (extract_blocks bm (map snd (Map.elements (Map.add a h hmap))))).
     Proof.
       intros.
@@ -740,7 +740,7 @@ Hint Resolve Forall_nil.
       rep xp F (ActiveTxn ds m) ms sm bm hm *
       [[ a <> 0 ]] *
       [[ bm h = Some v ]] *
-      [[ fst v = Public ]] *
+      [[ fst v = dummy_handle ]] *
       [[[ m ::: (Fm * a |-> vs) ]]]
     POST:bm', hm', RET:ms'
       exists m', rep xp F (ActiveTxn ds m') ms' sm bm' hm' *
@@ -766,10 +766,10 @@ Hint Resolve Forall_nil.
 
   Lemma remove_forall_public:
       forall a (bm: block_mem tagged_block) hmap,
-        Forall (fun t : tag => t = Public)
+        Forall (fun t => t = dummy_handle)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
-        Forall (fun t : tag => t = Public)
+        Forall (fun t => t = dummy_handle)
                (map fst (extract_blocks bm (map snd (Map.elements (Map.remove a hmap))))).
     Proof.
       intros.
@@ -1611,7 +1611,7 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
         rep xp F (ActiveTxn ds m) ms sm bm hm *
         [[ bm h = Some v ]] *
-        [[ fst v = Public ]] *
+        [[ fst v = dummy_handle ]] *
         [[[ m ::: Fm * arrayP a vs ]]] *
         [[ i < length vs /\ a <> 0 ]]
     POST:bm', hm', RET:ms' exists m',
@@ -1830,7 +1830,7 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
       rep xp F (ActiveTxn ds m) ms sm bm hm *
       [[ handles_valid bm l ]] *
-      [[ Forall (fun t : tag => t = Public) (map fst (extract_blocks bm l)) ]] * 
+      [[ Forall (fun t => t = dummy_handle) (map fst (extract_blocks bm l)) ]] * 
       [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ a <> 0 /\ length l <= length vs ]]
     POST:bm', hm', RET:ms'
@@ -2483,8 +2483,8 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
-  Lemma idempred_hashmap_subset : forall xp F ds sm hm hm' bm,
-    (exists l, hashmap_subset l hm hm')
+  Lemma idempred_domainmem_subset : forall xp F ds sm hm hm' bm,
+    subset hm hm'
     -> idempred xp F ds sm bm hm
        =p=> idempred xp F ds sm bm hm'.
   Proof.

@@ -2,9 +2,14 @@ Require Import Mem Pred List ListUtils Omega.
 Require Import MapUtils.
 Require Import FMapFacts.
 
-Require Export Prog.
+Parameter handle : Type.
+Parameter dummy_handle : handle.
+Parameter handle_eq_dec : forall (x y : handle), {x=y}+{x<>y}.
 
 Definition block_mem V := @mem handle handle_eq_dec V.
+
+Definition subset {AT AEQ V} (bm' bm: @mem AT AEQ  V) :=
+  forall h, (bm h = None -> bm' h = None) /\ (forall b, bm' h = Some b -> bm h = Some b).
 
 Definition block_mem_subset {V} (bm' bm: block_mem V) :=
   forall h, (bm h = None -> bm' h = None) /\ (forall b, bm' h = Some b -> bm h = Some b).
@@ -17,6 +22,12 @@ Proof.
   unfold block_mem_subset; intuition eauto.
 Qed.
 
+Lemma subset_refl:
+  forall AT AEQ V (bm: @mem AT AEQ V), subset bm bm.
+Proof.
+  unfold subset; intuition eauto.
+Qed.
+
 Lemma block_mem_subset_trans:
   forall V (bm bm' bm'': block_mem V),
     bm c= bm' ->
@@ -24,6 +35,17 @@ Lemma block_mem_subset_trans:
     bm c= bm''.
 Proof.
   unfold block_mem_subset; intuition eauto;
+  specialize (H0 h); destruct H0;
+  specialize (H h); destruct H; eauto.
+Qed.
+
+Lemma subset_trans:
+    forall AT AEQ V (bm bm' bm'': @mem AT AEQ  V),
+    subset bm bm' ->
+    subset bm' bm'' ->
+    subset bm bm''.
+Proof.
+  unfold subset; intuition eauto;
   specialize (H0 h); destruct H0;
   specialize (H h); destruct H; eauto.
 Qed.
@@ -96,10 +118,32 @@ Proof.
   specialize (H0 h); destruct H0; auto.
 Qed.
 
+Lemma subset_extract_none:
+  forall AT AEQ V (bm bm': @mem AT AEQ  V) h,
+    bm h = None ->
+    subset bm' bm ->
+    bm' h = None.
+Proof.
+  unfold subset; intuition eauto;
+  specialize (H0 h); destruct H0; auto.
+Qed.
+
+Lemma subset_extract_some:
+  forall AT AEQ V (bm bm': @mem AT AEQ V) h v,
+    bm' h = Some v ->
+    subset bm' bm ->
+    bm h = Some v.
+Proof.
+  unfold subset; intuition eauto;
+  specialize (H0 h); destruct H0; auto.
+Qed.
+
 Hint Resolve block_mem_subset_refl block_mem_subset_upd_none
      block_mem_subset_upd_nop block_mem_subset_upd_irrel
      block_mem_subset_extract_none block_mem_subset_extract_some
      block_mem_subset_trans.
+
+Hint Resolve subset_refl subset_trans subset_extract_none subset_extract_some.
 
 
 
@@ -867,8 +911,8 @@ Qed.
 Lemma Forall_extract_blocks_list_length_le:
   forall T V l bm (vs: list T),
     handles_valid_list bm l ->
-    Forall (fun e : addr * handle => fst e < length vs) l ->
-    Forall (fun e : addr * V => fst e < length vs)
+    Forall (fun e : nat * handle => fst e < length vs) l ->
+    Forall (fun e : nat * V => fst e < length vs)
            (extract_blocks_list bm l).
 Proof.
   intros; rewrite Forall_forall in *; intros.
@@ -980,9 +1024,9 @@ Qed.
 Lemma Forall_extract_blocks_mem_addr_in_len:
   forall A V hmap bm (l: list A) def,
     handles_valid bm (List.map snd (Map.elements hmap)) ->
-    Forall (fun e : addr * V => fst e < length l)
+    Forall (fun e : nat * V => fst e < length l)
            (Map.elements (extract_blocks_map bm def hmap)) ->
-    Forall (fun e : addr * handle => fst e < length l)
+    Forall (fun e : nat * handle => fst e < length l)
            (Map.elements hmap).
 Proof.
   unfold handles_valid, handle_valid; intros;
@@ -1118,7 +1162,7 @@ Lemma extract_blocks_map_remove:
                (Map.remove a (extract_blocks_map bm def hmap)).
 Proof.
   intros; apply Equal_mapsto_iff; intuition.
-  - destruct (addr_eq_dec k a); subst.
+  - destruct (Nat.eq_dec k a); subst.
     apply find_1 in H.
     assert (A: find a (extract_blocks_map bm def (remove a hmap)) <> None). {
       intuition.

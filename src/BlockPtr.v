@@ -636,7 +636,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite indrep_n_length_pimpl. split; cancel.
   Qed.
 
-                                                                                        Local Hint Extern 1 (Forall (fun x => length x = _) _) => match goal with
+ Local Hint Extern 1 (Forall (fun x => length x = _) _) => match goal with
     | [H : context [listmatch (fun x y => indrep_n_tree _ _ (snd x) # (fst x) y) _ ?l]
         |- Forall (fun x => length x = _) ?l ] =>
           rewrite listmatch_indrep_n_tree_forall_length with (l2 := l) in H; destruct_lift H; solve [eassumption]
@@ -647,7 +647,7 @@ Theorem indrep_n_helper_pts_piff :
   forall Fs bxp ir l,
     ir <> 0 -> indrep_n_helper Fs bxp ir l <=p=> [[ length l = NIndirect ]] *
                [[ BALLOCC.bn_valid bxp ir ]] * (exists b, [[ Fs <=p=> ir |->b ]]) *
-                ir |-> ((Public, IndRec.Defs.block2val l), []).
+                ir |-> ((dummy_handle, IndRec.Defs.block2val l), []).
 Proof.
   intros.
   unfold indrep_n_helper, IndRec.rep. destruct addr_eq_dec; try omega.

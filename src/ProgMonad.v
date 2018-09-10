@@ -4,8 +4,8 @@ Require Import ProofIrrelevance.
 Set Implicit Arguments.
 
   Definition prog_equiv T : prog T -> prog T -> Prop :=
-    fun p1 p2 => forall pr d dt bm bt tr' out,
-        exec pr d dt bm bt p1 out tr' <-> exec pr d dt bm bt p2 out tr'.
+    fun p1 p2 => forall pr d bm dm tr' out,
+        exec pr d bm dm p1 out tr' <-> exec pr d bm dm p2 out tr'.
 
   Arguments prog_equiv {T} _ _.
 

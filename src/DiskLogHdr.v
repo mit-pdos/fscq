@@ -86,9 +86,9 @@ Definition rep xp state : @rawpred tagged_block:=
   ([[ state_goodSize state ]] *
    match state with
    | Synced n =>
-     (LAHdr xp) |+> ((Public, hdr2val (mk_header n)), nil)
+     (LAHdr xp) |+> ((dummy_handle, hdr2val (mk_header n)), nil)
    | Unsync n o =>
-     (LAHdr xp) |+> ((Public, hdr2val (mk_header n)), [(Public, hdr2val (mk_header o))]%list)
+     (LAHdr xp) |+> ((dummy_handle, hdr2val (mk_header n)), [(dummy_handle, hdr2val (mk_header o))]%list)
    end)%pred.
 
 
@@ -99,7 +99,7 @@ Definition read xp cs := Eval compute_rec in
       Ret ^(cs, (# ((val2hdr v) :-> "ndesc"), # ((val2hdr v) :-> "ndata"))).
 
 Definition write xp n cs :=
-    h <- Seal Public (hdr2val (mk_header n));;
+    h <- Seal dummy_handle (hdr2val (mk_header n));;
     cs <- write (LAHdr xp) h cs;;
     Ret cs.
 
@@ -114,7 +114,7 @@ Definition sync_now xp cs :=
      Ret cs.
 
 Definition init xp cs :=
-    hdr <- Seal Public (hdr2val (mk_header((0, 0))));;
+    hdr <- Seal dummy_handle (hdr2val (mk_header((0, 0))));;
     cs <- CacheDef.write (LAHdr xp) hdr cs;;
     cs <- begin_sync cs;;
     cs <- CacheDef.sync (LAHdr xp) cs;;
@@ -157,7 +157,7 @@ Theorem write_ok :
          [[ (F * rep xp (Synced old))%pred d ]]
     POST:bm', hm', RET: cs
          exists d', CacheDef.rep cs d' bm' *
-         [[ exists h, bm' = upd bm h (Public, (hdr2val (mk_header n))) ]] *                       
+         [[ exists h, bm' = upd bm h (dummy_handle, (hdr2val (mk_header n))) ]] *                       
          [[ (F * rep xp (Unsync n old))%pred d' ]]
     XCRASH:bm'', hm'',
          exists cs' d', CacheDef.rep cs' d' bm'' * 
@@ -173,9 +173,8 @@ Proof.
   eauto.
   step.
   step.
-  eexists; repeat (eapply hashmap_subset_trans; eauto).
+
   erewrite <- H1; cancel; eauto.
-  eexists; eapply hashmap_subset_trans; eauto.
   xcrash.
 
   Unshelve.
@@ -199,6 +198,8 @@ Theorem read_ok :
 Proof.
   unfold read.
   hoare.
+  
+  simpl.
   subst; rewrite val2hdr2val; simpl.
   unfold hdr_goodSize in *; intuition.
   repeat rewrite wordToNat_natToWord_idempotent'; auto.

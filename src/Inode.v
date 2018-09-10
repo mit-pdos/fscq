@@ -27,9 +27,16 @@ Set Implicit Arguments.
 
 Parameter encode_tag: tag -> word 16.
 Parameter decode_tag: word 16 -> tag.
-Parameter encode_decode: forall t, decode_tag (encode_tag  t) = t.
-Parameter encode_inj: forall t t', encode_tag t = encode_tag t' -> t = t'.
+Parameter encode_decode_tag: forall t, decode_tag (encode_tag  t) = t.
+Parameter encode_tag_inj: forall t t', encode_tag t = encode_tag t' -> t = t'.
 Parameter encode_public: encode_tag Public = $0.
+
+Parameter encode_handle: handle -> word 8.
+Parameter decode_handle: word 8 -> handle.
+Parameter encode_decode_handle: forall t, decode_handle (encode_handle  t) = t.
+Parameter encode_handle_inj: forall t t', encode_handle t = encode_handle t' -> t = t'.
+Parameter encode_dummy_handle: encode_handle dummy_handle = $0.
+
 
 Module INODE.
 
@@ -48,7 +55,7 @@ Module INODE.
   Definition iattrtype : Rec.type := Rec.RecF ([
     ("attr", attrtype) ;
     ("owner",  Rec.WordF  16) ;
-    ("unused", Rec.WordF 8)          (* reserved (permission bits) *)
+    ("domid", Rec.WordF 8)          
   ]).
 
   Definition NDirect := 7.
@@ -233,6 +240,7 @@ Module INODE.
   Definition ADev    (a : iattrin) := Eval cbn in ( a :-> "dev" ).
   Definition AAttrs    (a : iattr) := Eval cbn in ( a :-> "attr" ).
   Definition AOwner    (a : iattr) := Eval cbn in ( a :-> "owner" ).
+  Definition ADomid    (a : iattr) := Eval cbn in ( a :-> "domid" ).
 
   Definition getattrs lxp xp inum cache ms := Eval compute_rec in
     let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
@@ -268,12 +276,23 @@ Module INODE.
   Definition getowner lxp xp inum cache ms := Eval compute_rec in
     let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
     Ret ^(cache, ms, decode_tag (i :-> "attrs" :-> "owner")).
-
-  Definition setowner lxp xp inum t cache ms := Eval compute_rec in
+       
+  Definition getdomid lxp xp inum cache ms := Eval compute_rec in
     let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
-    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (i :-> "attrs" :=> "owner" := encode_tag t)) cache ms;;
+    Ret ^(cache, ms, decode_handle (i :-> "attrs" :-> "domid")).
+       
+  (* Should be used when domainmem is already set up with the correct owner *)
+  Definition setowner lxp xp inum domid t cache ms := Eval compute_rec in
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
+    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := ((i :-> "attrs" :=> "owner" := encode_tag t) :=> "domid" := encode_handle domid)) cache ms;;
     Ret ^(cache, ms).
 
+  Definition changeowner lxp xp inum t cache ms := Eval compute_rec in
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
+    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (i :-> "attrs" :=> "owner" := encode_tag t)) cache ms;;
+    _ <- ChDom (decode_handle (i :-> "attrs" :-> "domid")) t;;                                              
+    Ret ^(cache, ms).
+       
   Definition getbnum lxp xp inum off cache ms :=
     let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;;
     let^ (ms, r) <- Ind.get lxp ir off ms;;
@@ -314,10 +333,11 @@ Module INODE.
     IBlocks : bnlist;
     IAttr   : iattrin;
     IOwner   : tag;
+    IDomid   : handle;
   }.
   
   Definition iattr0 := @Rec.of_word attrtype $0.
-  Definition inode0 := mk_inode nil iattr0 Public.
+  Definition inode0 := mk_inode nil iattr0 Public dummy_handle.
   Definition irec0 := IRec.Defs.item0.
 
 
@@ -325,19 +345,40 @@ Module INODE.
     let '(ino, IFs) := ino in
     ( [[ IAttr ino = (ir :-> "attrs" :-> "attr") ]] *
       [[ IOwner ino = decode_tag (ir :-> "attrs" :-> "owner") ]] *
+      [[ IDomid ino = decode_handle (ir :-> "attrs" :-> "domid") ]] *
       [[ Forall (fun a => BALLOCC.bn_valid bxp (# a)) (IBlocks ino) ]] *
       Ind.rep bxp IFs ir (IBlocks ino) )%pred.
 
-  Definition rep bxp IFs xp (ilist : list inode) cache := (
+  Definition not_dummy h:=
+    if (handle_eq_dec h dummy_handle) then
+      false
+    else
+      true.
+
+  Definition rep bxp IFs xp (ilist : list inode) cache dm := (
      exists reclist fsl, IRec.rep xp reclist cache *
+     [[ forall ino, In ino ilist -> dm (IDomid ino) = Some (IOwner ino) ]] *
+     [[ NoDup (filter not_dummy (map IDomid ilist)) ]] *
      [[ IFs <=p=> pred_fold_left fsl ]] * [[ length ilist = length fsl ]] *
      listmatch (inode_match bxp) (combine ilist fsl) reclist)%pred.
 
 
   (************** Basic lemmas *)
 
-  Lemma rep_length_pimpl : forall bxp xp IFs ilist cache,
-    rep bxp IFs xp ilist cache =p=> rep bxp IFs xp ilist cache *
+  Lemma rep_domainmem_subset : forall bxp xp IFs ilist cache dm dm',
+      dm c= dm' ->
+    rep bxp IFs xp ilist cache dm =p=> rep bxp IFs xp ilist cache dm'.
+  Proof.
+    unfold rep; intros.
+    norml; unfold stars; simpl.
+    cancel; eauto.
+    Unshelve. eauto.
+  Qed.
+
+  Hint Resolve rep_domainmem_subset.
+  
+  Lemma rep_length_pimpl : forall bxp xp IFs ilist cache dm,
+    rep bxp IFs xp ilist cache dm =p=> rep bxp IFs xp ilist cache dm *
     [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
   Proof.
     unfold rep; intros.
@@ -388,9 +429,9 @@ Module INODE.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.
 
-  Theorem rep_bxp_switch : forall bxp bxp' xp IFs ilist cache,
+  Theorem rep_bxp_switch : forall bxp bxp' xp IFs ilist cache dm,
     BmapNBlocks bxp = BmapNBlocks bxp' ->
-    rep bxp IFs xp ilist cache <=p=> rep bxp' IFs xp ilist cache.
+    rep bxp IFs xp ilist cache dm <=p=> rep bxp' IFs xp ilist cache dm.
   Proof.
     intros. unfold rep.
     split.
@@ -424,8 +465,8 @@ Module INODE.
   Qed.
 
   
-  Lemma rep_clear_cache: forall bxp IFs xp ilist cache,
-    rep bxp IFs xp ilist cache =p=> rep bxp IFs xp ilist IRec.cache0.
+  Lemma rep_clear_cache: forall bxp IFs xp ilist cache dm,
+    rep bxp IFs xp ilist cache dm =p=> rep bxp IFs xp ilist IRec.cache0 dm.
   Proof.
     unfold rep.
     cancel.
@@ -543,6 +584,329 @@ Qed.
 
   Arguments Rec.well_formed : simpl never.
 
+  (********************** SPECs *)
+
+  Lemma in_updN_strict:
+      forall t (l : list t) (n : addr) (x xn : t),
+        In x l ⟦ n := xn ⟧ -> In x (removeN l n) \/ x = xn.
+    Proof.
+      induction l; simpl in *; intros; intuition.
+      destruct n; simpl in *.
+      unfold removeN in *; simpl; intuition.
+      intuition.
+      apply IHl in H0.
+      intuition.
+    Qed.
+
+    Lemma in_filter_true:
+        forall A (f: A -> bool) l a,
+          In a l ->
+          f a = true ->
+          In a (filter f l).
+      Proof.
+        induction l; simpl; intros; eauto.
+        intuition; subst.
+        rewrite H0.
+        intuition.
+        destruct (f a); eauto.
+        apply in_cons; eauto.
+      Qed.
+    
+    Lemma nodup_filter_updN_false:
+      forall A (f: A -> bool) l i x,
+        f x = false ->
+        NoDup (filter f l) ->
+        NoDup (filter f (updN l i x)).
+    Proof.
+      induction l; simpl; intros; eauto.
+      destruct i; simpl.
+      rewrite H.
+      destruct (f a); intuition.
+      inversion H0; subst; eauto.
+      destruct (f a); intuition.
+      inversion H0; subst; eauto.
+      constructor.
+      unfold not; intros; apply H3.
+      apply filter_In in H1.
+      destruct H1.
+      apply in_updN in H1.
+      intuition; subst; try congruence.
+      eapply in_filter_true; eauto.
+      eauto.
+    Qed.
+
+    Lemma de_morgan_or:
+        forall P Q,
+          ~(P \/ Q) ->
+          ~P /\ ~Q.
+      Proof.
+        unfold not; intros; split; intros; eauto.
+      Qed.
+
+    Lemma nodup_filter_updN_notin:
+      forall A (f: A -> bool) l i x,
+        ~In x l ->
+        NoDup (filter f l) ->
+        NoDup (filter f (updN l i x)).
+    Proof.
+      induction l; simpl; intros; eauto.
+      destruct i; simpl.     
+      apply de_morgan_or in H; destruct H.
+      destruct (f a); 
+      [inversion H0; subst; eauto |];
+      destruct (f x); eauto;
+      constructor; eauto;
+      unfold not; intros; apply H1;
+      apply filter_In in H2; intuition.
+
+      apply de_morgan_or in H; destruct H.
+       destruct (f a); 
+      [inversion H0; subst; eauto |]; eauto.
+      constructor; eauto.
+      unfold not; intros; apply H4.
+      apply filter_In in H2; intuition.
+      apply in_updN in H3; intuition; subst; try congruence.
+      apply filter_In; intuition.
+    Qed.
+
+    Lemma NoDup_neq_filter:
+      forall ilist inum def ino, 
+      NoDup (filter not_dummy (map IDomid ilist)) ->
+      In ino (removeN ilist inum) ->
+      IDomid ino <> dummy_handle ->
+      inum < length ilist ->
+      IDomid ino <> IDomid (selN ilist inum def).
+    Proof.
+      unfold not; induction ilist; simpl; intros; eauto.
+      unfold removeN in *; rewrite firstn_nil in H0; simpl in *; intuition.
+      destruct (not_dummy (IDomid a)) eqn:D.
+      
+      destruct inum; simpl in *.
+      rewrite <- H3 in *; clear H3.      
+      unfold removeN in H0; simpl in *.
+      inversion H; subst.
+      apply H5.      
+      apply filter_In; intuition.
+      apply in_map; eauto.
+      
+      destruct H0; subst.
+      inversion H; subst; clear H; eauto.
+      rewrite H3 in *; clear H3.
+
+      apply H5.      
+      apply filter_In; intuition.
+      apply in_map; eauto.
+      apply in_selN; omega.
+
+      eapply IHilist; eauto.
+      inversion H; subst; clear H; eauto.
+      omega.
+
+      destruct inum; simpl in *.
+      rewrite <- H3 in *; clear H3.    
+      unfold not_dummy in *.
+      destruct (handle_eq_dec (IDomid ino) dummy_handle); subst; try congruence; eauto.
+
+      destruct H0; subst.
+      unfold not_dummy in *.
+      destruct (handle_eq_dec (IDomid ino) dummy_handle); subst; try congruence; eauto.
+      
+      eapply IHilist; eauto.
+      omega.
+    Qed.
+
+   (* You better not try to change owner of dummy_handle. It is for system files *)
+  Theorem changeowner_ok :
+    forall lxp bxp xp inum t cache ms pr,
+    {~< F Fm Fi Fs m0 sm m IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs)%pred sm ]] *
+           [[ (IDomid ino) <> dummy_handle ]]
+    POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm') ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs')%pred sm ]] *
+           [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t (IDomid ino) ]]
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    >~} changeowner lxp xp inum t cache ms.
+  Proof.
+    unfold changeowner, rep.
+    safestep.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H.
+    rewrite combine_length_eq in *; eauto.
+    setoid_rewrite <- H11.
+    eapply list2nmem_inbound; eauto.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H.
+    rewrite combine_length_eq in *; [ |eauto].
+    step.
+    irec_wf.
+    sepauto.
+
+    step.
+    repeat (eapply block_mem_subset_extract_some; eauto).
+    rewrite listmatch_isolate with (i:= inum) in H; eauto.
+    unfold inode_match at 2 in H.
+    erewrite selN_combine in H; eauto.
+    destruct_lift H.
+    rewrite <- H26.
+    eapply H16.
+    apply in_selN.
+    eapply list2nmem_ptsto_bound; eauto.
+    rewrite combine_length_eq in *; eauto.
+    eapply list2nmem_inbound; eauto.
+    setoid_rewrite <- H11.
+    eapply list2nmem_inbound; eauto.
+
+    safestep.
+    safestep.
+
+    simpl.
+    rewrite LOG.rep_blockmem_subset; eauto.
+    3: eauto.
+    2: eapply list2nmem_updN; eauto.
+    pred_apply.
+    rewrite listmatch_isolate with (i:= inum); eauto.
+    cancel; eauto.
+    setoid_rewrite listmatch_isolate with (i:= inum) at 2; eauto.
+    rewrite removeN_combine.
+    setoid_rewrite removeN_combine.
+    do 2 rewrite removeN_updN.
+    setoid_rewrite selN_combine at 2; auto.
+    repeat rewrite selN_updN_eq; eauto.
+    unfold inode_match; rewrite selN_combine; auto.
+    erewrite <- list2nmem_sel with (x:= ino); eauto.
+    cancel; eauto.
+    rewrite encode_decode_tag; auto.
+    all: simplen.
+
+    rewrite listmatch_isolate with (i:= inum) in H; eauto.
+    unfold inode_match at 2 in H.
+    erewrite selN_combine in H; eauto.
+    destruct_lift H.
+    
+    (* We may need uniqueness of domid in here also a stronger in lemma *)
+    apply in_updN_strict in H5; destruct H5; subst; simpl; eauto.
+    eapply block_mem_subset_extract_some.
+    2: eauto.
+    destruct (handle_eq_dec (IDomid ino0) dummy_handle); subst.
+    rewrite <- H30.
+    rewrite upd_ne; eauto.
+    repeat (eapply block_mem_subset_extract_some; eauto).
+    apply H16.
+    eapply in_removeN; eauto.
+
+    erewrite e, <- list2nmem_sel; eauto.
+
+    rewrite upd_ne; eauto.
+    repeat (eapply block_mem_subset_extract_some; eauto).
+    apply in_removeN in H5; eauto.    
+    setoid_rewrite <- H30.
+    eapply NoDup_neq_filter; eauto.
+    eapply list2nmem_ptsto_bound; eauto.
+
+    eapply block_mem_subset_extract_some; eauto.
+    setoid_rewrite <- H30.
+    erewrite list2nmem_sel with (x:= ino); eauto.
+    apply upd_eq; eauto.
+    simplen.
+    simplen.
+
+    rewrite map_updN; simpl.
+    erewrite selN_eq_updN_eq; eauto.
+    erewrite selN_map.
+    erewrite <- list2nmem_sel; eauto.
+    simplen.
+
+    cancel.
+    rewrite <- H1; cancel.
+    eauto.
+    rewrite <- H1; cancel; eauto.
+    Unshelve.
+    all: eauto.
+    exact irec0.
+    exact irec0.
+    exact inode0.
+    exact dummy_handle.
+  Qed.
+
+
+  Theorem setowner_ok :
+    forall lxp bxp xp inum domid t cache ms pr,
+    {< F Fm Fi Fs m0 sm m IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs)%pred sm ]] *
+           [[ hm domid = Some t ]] *
+           [[ hide_or (domid = dummy_handle \/ ~In domid (map IDomid ilist)) ]]
+    POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm') ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs')%pred sm ]] *
+           [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t domid ]]
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    >} setowner lxp xp inum domid t cache ms.
+  Proof.
+    unfold setowner, rep.
+    safestep.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H5.
+    rewrite combine_length_eq in *; eauto.
+    setoid_rewrite <- H12.
+    eapply list2nmem_inbound; eauto.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H5.
+    rewrite combine_length_eq in *; [ |eauto].
+    step.
+    irec_wf.
+    sepauto.
+
+    safestep.
+    safestep.
+
+    erewrite listmatch_updN_selN; simplen.
+    rewrite <- combine_updN.
+    eauto.
+    all: eauto.
+    6: eapply list2nmem_updN; eauto.
+    unfold inode_match; rewrite selN_combine; auto.
+    erewrite <- list2nmem_sel with (x:= ino); eauto.
+    cancel; eauto.
+    rewrite encode_decode_tag; auto.
+    rewrite encode_decode_handle; eauto.
+
+    apply in_updN in H19; destruct H19; subst; simpl; eauto.
+    rewrite map_updN; simpl.
+    unfold hide_or in *; intuition.
+    subst.
+
+    eapply nodup_filter_updN_false; eauto.
+    unfold not_dummy.
+    destruct(handle_eq_dec dummy_handle dummy_handle); try congruence; eauto.
+    eapply nodup_filter_updN_notin; eauto.
+
+    rewrite updN_selN_eq; auto.
+    repeat rewrite length_updN; auto.
+    cancel.
+    rewrite <- H1; cancel.
+    eauto.
+    solve_blockmem_subset.
+    rewrite <- H1; cancel; eauto.
+    Unshelve.
+    all: eauto.
+    exact irec0.
+  Qed.
+
   Lemma inode_match_init_ok : forall bxp n,
     emp =p=> listmatch (inode_match bxp) (repeat (inode0, emp) n) (repeat IRec.Defs.item0 n).
   Proof.
@@ -560,9 +924,6 @@ Qed.
     setoid_rewrite <- encode_public; rewrite encode_decode; auto.
   Qed.
 
-
-  (********************** SPECs *)
-
   Theorem init_ok :
     forall lxp bxp xp ms pr,
     {< F Fm Fs m0 sm m l,
@@ -574,7 +935,7 @@ Qed.
            [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
     POST:bm', hm', RET:ms exists m' IFs,
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
-           [[[ m' ::: (Fm * rep bxp IFs xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.cache0)) ]]] *
+           [[[ m' ::: (Fm * rep bxp IFs xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.cache0) hm') ]]] *
            [[ (Fs * IFs)%pred sm ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} init lxp xp ms.
@@ -591,6 +952,7 @@ Qed.
     erewrite combine_repeat.
     apply inode_match_init_ok.
     apply IRec.cache_rep_empty.
+    apply repeat_spec in H; subst; simpl; eauto.
     repeat rewrite repeat_length; auto.
     apply Ind.pred_fold_left_repeat_emp.
   Qed.
@@ -601,11 +963,11 @@ Qed.
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
            [[[ ilist ::: Fi * inum |-> ino ]]]
     POST:bm', hm', RET:^(cache', ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
            [[ r = length (IBlocks ino) ]]
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
@@ -615,12 +977,12 @@ Qed.
     safestep.
     sepauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H8.
+    setoid_rewrite <- H9.
     eapply list2nmem_inbound; eauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; [ |eauto].
     step.
     step.
@@ -645,11 +1007,11 @@ Qed.
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:bm', hm', RET:^(cache',ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
            [[ r = IAttr ino ]]
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
@@ -659,19 +1021,19 @@ Qed.
     safestep.
     sepauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H8.
+    setoid_rewrite <- H9.
     eapply list2nmem_inbound; eauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; [ |eauto].
     step.
     step.
 
 
     subst.
-    rewrite H16.
+    rewrite H18.
     rewrite listmatch_isolate with (i:= inum) in H0 by simplen.
     unfold inode_match at 2 in H0.
     erewrite selN_combine in H0; auto.
@@ -688,25 +1050,25 @@ Qed.
     PERM:pr   
     PRE:bm, hm, 
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
-           [[[ m' ::: (Fm * rep bxp IFs xp ilist' cache') ]]] *
+           [[[ m' ::: (Fm * rep bxp IFs xp ilist' cache' hm') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode (IBlocks ino) attr (IOwner ino)]]
+           [[ ino' = mk_inode (IBlocks ino) attr (IOwner ino) (IDomid ino)]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} setattrs lxp xp inum attr cache ms.
   Proof. 
     unfold setattrs, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H8.
+    setoid_rewrite <- H9.
     eapply list2nmem_inbound; eauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; [ |eauto].
     step.
     simpl.
@@ -721,14 +1083,22 @@ Qed.
     rewrite <- combine_updN.
     eauto.
     all: eauto.
-    4: eapply list2nmem_updN; eauto.
+    5: eapply list2nmem_updN; eauto.
     unfold inode_match; rewrite selN_combine; auto.
     erewrite <- list2nmem_sel with (x:= ino); eauto.
     cancel; eauto.
+    apply in_updN in H8; destruct H8; subst; simpl; eauto.
+    erewrite list2nmem_sel with (x:= ino); eauto.
+    repeat (eapply subset_extract_some; eauto).
+    eapply H13.
+    apply in_selN.
+    eapply list2nmem_ptsto_bound; eauto.
+    
     rewrite updN_selN_eq; auto.
     repeat rewrite length_updN; auto.
     cancel.
     rewrite <- H1; cancel.
+    eauto.
     solve_blockmem_subset.
     rewrite <- H1; cancel; eauto.
     Unshelve. exact irec0.
@@ -742,15 +1112,15 @@ Qed.
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]] *
            [[ (Fs * IFs)%pred sm ]]
     POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino' IFs',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
-           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache') ]]] *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs')%pred sm ]] *
-           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) (IOwner ino)]]
+           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) (IOwner ino) (IDomid ino)]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} updattr lxp xp inum kv cache ms.
   Proof. 
@@ -758,17 +1128,18 @@ Qed.
     safestep.
     sepauto.
      rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H9.
+    setoid_rewrite <- H10.
     eapply list2nmem_inbound; eauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; [ |eauto].
 
     safestep.
     filldef; abstract (destruct kv; simpl; subst; irec_wf).
     sepauto.
+    eauto.
 
     safestep.
     safestep.
@@ -777,15 +1148,23 @@ Qed.
     rewrite <- combine_updN.
     eauto.
     all: eauto.
-    4: eapply list2nmem_updN; eauto.
+    5: eapply list2nmem_updN; eauto.
     unfold inode_match; rewrite selN_combine; auto.
     erewrite <- list2nmem_sel with (x:= ino); eauto.
     cancel; eauto.
     cleanup; auto.
+    apply in_updN in H16; destruct H16; subst; simpl; eauto.
+    erewrite list2nmem_sel with (x:= ino); eauto.
+    repeat (eapply subset_extract_some; eauto).
+    eapply H14.
+    apply in_selN.
+    eapply list2nmem_ptsto_bound; eauto.
+    
     rewrite updN_selN_eq; auto.
     repeat rewrite length_updN; auto.
     cancel.
     rewrite <- H1; cancel.
+    eauto.
     solve_blockmem_subset.
     rewrite <- H1; cancel; eauto.
     Unshelve. exact irec0.
@@ -800,11 +1179,11 @@ Qed.
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
            [[ off < length (IBlocks ino) ]] *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:bm', hm', RET:^(cache', ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
            [[ r = selN (IBlocks ino) off $0 ]]
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
@@ -813,12 +1192,59 @@ Qed.
     unfold getbnum, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
+    rewrite combine_length_eq in *; eauto.
+    setoid_rewrite <- H10.
+    eapply list2nmem_inbound; eauto.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H5.
+    rewrite combine_length_eq in *; [ |eauto].
+
+    step.
+    rewrite listmatch_isolate with (i := inum).
+    unfold inode_match at 2.
+    erewrite selN_combine; auto.
+    erewrite <- list2nmem_sel with (x:= ino); eauto.
+    cancel.
+    seprewrite.
+    rewrite combine_length_eq; auto.
+    seprewrite.
+    rewrite <- H10; eauto.
+
+    step.
+    step.
+
+    rewrite <- H1; cancel; eauto.
+    Unshelve.
+    all: eauto.
+  Qed.
+
+
+  Theorem getallbnum_ok :
+    forall lxp bxp xp inum cache ms pr,
+    {< F Fm Fi m0 sm m IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST:bm', hm', RET:^(cache', ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
+           [[ r = (IBlocks ino) ]]
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    >} getallbnum lxp xp inum cache ms.
+  Proof. 
+    unfold getallbnum, rep.
+    safestep.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H.
     rewrite combine_length_eq in *; eauto.
     setoid_rewrite <- H9.
     eapply list2nmem_inbound; eauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H.
     rewrite combine_length_eq in *; [ |eauto].
 
     step.
@@ -840,64 +1266,17 @@ Qed.
     all: eauto.
   Qed.
 
-
-  Theorem getallbnum_ok :
-    forall lxp bxp xp inum cache ms pr,
-    {< F Fm Fi m0 sm m IFs ilist ino,
-    PERM:pr   
-    PRE:bm, hm,
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
-           [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:bm', hm', RET:^(cache', ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
-           [[ r = (IBlocks ino) ]]
-    CRASH:bm', hm',  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
-    >} getallbnum lxp xp inum cache ms.
-  Proof. 
-    unfold getallbnum, rep.
-    safestep.
-    rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
-    rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H8.
-    eapply list2nmem_inbound; eauto.
-    rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
-    rewrite combine_length_eq in *; [ |eauto].
-
-    step.
-    rewrite listmatch_isolate with (i := inum).
-    unfold inode_match at 2.
-    erewrite selN_combine; auto.
-    erewrite <- list2nmem_sel with (x:= ino); eauto.
-    cancel.
-    seprewrite.
-    rewrite combine_length_eq; auto.
-    seprewrite.
-    rewrite <- H8; eauto.
-
-    step.
-    step.
-
-    rewrite <- H1; cancel; eauto.
-    Unshelve.
-    all: eauto.
-  Qed.
-
  Theorem getowner_ok :
     forall lxp bxp xp inum cache ms pr,
     {< F Fm Fi m0 sm m IFs ilist ino,
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:bm', hm', RET:^(cache',ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache') ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
            [[ r = IOwner ino ]]
     CRASH:bm', hm',  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
@@ -907,12 +1286,12 @@ Qed.
     safestep.
     sepauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H8.
+    setoid_rewrite <- H9.
     eapply list2nmem_inbound; eauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H0.
+    destruct_lift H.
     rewrite combine_length_eq in *; [ |eauto].
     step.
     step.
@@ -928,76 +1307,21 @@ Qed.
     all: eauto.
   Qed.
 
-  Theorem setowner_ok :
-    forall lxp bxp xp inum t cache ms pr,
-    {< F Fm Fi Fs m0 sm m IFs ilist ino,
-    PERM:pr   
-    PRE:bm, hm,
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache) ]]] *
-           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
-           [[ (Fs * IFs)%pred sm ]]
-    POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino' IFs',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
-           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache') ]]] *
-           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ (Fs * IFs')%pred sm ]] *
-           [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t]]
-    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
-    >} setowner lxp xp inum t cache ms.
-  Proof.
-    unfold setowner, rep.
-    safestep.
-    rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
-    rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H9.
-    eapply list2nmem_inbound; eauto.
-    rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
-    rewrite combine_length_eq in *; [ |eauto].
-    step.
-    irec_wf.
-    sepauto.
-
-    safestep.
-    safestep.
-
-    erewrite listmatch_updN_selN; simplen.
-    rewrite <- combine_updN.
-    eauto.
-    all: eauto.
-    4: eapply list2nmem_updN; eauto.
-    unfold inode_match; rewrite selN_combine; auto.
-    erewrite <- list2nmem_sel with (x:= ino); eauto.
-    cancel; eauto.
-    rewrite encode_decode; auto.
-    rewrite updN_selN_eq; auto.
-    repeat rewrite length_updN; auto.
-    cancel.
-    rewrite <- H1; cancel.
-    solve_blockmem_subset.
-    rewrite <- H1; cancel; eauto.
-    Unshelve. exact irec0.
-    all: eauto.
-  Qed.
-
-
   Theorem shrink_ok :
     forall lxp bxp xp inum nr cache ms pr, 
     {< F Fm Fi Fs m0 sm m IFs ilist ino freelist,
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm * BALLOCC.rep bxp freelist ms) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]] *
            [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
     POST:bm', hm', RET:^(cache', ms) exists m' ilist' ino' freelist' IFs',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm bm' hm' *
-           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) (IOwner ino)]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) (IOwner ino) (IDomid ino)]] *
            [[ incl freelist freelist' ]]
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} shrink lxp bxp xp inum nr cache ms.
@@ -1005,12 +1329,12 @@ Qed.
     unfold shrink, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H10.
+    setoid_rewrite <- H11.
     eapply list2nmem_inbound; eauto.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; [ |eauto].
    
     seprewrite.
@@ -1021,26 +1345,27 @@ Qed.
     cancel.
     rewrite combine_length_eq; auto.
     seprewrite.
-    rewrite <- H10; eauto.
+    rewrite <- H11; eauto.
     sepauto.
 
     
-    rewrite H13; rewrite pred_fold_left_selN; [| rewrite <- H12; eauto].
+    rewrite H14; rewrite pred_fold_left_selN; [| rewrite <- H13; eauto].
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=bool)).
     eassign (pred_fold_left (removeN dummy0 inum) * Fs)%pred.
     cancel.
+    eauto.
 
     step.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
     smash_rec_well_formed.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lift H18. auto.
+    destruct_lift H20. auto.
     sepauto.
 
     safestep.
     safestep.
-    5: eauto.
-    4: eapply list2nmem_updN; eauto.
+    6: eauto.
+    5: eapply list2nmem_updN; eauto.
     rewrite listmatch_isolate with (i := inum) in H.
     unfold inode_match, Ind.rep in H; 
     erewrite selN_combine in H; eauto.
@@ -1055,19 +1380,29 @@ Qed.
     cancel.
     eauto.
     eauto.
+    eauto.
     apply forall_firstn; auto.
     cleanup; unfold BPtrSig.IRLen; auto.
     rewrite combine_length_eq; auto.
-    rewrite <- H10; eauto.
+    rewrite <- H11; eauto.
     rewrite combine_length_eq; auto.
-    rewrite <- H10; eauto.
+    rewrite <- H11; eauto.
+
+    apply in_updN in H17; destruct H17; subst; simpl; eauto.
+    repeat (eapply subset_extract_some; eauto).
+    repeat (eapply subset_extract_some; eauto).
+    eapply H15.
+    apply in_selN.
+    eapply list2nmem_ptsto_bound; eauto.
+    
     erewrite pred_fold_left_selN with (l:= updN dummy0 inum IFs').
     rewrite selN_updN_eq.
     rewrite removeN_updN; eauto.
     apply sep_star_comm.
-    rewrite <- H12; eauto.
-    rewrite length_updN, <- H12; eauto.
+    rewrite <- H13; eauto.
+    rewrite length_updN, <- H13; eauto.
     repeat rewrite length_updN; auto.
+    eauto.
     
     all: rewrite <- H1; cancel; eauto.
 
@@ -1080,16 +1415,16 @@ Qed.
     PERM:pr
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm * BALLOCC.rep bxp freelist ms) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]] *
            [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
     POST:bm', hm', RET:^(cache', ms) exists m' ilist' ino' freelist' IFs',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm bm' hm' *
-           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
            [[ ilist' = updN ilist inum ino' ]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr (IOwner ino)]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr (IOwner ino) (IDomid ino)]] *
            [[ incl freelist freelist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} reset lxp bxp xp inum nr attr cache ms.
@@ -1097,13 +1432,13 @@ Qed.
     unfold reset, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H10.
+    setoid_rewrite <- H11.
     eapply list2nmem_inbound; eauto.
 
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; [ |eauto].
 
     seprewrite.
@@ -1114,28 +1449,30 @@ Qed.
     cancel.
     rewrite combine_length_eq; auto.
     seprewrite; auto.
-    rewrite <- H10; eauto.
+    rewrite <- H11; eauto.
     sepauto.
 
-    rewrite H13; rewrite pred_fold_left_selN; [| rewrite <- H12; eauto].
+    rewrite H14; rewrite pred_fold_left_selN; [| rewrite <- H13; eauto].
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=bool)).
     eassign (pred_fold_left (removeN dummy0 inum) * Fs)%pred.
-    cancel.    
+    cancel.
+    eauto.
 
     seprewrite.
     safestep.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
     smash_rec_well_formed.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lift H18. auto.
+    destruct_lift H20. auto.
     sepauto.
+    eauto.
 
     safestep.
     safestep.
 
-    5: eauto.
-    5: eauto.
-    4: eapply list2nmem_updN; eauto.
+    6: eauto.
+    6: eauto.
+    5: eapply list2nmem_updN; eauto.
     auto.
     rewrite listmatch_isolate with (i := inum) in H.
     unfold inode_match, Ind.rep in H; 
@@ -1151,19 +1488,29 @@ Qed.
     replace (length (IBlocks ilist ⟦ inum ⟧)) with (# (fst (selN dummy inum IRec.LRA.Defs.item0))).
     cancel.
     eauto.
+    eauto.
     apply forall_firstn; eauto.
     cleanup; unfold BPtrSig.IRLen; auto.
     rewrite combine_length_eq; auto.
-    rewrite <- H10; eauto.
+    rewrite <- H11; eauto.
     rewrite combine_length_eq; auto.
-    rewrite <- H10; eauto.
+    rewrite <- H11; eauto.
+
+    apply in_updN in H17; destruct H17; subst; simpl; eauto.
+    repeat (eapply subset_extract_some; eauto).
+    repeat (eapply subset_extract_some; eauto).
+    eapply H15.
+    apply in_selN.
+    eapply list2nmem_ptsto_bound; eauto.
+    
     erewrite pred_fold_left_selN with (l:= updN dummy0 inum IFs').
     rewrite selN_updN_eq.
     rewrite removeN_updN; eauto.
     apply sep_star_comm.
-    rewrite <- H12; eauto.
-    rewrite length_updN, <- H12; eauto.
+    rewrite <- H13; eauto.
+    rewrite length_updN, <- H13; eauto.
     repeat rewrite length_updN; auto.
+    eauto.
 
     all: rewrite <- H1; cancel; eauto.
 
@@ -1195,7 +1542,7 @@ Qed.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
            [[ length (IBlocks ino) < NBlocks ]] *
            [[ BALLOCC.bn_valid bxp bn ]] *
-           [[[ m ::: (Fm * rep bxp IFs xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm * BALLOCC.rep bxp freelist ms) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]] *
            [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
     POST:bm', hm', RET:^(cache', ms, r)
@@ -1203,10 +1550,10 @@ Qed.
            [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm bm' hm' \/
            [[ r = OK tt ]] * exists ilist' ino' freelist' IFs',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm bm' hm' *
-           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
-           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) (IOwner ino)]] *
+           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) (IOwner ino) (IDomid ino)]] *
            [[ incl freelist' freelist ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} grow lxp bxp xp inum bn cache ms.
@@ -1214,13 +1561,13 @@ Qed.
     unfold grow, rep.
     safestep.
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; eauto.
-    setoid_rewrite <- H12.
+    setoid_rewrite <- H13.
     eapply list2nmem_inbound; eauto.
 
     rewrite listmatch_length_pimpl in *.
-    destruct_lift H4.
+    destruct_lift H5.
     rewrite combine_length_eq in *; [ |eauto].
 
     seprewrite.
@@ -1232,12 +1579,13 @@ Qed.
     cancel.
     rewrite combine_length_eq; auto.
     seprewrite; auto.
-    rewrite <- H12; eauto.
+    rewrite <- H13; eauto.
 
-    rewrite H15; rewrite pred_fold_left_selN; [| rewrite <- H14; eauto].
+    rewrite H16; rewrite pred_fold_left_selN; [| rewrite <- H15; eauto].
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=bool)).
     eassign (pred_fold_left (removeN dummy0 inum) * Fs)%pred.
-    cancel.    
+    cancel.
+    eauto.
 
     seprewrite.
     safestep.
@@ -1245,8 +1593,8 @@ Qed.
     pred_apply; cancel.
     eassign Fm.
     eassign (listmatch (inode_match bxp) (combine ilist dummy0) dummy).
-eassign (BALLOCC.rep bxp freelist ms).
-cancel.
+    eassign (BALLOCC.rep bxp freelist ms).
+    cancel.
     eassign xp; eassign a; cancel.
     sepauto.
 
@@ -1254,36 +1602,44 @@ cancel.
     safestep.
 
     or_r; cancel.
-    4: eapply list2nmem_updN; eauto.
-    2: eassign (updN dummy0 inum a4)%pred; 
+    5: eapply list2nmem_updN; eauto.
+    3: eassign (updN dummy0 inum a4)%pred; 
        erewrite pred_fold_left_selN with (l:= updN dummy0 inum a4); 
-       [|rewrite length_updN; rewrite <- H14; eauto];
+       [|rewrite length_updN; rewrite <- H15; eauto];
        rewrite selN_updN_eq; eauto;
        rewrite removeN_updN; rewrite sep_star_comm; eauto.
-    2: repeat rewrite length_updN; auto.
+    3: repeat rewrite length_updN; auto.
     rewrite combine_updN.
     rewrite listmatch_updN_removeN.
     unfold inode_match at 3; simpl.
-    unfold BPtrSig.IRAttrs in H23.
+    unfold BPtrSig.IRAttrs in H25.
     rewrite listmatch_isolate with (i := inum) in H.
     unfold inode_match, Ind.rep in H; 
     erewrite selN_combine in H; eauto.
     destruct_lift H; eauto. 
     cancel.
 
-    rewrite H23; eauto.
-    rewrite H23 in *; eauto.
+    rewrite H25; eauto.
+    rewrite H25 in *; eauto.
+    rewrite H25 in *; eauto.
     apply Forall_app; auto.
     eapply BALLOCC.bn_valid_roundtrip; eauto.
     rewrite combine_length_eq; auto.
-    rewrite <- H12; eauto.
+    rewrite <- H13; eauto.
     rewrite combine_length_eq; auto.
-    rewrite <- H12; eauto.
+    rewrite <- H13; eauto.
+
+    apply in_updN in H8; destruct H8; subst; simpl; eauto.
+    repeat (eapply subset_extract_some; eauto).
+    repeat (eapply subset_extract_some; eauto).
+    eapply H17.
+    apply in_selN.
+    eapply list2nmem_ptsto_bound; eauto.
+    eauto.
 
     all: try (rewrite <- H1; cancel; eauto).
 
     step.
-
 
     Unshelve. all: eauto. exact emp.
   Qed.
@@ -1299,13 +1655,14 @@ cancel.
   Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _ _) _) => apply getowner_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _ _ _) _) => apply setowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (changeowner _ _ _ _ _ _) _) => apply changeowner_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _ _) (rep _ _ _ _ _ _)) => constructor : okToUnify.
 
 
-  Lemma inode_rep_bn_valid_piff : forall bxp IFs xp l c,
-    rep bxp IFs xp l c <=p=> rep bxp IFs xp l c *
+  Lemma inode_rep_bn_valid_piff : forall bxp IFs xp l c dm,
+    rep bxp IFs xp l c dm <=p=> rep bxp IFs xp l c dm *
       [[ forall inum, inum < length l ->
          Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks (selN l inum inode0)) ]].
   Proof.
@@ -1319,8 +1676,8 @@ cancel.
     Unshelve. exact emp.
   Qed.
 
-  Lemma inode_rep_bn_nonzero_pimpl : forall bxp IFs xp l c,
-    rep bxp IFs xp l c =p=> rep bxp IFs xp l c *
+  Lemma inode_rep_bn_nonzero_pimpl : forall bxp IFs xp l c dm,
+    rep bxp IFs xp l c dm =p=> rep bxp IFs xp l c dm *
       [[ forall inum off, inum < length l ->
          off < length (IBlocks (selN l inum inode0)) ->
          # (selN (IBlocks (selN l inum inode0)) off $0) <> 0 ]].
@@ -1345,15 +1702,14 @@ cancel.
   Qed.
 
 
-  Theorem xform_rep : forall bxp Fs xp l c,
-    crash_xform (rep bxp Fs xp l c) <=p=> rep bxp Fs xp l c.
+  Theorem xform_rep : forall bxp Fs xp l c dm,
+    crash_xform (rep bxp Fs xp l c dm) <=p=> rep bxp Fs xp l c dm.
   Proof.
     unfold rep; intros; split.
     xform_norm.
     rewrite IRec.xform_rep.
     rewrite xform_listmatch_idem.
-    cancel.
-    apply crash_xform_inode_match.
+    intros; apply crash_xform_inode_match.
 
     cancel.
     xform_normr.
@@ -1364,4 +1720,3 @@ cancel.
   Qed.
 
 End INODE.
-

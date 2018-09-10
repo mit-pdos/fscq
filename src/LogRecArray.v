@@ -10,7 +10,6 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-
 Lemma Forall_can_access_public:
   forall pr n,
     Forall (can_access pr) (repeat Public n).
@@ -43,7 +42,6 @@ Proof.
   rewrite repeat_length; omega.
 Qed.
 
-
     
 Module LogRecArray (RA : RASig).
 
@@ -59,7 +57,7 @@ Module LogRecArray (RA : RASig).
   Definition rep xp (items : itemlist) :=
     ( exists vl, [[ vl = ipack items ]] *
       [[ items_valid xp items ]] *     
-      arrayN (@ptsto _ addr_eq_dec valuset) (RAStart xp) (synced_list (List.combine (repeat Public (length (ipack items))) vl)))%pred.
+      arrayN (@ptsto _ addr_eq_dec valuset) (RAStart xp) (synced_list (List.combine (repeat  dummy_handle (length (ipack items))) vl)))%pred.
 
   Definition get lxp xp ix ms :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
@@ -72,7 +70,7 @@ Module LogRecArray (RA : RASig).
     let^ (ms, h) <- LOG.read_array lxp (RAStart xp) bn ms;;
     v <- Unseal h;;           
     let v' := block2val_updN_val2block v off item in
-    h' <- Seal Public v';;
+    h' <- Seal dummy_handle v';;
     ms <- LOG.write_array lxp (RAStart xp) bn h' ms;;
     Ret ms.
 
@@ -84,13 +82,13 @@ Module LogRecArray (RA : RASig).
 
   (** write all items starting from the beginning *)
   Definition write lxp xp items ms :=
-    hl <- seal_all (repeat Public (length (ipack items))) (ipack items);;     
+    hl <- seal_all (repeat dummy_handle (length (ipack items))) (ipack items);;     
     ms <- LOG.write_range lxp (RAStart xp) hl ms;;
     Ret ms.
 
   (** set all items to item0 *)
   Definition init lxp xp ms :=
-    hl <- seal_all (repeat Public (RALen xp)) (repeat $0 (RALen xp));; 
+    hl <- seal_all (repeat dummy_handle (RALen xp)) (repeat $0 (RALen xp));; 
     ms <- LOG.write_range lxp (RAStart xp) hl ms;;
     Ret ms.
 

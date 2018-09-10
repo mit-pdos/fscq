@@ -1,7 +1,7 @@
 Require Import Arith.
 Require Import Word.
 Require Import List.
-Require Import Mem.
+Require Import Mem Blockmem.
 Require Import Eqdep_dec.
 Require Import FunctionalExtensionality.
 
@@ -93,15 +93,15 @@ Definition tag_dec : forall (t t': tag), {t = t'}+{t <> t'}.
   destruct (owner_dec o o0); subst; auto; right; congruence.
 Defined.
 
-Definition tagged_block := (tag * block)%type.
+Definition tagged_block := (handle * block)%type.
 Definition valuset := (tagged_block * list tagged_block)%type.
 
-Definition tagged_block0 := (Public, natToWord valulen 0).
+Definition tagged_block0 := (dummy_handle, natToWord valulen 0).
 Definition valuset0 := (tagged_block0, nil:list tagged_block). 
 
 Definition tagged_block_dec : forall (t t': tagged_block), {t = t'}+{t <> t'}.
   intros; destruct t, t'; simpl.
-  destruct (tag_dec t t0); subst;
+  destruct (handle_eq_dec h h0); subst;
   auto; try solve [right; congruence].
   destruct (weq b b0); subst;
   auto; try solve [right; congruence].

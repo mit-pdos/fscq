@@ -28,17 +28,17 @@ Set Implicit Arguments.
    * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
 
-  Definition rep fsxp F tree ilist frees ms sm :=
+  Definition rep fsxp F tree ilist frees ms sm dm :=
     (exists bflist freeinodes freeinode_pred,
      BFILE.rep fsxp.(FSXPBlockAlloc) sm fsxp.(FSXPInode) bflist ilist frees
-        (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) *
+        (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) dm *
      IAlloc.rep BFILE.freepred fsxp freeinodes freeinode_pred (IAlloc.Alloc.mk_memstate (BFILE.MSLL ms) (BFILE.MSIAllocC ms)) *
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
-  Theorem rep_length : forall fsxp F tree ilist frees ms sm,
-    rep fsxp F tree ilist frees ms sm =p=>
-    (rep fsxp F tree ilist frees ms sm *
+  Theorem rep_length : forall fsxp F tree ilist frees ms sm dm,
+    rep fsxp F tree ilist frees ms sm dm =p=>
+    (rep fsxp F tree ilist frees ms sm dm *
      [[ length ilist = ((INODE.IRecSig.RALen (FSXPInode fsxp)) * INODE.IRecSig.items_per_val)%nat ]])%pred.
   Proof.
     unfold rep; intros.
@@ -47,10 +47,10 @@ Set Implicit Arguments.
     cancel.
   Qed.
 
-  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks ms sm v bn m flag,
-    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
+  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks ms sm dm v bn m flag,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm dm)%pred (list2nmem m) ->
     BFILE.block_is_unused (BFILE.pick_balloc freeblocks flag) bn ->
-    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem (updN m bn v)).
+    (F0 * rep fsxp F tree ilist freeblocks ms sm dm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     unfold rep in *.
@@ -59,8 +59,8 @@ Set Implicit Arguments.
     cancel.
   Qed.
 
-  Theorem dirtree_rep_used_block_eq : forall pathname F0 tree fsxp F ilist freeblocks ms inum off bn m sm f,
-    (F0 * rep fsxp F tree ilist freeblocks ms sm)%pred (list2nmem m) ->
+  Theorem dirtree_rep_used_block_eq : forall pathname F0 tree fsxp F ilist freeblocks ms dm inum off bn m sm f,
+    (F0 * rep fsxp F tree ilist freeblocks ms sm dm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
     selN (DFData f) off valuset0 = selN m bn valuset0.
@@ -120,18 +120,18 @@ Set Implicit Arguments.
     simpl in H0; destruct_lift H0; auto.
   Qed.
 
-  Theorem mscs_same_except_log_rep' : forall mscs1 mscs2 fsxp F tree ilist frees sm,
+  Theorem mscs_same_except_log_rep' : forall mscs1 mscs2 fsxp F tree ilist frees sm dm,
     BFILE.mscs_same_except_log mscs1 mscs2 ->
-    rep fsxp F tree ilist frees mscs1 sm =p=> rep fsxp F tree ilist frees mscs2 sm.
+    rep fsxp F tree ilist frees mscs1 sm dm =p=> rep fsxp F tree ilist frees mscs2 sm dm.
   Proof.
     unfold BFILE.mscs_same_except_log; unfold rep; intros.
     intuition msalloc_eq.
     apply pimpl_refl.
   Qed.
 
-  Theorem mscs_same_except_log_rep : forall mscs1 mscs2 fsxp F tree ilist frees sm,
+  Theorem mscs_same_except_log_rep : forall mscs1 mscs2 fsxp F tree ilist frees sm dm,
     BFILE.mscs_same_except_log mscs1 mscs2 ->
-    rep fsxp F tree ilist frees mscs1 sm <=p=> rep fsxp F tree ilist frees mscs2 sm.
+    rep fsxp F tree ilist frees mscs1 sm dm <=p=> rep fsxp F tree ilist frees mscs2 sm dm.
   Proof.
     split; eapply mscs_same_except_log_rep'; eauto.
     unfold BFILE.mscs_same_except_log in *; intuition eauto.

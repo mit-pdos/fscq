@@ -32,42 +32,44 @@ Ltac inv_exec'' H :=
 
 Ltac inv_exec' :=
   match goal with
-  | [ H: exec _ _ _ _ _ (Ret _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Ret _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ (Read _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Read _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ (Write _ _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Write _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ (Seal _ _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Seal _ _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ (Unseal _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Unseal _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ Sync _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ Sync _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ (Auth _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (Auth _) _ _ |- _ ] =>
     inv_exec'' H
-  | [ H: exec _ _ _ _ _ (Chtag _ _) _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ (ChDom _ _) _ _ |- _ ] =>
+    inv_exec'' H               
+  | [ H: exec _ _ _ _ (AddDom _) _ _ |- _ ] =>
     inv_exec'' H
   end.
 
 Lemma bind_sep:
-  forall T T' pr (p1: prog T) (p2: T -> prog T') d dt bm bt (ret: result) tr',
-    exec pr d dt bm bt (Bind p1 p2) ret tr' ->
+  forall T T' pr (p1: prog T) (p2: T -> prog T') d bm dm (ret: result) tr',
+    exec pr d bm dm (Bind p1 p2) ret tr' ->
     match ret with
-    | Finished _ _ _ _ _ =>
-    (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
-       exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
-       exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1)
-  | Crashed d' dt' bm' bt' =>
-    (exec pr d dt bm bt p1 (Crashed d' dt' bm' bt') tr' \/
-     (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
-        exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
-        exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
-   | Failed d' =>
-    (exec pr d dt bm bt p1 (Failed d') tr' \/
-     (exists tr1 tr2 r1 d1 dt1 bm1 bt1,
-        exec pr d dt bm bt p1 (Finished d1 dt1 bm1 bt1 r1) tr1 /\
-        exec pr d1 dt1 bm1 bt1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
+    | Finished _ _ _ _ =>
+    (exists tr1 tr2 r1 d1 dm1 bm1,
+       exec pr d bm dm p1 (Finished d1 bm1 dm1 r1) tr1 /\
+       exec pr d1 bm1 dm1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1)
+  | Crashed d' bm' dm' =>
+    (exec pr d bm dm p1 (Crashed d' bm' dm') tr' \/
+     (exists tr1 tr2 r1 d1 dm1 bm1,
+        exec pr d bm dm p1 (Finished d1 bm1 dm1 r1) tr1 /\
+        exec pr d1 bm1 dm1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
+   | Failed =>
+    (exec pr d bm dm p1 Failed tr' \/
+     (exists tr1 tr2 r1 d1 dm1 bm1,
+        exec pr d bm dm p1 (Finished d1 bm1 dm1 r1) tr1 /\
+        exec pr d1 bm1 dm1 (p2 r1) ret tr2 /\ tr' = tr2 ++ tr1))
     end.
 Proof.
   intros.
@@ -87,9 +89,8 @@ Ltac logic_clean:=
 Ltac some_subst :=
   match goal with
   | [H: Some _ = Some _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Finished _ _ _ _ _ = Finished _ _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Crashed _ _ = Crashed _ _ |- _] => inversion H; subst; clear H; repeat some_subst
-  | [H: Failed _  = Failed _  |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Finished _ _ _ _ = Finished _ _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
+  | [H: Crashed _ _ _ = Crashed _ _ _ |- _] => inversion H; subst; clear H; repeat some_subst
   end.
 
 Ltac clear_dup:=
@@ -148,6 +149,6 @@ Ltac split_ors:=
 
 Ltac inv_exec_perm :=
   match goal with
-  |[H : exec _ _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; repeat cleanup
-  |[H : exec _ _ _ _ _ _ _ _ |- _ ] => inv_exec'
+  |[H : exec _ _ _ _ (Bind _ _) _ _ |- _ ] => apply bind_sep in H; repeat cleanup
+  |[H : exec _ _ _ _ _ _ _ |- _ ] => inv_exec'
   end.

@@ -266,15 +266,15 @@ Qed.
 
   
 
-  Lemma rep_hashmap_subset : forall xp mm bm hm hm',
-    (exists l, hashmap_subset l hm hm')
+  Lemma rep_domainmem_subset : forall xp mm bm hm hm',
+    subset hm hm'
     -> forall st, rep xp st mm bm hm
         =p=> rep xp st mm bm hm'.
   Proof.
     unfold rep; intros.
     destruct st; cancel.
     all: eauto.
-    all: erewrite DiskLog.rep_hashmap_subset; eauto; cancel.
+    all: erewrite DiskLog.rep_domainmem_subset; eauto; cancel.
     or_l; cancel.
     or_r; cancel.
     Unshelve. all: easy.
@@ -332,13 +332,13 @@ Qed.
     Unshelve. all: easy.
   Qed.
 
-  Lemma would_recover_either_hashmap_subset : forall xp d ents bm hm hm',
-    (exists l, hashmap_subset l hm hm')
+  Lemma would_recover_either_domainmem_subset : forall xp d ents bm hm hm',
+    subset hm hm'
     -> would_recover_either xp d ents bm hm
         =p=> would_recover_either xp d ents bm hm'.
   Proof.
     unfold would_recover_either; intros; cancel.
-    all: erewrite rep_hashmap_subset; eauto; cancel.
+    all: erewrite rep_domainmem_subset; eauto; cancel.
   Qed.
 
   Lemma synced_applying : forall xp na d ms bm hm,

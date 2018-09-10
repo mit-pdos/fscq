@@ -46,7 +46,7 @@ Definition size_valid cs :=
   cardinal (CSMap cs) <= CSMaxCount cs /\
   CSMaxCount cs <> 0.
 
-Definition addr_valid (d: tagged_disk) (cm : cachemap) :=
+Definition addr_valid (d: taggeddisk) (cm : cachemap) :=
   forall a, In a cm -> d a <> None.
 
 Definition addr_clean (cm : cachemap) a :=
@@ -66,7 +66,7 @@ Definition cachepred (cache : cachemap) (bm: block_mem tagged_block) (a : addr) 
      exists tb0, a |+> (tb0, snd vs) * [[ bm h = Some (fst vs) ]] * [[ List.In tb0 (snd vs) ]]
    end)%pred.
 
-Definition rep (cs : cachestate) (m : tagged_disk) (bm: block_mem tagged_block): @Pred.pred _ addr_eq_dec valuset :=
+Definition rep (cs : cachestate) (m : taggeddisk) (bm: block_mem tagged_block): @Pred.pred _ addr_eq_dec valuset :=
   ([[ size_valid cs ]] *
    [[ addr_valid m (CSMap cs) ]] *
    mem_pred (HighAEQ:= addr_eq_dec) (cachepred (CSMap cs) bm) m)%pred.
@@ -81,12 +81,12 @@ Definition synpred (cache : cachemap) (bm: block_mem tagged_block) (a : addr) (v
     | Some (h, true)  => exists tb, [[ vs = (tb, (fst vsd) :: nil) ]] * [[ bm h = Some tb ]]
     end)%pred.
 
-Definition synrep' (cs : cachestate) (m : tagged_disk) (bm: block_mem tagged_block): @Pred.pred _ addr_eq_dec valuset :=
+Definition synrep' (cs : cachestate) (m : taggeddisk) (bm: block_mem tagged_block): @Pred.pred _ addr_eq_dec valuset :=
   ([[ size_valid cs ]] *
    [[ addr_valid m (CSMap cs) ]] *
    mem_pred (HighAEQ:= addr_eq_dec) (synpred (CSMap cs) bm) m)%pred.
 
-Definition synrep (cs : cachestate) (mbase m : tagged_disk) (bm: block_mem tagged_block): rawpred tagged_block :=
+Definition synrep (cs : cachestate) (mbase m : taggeddisk) (bm: block_mem tagged_block): rawpred tagged_block :=
   (rep cs mbase bm /\ synrep' cs m bm)%pred.
 
 

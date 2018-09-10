@@ -49,8 +49,8 @@ Module AsyncRecArray (RA : RASig).
 
   (** rep invariant *)
   Inductive state : Type :=
-  | Synced : list tag -> itemlist -> state
-  | Unsync : list tag -> itemlist -> state
+  | Synced : list handle -> itemlist -> state
+  | Unsync : list handle -> itemlist -> state
   .
 
   (* This rep states that there is a packed and tagged version of the itemlist *)
@@ -522,20 +522,21 @@ Module AsyncRecArray (RA : RASig).
     rewrite synced_array_is, Nat.add_0_r; cancel.
     eassign F; cancel.
     assert (A: length tags = length (ipack items)).
-    rewrite ipack_length, H0, divup_mul; auto.    
+    rewrite ipack_length, H, divup_mul; auto.    
     repeat setoid_rewrite combine_length_eq; auto.
     rewrite nils_length; auto.
 
     assert (A: length tags = length (ipack items)).
-    rewrite ipack_length, H0, divup_mul; auto.
+    rewrite ipack_length, H, divup_mul; auto.
     step; subst.
     step.
-    rewrite H14.
+    rewrite H15.
     rewrite map_fst_combine.
     rewrite firstn_oob; auto.
     repeat setoid_rewrite combine_length_eq; auto.
     rewrite nils_length; setoid_rewrite combine_length_eq; auto.
-    solve_hashmap_subset.
+    Unshelve.
+    unfold Mem.EqDec; apply handle_eq_dec.
   Qed.
 
   Lemma vsupd_range_unsync_array : forall xp start tags items old_vs,
@@ -623,14 +624,14 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold write_aligned, avail_rep.
     step.
-    all: apply extract_blocks_length in H8 as Hx.
+    all: apply extract_blocks_length in H9 as Hx.
     cleanup.
     cbn. simplen.
     setoid_rewrite combine_length_eq in Hx; auto.
     simplen.
     step.
     step.
-    rewrite H6; apply vsupd_range_unsync_array; auto.
+    rewrite H7; apply vsupd_range_unsync_array; auto.
     simplen.
     solve_hashmap_subset.
     rewrite <- H1; cancel; eauto.
@@ -727,7 +728,7 @@ Module AsyncRecArray (RA : RASig).
     eassign F_; cancel; eauto.
     eauto.
     unfold eqlen in *; setoid_rewrite combine_length_eq; simplen.
-    rewrite <- H12.
+    rewrite <- H13.
     setoid_rewrite combine_length_eq; simplen.
     auto.
     auto.
@@ -735,7 +736,7 @@ Module AsyncRecArray (RA : RASig).
     step.
     step.
     apply vssync_range_sync_array; eauto.
-    unfold eqlen in *; rewrite <- H12.
+    unfold eqlen in *; rewrite <- H13.
     setoid_rewrite combine_length_eq; simplen.
     solve_hashmap_subset.
     rewrite <- H1; cancel; eauto.

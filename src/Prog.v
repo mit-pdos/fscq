@@ -5,20 +5,18 @@ Require Import PeanoNat.
 Require Import Nat.
 Require Import Omega.
 Require Import Word.
-Require Import PredCrash.
+Require Import PredCrash Blockmem.
 Require Export AsyncDisk.
 Import ListNotations.
 Set Implicit Arguments.
 
 Parameter perm : Type.
 Parameter perm_dec : forall (p p': perm), {p = p'}+{p <> p'}.
-Parameter handle : Type.
-Parameter dummy_handle : handle.
-Parameter handle_eq_dec : forall (x y : handle), {x=y}+{x<>y}.
 Parameter can_access: perm -> tag -> Prop.
 Axiom can_access_public: forall pr, can_access pr Public.
 Hint Resolve can_access_public.
 
+Hint Extern 0 (EqDec handle) => unfold EqDec; apply handle_eq_dec.
 
 Inductive op :=
 | Sea : tag -> op
@@ -31,16 +29,21 @@ Definition op_dec : forall (o o': op), {o = o'}+{o <> o'}.
 Defined.
 
 Definition trace := list op.
-Definition blockset:= (block * list block)%type.
-Definition blockdisk:= @Mem.mem addr addr_eq_dec blockset.
-Definition blockmem:= @Mem.mem handle handle_eq_dec block.
 
-Definition tagset:= (tag * list tag)%type.
-Definition tagdisk:= @Mem.mem addr addr_eq_dec tagset.
-Definition tagmem:= @Mem.mem handle handle_eq_dec tag.
+(*
+  Definition blockset:= (block * list block)%type.
+  Definition blockdisk:= @Mem.mem addr addr_eq_dec blockset.
+  Definition blockmem:= @Mem.mem handle handle_eq_dec block.
 
+  Definition tagset:= (tag * list tag)%type.
+  Definition tagdisk:= @Mem.mem addr addr_eq_dec tagset.
+ *)
+
+Definition domainmem:= @Mem.mem handle handle_eq_dec tag.
 Definition taggeddisk:= rawdisk.
 Definition taggedmem:= @Mem.mem handle handle_eq_dec tagged_block.
+
+Notation "'tagged_disk'" := taggeddisk.
 
 Definition diskmatch {AT AEQ V1 V2} (td : @Mem.mem AT AEQ (V1 * list V1))
                                     (bd: @Mem.mem AT AEQ (V2 * list V2)):=
@@ -56,7 +59,7 @@ Definition disk_merges_to {AT AEQ V1 V2} (td : @Mem.mem AT AEQ (V1 * list V1))
   diskmatch td bd
   /\ (forall a ts bs,
         td a = Some ts /\ bd a = Some bs <->
-    (tgd a = Some ((fst ts, fst bs), List.combine (snd ts) (snd bs)) /\ length (snd ts) = length (snd bs))).
+    tgd a = Some ((fst ts, fst bs), List.combine (snd ts) (snd bs))).
 
 Definition mem_merges_to {AT AEQ V1 V2} (tm : @Mem.mem AT AEQ V1)
                                     (bm: @Mem.mem AT AEQ V2) tgm :=
@@ -67,18 +70,19 @@ Definition mem_merges_to {AT AEQ V1 V2} (tm : @Mem.mem AT AEQ V1)
 
 
 Inductive result {T: Type} : Type :=
-| Finished : blockdisk -> tagdisk -> blockmem -> tagmem -> T -> result
-| Crashed : blockdisk -> tagdisk -> blockmem -> tagmem -> result
-| Failed : blockdisk -> result.
+| Finished : taggeddisk -> taggedmem -> domainmem -> T -> result
+| Crashed : taggeddisk -> taggedmem -> domainmem -> result
+| Failed : result.
 
 Inductive prog : Type -> Type :=
 | Read : addr -> prog handle
 | Write : addr -> handle -> prog unit
-| Seal : tag -> block -> prog handle
+| Seal : handle -> block -> prog handle
 | Unseal : handle -> prog block
 | Sync : prog unit
 | Auth : tag -> prog bool
-| Chtag : tag -> addr -> prog unit
+| AddDom : tag -> prog handle
+| ChDom : handle -> tag -> prog unit
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
 
@@ -97,107 +101,112 @@ Definition last_upd AT AEQ V (m : @mem AT AEQ (V * list V)) (v : V) (a: AT) :=
   end.
 
 Inductive exec:
-  forall T, perm -> blockdisk -> tagdisk ->
-       blockmem -> tagmem -> prog T ->  @result T -> trace -> Prop :=
-| ExecRead    : forall pr d dt bm bt a i bs ts,
+  forall T, perm -> taggeddisk -> taggedmem -> domainmem -> prog T -> @result T -> trace -> Prop :=
+| ExecRead    : forall pr d bm dm a i bs,
                   bm i = None ->
-                  bt i = None ->
                   d a = Some bs ->
-                  dt a = Some ts ->
-                  exec pr d dt bm bt (Read a) (Finished d dt (upd bm i (fst bs)) (upd bt i (fst ts)) i) nil
+                  exec pr d bm dm (Read a) (Finished d (upd bm i (fst bs)) dm i) nil
                        
-| ExecWrite   : forall pr d dt bm bt a i b bs t ts,
+| ExecWrite   : forall pr d bm dm a i b bs,
                   bm i = Some b ->
-                  bt i = Some t ->
                   d a = Some bs ->
-                  dt a = Some ts ->
-                  exec pr d dt bm bt (Write a i) (Finished (upd d a (b, vsmerge bs)) (upd dt a (t, vsmerge ts)) bm bt tt) nil
+                  exec pr d bm dm (Write a i) (Finished (upd d a (b, vsmerge bs)) bm dm tt) nil
                        
-| ExecSeal : forall pr d dt bm bt i t b,
+| ExecSeal : forall pr d bm dm i t b,
                bm i = None ->
-               bt i = None ->
-               exec pr d dt bm bt (Seal t b) (Finished d dt (upd bm i b) (upd bt i t) i) nil
+               exec pr d bm dm (Seal t b) (Finished d (upd bm i (t,b)) dm i) nil
                     
-| ExecUnseal : forall pr d dt bm bt i b t,
+| ExecUnseal : forall pr d bm dm i b t,
                  bm i = Some b ->
-                 bt i = Some t ->
-                 exec pr d dt bm bt (Unseal i) (Finished d dt bm bt b) [Uns t]
+                 dm (fst b) = Some t ->
+                 exec pr d bm dm (Unseal i) (Finished d bm dm (snd b)) [Uns t]
                       
-| ExecSync : forall pr d dt bm bt,
-               exec pr d dt bm bt (Sync) (Finished (sync_mem d) (sync_mem dt) bm bt tt) nil
+| ExecSync : forall pr d bm dm,
+               exec pr d bm dm (Sync) (Finished (sync_mem d) bm dm tt) nil
 
-| ExecAuthSucc : forall pr d dt bm bt t,
+| ExecAuthSucc : forall pr d bm dm t,
                can_access pr t ->
-               exec pr d dt bm bt (Auth t) (Finished d dt bm bt true) nil
+               exec pr d bm dm (Auth t) (Finished d bm dm true) nil
 
-| ExecAuthFail : forall pr d dt bm bt t,
+| ExecAuthFail : forall pr d bm dm t,
                ~can_access pr t ->
-               exec pr d dt bm bt (Auth t) (Finished d dt bm bt false) nil
+               exec pr d bm dm (Auth t) (Finished d bm dm false) nil
 
-| ExecChtag : forall pr d dt bm bt t a,
-               exec pr d dt bm bt (Chtag t a) (Finished d (last_upd dt t a) bm bt tt) nil
+| ExecAddDom : forall pr d bm dm i t,
+               dm i = None ->
+               exec pr d bm dm (AddDom t) (Finished d bm (upd dm i t) i) nil
+
+| ExecChDom : forall pr d bm dm t t' a,
+               dm a = Some t' ->
+               exec pr d bm dm (ChDom a t) (Finished d bm (upd dm a t) tt) nil
                     
-| ExecRet : forall T pr d dt bm bt (r: T),
-              exec pr d dt bm bt (Ret r) (Finished d dt bm bt r) nil
+| ExecRet : forall T pr d bm dm (r: T),
+              exec pr d bm dm (Ret r) (Finished d bm dm r) nil
                    
-| ExecBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d dt bm bt d' dt' bm' bt' v r t1 t2,
-               exec pr d dt bm bt p1 (Finished d' dt' bm' bt' v) t1 ->
-               exec pr d' dt' bm' bt' (p2 v) r t2 ->
-               exec pr d dt bm bt (Bind p1 p2) r (t2++t1)
+| ExecBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm dm d' bm' dm' v r t1 t2,
+               exec pr d bm dm p1 (Finished d' bm' dm' v) t1 ->
+               exec pr d' bm' dm' (p2 v) r t2 ->
+               exec pr d bm dm (Bind p1 p2) r (t2++t1)
                       
-| CrashRead : forall pr d dt bm bt a,
-                exec pr d dt bm bt (Read a) (Crashed d dt bm bt) nil
+| CrashRead : forall pr d bm dm a,
+                exec pr d bm dm (Read a) (Crashed d bm dm) nil
                         
-| CrashWrite : forall pr d dt bm bt a i,
-                 exec pr d dt bm bt (Write a i) (Crashed d dt bm bt) nil
+| CrashWrite : forall pr d bm dm a i,
+                 exec pr d bm dm (Write a i) (Crashed d bm dm) nil
                        
-| CrashSync : forall pr d dt bm bt,
-                exec pr d dt bm bt (Sync) (Crashed d dt bm bt) nil
+| CrashSync : forall pr d bm dm,
+                exec pr d bm dm (Sync) (Crashed d bm dm) nil
 
-| CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d dt d' dt' bm bm' bt bt' tr,
-                exec pr d dt bm bt p1 (@Crashed T d' dt' bm' bt') tr ->
-                exec pr d dt bm bt (Bind p1 p2) (@Crashed T' d' dt' bm' bt') tr
+| CrashBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d d' bm bm' dm dm' tr,
+                exec pr d bm dm p1 (@Crashed T d' bm' dm') tr ->
+                exec pr d bm dm (Bind p1 p2) (@Crashed T' d' bm' dm') tr
 
-| FailRead    : forall pr d bm dt bt a,
+| FailRead    : forall pr d bm dm a,
                   d a = None ->
-                  exec pr d dt bm bt (Read a) (Failed d) nil
+                  exec pr d bm dm (Read a) Failed nil
 
-| FailWrite    : forall pr d bm dt bt a i,
+| FailWrite    : forall pr d bm dm a i,
                   bm i = None \/ d a = None ->
-                  exec pr d dt bm bt (Write a i) (Failed d) nil
+                  exec pr d bm dm (Write a i) Failed nil
                     
-| FailUnseal : forall pr d bm dt bt i,
-                 bm i = None ->
-                 exec pr d dt bm bt (Unseal i) (Failed d) nil
+| FailUnseal : forall pr d bm dm i,
+                 bm i = None \/ (exists b, bm i = Some b /\ dm (fst b) = None) ->
+                 exec pr d bm dm (Unseal i) Failed nil
+                      
+| FailChDom : forall pr d bm dm t a,
+               dm a = None ->
+               exec pr d bm dm (ChDom a t) Failed nil
 
-| FailBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d d' bm dt bt tr',
-                exec pr d dt bm bt p1 (@Failed T d') tr' ->
-                exec pr d dt bm bt (Bind p1 p2) (@Failed T' d') tr'.
+| FailBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm dm tr',
+                exec pr d bm dm p1 (@Failed T) tr' ->
+                exec pr d bm dm (Bind p1 p2) (@Failed T') tr'.
+
+
 
 
 Inductive recover_outcome (TF TR: Type) :=
- | RFinished : blockdisk -> tagdisk -> blockmem -> tagmem -> TF -> recover_outcome TF TR
- | RRecovered : blockdisk -> tagdisk -> blockmem -> tagmem -> TR -> recover_outcome TF TR
- | RFailed : blockdisk -> recover_outcome TF TR.
+ | RFinished : taggeddisk -> taggedmem -> domainmem -> TF -> recover_outcome TF TR
+ | RRecovered : taggeddisk -> taggedmem -> domainmem ->TR -> recover_outcome TF TR
+ | RFailed : recover_outcome TF TR.
 
 Inductive exec_recover (TF TR: Type):
-  perm -> blockdisk -> tagdisk -> blockmem -> tagmem -> prog TF -> prog TR -> recover_outcome TF TR -> trace -> Prop :=
-| XRFinished : forall pr tr' d dt bm bt p1 p2 d' dt' bm' bt' (v: TF),
-       exec pr d dt bm bt p1 (Finished d' dt' bm' bt' v) tr'
-       -> exec_recover pr d dt bm bt p1 p2 (RFinished TR d' dt' bm' bt' v) tr'
-| XRFailed : forall pr tr' d dt bm bt p1 p2 d',
-       exec pr d dt bm bt p1 (@Failed TF d') tr'
-    -> exec_recover pr d dt bm bt p1 p2 (RFailed TF TR d') tr'
-| XRCrashedFinished : forall pr tr' tr'' d dt bm bt p1 p2 d' dt' bm' bt' d'r dt'r d'' dt'' bm'' bt'' (v: TR),
-    exec pr d dt bm bt p1 (@Crashed TF d' dt' bm' bt') tr'
+  perm -> taggeddisk -> taggedmem -> domainmem -> prog TF -> prog TR -> recover_outcome TF TR -> trace -> Prop :=
+| XRFinished : forall pr tr' d dm bm p1 p2 d' dm' bm' (v: TF),
+       exec pr d bm dm p1 (Finished d' bm' dm' v) tr'
+       -> exec_recover pr d bm dm p1 p2 (RFinished TR d' bm' dm' v) tr'
+| XRFailed : forall pr tr' d dm bm p1 p2,
+       exec pr d bm dm p1 (@Failed TF) tr'
+    -> exec_recover pr d bm dm p1 p2 (RFailed TF TR) tr'
+| XRCrashedFinished : forall pr tr' tr'' d dm bm bm' dm' p1 p2 d' d'r d'' dm'' bm'' (v: TR),
+    exec pr d bm dm p1 (@Crashed TF d' bm' dm') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r dt'r empty_mem empty_mem  p2 p2 (RFinished TR d'' dt'' bm'' bt'' v) tr''
-    -> exec_recover pr d dt bm bt p1 p2 (RRecovered TF d'' dt'' bm'' bt'' v) (tr''++tr')
-| XRCrashedRecovered : forall pr tr' tr'' d dt bm bt p1 p2 d' dt' bm' bt' d'r dt'r d'' dt'' bm'' bt'' (v: TR),
-    exec pr d dt bm bt p1 (@Crashed TF d' dt' bm' bt') tr'
+    -> @exec_recover TR TR pr d'r empty_mem (upd empty_mem dummy_handle Public) p2 p2 (RFinished TR d'' bm'' dm'' v) tr''
+    -> exec_recover pr d bm dm p1 p2 (RRecovered TF d'' bm'' dm'' v) (tr''++tr')
+| XRCrashedRecovered :  forall pr tr' tr'' d dm bm bm' dm' p1 p2 d' d'r d'' dm'' bm'' (v: TR),
+    exec pr d bm dm p1 (@Crashed TF d' bm' dm') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r dt'r empty_mem empty_mem  p2 p2 (RRecovered TR d'' dt'' bm'' bt'' v) tr''
-    -> exec_recover pr d dt bm bt p1 p2  (RRecovered TF d'' dt'' bm'' bt'' v) (tr''++tr').
+    -> @exec_recover TR TR pr d'r empty_mem (upd empty_mem dummy_handle Public) p2 p2 (RRecovered TR d'' bm'' dm'' v) tr''
+    -> exec_recover pr d bm dm p1 p2 (RRecovered TF d'' bm'' dm'' v) (tr''++tr').
 
 
 Notation "p1 :; p2" := (Bind p1 (fun _: unit => p2))

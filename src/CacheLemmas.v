@@ -969,38 +969,6 @@ Proof.
   apply H.
 Qed.
 
-Theorem xform_listmatch_idem_l : forall A B AT AEQ (a : list A) (b : list B) prd,
-  (forall a b, crash_xform (prd a b) =p=> prd a b) ->
-  @crash_xform AT AEQ (A * B) (listmatch prd a b) =p=> listmatch prd a b.
-Proof.
-  unfold listmatch; intros.
-  xform_norm; cancel.
-  apply xform_listpred_idem_l; intros.
-  destruct e; cbn; auto.
-Qed.
-
-Theorem xform_listmatch_idem_r : forall A B AT AEQ (a : list A) (b : list B) prd,
-  (forall a b,  prd a b =p=> crash_xform (prd a b)) ->
-  listmatch prd a b =p=> @crash_xform AT AEQ (A * B) (listmatch prd a b).
-Proof.
-  unfold listmatch; intros.
-  cancel.
-  xform_normr.
-  rewrite <- xform_listpred_idem_r; cancel.
-  auto.
-Qed.
-
-Theorem xform_listmatch_idem : forall A B AT AEQ (a : list A) (b : list B) prd,
-  (forall a b, crash_xform (prd a b) <=p=> prd a b) ->
-  @crash_xform AT AEQ (A * B) (listmatch prd a b) <=p=> listmatch prd a b.
-Proof.
-  split.
-  apply xform_listmatch_idem_l; auto.
-  apply H.
-  apply xform_listmatch_idem_r; auto.
-  apply H.
-Qed.
-
 Lemma xform_listpred_ptsto : forall AT AEQ V l,
   @crash_xform AT AEQ V (listpred (fun a => a |->?) l) =p=>
                listpred (fun a => a |->?) l.
