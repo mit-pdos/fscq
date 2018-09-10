@@ -500,7 +500,17 @@ Module BFILE.
     Ret (mk_memstate (MSAlloc ms) (MSLL ms) (MSAllocC ms) (MSIAllocC ms) (MSICache ms) (BFcache.remove inum (MSCache ms)) (MSDBlocks ms)).
 
 
+  Theorem rep_domainmem_subset : forall bxps sm ixp flist ilist frees mscache allocc icache dblocks dm dm',
+      dm c= dm' ->
+      rep bxps sm ixp flist ilist frees allocc mscache icache dblocks dm =p=> rep bxps sm ixp flist ilist frees allocc mscache icache dblocks dm'.
+  Proof.
+    unfold rep; cancel.
+    eauto.
+    cancel.
+  Qed.
 
+  Hint Resolve rep_domainmem_subset.
+       
   
   Theorem rep_alt_equiv : forall bxps sm ixp flist ilist frees mscache allocc icache msalloc dblocks dm,
     rep bxps sm ixp flist ilist frees allocc mscache icache dblocks dm <=p=> rep_alt bxps sm ixp flist ilist frees allocc icache mscache msalloc dblocks dm.
@@ -1888,7 +1898,51 @@ Qed.
   Hint Resolve freepred_bfile0.
 
  (*** specification ***)
+  Theorem getdomid_ok :
+    forall lxp bxp ixp inum ms pr,
+    {< F Fm Fi m0 sm m flist ilist allocc frees f,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:bm', hm', RET:^(ms',r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[ r = BFDomid f ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSDBlocks ms = MSDBlocks ms' ]]
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
+    >} getdomid lxp ixp inum ms.
+  Proof. 
+    unfold getdomid, rep.
+    safestep.
+    sepauto.
 
+    safestep.
+    safestep.
+
+    eauto.
+    cancel.
+    subst; simpl; eauto.
+    rewrite listmatch_extract with (i:=inum) in H.
+    unfold file_match at 2 in H; destruct_lift H; cleanup.
+    erewrite <- H22, <- list2nmem_sel; eauto.
+    eapply list2nmem_inbound; eauto.
+
+    cancel.
+    rewrite <- H1; cancel; eauto.
+    Unshelve.
+    eauto.
+    exact bfile0.
+    Grab Existential Variables.
+    exact INODE.inode0.
+  Qed.
+  
 
   Theorem getowner_ok :
     forall lxp bxp ixp inum ms pr,
@@ -3709,6 +3763,7 @@ Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (getdomid _ _ _ _) _) => apply getdomid_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (changeowner _ _ _ _ _) _) => apply changeowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.

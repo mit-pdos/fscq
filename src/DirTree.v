@@ -30,7 +30,6 @@ Module SDIR := CacheOneDir.
 
 Module DIRTREE.
 
-
   (* Programs *)
 
   Notation MSLL := BFILE.MSLL.
@@ -261,6 +260,96 @@ Module DIRTREE.
   (* Specs and proofs *)
 
   Local Hint Unfold SDIR.rep_macro rep : hoare_unfold.
+
+  Theorem getdomid_ok :
+    forall fsxp inum mscs pr,
+    {< F ds sm d pathname Fm Ftop tree f ilist frees,
+    PERM:pr   
+    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm hm ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm hm' ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           [[ r = DFDomid f ]]
+    CRASH:bm', hm',
+           LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
+    >} getdomid fsxp inum mscs.
+  Proof. 
+    unfold getdomid, rep.
+    intros. prestep.
+    intros m Hm; destruct_lift Hm.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    intuition.      
+    pred_apply; cancel.
+    pred_apply; cancel.
+
+    step.
+    step.
+    msalloc_eq; cancel.
+    eauto.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+    rewrite<- H2; cancel; eauto.
+    Unshelve.
+    all: eauto.
+  Qed.
+
+  Theorem changeowner_ok :
+    forall fsxp inum tag mscs pr,
+    {~< F mbase sm m pathname Fm Ftop tree f ilist frees,
+    PERM:pr   
+    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
+           [[ (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[ (DFDomid f) <> dummy_handle ]]
+    POST:bm', hm', RET:mscs'
+           exists m' tree' f' ilist',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') sm bm' hm' *
+           [[ (Fm * rep fsxp Ftop tree' ilist' frees mscs' sm hm')%pred (list2nmem m') ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+           [[ f' = mk_dirfile (DFData f) (DFAttr f) tag (DFDomid f) ]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                           ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+    CRASH:bm', hm',
+           LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
+    >~} changeowner fsxp inum tag mscs.
+  Proof.
+    unfold changeowner.
+    intros. prestep.
+    intros m Hm; destruct_lift Hm.
+    assert (A: tree_names_distinct dummy7).
+    eapply rep_tree_names_distinct with (m:= list2nmem dummy3).
+    unfold rep; pred_apply; cancel.
+    assert (A0: tree_inodes_distinct dummy7).
+    eapply rep_tree_inodes_distinct with (m:= list2nmem dummy3).
+    unfold rep; pred_apply; cancel.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    intuition.      
+    pred_apply; cancel.
+    pred_apply; cancel.
+    simpl in *; eauto.
+
+    step.
+    step; msalloc_eq.
+    cancel.
+    eauto.
+    rewrite <- subtree_absorb by eauto.
+    pred_apply; cancel.
+    eapply dirlist_safe_subtree; eauto.
+    apply dirtree_safe_file_trans; auto.
+  Qed.
 
   Theorem getowner_ok :
     forall fsxp inum mscs pr,
@@ -1373,6 +1462,8 @@ Module DIRTREE.
   Hint Extern 1 ({{_|_}} Bind (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattr _ _ _) _) => apply getattr_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _) _) => apply getowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (changeowner _ _ _ _) _) => apply changeowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (getdomid _ _ _) _) => apply getdomid_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setattr _ _ _ _) _) => apply setattr_ok : prog. 
 
  

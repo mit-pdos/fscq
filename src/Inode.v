@@ -715,6 +715,48 @@ Qed.
       omega.
     Qed.
 
+   Theorem getdomid_ok :
+    forall lxp bxp xp inum cache ms pr,
+    {< F Fm Fi m0 sm m IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST:bm', hm', RET:^(cache',ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
+           [[ r = IDomid ino ]]
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    >} getdomid lxp xp inum cache ms.
+  Proof. 
+    unfold getdomid, rep.
+    safestep.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H.
+    rewrite combine_length_eq in *; eauto.
+    setoid_rewrite <- H9.
+    eapply list2nmem_inbound; eauto.
+    
+    rewrite listmatch_length_pimpl in *.
+    destruct_lift H.
+    rewrite combine_length_eq in *; [ |eauto].
+    step.
+    step.
+
+    subst.
+    rewrite listmatch_isolate with (i:= inum) in H0 by simplen.
+    unfold inode_match at 2 in H0.
+    erewrite selN_combine in H0; auto.
+    destruct_lift H0; auto.
+    erewrite list2nmem_sel with (x:= ino); eauto.
+    Unshelve.
+    all: eauto.
+  Qed.
+
+    
+
    (* You better not try to change owner of dummy_handle. It is for system files *)
   Theorem changeowner_ok :
     forall lxp bxp xp inum t cache ms pr,
@@ -1655,6 +1697,7 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _ _) _) => apply getowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (getdomid _ _ _ _ _) _) => apply getdomid_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _ _ _) _) => apply setowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (changeowner _ _ _ _ _ _) _) => apply changeowner_ok : prog.
 
