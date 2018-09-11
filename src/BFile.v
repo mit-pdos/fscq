@@ -2136,6 +2136,7 @@ Qed.
            [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (BFAttr f) tag (BFDomid f) (BFCache f) ]] *
            [[ INODE.IOwner (selN ilist' inum INODE.inode0) = tag ]] *
+           [[ hm' dummy_handle = Some Public ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSDBlocks ms = MSDBlocks ms' ]] *

@@ -255,12 +255,76 @@ Module DIRTREE.
 
   Definition updattr fsxp inum kv mscs :=
     mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum kv mscs;;
-    Ret mscs.
+         Ret mscs.
+
+  Definition authenticate fsxp inum mscs:=
+    let^ (ams, t) <- BFILE.getowner (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
+    p <- Auth t;;
+    Ret ^(ams, p).  
 
   (* Specs and proofs *)
 
   Local Hint Unfold SDIR.rep_macro rep : hoare_unfold.
 
+  Theorem authenticate_ok :
+    forall fsxp inum mscs pr,
+  {< F ds d sm pathname Fm Ftop tree f ilist frees,
+  PERM:pr    
+  PRE:bm, hm,
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+  POST:bm', hm', RET:^(mscs',r)
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ MSCache mscs' = MSCache mscs ]] *
+         [[ MSAllocC mscs' = MSAllocC mscs ]] *
+         [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
+  CRASH:bm', hm',
+         LOG.intact (FSXPLog fsxp) F ds sm bm' hm'
+  >} authenticate fsxp inum mscs.
+  Proof.
+    unfold authenticate, rep.
+    intros. prestep.
+    intros m Hm; destruct_lift Hm.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    intuition.      
+    pred_apply; cancel.
+    pred_apply; cancel.
+    
+    simpl.
+    step.
+    step.
+    step.
+    erewrite LOG.rep_blockmem_subset; eauto.
+    erewrite LOG.rep_domainmem_subset; eauto; cancel.
+    or_l; cancel.
+    msalloc_eq; cancel.
+    eauto.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+
+    step.
+    erewrite LOG.rep_blockmem_subset; eauto.
+    erewrite LOG.rep_domainmem_subset; eauto; cancel.
+    or_r; cancel.
+    msalloc_eq; cancel.
+    eauto.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+    
+    rewrite <- H2; cancel; eauto.
+    Unshelve.
+    all: eauto.
+  Qed.
+
+  Hint Extern 1 ({{_|_}} Bind (authenticate _ _ _) _) => apply authenticate_ok : prog.
+
+  
   Theorem getdomid_ok :
     forall fsxp inum mscs pr,
     {< F ds sm d pathname Fm Ftop tree f ilist frees,
@@ -318,7 +382,8 @@ Module DIRTREE.
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                            ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
-           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
+           [[ hm' dummy_handle = Some Public ]]
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
     >~} changeowner fsxp inum tag mscs.
@@ -384,8 +449,11 @@ Module DIRTREE.
     step.
     step.
     msalloc_eq; cancel.
+    eauto.
     rewrite <- subtree_fold by eauto. pred_apply; cancel.
     rewrite<- H2; cancel; eauto.
+    Unshelve.
+    eauto.
   Qed.
 
   Theorem namei_ok :

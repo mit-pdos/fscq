@@ -773,7 +773,8 @@ Qed.
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs')%pred sm ]] *
-           [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t (IDomid ino) ]]
+           [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t (IDomid ino) ]] *
+           [[ hm' dummy_handle  = Some Public ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >~} changeowner lxp xp inum t cache ms.
   Proof.
@@ -826,7 +827,11 @@ Qed.
     erewrite <- list2nmem_sel with (x:= ino); eauto.
     cancel; eauto.
     rewrite encode_decode_tag; auto.
-    all: simplen.
+    simplen.
+    simplen.
+    simplen.
+    simplen.
+    simplen.
 
     rewrite listmatch_isolate with (i:= inum) in H; eauto.
     unfold inode_match at 2 in H.
@@ -864,6 +869,20 @@ Qed.
     erewrite selN_eq_updN_eq; eauto.
     erewrite selN_map.
     erewrite <- list2nmem_sel; eauto.
+    simplen.
+    simplen.
+    simplen.
+    simplen.
+    eapply block_mem_subset_extract_some; [| eauto].
+    rewrite upd_ne.
+    eauto.
+    rewrite listmatch_isolate with (i:= inum) in H; eauto.
+    unfold inode_match at 2 in H.
+    erewrite selN_combine in H; eauto.
+    destruct_lift H.
+    rewrite <- H31.
+    erewrite <- list2nmem_sel with (x:= ino); eauto.
+    simplen.
     simplen.
 
     cancel.

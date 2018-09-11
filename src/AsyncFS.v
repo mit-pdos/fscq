@@ -181,13 +181,6 @@ Module AFS.
     | Private n =>  Ret ^(ams, n)
     end.  
 
-  
-
-  Definition authenticate fsxp inum ams:=
-    let^ (ams, t) <- DIRTREE.getowner fsxp inum ams;;
-    p <- Auth t;;
-    Ret ^(ams, p).  
-
   Definition file_get_attr fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
@@ -202,7 +195,7 @@ Module AFS.
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
-    let^ (ams, p) <- authenticate fsxp inum ams;;
+    let^ (ams, p) <- DIRTREE.authenticate fsxp inum ams;;
     If (bool_dec p true) {
        ams' <- DIRTREE.setattr fsxp inum attr ams;;
        let^ (ms', ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
@@ -216,10 +209,30 @@ Module AFS.
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)),  Err ENOPERMIT)
     }.
 
+  Definition changeowner fsxp inum tag ams :=
+    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
+    let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
+    let^ (ams, p) <- DIRTREE.authenticate fsxp inum ams;;
+    If (bool_dec p true) {
+       let^ (ams, old_owner) <- DIRTREE.getowner fsxp inum ams;;
+       let^ (ams, domid) <- DIRTREE.getdomid fsxp inum ams;;                     
+       ams' <- DIRTREE.changeowner fsxp inum tag ams;;
+       let^ (ms', ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
+       If (bool_dec ok true) {
+            Ret ^((BFILE.mk_memstate (MSAlloc ams') ms' (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
+       } else {
+            _ <- ChDom domid old_owner;;
+            Ret ^((BFILE.mk_memstate (MSAlloc ams) ms' (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
+       }
+    } else {
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)),  Err ENOPERMIT)
+    }.
+
   Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
-    let^ (ams, p) <- authenticate fsxp inum ams;;
+    let^ (ams, p) <- DIRTREE.authenticate fsxp inum ams;;
     If (bool_dec p true) {
       ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) ams;;
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);;
@@ -236,7 +249,7 @@ Module AFS.
   Definition read_fblock' fsxp inum off ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
-    let^ (ams, p) <- authenticate fsxp inum ams;;
+    let^ (ams, p) <- DIRTREE.authenticate fsxp inum ams;;
     If (bool_dec p true) {
       let^ (ams, b) <- DIRTREE.read fsxp inum off ams;;
       ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
@@ -259,7 +272,7 @@ Module AFS.
   Definition file_truncate fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
-    let^ (ams, p) <- authenticate fsxp inum ams;;
+    let^ (ams, p) <- DIRTREE.authenticate fsxp inum ams;;
     If (bool_dec p true) {
       let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz ams;;
       match ok with
@@ -283,7 +296,7 @@ Module AFS.
   Definition update_fblock_d' fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
-    let^ (ams, p) <- authenticate fsxp inum ams;;
+    let^ (ams, p) <- DIRTREE.authenticate fsxp inum ams;;
     If (bool_dec p true) {
       let^ (ams, t) <- DIRTREE.getdomid fsxp inum ams;;
       Ret ^(ams, OK t)
@@ -326,7 +339,7 @@ Module AFS.
   Definition file_sync fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
     let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
-    let^ (ams, p) <- authenticate fsxp inum ams;;
+    let^ (ams, p) <- DIRTREE.authenticate fsxp inum ams;;
     If (bool_dec p true) {   
       ams <- DIRTREE.datasync fsxp inum ams;;
       ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);;
@@ -462,297 +475,9 @@ Module AFS.
 
   (* Recover theorems *)
 
-    Theorem mkfs_ok :
-    forall cachesize data_bitmaps inode_bitmaps log_descr_blocks pr,
-    {!< disk,
-     PERM:pr
-     PRE:bm, hm,
-       arrayS 0 disk *
-       [[ cachesize <> 0 /\ data_bitmaps <> 0 /\ inode_bitmaps <> 0 ]] *
-       [[ data_bitmaps <= valulen * valulen /\ inode_bitmaps <= valulen * valulen ]] *
-       [[ length disk = 1 +
-          data_bitmaps * valulen +
-          inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
-          inode_bitmaps + data_bitmaps + data_bitmaps +
-          1 + log_descr_blocks + log_descr_blocks * DiskLogPadded.DescSig.items_per_val ]] *
-       [[ goodSize addrlen (length disk) ]]
-     POST:bm',hm', RET:r exists ms fsxp d sm,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
-       ([[ isError r ]] \/ exists ilist frees,
-         [[ r = OK (ms, fsxp) ]] *
-         [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ms sm hm' ]]])
-     CRASH:bm', hm',
-       any
-     >!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
-  Proof. 
-    unfold mkfs.
-    safestep.
-
-    prestep.
-    norml; unfold stars; simpl.
-    denote! (arrayS _ _ _) as Hx.
-    eapply arrayN_isolate_hd in Hx.
-    unfold ptsto_subset in Hx at 1.
-    safecancel.
-    apply compute_xparams_ok.
-    apply SB.goodSize_magic_number.
-    denote (length disk = _) as Heq; rewrite Heq in *; auto.
-    auto.
-    
-
-    (* LOG.init *)
-    prestep. norm. cancel.
-    intuition simpl. pred_apply.
-    (* split LHS into log region and data region *)
-    erewrite arrayN_split at 1.
-    simpl.
-    rewrite sep_star_comm.
-    apply sep_star_assoc.
-
-    rewrite skipn_length.
-    setoid_rewrite skipn_length with (n := 1).
-    substl (length disk).
-    apply S_minus_1_helper.
-
-    rewrite firstn_length.
-    setoid_rewrite skipn_length with (n := 1).
-    substl (length disk).
-    rewrite Nat.min_l.
-    rewrite Nat.sub_0_r; auto.
-    rewrite S_minus_1_helper2.
-    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
-    generalize (log_descr_blocks * DiskLogPadded.DescSig.items_per_val); intros.
-    omega.
-
-    eapply goodSize_trans; [ | eauto ].
-    rewrite skipn_length.
-    setoid_rewrite skipn_length with (n := 1).
-    substl (length disk).
-    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
-    generalize (log_descr_blocks * DiskLogPadded.DescSig.items_per_val); intros.
-    omega.
-    auto.
-    auto.
-    step.
-    rewrite Nat.sub_0_r in *.
-
-    (* BFILE.init *)
-    step.
-    unfold latest; simpl; pred_apply; cancel.
-    
-    (* IAlloc.alloc *)
-    step.
-    step.
-    step.
-    step.
-
-    (* LOG.flushsync *)
-    step.
-    step.
-    step.
-    (*prestep. norml.
-    unfold stars; simpl.*)
-
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    rewrite latest_pushd.
-    eassign a4.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
-          SB.magic_number).
-    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
-                BFILE.MSLL := (a3, b1);
-                BFILE.MSAllocC := MSAllocC r_0;
-                BFILE.MSIAllocC := IAlloc.MSCache a2;
-                BFILE.MSICache := MSICache r_0;
-                BFILE.MSCache := MSCache r_0;
-                BFILE.MSDBlocks := MSDBlocks r_0 |}).
-    simpl; cancel.
-    or_r.
-    unfold rep. cancel.
-
-    denote (_ =p=> freeinode_pred) as Hy.
-    denote (freeinode_pred =p=> _) as Hz.
-
-    rewrite <- Hy in Hz.
-    2: apply repeat_length with (x := BFILE.bfile0).
-
-
-    assert (1 < length (repeat BFILE.bfile0 (inode_bitmaps * valulen
-       / INODE.IRecSig.items_per_val * INODE.IRecSig.items_per_val))) as Hlen.
-    rewrite repeat_length; omega.
-
-    specialize (Hz _ (list2nmem_array _)).
-    pred_apply; cancel.
-    pose proof (list2nmem_ptsto_cancel BFILE.bfile0 _ Hlen).
-    unfold tree_dir_names_pred.
-    cancel.
-    unfold BFILE.freepred in *. subst.
-    apply DirTreePred.SDIR.bfile0_empty.
-    apply emp_empty_mem.
-    eapply Forall_repeat.
-    eauto.
-    all: try solve [rewrite <- H1; cancel; eauto; apply pimpl_any].
-
-    (* failure cases *)
-    step.
-    step.
-    step.
-    step.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
-          SB.magic_number).
-    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
-                BFILE.MSLL := (a6, b2);
-                BFILE.MSAllocC := MSAllocC r_0;
-                BFILE.MSIAllocC := IAlloc.MSCache a2;
-                BFILE.MSICache := MSICache r_0;
-                BFILE.MSCache := MSCache r_0;
-                BFILE.MSDBlocks := MSDBlocks r_0 |}).
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
-
-    step.
-    step.
-    step.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
-          SB.magic_number).
-    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
-                BFILE.MSLL := (a6, b1);
-                BFILE.MSAllocC := MSAllocC r_0;
-                BFILE.MSIAllocC := IAlloc.MSCache a2;
-                BFILE.MSICache := MSICache r_0;
-                BFILE.MSCache := MSCache r_0;
-                BFILE.MSDBlocks := MSDBlocks r_0 |}).
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
-    rewrite <- H1; cancel; eauto; apply pimpl_any.
-    
-    step.
-    step.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
-          SB.magic_number).
-    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
-                BFILE.MSLL := (a3, b1);
-                BFILE.MSAllocC := MSAllocC r_0;
-                BFILE.MSIAllocC := IAlloc.MSCache a2;
-                BFILE.MSICache := MSICache r_0;
-                BFILE.MSCache := MSCache r_0;
-                BFILE.MSDBlocks := MSDBlocks r_0 |}).
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_l; cancel.
-    substl (length disk).
-    apply gt_Sn_O.
-
-  Unshelve.
-    all: try easy.
-    try exact valuset0.
- Qed.
-
-
   
 
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
-
-  Theorem recover_ok :
-    forall cachesize pr,
-    {< fsxp cs ds,
-     PERM:pr   
-     PRE:bm, hm,
-       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs bm hm *
-       [[ cachesize <> 0 ]]
-     POST:bm', hm', RET:r exists ms fsxp',
-       [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
-       exists d n sm, [[ n <= length (snd ds) ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
-       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
-       [[ BFILE.MSinitial ms ]]
-     XCRASH:bm', hm',
-       LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds bm' hm'
-     >} recover cachesize.
-  Proof. 
-    unfold recover, LOG.after_crash; intros.
-    eapply pimpl_ok2; monad_simpl.
-    eapply CacheSec.init_recover_ok.
-    intros; norm. cancel.
-    intuition simpl. eauto.
-
-    prestep. norml.
-    denote ((crash_xform _) d') as Hx.
-    apply crash_xform_sep_star_dist in Hx.
-    rewrite SB.crash_xform_rep in Hx.
-    rewrite LOG.after_crash_idem' in Hx; eauto.
-    destruct_lift Hx; denote (crash_xform (crash_xform _)) as Hx.
-    apply crash_xform_idem_l in Hx.
-
-    norm. cancel.
-    intuition.
-    pred_apply.
-    apply sep_star_comm; eauto.
-
-    step.
-    prestep. norm. cancel.
-    unfold LOG.after_crash; norm. cancel.
-    intuition simpl.
-    pred_apply; norml.
-    unfold stars; simpl.
-
-    norm. cancel.
-    rewrite LOG.rep_inner_hashmap_subset.
-    eassign (SB.rep fsxp).
-    cancel.
-    erewrite LOG.rep_inner_blockmem_subset; eauto.
-    auto.
-    intuition simpl; eauto.
-    intuition.
-
-    step.
-
-    step.
-    prestep. norm.
-    2: intuition idtac.
-    unfold stars; simpl.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    intuition simpl; eauto.
-    intuition simpl; eauto.
-    intuition simpl; eauto.
-    eauto.
-
-    rewrite <- H1; cancel; eauto.
-    xcrash.
-
-    eapply LOG.crash_xform_cached_before; eauto.
-
-    rewrite <- H1; cancel; eauto.
-
-    denote (SB.rep) as Hsb. rewrite SB.rep_magic_number in Hsb. destruct_lift Hsb.
-    step.
-    
-    rewrite <- H1; cancel; eauto.
-    unfold LOG.before_crash.
-    denote LOG.rep_inner as Hor.
-    rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
-    erewrite LOG.rep_inner_blockmem_subset in Hor; eauto.
-    rewrite LOG.rep_inner_notxn_pimpl in Hor.
-    destruct_lift Hor.
-    norm. cancel.
-    intuition.
-    pred_apply.
-    safecancel.
-
-    rewrite <- H1; cancel; eauto.
-    unfold LOG.before_crash.
-    denote LOG.rep_inner as Hor.
-    rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
-    erewrite LOG.rep_inner_blockmem_subset in Hor; eauto.
-    rewrite LOG.rep_inner_notxn_pimpl in Hor.
-    destruct_lift Hor.
-    norm. cancel.
-    intuition.
-    pred_apply.
-    safecancel.
-
-    Unshelve. all: eauto.
-  Qed.
-
-  Hint Extern 1 ({{_|_}} Bind (recover _) _) => apply recover_ok : prog.
 
   Hint Extern 0 (okToUnify (LOG.idempred _ _ _ _) (LOG.idempred _ _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (LOG.after_crash _ _ _ _ _) (LOG.after_crash _ _ _ _ _)) => constructor : okToUnify.
@@ -760,51 +485,376 @@ Module AFS.
 
   (* Specs and proofs *)
 
+  Opaque corr2 corr2_weak.
 
-  Theorem authenticate_ok :
-    forall fsxp inum mscs pr,
-  {< ds d sm pathname Fm Ftop tree f ilist frees,
-  PERM:pr    
+
+      Lemma in_selN_or_removeN:
+      forall A (l: list A) x n def,
+        NoDup l ->
+        In x l ->
+        n < length l ->
+        x = selN l n def \/ (In x (removeN l n) /\ x <> selN l n def).
+    Proof.
+      induction l; simpl; intros; [intuition|].
+      inversion H; subst; clear H.
+      destruct H0; subst.
+      destruct n; simpl; intuition.
+      right. split; eauto.
+      intros; subst.
+      apply H4; apply in_selN; omega.
+
+      destruct n; eauto.
+      right; unfold removeN; simpl.
+      split; auto.
+      unfold not; intros; subst; intuition.
+      specialize (IHl _ n def H5 H).
+      edestruct IHl; eauto.
+      omega.
+      destruct H0.
+      rewrite removeN_head; simpl; eauto.
+    Qed.
+    
+    
+
+    Lemma domid_match:
+      forall pathname tree fsxp inum f F Ff  sm ixp flist ilist frees cms mscache icache dblocks dm m def,
+      find_subtree pathname tree = Some (TreeFile inum f) ->
+      (F  * BFILE.rep (FSXPBlockAlloc fsxp) sm ixp flist ilist frees cms mscache icache dblocks dm)%pred (list2nmem m) ->
+      (Ff ✶ tree_pred fsxp tree)%pred (list2nmem flist) ->
+      DFDomid f = INODE.IDomid (selN ilist inum def) /\ DFOwner f = INODE.IOwner (selN ilist inum def).
+    Proof.
+      intros.
+      rewrite subtree_extract in H1; eauto.
+      unfold tree_pred in H1.
+      destruct_lift H1.
+      unfold BFILE.rep in H0.
+      destruct_lift H0.
+      rewrite listmatch_length_pimpl in H0.
+      rewrite listmatch_isolate with (i:= inum) in H0.
+      unfold BFILE.file_match in H0.
+      destruct_lift H0.
+      rewrite <- H15, <- H16.
+      erewrite <- list2nmem_sel; simpl; eauto; simpl; eauto.
+      eapply list2nmem_ptsto_bound; pred_apply; cancel.
+      destruct_lift H0.
+      rewrite <- H12.
+      eapply list2nmem_ptsto_bound; pred_apply; cancel.
+      Unshelve.
+      exact BFILE.bfile0.
+    Qed.
+
+     Lemma in_removeN_selN_exists:
+      forall A (l: list A) x n def,
+        In x (removeN l n) ->
+        exists i, x = selN l i def /\ i <> n /\ i < length l.
+    Proof.
+      induction l; simpl; intros; eauto.
+      unfold removeN in *; simpl in *; rewrite firstn_nil in H; intuition.
+      destruct n.
+      unfold removeN in H; simpl in *.
+      eapply in_selN_exists in H.
+      destruct H, H.
+      exists (S x0); simpl; eauto.
+      intuition eauto.
+      congruence.
+      omega.
+      rewrite removeN_head in H.
+      destruct H; subst.
+      exists 0; intuition eauto.
+      congruence.
+      omega.
+      eapply IHl in H.
+      destruct H, H, H0.
+      exists (S x0); simpl; intuition eauto.
+      omega.
+    Qed.
+
+    Lemma in_selN_or_removeN':
+      forall A (l: list A) x n def,
+        In x l ->
+        x = selN l n def \/ (In x (removeN l n)).
+    Proof.
+      induction l; simpl; intros; [intuition|].
+      inversion H; subst; clear H.
+      destruct n; simpl; intuition.
+
+      destruct n; eauto.
+      specialize (IHl _ n def H0).
+      rewrite removeN_head; simpl; intuition eauto.      
+    Qed.
+
+
+    Theorem changeowner_ok :
+    forall fsxp inum tag mscs pr,
+  {~< ds sm pathname Fm Ftop tree f ilist frees,
+  PERM:pr     
   PRE:bm, hm,
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
-         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
-         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-  POST:bm', hm', RET:^(mscs',r)
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
-         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
-         [[ MSAlloc mscs' = MSAlloc mscs ]] *
-         [[ MSCache mscs' = MSCache mscs ]] *
-         [[ MSAllocC mscs' = MSAllocC mscs ]] *
-         [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
-          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
-  CRASH:bm', hm',
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
-  >} authenticate fsxp inum mscs.
-  Proof.
-    intros; unfold authenticate.
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+         [[ (DFDomid f) <> dummy_handle ]]
+  POST:bm', hm', RET:^(mscs', ok)
+      (([[ isError ok  ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+        [[ hm' dummy_handle = Some Public ]]) \/
+       ([[ ok = OK tt  ]] *
+        [[ MSAlloc mscs' = MSAlloc mscs ]] *
+        exists d tree' f' ilist',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') sm bm' hm' *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs' sm hm')]]] *
+        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+        [[ f' = mk_dirfile (DFData f) (DFAttr f) tag (DFDomid f) ]] *
+        [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                        ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+        [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
+        [[ hm' dummy_handle = Some Public ]])) 
+  XCRASH:bm', hm',
+    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm' \/
+    exists d tree' f' ilist' mscs',
+    [[ MSAlloc mscs' = MSAlloc mscs ]] *
+    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) sm bm' hm' *
+    [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs' sm hm')]]] *
+    [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+    [[ f' = mk_dirfile (DFData f) (DFAttr f) tag (DFDomid f) ]] *
+    [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                    ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+    [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+  >~} changeowner fsxp inum tag mscs.
+  Proof. 
+    unfold changeowner; intros.
+    step.
+    safelightstep.
+    pred_apply; cancel.
+    rewrite mscs_same_except_log_rep.
+    rewrite rep_domainmem_subset; [| eauto].
+    cancel. apply pimpl_refl.
+    unfold BFILE.mscs_same_except_log; simpl; intuition.
+    eauto.
+    eauto.
+    eauto.
+    step.
+    safelightstep.
+    pred_apply; apply pimpl_refl.
+    all: eauto.
+    safelightstep.
+    pred_apply; apply pimpl_refl.
+    all: eauto.
+    safelightstep.
+    pred_apply; apply pimpl_refl.
+    all: eauto.
+    step.
+    step.
+    step.
     lightstep.
-    simpl.
+    or_r; erewrite LOG.rep_domainmem_subset; eauto; cancel.
+    rewrite mscs_same_except_log_rep.
+    rewrite rep_domainmem_subset; [| eauto].
+    rewrite rep_domainmem_subset; [| eauto].
+    apply pimpl_refl.
+    unfold BFILE.mscs_same_except_log; simpl; intuition.
+    eauto.
+    eauto.
+    eauto.
+    solve_blockmem_subset.
     step.
     step.
+
+    
+    denote rep as Hx.
+    pose proof Hx as Hback.
+    rewrite rep_length in Hx; unfold rep, BFILE.rep in Hx.
+    destruct_lift Hx.
+    denote listmatch as Hx.
+    rewrite listmatch_length_pimpl in Hx.
+    rewrite listmatch_extract with (i:= inum) in Hx.
+    unfold BFILE.file_match at 2 in Hx; destruct_lift Hx.
+    denote INODE.rep as Hx; unfold INODE.rep in Hx.
+    destruct_lift Hx.
+    denote tree_pred as Hx.
+    erewrite subtree_extract in Hx; eauto.
+    unfold tree_pred in Hx; destruct_lift Hx.
+    
     step.
-    erewrite LOG.rep_blockmem_subset; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    eapply block_mem_subset_extract_some; eauto.
+    erewrite <- list2nmem_sel in H61; [| pred_apply; cancel].
+    simpl in *.
+    rewrite H61.
+    apply H68.
+    apply in_selN.
+    rewrite <- H27.
+    eapply list2nmem_ptsto_bound; pred_apply; cancel.
+
+    step.
+    lightstep.
     or_l; cancel.
-                
+    erewrite LOG.rep_blockmem_subset; eauto; cancel.
+    rewrite mscs_same_except_log_rep.
+    2: eassign {|
+       BFILE.MSAlloc := MSAlloc r__2;
+       BFILE.MSLL := (a1, b1);
+       BFILE.MSAllocC := MSAllocC r__2;
+       BFILE.MSIAllocC := MSIAllocC r__2;
+       BFILE.MSICache := MSICache r__2;
+       BFILE.MSCache := MSCache r__2;
+       BFILE.MSDBlocks := MSDBlocks r__2 |};
+      unfold BFILE.mscs_same_except_log; simpl; intuition.
+    unfold rep; simpl.
+    cancel; eauto.
+    unfold BFILE.rep.
+    cancel.
+    unfold INODE.rep; cancel; eauto.
+    
+    {
+      unfold rep in H5; destruct_lift H5.
+      eapply domid_match in H7 as Hx; eauto.    
+      2: pred_apply' H5; unfold rep; cancel.
+      2: pred_apply; cancel.
+      cleanup.
+
+      unfold rep in Hback; destruct_lift Hback.
+      edestruct domid_match.
+      eapply find_update_subtree; eauto.
+      pred_apply' H25; cancel.
+      pred_apply; cancel.
+      rewrite sep_star_comm, <- sep_star_assoc; eauto.
+      simpl in *; cleanup.
+
+      eapply block_mem_subset_extract_some; [ |eauto].
+      erewrite <- list2nmem_sel in H61; [| pred_apply; cancel].
+      erewrite <- list2nmem_sel in H62; [| pred_apply; cancel].
+      simpl in *; cleanup.
+      destruct (handle_eq_dec (INODE.IDomid ino) dummy_handle); subst.
+      rewrite Mem.upd_ne.
+      eapply block_mem_subset_extract_some; [ |eauto].
+      eapply H68.
+      unfold BFILE.treeseq_ilist_safe in *.
+      destruct H43.
+
+      eapply in_removeN_neq with (i:= inum) in H50.    
+      eapply in_removeN_selN_exists in H50; cleanup.
+      rewrite e0; eauto.
+      apply in_selN; eauto.
+      rewrite H41, <- H65.
+      denote rep as Hx; rewrite rep_length in Hx; destruct_lift Hx.
+      rewrite <- H83; eauto.
+      unfold not; intro Hnot.
+      rewrite <- Hnot in e; rewrite e in H70; congruence.
+      unfold not; intro Hnot; cleanup; congruence.
+
+      assert (A: In (INODE.IDomid (selN ilist inum INODE.inode0)) (filter INODE.not_dummy (map INODE.IDomid ilist))). {
+        apply INODE.in_filter_true.
+        apply in_map.
+        apply in_selN.
+        denote rep as Hx; rewrite rep_length in Hx; destruct_lift Hx.
+        rewrite H82; eauto.
+        rewrite H65, <- H27.
+        eapply list2nmem_ptsto_bound; pred_apply; cancel.
+        unfold INODE.not_dummy.
+        destruct (handle_eq_dec
+                    (INODE.IDomid (selN ilist inum INODE.inode0))
+                    dummy_handle).
+        rewrite e in H70; congruence.
+        auto.
+      }
+
+      eapply in_selN_exists in A.
+      cleanup.      
+      eapply in_selN_or_removeN' with (n:= inum) in H50; eauto.
+      destruct H50; subst.
+      rewrite H50.
+      rewrite <- H70.
+      apply Mem.upd_eq; eauto.
+      
+      rewrite Mem.upd_ne.
+      eapply block_mem_subset_extract_some; [ |eauto].
+      eapply H68.
+      unfold BFILE.treeseq_ilist_safe in *.
+      destruct H43.
+
+      eapply in_removeN_selN_exists in H50; cleanup.
+      rewrite e; eauto.
+      apply in_selN; eauto.
+      rewrite H41, <- H65.
+      denote rep as Hx; rewrite rep_length in Hx; destruct_lift Hx.
+      rewrite <- H85; eauto.
+      rewrite <- H70.
+      eapply INODE.NoDup_neq_filter; eauto.
+      denote rep as Hx; rewrite rep_length in Hx; destruct_lift Hx.
+      rewrite H84; eauto.
+      rewrite H65, <- H27.
+      eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    }
+    
+    cancel.
+    eapply block_mem_subset_extract_some; [ |eauto].
+    rewrite Mem.upd_ne; eauto.
+    solve_blockmem_subset.
+    erewrite subtree_extract in H48; eauto.
+    unfold tree_pred in H48; destruct_lift H48.
+    eapply list2nmem_ptsto_bound; pred_apply; cancel.
+
+    rewrite <- H1; cancel.
+    solve_blockmem_subset.
+    xcrash.
+    or_r.
+    rewrite LOG.recover_any_idempred.
+    cancel. xform_normr.
+    safecancel.
+    2: eauto.
+    msalloc_eq; eauto.
+    all: eauto.
+
+    intros; rewrite <- H1; cancel; eauto.
+    xcrash.
+    rewrite LOG.intact_idempred. xform_norm. cancel.
+
+    intros; rewrite <- H1; cancel; eauto.
+    xcrash.
+    rewrite LOG.intact_idempred. xform_norm. cancel.
+
+    intros; rewrite <- H1; cancel; eauto.
+    xcrash.
+    rewrite LOG.intact_idempred. xform_norm. cancel.
+    
     step.
-    erewrite LOG.rep_blockmem_subset; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
-    or_r; cancel.
-    rewrite <- H2; cancel; eauto.
-    apply LOG.intact_idempred.
+    prestep; norml; congruence.
+
+    step.
+    step.
+    lightstep.
+    or_l; cancel.
+    rewrite mscs_same_except_log_rep.
+    do 2 (rewrite rep_domainmem_subset; [| eauto]).
+    eauto.
+    unfold BFILE.mscs_same_except_log; simpl; intuition.
+    eauto.
+
+    rewrite <- H1; cancel; eauto.
+    rewrite LOG.notxn_intact, LOG.intact_idempred.
+    xform_norm. or_l; cancel.
+
+    intros; rewrite <- H1; cancel; eauto.
+    xform_norm.
+    rewrite LOG.intact_idempred; 
+    or_l; cancel.
+
+    intros; rewrite <- H1; cancel; eauto.
+    rewrite LOG.notxn_intact, LOG.intact_idempred.
+    xform_norm. cancel.
+
     Unshelve.
     all: eauto.
+    exact BFILE.bfile0.
+    exact INODE.inode0.
+    exact INODE.inode0.
+    exact dummy_handle.
   Qed.
 
-  Hint Extern 1 ({{_|_}} Bind (authenticate _ _ _) _) => apply authenticate_ok : prog.
-
-  Opaque corr2 corr2_weak.
 
   Theorem file_getattr_ok :
     forall fsxp inum mscs pr,
@@ -2157,6 +2207,314 @@ Module AFS.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
+
+
+
+  
+  Theorem recover_ok :
+    forall cachesize pr,
+    {< fsxp cs ds,
+     PERM:pr   
+     PRE:bm, hm,
+       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs bm hm *
+       [[ cachesize <> 0 ]]
+     POST:bm', hm', RET:r exists ms fsxp',
+       [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
+       exists d n sm, [[ n <= length (snd ds) ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
+       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
+       [[ BFILE.MSinitial ms ]]
+     XCRASH:bm', hm',
+       LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds bm' hm'
+     >} recover cachesize.
+  Proof. 
+    unfold recover, LOG.after_crash; intros.
+    eapply pimpl_ok2; monad_simpl.
+    eapply CacheSec.init_recover_ok.
+    intros; norm. cancel.
+    intuition simpl. eauto.
+
+    prestep. norml.
+    denote ((crash_xform _) d') as Hx.
+    apply crash_xform_sep_star_dist in Hx.
+    rewrite SB.crash_xform_rep in Hx.
+    rewrite LOG.after_crash_idem' in Hx; eauto.
+    destruct_lift Hx; denote (crash_xform (crash_xform _)) as Hx.
+    apply crash_xform_idem_l in Hx.
+
+    norm. cancel.
+    intuition.
+    pred_apply.
+    apply sep_star_comm; eauto.
+
+    step.
+    prestep. norm. cancel.
+    unfold LOG.after_crash; norm. cancel.
+    intuition simpl.
+    pred_apply; norml.
+    unfold stars; simpl.
+
+    norm. cancel.
+    rewrite LOG.rep_inner_hashmap_subset.
+    eassign (SB.rep fsxp).
+    cancel.
+    erewrite LOG.rep_inner_blockmem_subset; eauto.
+    auto.
+    intuition simpl; eauto.
+    intuition.
+
+    step.
+
+    step.
+    prestep. norm.
+    2: intuition idtac.
+    unfold stars; simpl.
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    intuition simpl; eauto.
+    intuition simpl; eauto.
+    intuition simpl; eauto.
+    eauto.
+
+    rewrite <- H1; cancel; eauto.
+    xcrash.
+
+    eapply LOG.crash_xform_cached_before; eauto.
+
+    rewrite <- H1; cancel; eauto.
+
+    denote (SB.rep) as Hsb. rewrite SB.rep_magic_number in Hsb. destruct_lift Hsb.
+    step.
+    
+    rewrite <- H1; cancel; eauto.
+    unfold LOG.before_crash.
+    denote LOG.rep_inner as Hor.
+    rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
+    erewrite LOG.rep_inner_blockmem_subset in Hor; eauto.
+    rewrite LOG.rep_inner_notxn_pimpl in Hor.
+    destruct_lift Hor.
+    norm. cancel.
+    intuition.
+    pred_apply.
+    safecancel.
+
+    rewrite <- H1; cancel; eauto.
+    unfold LOG.before_crash.
+    denote LOG.rep_inner as Hor.
+    rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
+    erewrite LOG.rep_inner_blockmem_subset in Hor; eauto.
+    rewrite LOG.rep_inner_notxn_pimpl in Hor.
+    destruct_lift Hor.
+    norm. cancel.
+    intuition.
+    pred_apply.
+    safecancel.
+
+    Unshelve. all: eauto.
+  Qed.
+
+  Hint Extern 1 ({{_|_}} Bind (recover _) _) => apply recover_ok : prog.
+
+
+      Theorem mkfs_ok :
+    forall cachesize data_bitmaps inode_bitmaps log_descr_blocks pr,
+    {!< disk,
+     PERM:pr
+     PRE:bm, hm,
+       arrayS 0 disk * [[ hm dummy_handle = Some Public ]] *
+       [[ cachesize <> 0 /\ data_bitmaps <> 0 /\ inode_bitmaps <> 0 ]] *
+       [[ data_bitmaps <= valulen * valulen /\ inode_bitmaps <= valulen * valulen ]] *
+       [[ length disk = 1 +
+          data_bitmaps * valulen +
+          inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
+          inode_bitmaps + data_bitmaps + data_bitmaps +
+          1 + log_descr_blocks + log_descr_blocks * DiskLogPadded.DescSig.items_per_val ]] *
+       [[ goodSize addrlen (length disk) ]]
+     POST:bm',hm', RET:r exists ms fsxp d sm,
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
+       ([[ isError r ]] \/ exists ilist frees,
+         [[ r = OK (ms, fsxp) ]] *
+         [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ms sm hm' ]]])
+     CRASH:bm', hm',
+       any
+     >!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
+  Proof. 
+    unfold mkfs.
+    safestep.
+
+    prestep.
+    norml; unfold stars; simpl.
+    denote! (arrayS _ _ _) as Hx.
+    eapply arrayN_isolate_hd in Hx.
+    unfold ptsto_subset in Hx at 1.
+    safecancel.
+    apply compute_xparams_ok.
+    apply SB.goodSize_magic_number.
+    denote (length disk = _) as Heq; rewrite Heq in *; auto.
+    auto.
+    eauto.
+    apply sync_invariant_emp.
+
+    (* LOG.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    (* split LHS into log region and data region *)
+    erewrite arrayN_split at 1.
+    simpl.
+    rewrite sep_star_comm.
+    apply sep_star_assoc.
+
+    rewrite skipn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    apply S_minus_1_helper.
+
+    rewrite firstn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    rewrite Nat.min_l.
+    rewrite Nat.sub_0_r; auto.
+    rewrite S_minus_1_helper2.
+    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
+    generalize (log_descr_blocks * DiskLogPadded.DescSig.items_per_val); intros.
+    omega.
+
+    eapply goodSize_trans; [ | eauto ].
+    rewrite skipn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
+    generalize (log_descr_blocks * DiskLogPadded.DescSig.items_per_val); intros.
+    omega.
+    auto.
+    eauto.
+    apply sync_invariant_emp.
+    step.
+    apply sync_invariant_emp.
+    rewrite Nat.sub_0_r in *.
+
+    (* BFILE.init *)
+    step.
+    unfold latest; simpl; pred_apply; cancel.
+    apply sync_invariant_emp.
+    
+    (* IAlloc.alloc *)
+    step.
+    repeat (eapply block_mem_subset_extract_some; eauto).
+    apply sync_invariant_emp.
+    step.
+    step.
+    repeat (eapply block_mem_subset_extract_some; [| eauto]); eauto.
+    apply sync_invariant_emp.
+    step.
+
+    (* LOG.flushsync *)
+    step.
+    repeat (eapply block_mem_subset_extract_some; [| eauto]); eauto.
+    apply sync_invariant_emp.
+    step.
+    step.
+    (*prestep. norml.
+    unfold stars; simpl.*)
+
+    erewrite LOG.rep_domainmem_subset; eauto; cancel.
+    rewrite latest_pushd.
+    eassign a4.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
+          SB.magic_number).
+    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
+                BFILE.MSLL := (a3, b1);
+                BFILE.MSAllocC := MSAllocC r_0;
+                BFILE.MSIAllocC := IAlloc.MSCache a2;
+                BFILE.MSICache := MSICache r_0;
+                BFILE.MSCache := MSCache r_0;
+                BFILE.MSDBlocks := MSDBlocks r_0 |}).
+    simpl; cancel.
+    or_r.
+    unfold rep. simpl. norm.
+    cancel.
+    split.
+    eauto.
+    pred_apply.
+
+    denote (_ =p=> freeinode_pred) as Hy.
+    denote (freeinode_pred =p=> _) as Hz.
+
+    rewrite <- Hy in Hz.
+    2: apply repeat_length with (x := BFILE.bfile0).
+
+
+    assert (1 < length (repeat BFILE.bfile0 (inode_bitmaps * valulen
+       / INODE.IRecSig.items_per_val * INODE.IRecSig.items_per_val))) as Hlen.
+    rewrite repeat_length; omega.
+
+    specialize (Hz _ (list2nmem_array _)).
+    norm; unfold stars; simpl. cancel.
+    repeat (rewrite BFILE.rep_domainmem_subset_trans; eauto).
+    cancel.
+    pose proof (list2nmem_ptsto_cancel BFILE.bfile0 _ Hlen).
+    unfold tree_dir_names_pred.
+    cancel.
+    unfold BFILE.freepred in *. subst.
+    apply DirTreePred.SDIR.bfile0_empty.
+    apply emp_empty_mem.
+    eapply Forall_repeat.
+    eauto.
+    all: try solve [rewrite <- H1; cancel; eauto; apply pimpl_any].
+
+    (* failure cases *)
+    step.
+    step.
+    step.
+    step.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
+          SB.magic_number).
+    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
+                BFILE.MSLL := (a6, b2);
+                BFILE.MSAllocC := MSAllocC r_0;
+                BFILE.MSIAllocC := IAlloc.MSCache a2;
+                BFILE.MSICache := MSICache r_0;
+                BFILE.MSCache := MSCache r_0;
+                BFILE.MSDBlocks := MSDBlocks r_0 |}).
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l; cancel.
+
+    step.
+    step.
+    step.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
+          SB.magic_number).
+    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
+                BFILE.MSLL := (a6, b1);
+                BFILE.MSAllocC := MSAllocC r_0;
+                BFILE.MSIAllocC := IAlloc.MSCache a2;
+                BFILE.MSICache := MSICache r_0;
+                BFILE.MSCache := MSCache r_0;
+                BFILE.MSDBlocks := MSDBlocks r_0 |}).
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l; cancel.
+    rewrite <- H1; cancel; eauto; apply pimpl_any.
+    
+    step.
+    step.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks
+          SB.magic_number).
+    eassign ({| BFILE.MSAlloc := MSAlloc r_0;
+                BFILE.MSLL := (a3, b1);
+                BFILE.MSAllocC := MSAllocC r_0;
+                BFILE.MSIAllocC := IAlloc.MSCache a2;
+                BFILE.MSICache := MSICache r_0;
+                BFILE.MSCache := MSCache r_0;
+                BFILE.MSDBlocks := MSDBlocks r_0 |}).
+    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l; cancel.
+    substl (length disk).
+    apply gt_Sn_O.
+
+  Unshelve.
+    all: try easy.
+    try exact valuset0.
+ Qed.
+
 
 End AFS.
 

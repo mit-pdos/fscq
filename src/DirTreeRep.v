@@ -120,6 +120,16 @@ Set Implicit Arguments.
     simpl in H0; destruct_lift H0; auto.
   Qed.
 
+  Theorem rep_domainmem_subset : forall mscs fsxp F tree ilist frees sm dm dm',
+    dm c= dm' ->
+    rep fsxp F tree ilist frees mscs sm dm =p=> rep fsxp F tree ilist frees mscs sm dm'.
+  Proof.
+    unfold rep; intros.
+    cancel; eauto.
+  Qed.
+
+  Hint Resolve rep_domainmem_subset.
+
   Theorem mscs_same_except_log_rep' : forall mscs1 mscs2 fsxp F tree ilist frees sm dm,
     BFILE.mscs_same_except_log mscs1 mscs2 ->
     rep fsxp F tree ilist frees mscs1 sm dm =p=> rep fsxp F tree ilist frees mscs2 sm dm.
