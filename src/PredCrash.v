@@ -1336,17 +1336,6 @@ Hint Resolve sync_invariant_and.
 Hint Resolve sync_invariant_or.
 Hint Resolve sync_invariant_crash_xform.
 
-(*
-Theorem sync_invariant_mem_pred :
-  forall A B AEQ (f: A -> B -> pred) (m: @Mem.mem A AEQ B),
-    (forall a b, sync_invariant (f a b)) ->
-    sync_invariant (mem_pred f m).
-Proof.
-  unfold mem_pred, mem_pred_one; intros; eauto.
-Qed.
-
-Hint Resolve sync_invariant_mem_pred.
-*)
 Theorem upd_sync_invariant : forall AT AEQ V (p: @pred AT AEQ (V * list V)) m a v l l',
   sync_invariant p ->
   p m ->

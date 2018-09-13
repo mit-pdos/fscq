@@ -855,6 +855,7 @@ Module AFS.
     exact dummy_handle.
   Qed.
 
+  Hint Extern 1 ({{_|_}} Bind (changeowner _ _ _ _) _) => apply changeowner_ok : prog.
 
   Theorem file_getattr_ok :
     forall fsxp inum mscs pr,

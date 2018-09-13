@@ -171,6 +171,8 @@ Proof.
   inversion H; subst.
   destruct H3.
   constructor; eauto.
+  Unshelve.
+  unfold EqDec; apply handle_eq_dec.
 Qed.
 
 Lemma handles_valid_upd:
@@ -761,18 +763,28 @@ Lemma KIn_extract_blocks_list2:
   forall V l a t (bm: block_mem V),
     handles_valid_list bm l ->
     KIn (a, t) l ->
-    V ->
     exists v, KIn (a, v) (extract_blocks_list bm l). 
 Proof.
   unfold extract_blocks_list; intros.
   apply InA_alt in H0; deex.
+  assert (A: exists h, handle_valid bm h). {    
+      destruct l; simpl in *; subst.
+      intuition.
+      unfold handles_valid_list, handles_valid in *; simpl in *.
+      inversion H.
+      eexists; eauto.
+  }
+  destruct A.
+  unfold handle_valid in H0; destruct H0.
+
   destruct y; apply in_fst_snd_map_split in H2; destruct H2.
   unfold Map.eq_key, Map.E.eq in *; simpl in *; subst.
   eexists; apply In_fst_InA; simpl; eauto.
   rewrite map_fst_combine; simpl; eauto.
   rewrite extract_blocks_length; auto.
   repeat rewrite map_length; auto.
-  Unshelve. eauto.
+  Unshelve.
+  eauto.
 Qed.
 
 Lemma InA_extract_blocks_list:

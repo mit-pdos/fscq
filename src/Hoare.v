@@ -14,8 +14,8 @@ Set Implicit Arguments.
 Definition donecond (T: Type) := taggeddisk -> taggedmem -> domainmem -> T -> Prop.
 Definition crashcond :=  taggedmem -> domainmem -> @pred addr addr_eq_dec valuset .
 
-Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> taggedmem -> domainmem ->  @pred _ _ valuset) (p: prog T) :=
-  forall d bm hm tr donec crashc out,
+Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> taggedmem -> domainmem ->  @pred addr addr_eq_dec valuset) (p: prog T) :=
+  forall (d: taggeddisk) bm hm tr donec crashc out,
     pre donec crashc bm hm d
   -> exec pr d bm hm p out tr
   -> ((exists d' bm' hm' v, out = Finished d' bm' hm' v /\
@@ -201,6 +201,31 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
     exists F_,
     (exis (fun e1 => .. (exis (fun e2 =>
      F_ * pre * [[ hm dummy_handle = Some Public ]] *
+     [[ sync_invariant F_ ]] *
+     [[ forall r_ , corr2 pr
+        (fun done'_ crash'_ bm' hm' =>
+           post F_ r_ * [[ hm c= hm' ]] *
+           [[ bm c= bm' ]] *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
+        (rx r_) ]] *
+     [[ forall realcrash bm'' hm'',
+          crash_xform realcrash =p=> crash_xform crash ->
+          (F_ * realcrash * [[ hm c= hm'' ]] *
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
+     )) .. ))
+   )%pred
+   (Bind p1 rx)%pred)
+    (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
+     bm'' at level 0, hm'' at level 0,
+      hm at level 0, hm' at level 0,
+      e1 closed binder, e2 closed binder).
+
+Notation "{!< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'XCRASH' : bm'' , hm'' , crash >!} p1" :=
+  (forall T (rx: _ -> prog T), corr2 pr%pred
+   (fun done_ crash_ bm hm =>
+    exists F_,
+    (exis (fun e1 => .. (exis (fun e2 =>
+     F_ * pre *
      [[ sync_invariant F_ ]] *
      [[ forall r_ , corr2 pr
         (fun done'_ crash'_ bm' hm' =>

@@ -3,7 +3,6 @@ Require Import FunctionalExtensionality.
 Set Implicit Arguments.
 
 Definition EqDec (T : Type) := forall (a b : T), {a = b} + {a <> b}.
-
 (* generalized memory of any address / value type *)
 
 Definition mem {A : Type} {AEQ : EqDec A} {V : Type} := A -> option V.

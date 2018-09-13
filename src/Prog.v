@@ -83,6 +83,7 @@ Inductive prog : Type -> Type :=
 | Auth : tag -> prog bool
 | AddDom : tag -> prog handle
 | ChDom : handle -> tag -> prog unit
+| InsDom : handle -> tag -> prog unit
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
 
@@ -139,6 +140,10 @@ Inductive exec:
 | ExecChDom : forall pr d bm dm t t' a,
                dm a = Some t' ->
                exec pr d bm dm (ChDom a t) (Finished d bm (upd dm a t) tt) nil
+
+| ExecInsDom : forall pr d bm dm t a,
+               dm a = None ->
+               exec pr d bm dm (InsDom a t) (Finished d bm (upd dm a t) tt) nil
                     
 | ExecRet : forall T pr d bm dm (r: T),
               exec pr d bm dm (Ret r) (Finished d bm dm r) nil
@@ -177,16 +182,17 @@ Inductive exec:
                dm a = None ->
                exec pr d bm dm (ChDom a t) Failed nil
 
+| FailInsDom : forall pr d bm dm t a t',
+               dm a = Some t' ->
+               exec pr d bm dm (InsDom a t) Failed nil
+
 | FailBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm dm tr',
                 exec pr d bm dm p1 (@Failed T) tr' ->
                 exec pr d bm dm (Bind p1 p2) (@Failed T') tr'.
 
-
-
-
 Inductive recover_outcome (TF TR: Type) :=
  | RFinished : taggeddisk -> taggedmem -> domainmem -> TF -> recover_outcome TF TR
- | RRecovered : taggeddisk -> taggedmem -> domainmem ->TR -> recover_outcome TF TR
+ | RRecovered : taggeddisk -> taggedmem -> domainmem -> TR -> recover_outcome TF TR
  | RFailed : recover_outcome TF TR.
 
 Inductive exec_recover (TF TR: Type):
@@ -200,12 +206,12 @@ Inductive exec_recover (TF TR: Type):
 | XRCrashedFinished : forall pr tr' tr'' d dm bm bm' dm' p1 p2 d' d'r d'' dm'' bm'' (v: TR),
     exec pr d bm dm p1 (@Crashed TF d' bm' dm') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r empty_mem (upd empty_mem dummy_handle Public) p2 p2 (RFinished TR d'' bm'' dm'' v) tr''
+    -> @exec_recover TR TR pr d'r empty_mem empty_mem p2 p2 (RFinished TR d'' bm'' dm'' v) tr''
     -> exec_recover pr d bm dm p1 p2 (RRecovered TF d'' bm'' dm'' v) (tr''++tr')
 | XRCrashedRecovered :  forall pr tr' tr'' d dm bm bm' dm' p1 p2 d' d'r d'' dm'' bm'' (v: TR),
     exec pr d bm dm p1 (@Crashed TF d' bm' dm') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r empty_mem (upd empty_mem dummy_handle Public) p2 p2 (RRecovered TR d'' bm'' dm'' v) tr''
+    -> @exec_recover TR TR pr d'r empty_mem empty_mem p2 p2 (RRecovered TR d'' bm'' dm'' v) tr''
     -> exec_recover pr d bm dm p1 p2 (RRecovered TF d'' bm'' dm'' v) (tr''++tr').
 
 

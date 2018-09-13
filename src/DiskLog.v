@@ -1,4 +1,4 @@
-Require Import Arith.
+Require Import Mem Arith.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
@@ -82,8 +82,8 @@ Definition rep xp st hm :=
   Local Hint Unfold rep rep_common : hoare_unfold.
   Hint Resolve DescDefs.items_per_val_gt_0 DescDefs.items_per_val_not_0.
 
-    Lemma xform_rep_synced : forall xp na l hm,
-    crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) hm.
+  Lemma xform_rep_synced : forall xp na l hm,
+    crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) empty_mem.
   Proof.
     unfold rep, rep_common; intros.
     xform; cancel.
@@ -92,7 +92,7 @@ Definition rep xp st hm :=
 
   Lemma xform_rep_truncated : forall xp l hm,
     crash_xform (rep xp (Truncated l) hm) =p=> exists na,
-      rep xp (Synced na l) hm \/ rep xp (Synced (LogLen xp) nil) hm.
+      rep xp (Synced na l) empty_mem \/ rep xp (Synced (LogLen xp) nil) empty_mem.
   Proof.
     unfold rep, rep_common; intros.
     xform; cancel.
@@ -104,7 +104,7 @@ Definition rep xp st hm :=
 
 
   Lemma rep_domainmem_subset : forall xp hm hm',
-    subset hm hm'
+    hm c= hm'
     -> forall st, rep xp st hm
         =p=> rep xp st hm'.
   Proof.
@@ -116,8 +116,8 @@ Definition rep xp st hm :=
   
   Lemma xform_rep_extended : forall xp old new hm,
     crash_xform (rep xp (Extended old new) hm) =p=>
-       (exists na, rep xp (Synced na old) hm) \/
-       (exists na, rep xp (Synced na (old ++ new)) hm).
+       (exists na, rep xp (Synced na old) empty_mem) \/
+       (exists na, rep xp (Synced na (old ++ new)) empty_mem).
   Proof.
     unfold rep, rep_common; intros.
     xform.
@@ -139,8 +139,45 @@ Definition rep xp st hm :=
 
 
   (** Specs **)
+  Definition recover_ok :
+    forall xp cs pr,
+    {!< F nr l d,
+    PERM:pr   
+    PRE:bm, hm,
+          CacheDef.rep cs d bm * (
+          [[ (F * rep xp (Synced nr l) hm)%pred d ]]) *
+          [[ bm = empty_mem ]] *
+          [[ hm = empty_mem ]] *
+          [[ sync_invariant F ]]
+    POST:bm', hm', RET:cs'
+          CacheDef.rep cs' d bm' *
+          [[ (F * rep xp (Synced nr l) hm')%pred d ]] *
+          [[ hm' dummy_handle = Some Public ]]             
+    XCRASH:bm'', hm'', exists cs',
+          CacheDef.rep cs' d bm'' * (
+          [[ (F * rep xp (Synced nr l) hm'')%pred d ]])
+    >!} recover xp cs.
+  Proof.
+    unfold recover.
+    prestep. norm. cancel.
+    intuition simpl.
+    pred_apply.
+    eassign F; cancel.
+    eauto.
+
+    step.
+    step.
+
+    rewrite <- H1; cancel.
+    xcrash.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.
+  Qed.
+
+  Hint Extern 1 ({{_|_}} Bind (recover _ _) _) => apply recover_ok : prog.
+  
   Section UnifyProof.
-  Hint Extern 0 (okToUnify (DiskLogPadded.rep _ _) (DiskLogPadded.rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (DiskLogPadded.rep _ _ _) (DiskLogPadded.rep _ _ _)) => constructor : okToUnify.
 
   Definition read_ok :
     forall xp cs pr,
@@ -162,10 +199,10 @@ Definition rep xp st hm :=
   Proof.
     unfold read.
     hoare.
-    solve_hashmap_subset.
     rewrite <- H1; cancel; eauto.
+    Unshelve.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
-
 
 Hint Resolve rep_domainmem_subset.
   
@@ -188,23 +225,19 @@ Hint Resolve rep_domainmem_subset.
   Proof.
     unfold trunc.
     safestep.
-    eassign F; cancel.
-    eauto.
     step.
     safestep.
-    apply DiskLogPadded.rep_domainmem_subset; eauto.
-    eauto.
     simpl; unfold roundup; rewrite divup_0; omega.
-    simpl; omega.
-    solve_hashmap_subset.
+    eauto.
 
     (* crashes *)
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
     xcrash;
     eassign x; eassign x0; cancel.
     or_l; cancel.
     or_r; cancel.
+    Unshelve.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
 
 
@@ -228,9 +261,9 @@ Hint Resolve rep_domainmem_subset.
     step.
     step.
     step.
-    solve_hashmap_subset.
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    Unshelve.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   End UnifyProof.
@@ -266,7 +299,8 @@ Hint Resolve rep_domainmem_subset.
     step.
     eauto.    
     rewrite roundup_0; auto.
-    solve_hashmap_subset.
+    Unshelve.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.
@@ -377,7 +411,7 @@ Hint Resolve rep_domainmem_subset.
                  (extract_blocks bm (map ent_handle new)))).
     cancel; auto.
     rewrite rep_synced_app_pimpl.
-    eapply DiskLogPadded.rep_hashmap_subset; eauto.
+    eapply DiskLogPadded.rep_domainmem_subset; eauto.
     intuition.
     rewrite log_nonzero_app;
     repeat rewrite log_nonzero_padded_log.
@@ -390,7 +424,10 @@ Hint Resolve rep_domainmem_subset.
     unfold rounded.
     setoid_rewrite combine_length_eq.
     rewrite map_length;
-    setoid_rewrite <- H13.
+      match goal with
+      | [H: length _ = ?x |- context [?x] ] =>
+        setoid_rewrite <- H
+      end.
     rewrite Nat.sub_add_distr; auto.
     apply length_map_fst_extract_blocks_eq; auto.
     solve_hashmap_subset.
@@ -403,45 +440,11 @@ Hint Resolve rep_domainmem_subset.
     xcrash; eassign x; eassign x0; cancel.
     or_l; cancel.
     or_r; cancel.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (avail _ _) _) => apply avail_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
-
-  Definition recover_ok :
-    forall xp cs pr,
-    {< F nr l d,
-    PERM:pr   
-    PRE:bm, hm,
-          CacheDef.rep cs d bm * (
-          [[ (F * rep xp (Synced nr l) hm)%pred d ]]) *
-          [[ sync_invariant F ]]
-    POST:bm', hm', RET:cs'
-          CacheDef.rep cs' d bm' *
-          [[ (F * rep xp (Synced nr l) hm')%pred d ]]
-    XCRASH:bm'', hm'', exists cs',
-          CacheDef.rep cs' d bm'' * (
-          [[ (F * rep xp (Synced nr l) hm'')%pred d ]])
-    >} recover xp cs.
-  Proof.
-    unfold recover.
-    prestep. norm. cancel.
-    intuition simpl.
-    pred_apply.
-    eassign F; cancel.
-    eauto.
-
-    step.
-    step.
-    solve_hashmap_subset.
-
-    rewrite <- H1; cancel.
-    solve_hashmap_subset.
-    
-    xcrash.
-    solve_hashmap_subset.
-  Qed.
-
-  Hint Extern 1 ({{_|_}} Bind (recover _ _) _) => apply recover_ok : prog.

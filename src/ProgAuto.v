@@ -47,7 +47,9 @@ Ltac inv_exec' :=
   | [ H: exec _ _ _ _ (Auth _) _ _ |- _ ] =>
     inv_exec'' H
   | [ H: exec _ _ _ _ (ChDom _ _) _ _ |- _ ] =>
-    inv_exec'' H               
+    inv_exec'' H
+  | [ H: exec _ _ _ _ (InsDom _ _) _ _ |- _ ] =>
+    inv_exec'' H
   | [ H: exec _ _ _ _ (AddDom _) _ _ |- _ ] =>
     inv_exec'' H
   end.

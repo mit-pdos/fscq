@@ -203,7 +203,7 @@ Module GLog.
   Qed.
 
   Lemma rep_domainmem_subset : forall xp ms bm hm hm',
-    subset hm hm'
+   hm c= hm'
     -> forall st, rep xp st ms bm hm
         =p=> rep xp st ms bm hm'.
   Proof.
@@ -359,7 +359,7 @@ Module GLog.
 
 
   Arguments MLog.rep: simpl never.
-  Hint Extern 0 (okToUnify (MLog.rep _ _ _ _) (MLog.rep _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (MLog.rep _ _ _ _ _) (MLog.rep _ _ _ _ _)) => constructor : okToUnify.
 
 
 
@@ -630,8 +630,6 @@ Module GLog.
     apply replay_seq_latest_length in Hx; simpl in Hx; rewrite <- Hx.
     rewrite latest_effective; auto.
   Qed.
-
-  
     
 
   Lemma cached_latest_cached: forall xp ds ms bm hm,
@@ -808,7 +806,10 @@ Proof.
   eapply InA_extract_blocks_list2 in H0; eauto.
   eapply NoDupA_combine2; eauto.
   intros.
-  eapply KIn_extract_blocks_list2 in H0; cleanup; eauto.
+  eapply KIn_extract_blocks_list2 in H0. 
+  destruct H0.
+  eapply H2.
+  apply H0.
   eapply Forall_cons; eauto.
   unfold handle_valid; eauto.
   Unshelve.
@@ -906,7 +907,7 @@ Lemma dset_match_log_valid_selN : forall ds ts i n bm xp,
 
     unfold vmap_match in *.
     rewrite H.
-    rewrite <- extract_blocks_list_map; eauto.
+    erewrite <- extract_blocks_list_map; eauto.
     rewrite extract_blocks_map_extract_blocks_nested; auto.
     erewrite replay_seq_replay_mem; eauto.
     erewrite nthd_oob; eauto.
@@ -1146,7 +1147,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Qed.
 
   
-  Lemma vmap_match_nonoverlap : forall V ts vm al (bm: block_mem V),
+  Lemma vmap_match_nonoverlap : forall ts vm al (bm: block_mem tagged_block),
     overlap al vm = false ->
     vmap_match vm ts ->
     handles_valid_nested bm ts ->
@@ -1157,8 +1158,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite H0 in H; simpl in *.
     constructor; simpl in *.
     eapply nonoverlap_replay_mem_disjoint; eauto.
-    rewrite MLog.extract_blocks_map_replay_mem_comm; auto.
-    rewrite MLog.overlap_extract_blocks_map; eauto.
+    erewrite MLog.extract_blocks_map_replay_mem_comm; auto.
+    erewrite MLog.overlap_extract_blocks_map; eauto.
     inversion H1; auto.
     
     eapply IHts.
@@ -1226,7 +1227,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     apply vmap_match_nil.
     unfold handles_valid_nested; apply Forall_nil.
     apply dset_match_nil.
-    solve_hashmap_subset.
+    Unshelve.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   
@@ -1267,15 +1269,27 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    clear H17; eapply handles_valid_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    eapply handles_valid_nested_subset_trans; eauto.
     erewrite extract_blocks_nested_subset_trans; eauto.
 
-    erewrite <- latest_effective in H5; eauto.
-    eapply diskset_vmap_find_none in H11 as Hx; eauto.
-    erewrite dset_match_nthd_effective_fst in H16; eauto.
-    setoid_rewrite Hx in H16.
-    unfold extract_block in H16; simpl in *; auto.
-    solve_hashmap_subset.
+    match goal with
+    | [H: (_ * _ |-> _)%pred _ |- _ ] =>
+      rename H into Hp
+    end.
+    erewrite <- latest_effective in Hp; eauto.
+    denote dset_match as Hy.
+    eapply diskset_vmap_find_none in Hy as Hx; eauto.
+    match goal with
+    | [H: ?x = _ |- ?x = _ ] =>
+      rename H into Hz
+    end.
+    erewrite dset_match_nthd_effective_fst in Hz; eauto.
+    setoid_rewrite Hx in Hz.
+    unfold extract_block in Hz; simpl in *; auto.
 
     rewrite <- H1; cancel.
     eassign (mk_mstate (MSVMap ms_1) (MSTxns ms_1) ms'_1); cancel.
@@ -1285,7 +1299,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     erewrite <- extract_blocks_subset_trans; eauto.
     eapply handles_valid_nested_subset_trans; eauto.
     erewrite extract_blocks_nested_subset_trans; eauto.
-    solve_hashmap_subset.
+    Unshelve.
+    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Theorem submit_ok:
@@ -1367,15 +1382,16 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       rewrite Nat.add_1_r; apply lt_le_S; auto.
       omega.
       eapply dset_match_log_valid_selN; eauto.
+      eauto.
       safestep.
       safestep.
 
       (* flush() returns true *)
       erewrite extract_blocks_list_nested_selN_comm.
       setoid_rewrite <- extract_blocks_nested_length with (ts:= (MSTxns ms_1)).
-      erewrite dset_match_nthd_S.
+      setoid_rewrite dset_match_nthd_S.
       repeat rewrite extract_blocks_nested_length.
-      erewrite MLog.rep_hashmap_subset; eauto.
+      erewrite MLog.rep_domainmem_subset; eauto.
       rewrite extract_blocks_nested_length; eauto.
       erewrite extract_blocks_nested_subset_trans; eauto.
       setoid_rewrite extract_blocks_nested_length; auto.
@@ -1383,7 +1399,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       apply Nat.sub_lt.
       rewrite Nat.add_1_r; apply lt_le_S; auto.
       omega.
-      solve_hashmap_subset.
+      solve_blockmem_subset.
       solve_blockmem_subset.
 
       cancel.
@@ -1408,7 +1424,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       (* crashes *)
       norml.
       rewrite <- H1; cancel.
-      solve_hashmap_subset.
+      solve_blockmem_subset.
       solve_blockmem_subset.
       subst; repeat xcrash_rewrite.
       xform_norm; cancel.
@@ -1435,18 +1451,19 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       safestep.
       rewrite nthd_oob, latest_effective, nthd_0.
       simpl.
-      rewrite MLog.rep_hashmap_subset; eauto.
+      rewrite MLog.rep_domainmem_subset; eauto.
       erewrite <- dset_match_length; eauto.
       setoid_rewrite extract_blocks_nested_length; auto.
       apply Forall_nil.
       apply handles_valid_nested_empty.
       apply dset_match_nil.
-      solve_hashmap_subset.
+      solve_blockmem_subset.
       cancel.
 
     - eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); unfold false_pred; cancel.
       Unshelve.
       all: eauto; try solve constructor.
+      all: try exact empty_mem.
       exact tt.
       all: unfold EqDec; apply handle_eq_dec.
   Qed.
@@ -1497,7 +1514,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       inversion H; cleanup; clear H.
       inversion H1; cleanup; clear H1.
       rewrite H0.
-      rewrite <- extract_blocks_map_extract_blocks_eq; simpl.
+      erewrite <- extract_blocks_map_extract_blocks_eq; simpl.
       rewrite <- MLog.extract_blocks_map_replay_mem_comm; auto.
       rewrite Forall_forall; intros.
       denote In as Hin; apply in_map_iff in Hin; cleanup.
@@ -1512,9 +1529,10 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       simpl; auto.
       specialize IHts with (1:=H5)
          (2:=MapFacts.Equal_refl (fold_right replay_mem hmap0 ts))(3:=H6).
-      rewrite <- extract_blocks_map_extract_blocks_eq in IHts; simpl.
+      erewrite <- extract_blocks_map_extract_blocks_eq in IHts; simpl.
       rewrite Forall_forall in *; eapply IHts.
       repeat apply in_map; auto.
+      apply H.
       apply handles_valid_nested_handles_valid_map_fold_right; auto.
       apply MLog.handles_valid_replay_mem2; auto.
       apply handles_valid_nested_handles_valid_map_fold_right; auto.
@@ -1553,12 +1571,20 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite latest_effective, nthd_0; simpl; eauto.
     erewrite <- dset_match_length; eauto.
     setoid_rewrite extract_blocks_nested_length; auto.
-    clear H16; erewrite extract_blocks_nested_subset_trans; eauto.
-    clear H16; eapply handles_valid_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    erewrite extract_blocks_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    eapply handles_valid_nested_subset_trans; eauto.
     apply Forall_nil.
     apply handles_valid_nested_empty.
     apply dset_match_nil.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
     cancel.
 
     denote (length _ > _) as Hf; contradict Hf.
@@ -1611,11 +1637,11 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     
     simpl.
     unfold handles_valid_nested; rewrite Forall_forall; intros.
-    inversion H12; subst.
+    denote In as Hin; inversion Hin; subst.
     eapply handles_valid_list_subset_trans; eauto.
     eapply handles_valid_nested_handles_valid_map; eauto.
     unfold extract_blocks_nested; simpl; eauto.
-    inversion H13.
+    denote (In _ []) as Hin2; inversion Hin2.
 
     simpl.
     unfold effective; simpl; rewrite popn_0. 
@@ -1627,8 +1653,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite cuttail_length; omega.
     erewrite <- extract_blocks_list_subset_trans; eauto.
     erewrite extract_blocks_nested_subset_trans; eauto.
-    inversion H10; auto.
-    inversion H10; auto.
+    denote handles_valid_nested as Hh; inversion Hh; auto.
+    denote handles_valid_nested as Hh; inversion Hh; auto.
     eapply handles_valid_list_subset_trans; eauto.
     eapply handles_valid_nested_handles_valid_map; eauto.
     simpl; eauto.
@@ -1637,13 +1663,15 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
 
     safestep.
     repeat match goal with
-              | [ H := ?e |- _ ] => subst H
-            end; cancel.
+           | [ H := ?e |- _ ] => subst H
+           end; cancel.
     step.
     safestep.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
 
-    Unshelve. all: try exact nil; eauto; try exact hmap0.
+    Unshelve.
+    all: try exact nil; try exact addr; eauto; try exact hmap0.
+    all: unfold EqDec; apply handle_eq_dec.    
   Qed.
 
 
@@ -1671,10 +1699,11 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     safestep.
     step.
     step.
-    erewrite rep_hashmap_subset.
+    erewrite rep_domainmem_subset.
     apply cached_latest_cached.
-    solve_hashmap_subset.
-    solve_hashmap_subset.
+    eauto.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Theorem flushsync_ok:
@@ -1694,21 +1723,25 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold flushsync.
     step.
     prestep; unfold rep; cancel.
+    eauto.
     prestep; unfold rep; cancel.
     prestep; unfold rep; cancel.
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    clear H21;
+    match goal with
+    | [H: ?x c= ?x |- _] =>
+      clear H
+    end.
     eapply handles_valid_nested_subset_trans; eauto.
     erewrite extract_blocks_nested_subset_trans; eauto.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
     solve_blockmem_subset.
 
     cancel.
     norml.
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
     solve_blockmem_subset.
     xcrash.
     denote rep as Hx; unfold rep in Hx.
@@ -1745,10 +1778,11 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     safestep.
     step.
     step.
-    erewrite rep_hashmap_subset.
+    erewrite rep_domainmem_subset.
     apply cached_latest_cached.
-    solve_hashmap_subset.
-    solve_hashmap_subset.
+    eauto.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.    
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (flushsync_noop _ _) _) => apply flushsync_noop_ok : prog.
@@ -1785,18 +1819,22 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     erewrite dset_match_nthd_effective_fst; eauto; simpl.
     erewrite map_length; eauto.
     rewrite dsupd_nthd.
-    erewrite MLog.rep_hashmap_subset; eauto.
+    erewrite MLog.rep_domainmem_subset; eauto.
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    clear H19; eapply handles_valid_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _] =>
+      clear H
+    end.
+    eapply handles_valid_nested_subset_trans; eauto.
 
     rewrite effective_dsupd_comm.
     erewrite extract_blocks_nested_subset_trans.
     eapply dset_match_dsupd_notin; eauto.
     eauto.
     auto.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
     
     (* crashes *)
     cancel.
@@ -1824,6 +1862,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     apply Forall_nil.
     apply handles_valid_nested_empty.
     apply dset_match_nil.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.   
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
@@ -1854,12 +1894,13 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     simpl; pred_apply; cancel.
     eauto.
     auto.
+    eauto.
 
     step.
     step.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
     solve_blockmem_subset.
     repeat xcrash_rewrite; xform_norm.
 
@@ -1875,20 +1916,25 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite synced_recover_any; eauto.
 
     rewrite effective_dsupd_comm.
-    rewrite H22 in H30; simpl in H30.
-    rewrite Nat.sub_0_r, <- latest_nthd in H30.
-    rewrite <- dsupd_latest in H30.
-    unfold effective in H30.
+    match goal with
+    | [H: MSTxns _ = [] |- _] =>
+      rename H into Htxn
+    end.
+    denote dset_match as Hds.
+    rewrite Htxn in Hds; simpl in Hds.
+    rewrite Nat.sub_0_r, <- latest_nthd in Hds.
+    rewrite <- dsupd_latest in Hds.
+    unfold effective in Hds.
     simpl in *.
-    rewrite popn_0 in H30.
-    apply dset_match_length in H30 as Hx; simpl in Hx.
+    rewrite popn_0 in Hds.
+    apply dset_match_length in Hds as Hx; simpl in Hx.
     setoid_rewrite extract_blocks_nested_length in Hx; auto.
     cleanup.
     unfold effective.
     rewrite Nat.sub_0_r.
     rewrite popn_oob.
     unfold dsupd, d_map; simpl.
-    rewrite dsupd_latest in H30; auto.
+    rewrite dsupd_latest in Hds; auto.
     auto.
 
     rewrite <- H1; cancel.
@@ -1944,7 +1990,6 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite latest_effective; eauto.
     3: eauto.
     eapply handles_valid_nested_subset_trans; eauto.
-
     
     rewrite effective_dsupd_comm.
     erewrite extract_blocks_nested_subset_trans; eauto.
@@ -1985,11 +2030,15 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    clear H16; eapply handles_valid_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    eapply handles_valid_nested_subset_trans; eauto.
     rewrite effective_dssync_comm.
     eapply dset_match_dssync; eauto.
     erewrite extract_blocks_nested_subset_trans; eauto.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
     
     rewrite <- H1; cancel.
     rewrite MLog.synced_recover_before.
@@ -2000,8 +2049,10 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    solve_hashmap_subset.
-    Unshelve. eauto.
+    
+    Unshelve.
+    eauto.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Theorem dwrite_vecs'_ok:
@@ -2032,17 +2083,28 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    clear H18; eapply handles_valid_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    eapply handles_valid_nested_subset_trans; eauto.
     rewrite effective_dsupd_vecs_comm.
     eapply dset_match_dsupd_vecs_nonoverlap; eauto.
-    clear H18; eapply handles_valid_nested_subset_trans; eauto.
-    clear H18; eapply handles_valid_list_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    eapply handles_valid_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    eapply handles_valid_list_subset_trans; eauto.
     erewrite extract_blocks_nested_subset_trans; eauto.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
 
     norml.
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
     xcrash.
     or_l; xform_norm; cancel.
     xform_normr; cancel.
@@ -2064,6 +2126,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     apply Forall_nil.
     apply handles_valid_nested_empty.
     apply dset_match_nil.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (dwrite_vecs' _ _ _) _) => apply dwrite_vecs'_ok : prog.
@@ -2092,13 +2156,14 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     eapply handles_valid_list_subset_trans; eauto.
     eapply effective_avl_addrs_ok; eauto.
     auto.
+    eauto.
 
     step.
     step.
     solve_hashmap_subset.
 
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
     solve_blockmem_subset.
     repeat xcrash_rewrite; xform_norm.
 
@@ -2151,7 +2216,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite recover_before_any_fst.
     auto.
     eapply handles_valid_nested_subset_trans.
-    2: apply H13.
+    2: apply H14.
     solve_blockmem_subset.
     
     rewrite effective_dsupd_vecs_comm.
@@ -2197,11 +2262,15 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    clear H16; eapply handles_valid_nested_subset_trans; eauto.
+    match goal with
+    | [H: ?x c= ?x |- _ ] =>
+      clear H
+    end.
+    eapply handles_valid_nested_subset_trans; eauto.
     rewrite effective_dssync_vecs_comm.
     eapply dset_match_dssync_vecs; eauto.
     erewrite extract_blocks_nested_subset_trans; eauto.
-    solve_hashmap_subset.
+    solve_blockmem_subset.
 
     rewrite <- H1; cancel.
     erewrite dset_match_nthd_effective_fst by eauto.
@@ -2212,7 +2281,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold handles_valid_nested, handles_valid_list in *; 
     rewrite Forall_forall in *; intros.
     erewrite <- extract_blocks_subset_trans; eauto.
-    solve_hashmap_subset.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Definition recover_any_pred xp ds bm hm :=
@@ -2237,7 +2307,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
 
   Theorem crash_xform_any : forall xp ds bm hm,
     crash_xform (would_recover_any xp ds bm hm) =p=>
-                 recover_any_pred  xp ds bm hm.
+                 recover_any_pred  xp ds empty_mem empty_mem.
   Proof.
     unfold would_recover_any, recover_any_pred, rep; intros.
     xform_norm.
@@ -2252,15 +2322,16 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     denote nthd as Hnthd.
     unfold MLog.recover_either_pred; xform_norm.
     
-    - norm. cancel.
-      eassign (mk_mstate hmap0 nil ms'); eauto.
-      cancel.
+    - unfold MLog.crash_rep, MLog.rep; norm. cancel.
+      eassign (mk_mstate hmap0 nil hmap0); eauto.
       intuition simpl.
       eauto.
       apply Forall_nil.
       apply vmap_match_nil.
       apply handles_valid_nested_empty.
       apply dset_match_nil.
+      apply handles_valid_map_empty.
+      apply map_empty_hmap0.
       setoid_rewrite Hnthd; auto.
 
     - destruct (Nat.eq_dec x0 (length (MSTxns x))) eqn:Hlength; subst.

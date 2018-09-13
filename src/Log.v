@@ -28,6 +28,25 @@ Set Implicit Arguments.
 
 Parameter should_flushall : bool.
 
+Ltac solve_sync_invariant :=
+  match goal with
+  | [ |- forall _, sync_invariant _] =>
+    intros; try solve_sync_invariant
+  | [ |- sync_invariant (exists _, _)] =>
+    apply sync_invariant_exists; intros; try solve_sync_invariant
+  | [ |- sync_invariant (_ * _)] =>
+    apply sync_invariant_sep_star; try solve_sync_invariant
+  | [ |- sync_invariant (_ /\ _)] =>
+    apply sync_invariant_and; try solve_sync_invariant
+  | [ |- sync_invariant (_ \/ _)] =>
+    apply sync_invariant_or; try solve_sync_invariant
+  | [ |- sync_invariant ([[ _ ]]) ] =>
+    apply sync_invariant_lift_empty; try solve_sync_invariant
+  end.
+
+Hint Extern 0 (sync_invariant _) => solve_sync_invariant.
+
+
 Module LOG.
 
   Import AddrMap LogReplay.

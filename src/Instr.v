@@ -16,6 +16,49 @@ Qed.
 
 Hint Unfold false_pred: hoare_unfold.
 
+Lemma insdom_secure:
+  forall pr i t,
+    {!< F,
+       PERM: pr
+       PRE: bm, hm,
+         F * [[ hm i = None ]]
+       POST: bm', hm',
+          RET : tt
+          F * [[ hm' = upd hm i t]]
+       CRASH: bm'', hm'',
+          false_pred (* Can't crash *)
+     >!} InsDom i t.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split_ors; cleanup; try congruence.
+    split.
+    right; do 3 eexists; intuition.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm; try congruence.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
+Qed.
+
+Hint Extern 1 (corr2 _ _ (Bind (InsDom _ _) _)) => apply insdom_secure : prog.
+
+
 Lemma chdom_secure:
   forall pr i t,
     {~!< F t',

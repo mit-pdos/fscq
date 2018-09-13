@@ -103,7 +103,7 @@ Module AFS_RECOVER.
   PERM:pr     
   PRE:bm, hm,
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-         [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs sm) ]]] *
+         [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:bm', hm', RET:^(mscs',r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
@@ -118,6 +118,7 @@ Module AFS_RECOVER.
     recover_ro_ok.
     destruct v.
     cancel.
+    cancel; eauto.
     eauto.
     step.
 
@@ -133,6 +134,7 @@ Module AFS_RECOVER.
     rewrite SB.crash_xform_rep.
     rewrite H3.
     safecancel.
+    unfold LOG.after_crash.
     eauto.
     eauto.
 
