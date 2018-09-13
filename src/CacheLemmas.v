@@ -1133,6 +1133,34 @@ Qed.
     exists m; eauto.
   Qed.
 
+  Lemma crash_xform_rep_empty: forall cs bm m,
+    crash_xform (rep cs m bm) =p=>
+       exists m' cs', [[ possible_crash m m' ]] * rep cs' m' empty_mem.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite xform_mem_pred_cachepred.
+    cancel.
+    eassign (cache0 (CSMaxCount cs)); cancel.
+    all: unfold cache0; simpl; eauto.
+    unfold size_valid in *; intuition.
+    unfold addr_valid in *; intuition.
+    eapply MapFacts.empty_in_iff; eauto.
+  Qed.
+
+
+  Lemma crash_xform_rep_pred_empty : forall cs m bm (F : pred),
+    F%pred m ->
+    crash_xform (rep cs m bm) =p=>
+    exists m' cs', rep cs' m' empty_mem * [[ (crash_xform F)%pred m' ]].
+  Proof.
+    intros.
+    rewrite crash_xform_rep_empty.
+    norm. cancel. split; auto.
+    exists m; eauto.
+  Qed.
+  
+
   Lemma listpred_cachepred_mem_except : forall a v l m buf bm,
     listpred (mem_pred_one (cachepred buf bm)) ((a, v) :: l) m ->
     listpred (mem_pred_one (cachepred buf bm)) l (mem_except m a).

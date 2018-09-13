@@ -2285,15 +2285,15 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
-  Definition recover_any_pred xp ds bm hm :=
-    ( exists d n ms, [[ n <= length (snd ds) ]] *
-      (rep xp (Cached (d, nil)) ms bm hm) *
+  Definition recover_any_pred xp ds hm :=
+    ( exists d n na, [[ n <= length (snd ds) ]] *
+      MLog.crash_rep xp na d hm *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]])%pred.
 
-  Theorem sync_invariant_recover_any_pred : forall xp ds bm hm,
-    sync_invariant (recover_any_pred xp ds bm hm).
+  Theorem sync_invariant_recover_any_pred : forall xp ds hm,
+    sync_invariant (recover_any_pred xp ds hm).
   Proof.
-    unfold recover_any_pred; intros; auto 10.
+    unfold recover_any_pred, MLog.crash_rep, MLog.synced_rep; intros; eauto 50.
   Qed.
   Hint Resolve sync_invariant_recover_any_pred.
 
@@ -2307,7 +2307,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
 
   Theorem crash_xform_any : forall xp ds bm hm,
     crash_xform (would_recover_any xp ds bm hm) =p=>
-                 recover_any_pred  xp ds empty_mem empty_mem.
+                 recover_any_pred  xp ds empty_mem.
   Proof.
     unfold would_recover_any, recover_any_pred, rep; intros.
     xform_norm.
@@ -2322,27 +2322,15 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     denote nthd as Hnthd.
     unfold MLog.recover_either_pred; xform_norm.
     
-    - unfold MLog.crash_rep, MLog.rep; norm. cancel.
-      eassign (mk_mstate hmap0 nil hmap0); eauto.
+    - norm. cancel.
+      eassign n.
       intuition simpl.
-      eauto.
-      apply Forall_nil.
-      apply vmap_match_nil.
-      apply handles_valid_nested_empty.
-      apply dset_match_nil.
-      apply handles_valid_map_empty.
-      apply map_empty_hmap0.
       setoid_rewrite Hnthd; auto.
 
-    - destruct (Nat.eq_dec x0 (length (MSTxns x))) eqn:Hlength; subst.
+    - destruct (Nat.eq_dec x0 (length (MSTxns x))); subst.
       norm. cancel.
-      rewrite nthd_0.
-      eassign (mk_mstate hmap0 nil ms'); eauto.
+      eassign n.
       intuition eauto.
-      apply Forall_nil.
-      auto.
-      apply handles_valid_nested_empty.
-      apply dset_match_nil.
       setoid_rewrite Hnthd.
       pred_apply.
       rewrite selR_oob; simpl; auto.
@@ -2354,13 +2342,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       clear Hnthd.
       denote nthd as Hnthd.
       norm. cancel.
-      rewrite nthd_0.
-      eassign (mk_mstate hmap0 nil ms'); eauto.
+      eassign n1.
       intuition eauto.
-      apply Forall_nil.
-      auto.
-      apply handles_valid_nested_empty.
-      apply dset_match_nil.
       unfold selR in *.
       destruct (lt_dec x0 (length (extract_blocks_nested bm (MSTxns x)))); intuition.
       pred_apply.
@@ -2382,7 +2365,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
 
   Lemma crash_xform_recovering : forall xp d mm bm hm,
     crash_xform (rep xp (Recovering d) mm bm hm) =p=>
-                 recover_any_pred xp (d, nil) bm hm.
+                 recover_any_pred xp (d, nil) empty_mem.
   Proof.
     unfold recover_any_pred, rep; intros.
     xform_norm.
@@ -2390,62 +2373,44 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     instantiate (1:=nil).
     unfold MLog.recover_either_pred.
     norm.
-    unfold stars; simpl.
-    eassign (mk_mstate hmap0 nil ms'); cancel.
+    unfold stars; simpl; cancel.
     intuition eauto.
-    simpl; apply Forall_nil.
-    auto.
-    simpl; apply handles_valid_nested_empty.
-    apply dset_match_nil.
-    intuition simpl; eauto.
-    eassign (mk_mstate hmap0 nil ms'); cancel.
+    cancel.
     intuition eauto.
-    simpl; apply Forall_nil.
-    auto.
-    simpl; apply handles_valid_nested_empty.
-    apply dset_match_nil.
   Qed.
   
   Lemma crash_xform_cached : forall xp ds ms bm hm,
     crash_xform (rep xp (Cached ds) ms bm hm) =p=>
-      exists d n ms', rep xp (Cached (d, nil)) ms' bm hm *
-        [[[ d ::: (crash_xform (diskIs (list2nmem (nthd n ds)))) ]]] *
-        [[ n <= length (snd ds) ]].
+      recover_any_pred xp ds empty_mem.
   Proof.
-    unfold rep; intros.
+    unfold rep, recover_any_pred; intros.
     xform_norm.
     rewrite MLog.crash_xform_synced; norm.
-    eassign (mk_mstate hmap0 nil ms'); simpl.
     cancel.
-    intuition simpl.
-    apply Forall_nil.
-    auto.
-    apply handles_valid_nested_empty.
-    apply dset_match_nil.
-    pred_apply.
-    cancel.
-    omega.
+    repeat split.
+    2: eauto.
+    apply Nat.le_sub_l.
   Qed.
 
+  (*
   Lemma any_pred_any : forall xp ds bm hm,
-    recover_any_pred xp ds bm hm =p=>
+    recover_any_pred xp ds hm =p=>
     exists d, would_recover_any xp (d, nil) bm hm.
   Proof.
     unfold recover_any_pred; intros.
     xform_norm.
     rewrite cached_recover_any; cancel.
   Qed.
+  *)
 
-
-  Lemma recover_idem : forall xp ds bm hm,
-    crash_xform (recover_any_pred xp ds bm hm) =p=>
-                 recover_any_pred xp ds bm hm.
+  Lemma recover_idem : forall xp ds hm,
+    crash_xform (recover_any_pred xp ds hm) =p=>
+                 recover_any_pred xp ds empty_mem.
   Proof.
     unfold recover_any_pred, rep; intros.
     xform_norm.
-    - rewrite MLog.crash_xform_synced.
-      norm.
-      eassign (mk_mstate (MSVMap x1) (MSTxns x1) ms'); cancel.
+    - rewrite MLog.crash_rep_idem.
+      norm. cancel.
       replace d' with x in *.
       intuition simpl; eauto.
       apply list2nmem_inj.
@@ -2454,25 +2419,25 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
 
   Theorem recover_ok:
     forall xp cs pr,
-    {< F raw ds,
+    {!< F raw ds,
     PERM:pr   
     PRE:bm, hm,
       CacheDef.rep cs raw bm *
-      [[ (F * recover_any_pred xp ds bm hm)%pred raw ]] *
+      [[ (F * recover_any_pred xp ds hm)%pred raw ]] *
+      [[ bm = empty_mem ]] *
+      [[ hm = empty_mem ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:ms' exists raw',
       CacheDef.rep (MSCache ms') raw' bm' *
       [[ (exists d n, [[ n <= length (snd  ds) ]] *
           F * rep xp (Cached (d, nil)) (fst ms') bm' hm' *
           [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-      )%pred raw' ]]
+         )%pred raw' ]] *
+      [[ hm' dummy_handle = Some Public ]]
     XCRASH:bm', hm',
-      exists raw' cs' mm', CacheDef.rep cs' raw' bm' *
-      [[ (exists d n, [[ n <= length (snd  ds) ]] *
-          F * rep xp (Recovering d) mm' bm' hm' *
-          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-          )%pred raw' ]]
-    >} recover xp cs.
+      exists raw' cs', CacheDef.rep cs' raw' bm' *
+      [[ (F * recover_any_pred xp ds hm')%pred raw' ]]
+    >!} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
     prestep. norm'l.
@@ -2481,9 +2446,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     safecancel.
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
-    rewrite nthd_0; simpl; eauto.
-    auto.
-
+    eauto.
+    
     step.
     safestep.
 
@@ -2496,7 +2460,8 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     apply handles_valid_nested_empty.
     apply dset_match_nil.
     eassign (nil: list (addr * tagged_block)); cancel.
-    solve_hashmap_subset.
+    eauto.
+    solve_blockmem_subset.
 
     rewrite <- H1; cancel.
     solve_hashmap_subset.
@@ -2504,22 +2469,15 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     xform_norm.
     cancel.
     xform_norm; cancel.
-    xform_norm; cancel.
-    rewrite crash_xform_sep_star_dist; cancel.
     xform_norm.
-    norm. cancel.
-    intuition.
-    pred_apply.
-    norm. cancel.
+    safecancel.
 
-    eassign (mk_mstate hmap0 nil x1); eauto.
-    intuition simpl; eauto.
-    apply Forall_nil.
-    apply handles_valid_nested_empty.
     cancel.
-    intuition simpl; eauto.
-    apply Forall_nil.
-    apply handles_valid_nested_empty.
+    xform_norm. cancel.
+    xform_norm.
+    safecancel.
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
 
