@@ -23,11 +23,10 @@ Set Implicit Arguments.
   Record dirfile := mk_dirfile {
     DFData : list datatype;
     DFAttr : attrtype;
-    DFOwner: tag;
-    DFDomid: handle
+    DFOwner: tag
   }.
 
-  Definition dirfile0 := mk_dirfile nil INODE.iattr0 Public dummy_handle.
+  Definition dirfile0 := mk_dirfile nil INODE.iattr0 Public.
 
   Inductive dirtree :=
   | TreeFile : addr -> dirfile -> dirtree
@@ -57,9 +56,9 @@ Set Implicit Arguments.
     | TreeDir  _ _ => dirfile0
     end.
 
-  Definition synced_dirfile f := mk_dirfile (Array.synced_list (map fst (DFData f))) (DFAttr f) (DFOwner f) (DFDomid f).
+  Definition synced_dirfile f := mk_dirfile (Array.synced_list (map fst (DFData f))) (DFAttr f) (DFOwner f).
 
-  Definition dirfile_to_bfile f c := BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) (DFDomid f) c.
+  Definition dirfile_to_bfile f c := BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) c.
 
 
   Definition find_subtree_helper {T} (rec : dirtree -> option T) name

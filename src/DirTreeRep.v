@@ -121,7 +121,7 @@ Set Implicit Arguments.
   Qed.
 
   Theorem rep_domainmem_subset : forall mscs fsxp F tree ilist frees sm dm dm',
-    dm c= dm' ->
+    subset dm dm' ->
     rep fsxp F tree ilist frees mscs sm dm =p=> rep fsxp F tree ilist frees mscs sm dm'.
   Proof.
     unfold rep; intros.

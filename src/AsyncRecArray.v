@@ -49,8 +49,8 @@ Module AsyncRecArray (RA : RASig).
 
   (** rep invariant *)
   Inductive state : Type :=
-  | Synced : list handle -> itemlist -> state
-  | Unsync : list handle -> itemlist -> state
+  | Synced : list addr -> itemlist -> state
+  | Unsync : list addr -> itemlist -> state
   .
 
   (* This rep states that there is a packed and tagged version of the itemlist *)
@@ -535,8 +535,6 @@ Module AsyncRecArray (RA : RASig).
     rewrite firstn_oob; auto.
     repeat setoid_rewrite combine_length_eq; auto.
     rewrite nils_length; setoid_rewrite combine_length_eq; auto.
-    Unshelve.
-    unfold Mem.EqDec; apply handle_eq_dec.
   Qed.
 
   Lemma vsupd_range_unsync_array : forall xp start tags items old_vs,

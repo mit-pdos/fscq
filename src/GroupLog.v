@@ -90,7 +90,7 @@ Module GLog.
 
   Definition rep xp st ms bm hm :=
     let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
-    ([[ Forall (fun ents => Forall (fun t => t = dummy_handle)
+    ([[ Forall (fun ents => Forall (fun t => t = 0)
                    (map fst (extract_blocks bm (map snd ents)))) ts ]] *
    match st with
     | Cached ds =>
@@ -203,7 +203,7 @@ Module GLog.
   Qed.
 
   Lemma rep_domainmem_subset : forall xp ms bm hm hm',
-   hm c= hm'
+   subset hm hm'
     -> forall st, rep xp st ms bm hm
         =p=> rep xp st ms bm hm'.
   Proof.
@@ -548,7 +548,7 @@ Module GLog.
     dset_match xp (effective ds (length ts)) (extract_blocks_nested bm ts) ->
     Forall
     (fun ents : list (addr * handle) =>
-     Forall (fun t => t = dummy_handle)
+     Forall (fun t => t = 0)
        (map fst (extract_blocks bm (map snd ents)))) ts ->
     MLog.would_recover_before xp ds!! bm hm =p=>
     would_recover_any xp ds bm hm.
@@ -570,7 +570,7 @@ Module GLog.
     len = length ts ->
     Forall
     (fun ents : list (addr * handle) =>
-     Forall (fun t => t = dummy_handle)
+     Forall (fun t => t = 0)
        (map fst (extract_blocks bm (map snd ents)))) ts ->
     MLog.would_recover_before xp (fst (effective ds len)) bm hm =p=>
     would_recover_any xp ds bm hm.
@@ -590,7 +590,7 @@ Module GLog.
     dset_match xp (effective ds (length ts)) (extract_blocks_nested bm ts) ->
     Forall
     (fun ents : list (addr * handle) =>
-     Forall (fun t => t = dummy_handle)
+     Forall (fun t => t = 0)
        (map fst (extract_blocks bm (map snd ents)))) ts ->
     MLog.rep xp (MLog.Synced nr ds!!) ms bm hm =p=>
     would_recover_any xp ds bm hm.
@@ -1037,7 +1037,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     dset_match xp (effective ds (length ms0)) (extract_blocks_nested bm ms0) ->
     Forall
     (fun ents : list (addr * handle) =>
-     Forall (fun t => t = dummy_handle)
+     Forall (fun t => t = 0)
        (map fst (extract_blocks bm (map snd ents)))) ms0 ->
     rep xp (Cached ((dssync_vecs ds al) !!, nil)) ms bm hm =p=>
     would_recover_any xp (dssync_vecs ds al) bm hm.
@@ -1057,7 +1057,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     dset_match xp (effective ds (length ms0)) (extract_blocks_nested bm ms0) ->
     Forall
     (fun ents : list (addr * handle) =>
-     Forall (fun t => t = dummy_handle)
+     Forall (fun t => t = 0)
        (map fst (extract_blocks bm (map snd ents)))) ms0 ->
     rep xp (Cached (ds !!, nil)) ms bm hm =p=>
     would_recover_any xp ds bm hm.
@@ -1310,7 +1310,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     PRE:bm, hm,
         << F, rep: xp (Cached ds) ms bm hm >> *
         [[ handles_valid_list bm ents ]] *
-        [[ Forall (fun t => t = dummy_handle)
+        [[ Forall (fun t => t = 0)
                   (map fst (extract_blocks bm (map snd ents))) ]] *          
         [[ log_valid ents ds!! ]]
     POST:bm', hm', RET:^(ms', r)
@@ -1502,10 +1502,10 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       vmap_match vm ts ->
       Forall
          (fun ents : list (addr * handle) =>
-          Forall (fun t => t = dummy_handle)
+          Forall (fun t => t = 0)
             (map fst (extract_blocks bm (map snd ents)))) 
          ts ->
-      Forall (fun t => t = dummy_handle)
+      Forall (fun t => t = 0)
              (map fst (extract_blocks bm (map snd (Map.elements vm)))).
     Proof.
       unfold vmap_match; induction ts; simpl; intros; eauto.
@@ -2433,7 +2433,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
           F * rep xp (Cached (d, nil)) (fst ms') bm' hm' *
           [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
          )%pred raw' ]] *
-      [[ hm' dummy_handle = Some Public ]]
+      [[ hm' 0 = Some Public ]]
     XCRASH:bm', hm',
       exists raw' cs', CacheDef.rep cs' raw' bm' *
       [[ (F * recover_any_pred xp ds hm')%pred raw' ]]

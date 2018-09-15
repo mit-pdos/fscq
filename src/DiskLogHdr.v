@@ -86,9 +86,9 @@ Definition rep xp state : @rawpred tagged_block:=
   ([[ state_goodSize state ]] *
    match state with
    | Synced n =>
-     (LAHdr xp) |+> ((dummy_handle, hdr2val (mk_header n)), nil)
+     (LAHdr xp) |+> ((0, hdr2val (mk_header n)), nil)
    | Unsync n o =>
-     (LAHdr xp) |+> ((dummy_handle, hdr2val (mk_header n)), [(dummy_handle, hdr2val (mk_header o))]%list)
+     (LAHdr xp) |+> ((0, hdr2val (mk_header n)), [(0, hdr2val (mk_header o))]%list)
    end)%pred.
 
 
@@ -99,7 +99,7 @@ Definition read xp cs := Eval compute_rec in
       Ret ^(cs, (# ((val2hdr v) :-> "ndesc"), # ((val2hdr v) :-> "ndata"))).
 
 Definition write xp n cs :=
-    h <- Seal dummy_handle (hdr2val (mk_header n));;
+    h <- Seal 0 (hdr2val (mk_header n));;
     cs <- write (LAHdr xp) h cs;;
     Ret cs.
 
@@ -114,7 +114,7 @@ Definition sync_now xp cs :=
      Ret cs.
 
 Definition init xp cs :=
-    hdr <- Seal dummy_handle (hdr2val (mk_header((0, 0))));;
+    hdr <- Seal 0 (hdr2val (mk_header((0, 0))));;
     cs <- CacheDef.write (LAHdr xp) hdr cs;;
     cs <- begin_sync cs;;
     cs <- CacheDef.sync (LAHdr xp) cs;;
@@ -157,7 +157,7 @@ Theorem write_ok :
          [[ (F * rep xp (Synced old))%pred d ]]
     POST:bm', hm', RET: cs
          exists d', CacheDef.rep cs d' bm' *
-         [[ exists h, bm' = upd bm h (dummy_handle, (hdr2val (mk_header n))) ]] *                       
+         [[ exists h, bm' = upd bm h (0, (hdr2val (mk_header n))) ]] *                       
          [[ (F * rep xp (Unsync n old))%pred d' ]]
     XCRASH:bm'', hm'',
          exists cs' d', CacheDef.rep cs' d' bm'' * 
@@ -169,6 +169,7 @@ Proof.
   safestep.
   rewrite rep_none_upd_pimpl; eauto.
   apply upd_eq; auto.
+  eauto.
   eauto.
   eauto.
   step.
@@ -204,7 +205,6 @@ Proof.
   unfold hdr_goodSize in *; intuition.
   repeat rewrite wordToNat_natToWord_idempotent'; auto.
   destruct n; auto.
-  eexists; repeat(eapply hashmap_subset_trans; eauto).
 Qed.
 
 Theorem sync_ok :
@@ -227,7 +227,6 @@ Proof.
   all: eauto.
   step.
   step.
-  eexists; eapply hashmap_subset_trans; eauto.
 Qed.
 
 Theorem sync_now_ok :
@@ -254,11 +253,8 @@ Proof.
   all: eauto.
   step.
   step.
-  eexists; repeat(eapply hashmap_subset_trans; eauto).
   rewrite <- H1; cancel; eauto.
-  eexists; repeat(eapply hashmap_subset_trans; eauto).
   rewrite <- H1; cancel; eauto.
-  eexists; repeat(eapply hashmap_subset_trans; eauto).
 Qed.
 
 
@@ -294,11 +290,11 @@ Proof.
   step.
   unfold hdr_goodSize; cbn.
   repeat split; apply zero_lt_pow2.
-  eexists; repeat (eapply hashmap_subset_trans; eauto).
+  solve_blockmem_subset.
   all: rewrite <- H1; cancel;
-  [ apply pimpl_any |
-    eexists; repeat (eapply hashmap_subset_trans; eauto) |
+  [ apply pimpl_any | solve_blockmem_subset |
     unfold pimpl; intros; eauto ].
+
   Unshelve.
   all: unfold EqDec; apply handle_eq_dec.
 Qed.

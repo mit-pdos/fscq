@@ -575,21 +575,21 @@ Module SDIR.
     Ret ^(ms, List.map readdir_trans r).
 
 
-  Definition rep f (dsmap : @mem string string_dec (addr * bool)) : Prop :=
-    exists dmap, DIR.rep f dmap
+  Definition rep f inum (dsmap : @mem string string_dec (addr * bool)): Prop :=
+    exists dmap, DIR.rep f inum dmap
     /\ (forall w, indomain w dmap -> wname_valid w)
     /\ (forall s, indomain s dsmap -> sname_valid s)
     /\ mem_atrans wname2sname dmap dsmap wname_valid.
 
   Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms sm dm : @pred _ addr_eq_dec valuset :=
     (exists flist,
-     [[ INODE.IDomid (selN ilist inum INODE.inode0) = dummy_handle ]] *
      [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) dm ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
-     [[ rep f dsmap ]])%pred.
+     [[ BFILE.BFOwner f = Public ]] *
+     [[ rep f inum dsmap ]])%pred.
 
-  Lemma rep_mem_eq : forall f m1 m2,
-    rep f m1 -> rep f m2 -> m1 = m2.
+  Lemma rep_mem_eq : forall f m1 m2 inum,
+    rep f inum m1 -> rep f inum m2 -> m1 = m2.
   Proof.
     unfold rep, mem_atrans; intros.
     repeat deex.
@@ -752,12 +752,12 @@ Module SDIR.
     apply notindomain_not_indomain; eauto.
   Qed.
 
-  Lemma link_dir_rep_pimpl_notindomain: forall f dsmap dmap (name : string),
+  Lemma link_dir_rep_pimpl_notindomain: forall f dsmap dmap (name : string) inum,
     is_valid_sname name = true ->
     notindomain name dsmap ->
     @mem_atrans _ _ _ _ string_dec wname2sname dmap dsmap wname_valid ->
-    DIR.rep f dmap ->
-    DIR.rep f =p=> notindomain (sname2wname name).
+    DIR.rep f inum dmap ->
+    DIR.rep f inum =p=> notindomain (sname2wname name).
   Proof.
     intros. intros m H'.
     replace m with dmap in * by eauto using DIR.rep_mem_eq.
@@ -858,7 +858,7 @@ Module SDIR.
   Hint Extern 0 (okToUnify (rep ?f _) (rep ?f _)) => constructor : okToUnify.
 
 
-  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Theorem bfile0_empty : forall inum, rep BFILE.bfile0 inum empty_mem.
   Proof.
     unfold rep.
     exists empty_mem.
@@ -869,7 +869,7 @@ Module SDIR.
     firstorder.
   Qed.
 
-  Theorem rep_no_0_inum: forall f m, rep f m ->
+  Theorem rep_no_0_inum: forall f m inum, rep f inum m ->
     forall name isdir, m name = Some (0, isdir) -> False.
   Proof.
     unfold rep. intros. repeat deex.
@@ -881,10 +881,10 @@ Module SDIR.
     eauto using sname_valid_wname_valid.
   Qed.
 
-  Theorem crash_eq : forall f f' m1 m2,
+  Theorem crash_eq : forall f f' m1 m2 inum,
     BFILE.file_crash f f' ->
-    rep f m1 ->
-    rep f' m2 ->
+    rep f inum m1 ->
+    rep f' inum m2 ->
     m1 = m2.
   Proof.
     intros.
@@ -899,10 +899,10 @@ Module SDIR.
     eexists; intuition; eauto.
   Qed.
 
-  Theorem crash_rep : forall f f' m,
+  Theorem crash_rep : forall f f' m inum,
     BFILE.file_crash f f' ->
-    rep f m ->
-    rep f' m.
+    rep f inum m ->
+    rep f' inum m.
   Proof.
     unfold rep; intros.
     repeat deex.

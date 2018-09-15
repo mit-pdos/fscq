@@ -124,27 +124,27 @@ Theorem for_ok':
     {{ pr | fun done crash bm hm =>
       (exists F (g:G) bm' hm',
           F * nocrash g i li bm hm *
-          [[ bm' c= bm ]] * [[ hm' c= hm ]] *
+          [[ bm' c= bm ]] * [[ @subset addr addr_eq_dec _ hm' hm ]] *
       [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
       (forall lSm,
        {{ pr |  fun  done' crash' bm'' hm'' => F * nocrash g (m ^+ $1) lSm bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]] *
      [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm''  => F * nocrash g (n ^+ i) lfinal bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]] *
      [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]] *
      [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
+         F * crashed g bm'' hm'' * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
          [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (For_ f i n nocrash crashed li) rx.
 Proof.
@@ -236,8 +236,6 @@ Proof.
       assert (wordToNat x < 1); [| omega ].
       apply wlt_lt in H9; simpl in H9; auto.
     + cancel; eauto.
-      Unshelve.
-      unfold EqDec; apply handle_eq_dec.
 Qed.
 
 Theorem for_ok:
@@ -248,26 +246,26 @@ Theorem for_ok:
          (crashed : G -> taggedmem -> domainmem -> rawpred tagged_block)
          (li : L) pr,
     {{ pr | fun done crash bm hm =>
-         (exists F (g:G) bm' hm', F * nocrash g $0 li bm hm * [[ hm' c= hm ]]
+         (exists F (g:G) bm' hm', F * nocrash g $0 li bm hm * [[ @subset addr addr_eq_dec _ hm' hm ]]
    * [[ bm' c= bm ]]
    * [[forall m lm rxm,
       (m < n)%word ->
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (m ^+ $1) lSm bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g n lfinal bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
+         F * crashed g bm'' hm'' * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
          [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (For_ f $0 n nocrash crashed li) rx.
 Proof.
@@ -366,27 +364,27 @@ Theorem forN_ok':
          (crashed : G -> taggedmem -> domainmem -> pred)
          (li : L) pr,
     {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm',
-   F * nocrash g i li bm hm * [[ hm' c= hm ]] 
+   F * nocrash g i li bm hm * [[ @subset addr addr_eq_dec _ hm' hm ]] 
    * [[ bm' c= bm ]]
    * [[forall m lm rxm,
       i <= m ->
       m < n + i ->
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (S m) lSm bm'' hm'' *
-           [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+           [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-           [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+           [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm''=> F * nocrash g (n + i) lfinal bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-        F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] * [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
+        F * crashed g bm'' hm'' * [[ @subset addr addr_eq_dec _ hm' hm'' ]] * [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (ForN_ f i n nocrash crashed li) rx.
 Proof.
   induction n; intros;
@@ -446,25 +444,25 @@ Theorem forN_ok:
          (crashed : G -> taggedmem -> domainmem -> pred)
          (li : L) pr,
   {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g 0 li bm hm
-   * [[ bm' c= bm ]] * [[ hm' c= hm ]] 
+   * [[ bm' c= bm ]] * [[ @subset addr addr_eq_dec _ hm' hm ]] 
    * [[forall m lm rxm,
       m < n ->
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (S m) lSm bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g m lm bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g n lfinal bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
+         F * crashed g bm'' hm'' * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
          [[ bm' c= bm'' ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (ForN_ f 0 n nocrash crashed li) rx.
 Proof.
@@ -618,25 +616,25 @@ Theorem foreach_ok:
          (crashed : G -> taggedmem -> domainmem -> pred)
          (li : L) pr,
   {{ pr | fun done crash bm hm => (exists F (g:G) bm' hm', F * nocrash g lst li bm hm
-   * [[ bm' c= bm ]] * [[ hm' c= hm ]] 
+   * [[ bm' c= bm ]] * [[ @subset addr addr_eq_dec _ hm' hm ]] 
    * [[forall elem lst' lm rxm,
       (forall lSm,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g lst' lSm bm'' hm'' *
-           [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+           [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]]  * [[ crash' = crash ]]
        }} rxm lSm) ->
       {{ pr | fun done' crash' bm'' hm'' => F * nocrash g (elem :: lst') lm bm'' hm'' *
-         [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+         [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
          [[ exists prefix, prefix ++ elem :: lst' = lst ]] *
          [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f elem lm) rxm]]
    * [[forall lfinal,
        {{ pr | fun done' crash' bm'' hm'' => F * nocrash g nil lfinal bm'' hm'' *
-          [[ bm' c= bm'' ]] * [[ hm' c= hm'' ]] *
+          [[ bm' c= bm'' ]] * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall bm'' hm'',
-         F * crashed g bm'' hm'' * [[ hm' c= hm'' ]] *
+         F * crashed g bm'' hm'' * [[ @subset addr addr_eq_dec _ hm' hm'' ]] *
          [[ bm' c= bm ]] =p=> crash bm'' hm'' ]])%pred
   }} Bind (ForEach_ f lst nocrash crashed li) rx.
 Proof.

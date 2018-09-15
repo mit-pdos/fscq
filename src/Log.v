@@ -88,7 +88,7 @@ Module LOG.
 
   Definition rep_inner xp st ms sm bm hm :=
   let '(cm, mm) := (MSTxn ms, MSGLog ms) in
-  ([[ Forall (fun t => t = dummy_handle)
+  ([[ Forall (fun t => t = 0)
             (map fst (extract_blocks bm (map snd (Map.elements cm)))) ]] *  
   match st with
     | NoTxn ds =>
@@ -215,7 +215,7 @@ Hint Resolve Forall_nil.
   Qed.
 
   Lemma rep_inner_domainmem_subset : forall xp ms hm sm hm' bm,
-    hm c= hm'
+    subset hm hm'
     -> forall st, rep_inner xp st ms sm bm hm
         =p=> rep_inner xp st ms sm bm hm'.
   Proof.
@@ -229,11 +229,11 @@ Hint Resolve Forall_nil.
 
   Lemma Forall_public_subset_trans:
     forall A (bm bm': block_mem tagged_block) (hl: list (A * handle)),
-      Forall (fun t => t = dummy_handle)
+      Forall (fun t => t = 0)
              (map fst (extract_blocks bm (map snd hl))) ->
       handles_valid_list bm hl ->
       bm c= bm' ->
-      Forall (fun t => t = dummy_handle)
+      Forall (fun t => t = 0)
              (map fst (extract_blocks bm' (map snd hl))).
   Proof.
     unfold handles_valid_list; intros.
@@ -271,7 +271,7 @@ Hint Resolve Forall_nil.
   Qed.
 
   Lemma rep_domainmem_subset : forall xp F ms hm sm bm hm',
-    hm c= hm'
+    subset hm hm'
     -> forall st, rep xp F st ms sm bm hm
         =p=> rep xp F st ms sm bm hm'.
   Proof.
@@ -290,7 +290,7 @@ Hint Resolve Forall_nil.
   
 
   Lemma intact_domainmem_subset : forall xp F ds hm sm hm' bm,
-    hm c= hm'
+    subset hm hm'
     -> intact xp F ds sm bm hm
         =p=> intact xp F ds sm bm hm'.
   Proof.
@@ -730,12 +730,12 @@ Hint Resolve Forall_nil.
     
     Lemma add_forall_public:
       forall a h (bm: block_mem tagged_block) v hmap,
-        Forall (fun t => t = dummy_handle)
+        Forall (fun t => t = 0)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
         bm h = Some v ->
-        fst v = dummy_handle ->
-        Forall (fun t => t = dummy_handle)
+        fst v = 0 ->
+        Forall (fun t => t = 0)
                (map fst (extract_blocks bm (map snd (Map.elements (Map.add a h hmap))))).
     Proof.
       intros.
@@ -773,7 +773,7 @@ Hint Resolve Forall_nil.
       rep xp F (ActiveTxn ds m) ms sm bm hm *
       [[ a <> 0 ]] *
       [[ bm h = Some v ]] *
-      [[ fst v = dummy_handle ]] *
+      [[ fst v = 0 ]] *
       [[[ m ::: (Fm * a |-> vs) ]]]
     POST:bm', hm', RET:ms'
       exists m', rep xp F (ActiveTxn ds m') ms' sm bm' hm' *
@@ -799,10 +799,10 @@ Hint Resolve Forall_nil.
 
   Lemma remove_forall_public:
       forall a (bm: block_mem tagged_block) hmap,
-        Forall (fun t => t = dummy_handle)
+        Forall (fun t => t = 0)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
-        Forall (fun t => t = dummy_handle)
+        Forall (fun t => t = 0)
                (map fst (extract_blocks bm (map snd (Map.elements (Map.remove a hmap))))).
     Proof.
       intros.
@@ -1503,7 +1503,7 @@ Hint Resolve Forall_nil.
       rep xp F (NoTxn (d, nil)) ms' sm bm' hm' *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
       [[ arrayN (@ptsto _ _ _) 0 (repeat true (length d)) sm ]] *
-      [[ hm' dummy_handle = Some Public ]]
+      [[ hm' 0 = Some Public ]]
     XCRASH:bm', hm',
       exists cs, after_crash xp F ds cs bm' hm'
     >!} recover xp cs.
@@ -1603,7 +1603,7 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
         rep xp F (ActiveTxn ds m) ms sm bm hm *
         [[ bm h = Some v ]] *
-        [[ fst v = dummy_handle ]] *
+        [[ fst v = 0 ]] *
         [[[ m ::: Fm * arrayP a vs ]]] *
         [[ i < length vs /\ a <> 0 ]]
     POST:bm', hm', RET:ms' exists m',
@@ -1835,7 +1835,7 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
       rep xp F (ActiveTxn ds m) ms sm bm hm *
       [[ handles_valid bm l ]] *
-      [[ Forall (fun t => t = dummy_handle) (map fst (extract_blocks bm l)) ]] * 
+      [[ Forall (fun t => t = 0) (map fst (extract_blocks bm l)) ]] * 
       [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ a <> 0 /\ length l <= length vs ]]
     POST:bm', hm', RET:ms'
@@ -1853,7 +1853,7 @@ Hint Resolve Forall_nil.
     safestep.
     unfold rep_inner; cancel. eauto.
     eapply extract_blocks_selN; eauto.
-    denote (Forall (fun t : handle => t = dummy_handle) (map fst (extract_blocks bm l))) as Hf;
+    denote (Forall (fun t => t = 0) (map fst (extract_blocks bm l))) as Hf;
     rewrite Forall_forall in Hf; eapply Hf.
     apply in_map.
     erewrite <- extract_blocks_subset_trans; [| |eauto]; eauto.
@@ -2516,7 +2516,7 @@ Qed.
 
 
   Lemma idempred_domainmem_subset : forall xp F ds sm hm hm' bm,
-    hm c= hm'
+    subset hm hm'
     -> idempred xp F ds sm bm hm
        =p=> idempred xp F ds sm bm hm'.
   Proof.

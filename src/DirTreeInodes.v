@@ -156,7 +156,7 @@ Import ListNotations.
     tree_names_distinct tree ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     off < length (DFData f) ->
-    let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f) (DFDomid f) in
+    let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f)  in
     dirtree_update_inode tree inum off v =
     update_subtree pathname (TreeFile inum f') tree.
   Proof.
@@ -1647,7 +1647,7 @@ Import ListNotations.
     (F0 * rep fsxp F tree ilist freeblocks ms sm dm)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    fst (fst v) = DFDomid f ->
+    fst (fst v) = S inum ->
     (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms sm dm)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.

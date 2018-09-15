@@ -1345,7 +1345,7 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
         ))%pred raw' ]] *
-      [[ hm' dummy_handle = Some Public ]]
+      [[ hm' 0 = Some Public ]]
     XCRASH:bm'', hm',
        exists cs' raw', CacheDef.rep cs' raw' bm'' *
        exists d' nr, 

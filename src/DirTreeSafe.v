@@ -195,11 +195,10 @@ Set Implicit Arguments.
     Unshelve. all: eauto; exact unit.
   Qed.
 
-  Theorem dirlist_safe_mkfile : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks dm dnum tree_elem name inum m flist' bxp ixp F Fm domid tag,
+  Theorem dirlist_safe_mkfile : forall ilist IFs freeblocks ilist' freeblocks' frees msc ms icache dblocks dm dnum tree_elem name inum m flist' bxp ixp F Fm tag,
    (Fm * BFILE.rep bxp IFs ixp flist' ilist' frees msc ms icache dblocks dm)%pred m ->
    (F * inum |-> {| BFILE.BFData := [];
                     BFILE.BFAttr := INODE.iattr0;
-                    BFILE.BFDomid := domid;
                     BFILE.BFOwner := tag;
                     BFILE.BFCache:= None |} )%pred (list2nmem flist') ->
     BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
@@ -209,7 +208,6 @@ Set Implicit Arguments.
                  ilist' freeblocks' (TreeDir dnum (tree_elem ++
                         [(name, TreeFile inum {| DFData := [];
                                                  DFAttr := INODE.iattr0;
-                                                 DFDomid := domid;
                                                  DFOwner := tag|} )])).
   Proof.
     unfold dirtree_safe, BFILE.ilist_safe; intuition.
@@ -432,8 +430,7 @@ Set Implicit Arguments.
       (update_subtree p (TreeFile inum
         {| DFData := (DFData f) ⟦ off := v ⟧;
            DFAttr := DFAttr f;
-           DFOwner := DFOwner f;
-           DFDomid := DFDomid f|}) tree).
+           DFOwner := DFOwner f|}) tree).
    Proof.
     unfold dirtree_safe; intuition.
     destruct (pathname_decide_prefix pathname p); repeat deex.

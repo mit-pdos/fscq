@@ -39,35 +39,11 @@ Definition trace := list op.
   Definition tagdisk:= @Mem.mem addr addr_eq_dec tagset.
  *)
 
-Definition domainmem:= @Mem.mem handle handle_eq_dec tag.
+Definition domainmem:= @Mem.mem addr addr_eq_dec tag.
 Definition taggeddisk:= rawdisk.
 Definition taggedmem:= @Mem.mem handle handle_eq_dec tagged_block.
 
 Notation "'tagged_disk'" := taggeddisk.
-
-Definition diskmatch {AT AEQ V1 V2} (td : @Mem.mem AT AEQ (V1 * list V1))
-                                    (bd: @Mem.mem AT AEQ (V2 * list V2)):=
-  forall a, (td a = None /\ bd a = None)
-     \/ (exists ts bs, td a = Some ts /\ bd a = Some bs /\ length (snd ts) = length (snd bs)).
-
-Definition memmatch {AT AEQ V1 V2} (tm : @Mem.mem AT AEQ V1)
-                                    (bm: @Mem.mem AT AEQ V2):=
-  forall h, tm h = None <-> bm h = None.
-
-Definition disk_merges_to {AT AEQ V1 V2} (td : @Mem.mem AT AEQ (V1 * list V1))
-                                    (bd: @Mem.mem AT AEQ (V2 * list V2)) tgd :=
-  diskmatch td bd
-  /\ (forall a ts bs,
-        td a = Some ts /\ bd a = Some bs <->
-    tgd a = Some ((fst ts, fst bs), List.combine (snd ts) (snd bs))).
-
-Definition mem_merges_to {AT AEQ V1 V2} (tm : @Mem.mem AT AEQ V1)
-                                    (bm: @Mem.mem AT AEQ V2) tgm :=
-  memmatch tm bm
-  /\ (forall h t b,
-        tm h = Some t /\ bm h = Some b <->
-        tgm h = Some (t, b)).
-
 
 Inductive result {T: Type} : Type :=
 | Finished : taggeddisk -> taggedmem -> domainmem -> T -> result
@@ -77,13 +53,11 @@ Inductive result {T: Type} : Type :=
 Inductive prog : Type -> Type :=
 | Read : addr -> prog handle
 | Write : addr -> handle -> prog unit
-| Seal : handle -> block -> prog handle
+| Seal : addr -> block -> prog handle
 | Unseal : handle -> prog block
 | Sync : prog unit
 | Auth : tag -> prog bool
-| AddDom : tag -> prog handle
-| ChDom : handle -> tag -> prog unit
-| InsDom : handle -> tag -> prog unit
+| ChDom : addr -> tag -> prog unit
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
 
@@ -133,17 +107,8 @@ Inductive exec:
                ~can_access pr t ->
                exec pr d bm dm (Auth t) (Finished d bm dm false) nil
 
-| ExecAddDom : forall pr d bm dm i t,
-               dm i = None ->
-               exec pr d bm dm (AddDom t) (Finished d bm (upd dm i t) i) nil
-
-| ExecChDom : forall pr d bm dm t t' a,
-               dm a = Some t' ->
+| ExecChDom : forall pr d bm dm t a,
                exec pr d bm dm (ChDom a t) (Finished d bm (upd dm a t) tt) nil
-
-| ExecInsDom : forall pr d bm dm t a,
-               dm a = None ->
-               exec pr d bm dm (InsDom a t) (Finished d bm (upd dm a t) tt) nil
                     
 | ExecRet : forall T pr d bm dm (r: T),
               exec pr d bm dm (Ret r) (Finished d bm dm r) nil
@@ -177,14 +142,6 @@ Inductive exec:
 | FailUnseal : forall pr d bm dm i,
                  bm i = None \/ (exists b, bm i = Some b /\ dm (fst b) = None) ->
                  exec pr d bm dm (Unseal i) Failed nil
-                      
-| FailChDom : forall pr d bm dm t a,
-               dm a = None ->
-               exec pr d bm dm (ChDom a t) Failed nil
-
-| FailInsDom : forall pr d bm dm t a t',
-               dm a = Some t' ->
-               exec pr d bm dm (InsDom a t) Failed nil
 
 | FailBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm dm tr',
                 exec pr d bm dm p1 (@Failed T) tr' ->

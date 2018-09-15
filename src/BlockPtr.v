@@ -647,7 +647,7 @@ Theorem indrep_n_helper_pts_piff :
   forall Fs bxp ir l,
     ir <> 0 -> indrep_n_helper Fs bxp ir l <=p=> [[ length l = NIndirect ]] *
                [[ BALLOCC.bn_valid bxp ir ]] * (exists b, [[ Fs <=p=> ir |->b ]]) *
-                ir |-> ((dummy_handle, IndRec.Defs.block2val l), []).
+                ir |-> ((0, IndRec.Defs.block2val l), []).
 Proof.
   intros.
   unfold indrep_n_helper, IndRec.rep. destruct addr_eq_dec; try omega.

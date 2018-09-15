@@ -88,16 +88,16 @@ Module DIR.
     if bool_dec (is_valid de) false then emp
     else (DEName de) |-> (DEInum de, is_dir de) * [[ DEInum de <> 0 ]].
 
-  Definition rep f dmap :=
+  Definition rep f inum dmap:=
     exists delist,
-    (Dent.rep f delist)%pred (list2nmem (BFILE.BFData f)) /\
+    (Dent.rep f delist inum)%pred (list2nmem (BFILE.BFData f)) /\
     listpred dmatch delist dmap.
 
   Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees f ms sm dm : (@pred _ addr_eq_dec valuset) :=
     (exists flist,
     [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) dm ]]] *
     [[[ flist ::: Fi * inum |-> f ]]] *
-    [[ rep f dmap ]])%pred.
+    [[ rep f inum dmap ]])%pred.
 
   (*************  program  *)
 
@@ -944,9 +944,9 @@ Module DIR.
     eapply IHl; eauto.
   Qed.
 
-  Lemma rep_mem_eq : forall f m1 m2,
-    rep f m1 ->
-    rep f m2 ->
+  Lemma rep_mem_eq : forall f m1 m2 inum ,
+    rep f inum m1 ->
+    rep f inum m2 ->
     m1 = m2.
   Proof.
     unfold rep; intros.
@@ -956,9 +956,9 @@ Module DIR.
     eapply listpred_dmatch_eq; eauto.
   Qed.
 
-  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Theorem bfile0_empty : forall inum, rep BFILE.bfile0 inum empty_mem.
   Proof.
-    unfold rep, Dent.rep, Dent.items_valid.
+    unfold rep, Dent.rep, Dent.items_valid; intros.
     exists nil; firstorder.
     exists nil; simpl.
     setoid_rewrite Dent.Defs.ipack_nil.
@@ -966,17 +966,17 @@ Module DIR.
     pred_apply' H; cancel.
   Qed.
 
-  Theorem rep_no_0_inum: forall f m, rep f m ->
+  Theorem rep_no_0_inum: forall f m inum, rep f inum m ->
     forall name isdir, m name = Some (0, isdir) -> False.
   Proof.
     unfold rep. intros. repeat deex.
     eauto using listpred_dmatch_no_0_inum.
   Qed.
 
-  Theorem crash_eq : forall f f' m1 m2,
+  Theorem crash_eq : forall f f' inum m1 m2,
     BFILE.file_crash f f' ->
-    rep f m1 ->
-    rep f' m2 ->
+    rep f inum m1 ->
+    rep f' inum m2 ->
     m1 = m2.
   Proof.
     intros.
@@ -991,10 +991,10 @@ Module DIR.
     subst; eauto.
   Qed.
 
-  Theorem crash_rep : forall f f' m,
+  Theorem crash_rep : forall f f' inum m,
     BFILE.file_crash f f' ->
-    rep f m ->
-    rep f' m.
+    rep f inum m ->
+    rep f' inum m.
   Proof.
     unfold rep; intros.
     repeat deex.

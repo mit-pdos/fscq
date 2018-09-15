@@ -152,7 +152,7 @@ Module SB.
   Definition rep (fsxp : fs_xparams) : rawpred tagged_block:=
     ([[ fs_xparams_ok fsxp ]] *
      [[ FSXPMagic fsxp = magic_number ]] *
-     0 |+>((dummy_handle, v_pickle_superblock fsxp), nil))%pred.
+     0 |+>((0, v_pickle_superblock fsxp), nil))%pred.
 
   Definition load cs :=
     let^ (cs, v) <- CacheDef.read 0 cs;;
@@ -178,7 +178,7 @@ Module SB.
   Qed.
 
   Definition init fsxp cs :=
-    h <- Seal dummy_handle (v_pickle_superblock fsxp);;
+    h <- Seal 0 (v_pickle_superblock fsxp);;
     cs <- CacheDef.write 0 h cs;;
     cs <- CacheDef.begin_sync cs;;
     cs <- CacheDef.sync 0 cs;;

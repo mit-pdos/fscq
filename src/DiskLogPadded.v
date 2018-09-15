@@ -82,7 +82,7 @@ Inductive state :=
 Definition ent_addr {B} (e : @generic_entry B) := addr2w (fst e).
 Definition ent_handle {A} (e : A * handle) := snd e.
 Definition ent_block {A} (e : A * tagged_block) := snd e.
-Definition ent_tag {A C} (e : A * (handle * C)) := fst (snd e).
+Definition ent_tag {A C} (e : A * (addr * C)) := fst (snd e).
 Definition ent_valu {A B} (e : A * (B * valu)) := snd (snd e).
 
 Definition ndesc_log {T} (log : @generic_contents T) := (divup (length log) DescSig.items_per_val).
@@ -120,7 +120,7 @@ Definition addr_valid {B} (e : @generic_entry B) := goodSize addrlen (fst e).
 
 Definition entry_valid {B} (ent : @generic_entry B) := fst ent <> 0 /\ addr_valid ent.
 
-Definition addr_tags n := repeat dummy_handle n.
+Definition addr_tags n := repeat 0 n.
 
 Definition rep_contents xp (log : contents) : rawpred tagged_block :=
   ( [[ Forall addr_valid log ]] *
@@ -249,7 +249,7 @@ Definition extend xp (log: input_contents) cs :=
     }.
 
 Definition recover xp cs :=
-  _ <- InsDom dummy_handle Public;;
+  _ <- ChDom 0 Public;;
   let^ (cs, header) <- DiskLogHdr.read xp cs;;
   let '(ndesc, ndata) := header in
   let^ (cs, wal) <- Desc.read_all xp ndesc cs;;
@@ -2435,7 +2435,7 @@ Qed.
       
       rewrite desc_padding_unsync_piff.       
       pred_apply; cancel.
-      exact dummy_handle.
+      exact 0.
       rewrite map_length; auto.
       rewrite padded_log_length.
       unfold ndesc_list, roundup; auto.
@@ -2719,7 +2719,7 @@ Definition recover_ok :
     POST:bm', hm', RET:cs'
           F_ * CacheDef.rep cs' d bm' *
           [[ (F * rep xp (Synced l) hm')%pred d ]] *
-          [[ hm' dummy_handle = Some Public ]]             
+          [[ hm' 0 = Some Public ]]             
     CRASH:bm'', hm_crash, exists cs',
           F_ * CacheDef.rep cs' d bm'' *
           [[ (F * rep xp (Synced l) hm_crash)%pred d ]]

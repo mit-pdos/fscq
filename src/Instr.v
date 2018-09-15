@@ -16,55 +16,12 @@ Qed.
 
 Hint Unfold false_pred: hoare_unfold.
 
-Lemma insdom_secure:
-  forall pr i t,
-    {!< F,
-       PERM: pr
-       PRE: bm, hm,
-         F * [[ hm i = None ]]
-       POST: bm', hm',
-          RET : tt
-          F * [[ hm' = upd hm i t]]
-       CRASH: bm'', hm'',
-          false_pred (* Can't crash *)
-     >!} InsDom i t.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
-  split_ors; cleanup; inv_exec_perm.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
-  split_ors; cleanup; inv_exec_perm; try congruence.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
-Qed.
-
-Hint Extern 1 (corr2 _ _ (Bind (InsDom _ _) _)) => apply insdom_secure : prog.
-
-
 Lemma chdom_secure:
   forall pr i t,
-    {~!< F t',
+    {~!< F,
        PERM: pr
        PRE: bm, hm,
-         F * [[ hm i = Some t' ]]
+         F
        POST: bm', hm',
           RET : tt
           F * [[ hm' = upd hm i t]]
@@ -98,48 +55,6 @@ Proof.
     apply only_public_operations_app_merge; simpl; auto.
   }
 Qed.
-
-Lemma adddom_secure:
-  forall pr t,
-    {!< F,
-       PERM: pr
-       PRE: bm, hm,
-         F
-       POST: bm', hm',
-          RET : i
-          F * [[ hm i = None ]] *
-          [[ hm' = upd hm i t]]
-       CRASH: bm'', hm'',
-          false_pred (* Can't crash *)
-     >!} AddDom t.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H; cleanup.
-  repeat inv_exec_perm; simpl in *; cleanup.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
-  split_ors; cleanup; inv_exec_perm.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
-  split_ors; cleanup; inv_exec_perm.
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
-Qed.
-
 
 Lemma auth_secure:
   forall pr t,
@@ -419,8 +334,7 @@ Lemma unseal_secure:
      {!< F tb,
        PERM: pr
        PRE: bm, hm, 
-         F * [[ hm dummy_handle = Some Public ]] *
-         [[ fst tb = dummy_handle ]] *
+         F * [[ hm (fst tb) = Some Public ]] *
          [[ bm i = Some tb ]]
        POST: bm', hm', RET : b
          F * [[ b = snd tb ]] *
@@ -468,7 +382,8 @@ Lemma unseal_secure_weak:
      {!<W F tb t,
        PERM: pr
        PRE: bm, hm, 
-         F * [[ hm (fst tb) = Some t ]] * [[ can_access pr t ]] *
+            F * [[ hm (fst tb) = Some t ]]
+            * [[ can_access pr t ]] *
          [[ bm i = Some tb ]]
        POST: bm', hm', RET : b
          F * [[ b = snd tb ]] *
@@ -742,7 +657,6 @@ Hint Extern 1 (corr2 _ _ (Bind (Write _ _) _)) => apply write_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Seal _ _) _)) => apply seal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Unseal _) _)) => apply unseal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (ChDom _ _) _)) => apply chdom_secure : prog.
-Hint Extern 1 (corr2 _ _ (Bind (AddDom _) _)) => apply adddom_secure : prog.
 Hint Extern 1 (corr2_weak _ _ (Bind (Seal _ _) _)) => apply seal_secure_weak : prog.
 Hint Extern 1 (corr2_weak _ _ (Bind (Unseal _) _)) => apply unseal_secure_weak : prog.
 Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply auth_secure : prog.

@@ -1210,4 +1210,11 @@ Ltac solve_blockmem_subset:=
   | [|- _ c= _ ] =>
     auto; eapply block_mem_subset_trans;
     eauto; solve_blockmem_subset
+  | [|- subset _ =p=> (fun _ : Mem.mem => subset _ _)] =>
+    unfold pimpl; intros; solve_blockmem_subset
+  | [|- subset _ =p=> subset _] =>
+    unfold pimpl; intros; solve_blockmem_subset
+  | [|- subset _ _ ] =>
+    auto; eapply subset_trans;
+    eauto; solve_blockmem_subset
   end.

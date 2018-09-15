@@ -35,7 +35,7 @@ Set Implicit Arguments.
     exists f dsmap,
     dir_inum |-> f *
     [[ IAlloc.ino_valid ibxp dir_inum ]] *
-    [[ SDIR.rep f dsmap ]] *
+    [[ SDIR.rep f dir_inum dsmap ]] *
     [[ tree_dir_names_pred' dirents dsmap ]])%pred.
 
   Section DIRITEM.
@@ -92,7 +92,7 @@ Set Implicit Arguments.
     match e with
     | TreeFile inum f =>
       exists cache,
-      inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) (DFDomid f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
+      inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
     | TreeDir inum s => tree_dir_names_pred ibxp inum s * dirlist_pred (tree_pred ibxp) s
     end)%pred.
 
@@ -103,7 +103,7 @@ Set Implicit Arguments.
       match e with
       | TreeFile inum f =>
         exists cache,
-        inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) (DFDomid f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
+        inum |-> (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) cache) * [[ IAlloc.ino_valid ibxp inum ]]
       | TreeDir inum s => tree_dir_names_pred ibxp inum s *
                           dirlist_pred_except (tree_pred ibxp) (tree_pred_except ibxp suffix) fn s
       end
@@ -113,7 +113,7 @@ Set Implicit Arguments.
   Fixpoint dirtree_update_inode t inum off v :=
     match t with
     | TreeFile inum' f => if (addr_eq_dec inum inum') then
-          let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f) (DFDomid f) in (TreeFile inum f')
+          let f' := mk_dirfile (updN (DFData f) off v) (DFAttr f) (DFOwner f) in (TreeFile inum f')
           else (TreeFile inum' f)
     | TreeDir inum' ents =>
       TreeDir inum' (dirlist_update (fun t' => dirtree_update_inode t' inum off v) ents)
@@ -564,7 +564,7 @@ Set Implicit Arguments.
 
   Lemma dir_names_delete : forall xp dlist name dnum dfile dmap,
     tree_dir_names_pred' dlist dmap
-    -> SDIR.rep dfile (mem_except dmap name)
+    -> SDIR.rep dfile dnum (mem_except dmap name)
     -> IAlloc.ino_valid xp dnum
     -> (dnum |-> dfile) =p=> tree_dir_names_pred xp dnum (delete_from_list name dlist).
   Proof.
@@ -613,8 +613,8 @@ Set Implicit Arguments.
   Qed.
 
 
-  Lemma dlist_is_nil : forall d l m,
-    SDIR.rep d m -> emp m
+  Lemma dlist_is_nil : forall d l m inum,
+    SDIR.rep d inum m -> emp m
     -> tree_dir_names_pred' l m
     -> l = nil.
   Proof.
@@ -763,7 +763,7 @@ Set Implicit Arguments.
 
   Lemma fold_back_dir_pred : forall xp dnum dirfile ents dsmap,
     tree_dir_names_pred' ents dsmap
-    -> SDIR.rep dirfile dsmap
+    -> SDIR.rep dirfile dnum dsmap
     -> IAlloc.ino_valid xp dnum
     -> dnum |-> dirfile * dirlist_pred (tree_pred xp) ents =p=> tree_pred xp (TreeDir dnum ents).
   Proof.
@@ -1142,7 +1142,7 @@ Set Implicit Arguments.
     find_subtree path (TreeDir ri re) = Some (TreeDir inum ents)
     -> find_dirlist name ents = Some subtree
     -> tree_dir_names_pred' (delete_from_list name ents) dsmap
-    -> SDIR.rep f dsmap
+    -> SDIR.rep f inum dsmap
     -> IAlloc.ino_valid xp inum
     -> dirlist_pred (tree_pred xp) ents *
        tree_pred_except xp path (TreeDir ri re) * F * inum |-> f
@@ -1160,7 +1160,7 @@ Set Implicit Arguments.
 
 
   Lemma subtree_graft_absorb : forall xp inum ents root f path name dsmap subtree,
-    SDIR.rep f (Mem.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
+    SDIR.rep f inum (Mem.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
     -> find_subtree path root = Some (TreeDir inum ents)
     -> tree_dir_names_pred' ents dsmap
     -> notindomain name dsmap
@@ -1180,7 +1180,7 @@ Set Implicit Arguments.
 
 
   Lemma subtree_graft_absorb_delete : forall xp inum ents root f path name dsmap dsmap' subtree x,
-    SDIR.rep f (Mem.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
+    SDIR.rep f inum (Mem.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
     -> find_subtree path root = Some (TreeDir inum ents)
     -> tree_dir_names_pred' (delete_from_list name ents) dsmap
     -> tree_dir_names_pred' ents dsmap'

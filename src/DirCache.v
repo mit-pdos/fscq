@@ -105,8 +105,8 @@ Module CacheOneDir.
     let^ (ms, r) <- SDIR.readdir lxp ixp dnum ms;;
     Ret ^(ms, r).
 
-  Definition rep f (dsmap : @mem string string_dec (addr * bool)) : Prop :=
-    SDIR.rep f dsmap /\
+  Definition rep f inum (dsmap : @mem string string_dec (addr * bool)) : Prop :=
+    SDIR.rep f inum dsmap /\
     (forall cache hint, BFILE.BFCache f = Some (cache, hint) ->
     forall name, Dcache.find name cache = dsmap name).
 
@@ -114,28 +114,28 @@ Module CacheOneDir.
     (exists flist,
      [[[ m ::: Fm * BFILE.rep bxp sm ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) (BFILE.MSDBlocks ms) dm ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
-     [[ rep f dsmap ]])%pred.
+     [[ rep f inum dsmap ]])%pred.
 
   Local Hint Unfold rep rep_macro SDIR.rep_macro : hoare_unfold.
 
-  Lemma rep_mem_eq : forall f m1 m2,
-    rep f m1 -> rep f m2 -> m1 = m2.
+  Lemma rep_mem_eq : forall f m1 m2 inum,
+    rep f inum m1 -> rep f inum m2 -> m1 = m2.
   Proof.
     unfold rep.
     intuition eauto using SDIR.rep_mem_eq.
   Qed.
 
-  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Theorem bfile0_empty : forall inum, rep BFILE.bfile0 inum empty_mem.
   Proof.
     unfold rep; intuition.
     apply SDIR.bfile0_empty.
     cbn in *. congruence.
   Qed.
 
-  Theorem crash_rep : forall f f' m,
+  Theorem crash_rep : forall f f' m inum,
     BFILE.file_crash f f' ->
-    rep f m ->
-    rep f' m.
+    rep f inum m ->
+    rep f' inum m.
   Proof.
     unfold rep; intuition.
     eapply SDIR.crash_rep; eauto.
@@ -215,8 +215,8 @@ Module CacheOneDir.
             x (MSAllocC ms) (MSCache ms) 
             (SDIR.MSICache ms) (MSDBlocks ms) dm)%pred m ->
       (Ff ✶ dnum |-> f)%pred (list2nmem flist) ->
-      SDIR.rep f dl ->
-      INODE.IOwner (selN ilist dnum def) = Public.
+      SDIR.rep f dnum dl ->
+      BFILE.BFOwner (selN flist dnum def) = Public.
     Proof.
       intros.
       denote BFILE.rep as Hbr; unfold BFILE.rep in Hbr.
@@ -439,9 +439,9 @@ Module CacheOneDir.
     all: eauto.
   Qed.
 
-  Lemma sdir_rep_cache : forall f c m,
-    SDIR.rep f m ->
-    SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c; BFILE.BFOwner := BFILE.BFOwner f; BFILE.BFDomid := BFILE.BFDomid f |} m.
+  Lemma sdir_rep_cache : forall f c m inum,
+    SDIR.rep f inum m ->
+    SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c; BFILE.BFOwner := BFILE.BFOwner f |} inum m.
   Proof.
     unfold SDIR.rep, DIR.rep, DIR.Dent.rep, DIR.Dent.items_valid, DIR.Dent.RA.RALen; eauto.
   Qed.

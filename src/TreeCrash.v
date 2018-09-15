@@ -31,8 +31,8 @@ Module DTCrash.
 
   Definition file_crash (f f' : dirfile) : Prop :=
     exists c c',
-    BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) (DFDomid f) c)
-                     (BFILE.mk_bfile (DFData f') (DFAttr f') (DFOwner f') (DFDomid f') c').
+    BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) (DFOwner f) c)
+                     (BFILE.mk_bfile (DFData f') (DFAttr f') (DFOwner f') c').
 
   Inductive tree_crash : dirtree -> dirtree -> Prop :=
     | TCFile : forall inum f f',

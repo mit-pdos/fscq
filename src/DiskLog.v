@@ -104,7 +104,7 @@ Definition rep xp st hm :=
 
 
   Lemma rep_domainmem_subset : forall xp hm hm',
-    hm c= hm'
+    subset hm hm'
     -> forall st, rep xp st hm
         =p=> rep xp st hm'.
   Proof.
@@ -152,7 +152,7 @@ Definition rep xp st hm :=
     POST:bm', hm', RET:cs'
           CacheDef.rep cs' d bm' *
           [[ (F * rep xp (Synced nr l) hm')%pred d ]] *
-          [[ hm' dummy_handle = Some Public ]]             
+          [[ hm' 0 = Some Public ]]             
     XCRASH:bm'', hm'', exists cs',
           CacheDef.rep cs' d bm'' * (
           [[ (F * rep xp (Synced nr l) hm'')%pred d ]])
