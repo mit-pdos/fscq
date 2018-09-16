@@ -31,13 +31,6 @@ Parameter encode_decode_tag: forall t, decode_tag (encode_tag  t) = t.
 Parameter encode_tag_inj: forall t t', encode_tag t = encode_tag t' -> t = t'.
 Parameter encode_public: encode_tag Public = $0.
 
-(*
-Parameter encode_handle: handle -> word 8.
-Parameter decode_handle: word 8 -> handle.
-Parameter encode_decode_handle: forall t, decode_handle (encode_handle  t) = t.
-Parameter encode_handle_inj: forall t t', encode_handle t = encode_handle t' -> t = t'.
-Parameter encode_dummy_handle: encode_handle dummy_handle = $0.
-*)
 
 Module INODE.
 
@@ -339,13 +332,6 @@ Module INODE.
       [[ Forall (fun a => BALLOCC.bn_valid bxp (# a)) (IBlocks ino) ]] *
       Ind.rep bxp IFs ir (IBlocks ino) )%pred.
 
-  (*
-`Definition not_dummy h:=
-    if (handle_eq_dec h dummy_handle) then
-      false
-    else
-      true.
-*)
   Definition rep bxp IFs xp (ilist : list inode) cache (dm: domainmem) := (
      exists reclist fsl, IRec.rep xp reclist cache *
      [[ forall i, i < length ilist ->
@@ -657,63 +643,17 @@ Qed.
       apply in_updN in H3; intuition; subst; try congruence.
       apply filter_In; intuition.
     Qed.
-(*
-    Lemma NoDup_neq_filter:
-      forall ilist inum def ino, 
-      NoDup (filter not_dummy (map IDomid ilist)) ->
-      In ino (removeN ilist inum) ->
-      IDomid ino <> 0 ->
-      inum < length ilist ->
-      IDomid ino <> IDomid (selN ilist inum def).
-    Proof.
-      unfold not; induction ilist; simpl; intros; eauto.
-      unfold removeN in *; rewrite firstn_nil in H0; simpl in *; intuition.
-      destruct (not_dummy (IDomid a)) eqn:D.
-      
-      destruct inum; simpl in *.
-      rewrite <- H3 in *; clear H3.      
-      unfold removeN in H0; simpl in *.
-      inversion H; subst.
-      apply H5.      
-      apply filter_In; intuition.
-      apply in_map; eauto.
-      
-      destruct H0; subst.
-      inversion H; subst; clear H; eauto.
-      rewrite H3 in *; clear H3.
-
-      apply H5.      
-      apply filter_In; intuition.
-      apply in_map; eauto.
-      apply in_selN; omega.
-
-      eapply IHilist; eauto.
-      inversion H; subst; clear H; eauto.
-      omega.
-
-      destruct inum; simpl in *.
-      rewrite <- H3 in *; clear H3.    
-      unfold not_dummy in *.
-      destruct (handle_eq_dec (IDomid ino) 0); subst; try congruence; eauto.
-
-      destruct H0; subst.
-      unfold not_dummy in *.
-      destruct (handle_eq_dec (IDomid ino) 0); subst; try congruence; eauto.
-      
-      eapply IHilist; eauto.
-      omega.
-    Qed.    
- *)
     
   Theorem setowner_ok :
     forall lxp bxp xp inum t cache ms pr,
-    {~< F Fm Fi Fs m0 sm m IFs ilist ino,
+    {~<W F Fm Fi Fs m0 sm m IFs ilist ino,
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
            [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]] *
-           [[ (Fs * IFs)%pred sm ]]
+           [[ (Fs * IFs)%pred sm ]] *
+           [[ can_access pr (IOwner ino) ]]
     POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino' IFs',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm') ]]] *
@@ -722,7 +662,7 @@ Qed.
            [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t ]] *
            [[ hm' 0  = Some Public ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
-    >~} setowner lxp xp inum t cache ms.
+    W>~} setowner lxp xp inum t cache ms.
   Proof.
     unfold setowner, rep.
     safestep.
@@ -1618,26 +1558,5 @@ Qed.
     xform_normr.
     rewrite Ind.xform_rep; cancel.
   Qed.
-
-
-  (*
-  Theorem xform_rep : forall bxp Fs xp l c dm,
-    crash_xform (rep bxp Fs xp l c dm) <=p=> rep bxp Fs xp l c empty_mem.
-  Proof.
-    unfold rep; intros; split.
-    xform_norm.
-    rewrite IRec.xform_rep.
-    rewrite xform_listmatch_idem.
-    cancel.
-    intros; apply crash_xform_inode_match.
-
-    cancel.
-    xform_normr.
-    rewrite IRec.xform_rep.
-    rewrite xform_listmatch_idem.
-    cancel.
-    apply crash_xform_inode_match.
-  Qed.
-  *)
 
 End INODE.

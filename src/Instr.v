@@ -21,7 +21,7 @@ Lemma chdom_secure:
     {~!< F,
        PERM: pr
        PRE: bm, hm,
-         F
+         F * [[ forall t', hm i = Some t' -> t' = Public ]]
        POST: bm', hm',
           RET : tt
           F * [[ hm' = upd hm i t]]
@@ -38,7 +38,21 @@ Proof.
     split; auto.
     apply only_public_operations_app_merge; simpl; auto.
   }
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
   split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split_ors; cleanup; try congruence.
+    split.
+    right; do 3 eexists; intuition.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
@@ -54,7 +68,75 @@ Proof.
     split; auto.
     apply only_public_operations_app_merge; simpl; auto.
   }
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply only_public_operations_app_merge; simpl; auto.
+  }
 Qed.
+
+Lemma chdom_secure_weak:
+  forall pr i t,
+    {~!<W F,
+       PERM: pr
+       PRE: bm, hm,
+         F * [[ forall t', hm i = Some t' -> can_access pr t' ]]
+       POST: bm', hm',
+          RET : tt
+          F * [[ hm' = upd hm i t ]]
+       CRASH: bm'', hm'',
+          false_pred (* Can't crash *)
+     W>!~} ChDom i t.
+Proof.
+  unfold corr2_weak; intros.
+  destruct_lift H; cleanup.
+  repeat inv_exec_perm; simpl in *; cleanup.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply trace_secure_app; simpl; auto.
+  }
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply trace_secure_app; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split_ors; cleanup; try congruence.
+    split.
+    right; do 3 eexists; intuition.
+    apply trace_secure_app; simpl; auto.
+  }
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.
+    split_ors; cleanup; try congruence.
+    split.
+    right; do 3 eexists; intuition.
+    apply trace_secure_app; simpl; auto.
+  }
+  split_ors; cleanup; inv_exec_perm; try congruence.
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply trace_secure_app; simpl; auto.
+  }
+  {
+    edestruct H4; eauto.
+    pred_apply; cancel; eauto.  
+    split; auto.
+    apply trace_secure_app; simpl; auto.
+  }
+Qed.
+
+
 
 Lemma auth_secure:
   forall pr t,
@@ -657,11 +739,13 @@ Hint Extern 1 (corr2 _ _ (Bind (Write _ _) _)) => apply write_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Seal _ _) _)) => apply seal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Unseal _) _)) => apply unseal_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (ChDom _ _) _)) => apply chdom_secure : prog.
-Hint Extern 1 (corr2_weak _ _ (Bind (Seal _ _) _)) => apply seal_secure_weak : prog.
-Hint Extern 1 (corr2_weak _ _ (Bind (Unseal _) _)) => apply unseal_secure_weak : prog.
-Hint Extern 1 ({{_|_}} Bind (Auth _) _) => apply auth_secure : prog.
+Hint Extern 1 (corr2 _ _ (Bind (Auth _) _)) => apply auth_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind Sync _)) => apply sync_secure : prog.
 Hint Extern 1 (corr2 _ _ (Bind (Ret _) _)) => apply ret_secure : prog.
+
+Hint Extern 1 (corr2_weak _ _ (Bind (Seal _ _) _)) => apply seal_secure_weak : prog.
+Hint Extern 1 (corr2_weak _ _ (Bind (Unseal _) _)) => apply unseal_secure_weak : prog.
+Hint Extern 1 (corr2_weak _ _ (Bind (ChDom _ _) _)) => apply chdom_secure_weak : prog.
 Hint Extern 1 (corr2_weak _ _ (Bind (Ret _) _)) => apply ret_secure_weak : prog.
 
 

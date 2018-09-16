@@ -71,7 +71,30 @@ Notation "'{<W' 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRA
    (Bind p1 rx)%pred)
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
     bm'' at level 0, hm'' at level 0,
-      hm at level 0, hm' at level 0).
+    hm at level 0, hm' at level 0).
+
+Notation "{~<W e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH' : bm'' , hm'' , crash W>~} p1" :=
+  (forall T (rx: _ -> prog T), corr2_weak pr%pred
+   (fun done_ crash_ bm hm =>
+    exists F_,
+    (exis (fun e1 => .. (exis (fun e2 =>
+     F_ * pre * [[ hm 0 = Some Public ]] *
+     [[ sync_invariant F_ ]] *
+     [[ forall r_ , corr2_weak pr
+        (fun done'_ crash'_ bm' hm' =>
+           post F_ r_ *
+           [[ bm c= bm' ]] *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
+        (rx r_) ]] *
+     [[ forall bm'' hm'' , (F_ * crash *
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
+     )) .. ))
+   )%pred
+   (Bind p1 rx)%pred)
+    (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
+     bm'' at level 0, hm'' at level 0,
+      hm at level 0, hm' at level 0,
+    e1 closed binder, e2 closed binder).
 
 Notation "'{!<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH' : bm'' , hm'' , crash 'W>!}' p1" :=
   (forall T (rx: _ -> prog T), corr2_weak pr%pred
@@ -84,6 +107,26 @@ Notation "'{!<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm'
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall bm'' hm'' , (crash * [[ @subset addr addr_eq_dec _ hm hm'' ]] *
+                      [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
+     )) .. ))
+   )%pred
+   (Bind p1 rx)%pred)
+    (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
+      bm'' at level 0, hm'' at level 0,
+      hm at level 0, hm' at level 0,
+      e1 closed binder, e2 closed binder).
+
+Notation "{~!<W e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH' : bm'' , hm'' , crash W>!~} p1" :=
+  (forall T (rx: _ -> prog T), corr2_weak pr%pred
+   (fun done_ crash_ bm hm =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     pre *
+     [[ forall r_ , corr2_weak pr
+        (fun done'_ crash'_ bm' hm' =>
+           post emp r_ * 
+           [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
+        (rx r_) ]] *
+     [[ forall bm'' hm'' , (crash * 
                       [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred

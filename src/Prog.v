@@ -19,13 +19,14 @@ Hint Resolve can_access_public.
 Hint Extern 0 (EqDec handle) => unfold EqDec; apply handle_eq_dec.
 
 Inductive op :=
-| Sea : tag -> op
+| Chd : tag -> tag -> op
 | Uns : tag -> op.
 
 Definition op_dec : forall (o o': op), {o = o'}+{o <> o'}.
   intros.
   destruct o, o'; auto; try (solve [right; congruence] ||
-  solve [destruct (tag_dec t t0); subst; auto; right; congruence]).
+  solve [destruct (tag_dec t t0); subst; auto; right; congruence] ||
+  solve [destruct (tag_dec t t1); destruct (tag_dec t0 t2); subst; auto; right; congruence]).
 Defined.
 
 Definition trace := list op.
@@ -107,8 +108,13 @@ Inductive exec:
                ~can_access pr t ->
                exec pr d bm dm (Auth t) (Finished d bm dm false) nil
 
-| ExecChDom : forall pr d bm dm t a,
+| ExecChDomNone : forall pr d bm dm t a,
+               dm a = None ->
                exec pr d bm dm (ChDom a t) (Finished d bm (upd dm a t) tt) nil
+
+| ExecChDomSome : forall pr d bm dm t t' a,
+               dm a = Some t' ->
+               exec pr d bm dm (ChDom a t) (Finished d bm (upd dm a t) tt) [Chd t' t]
                     
 | ExecRet : forall T pr d bm dm (r: T),
               exec pr d bm dm (Ret r) (Finished d bm dm r) nil

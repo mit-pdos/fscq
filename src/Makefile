@@ -26,7 +26,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      DirTreePath DirTreeDef DirTreePred DirTreeRep \
 	      DirTreeNames DirTreeInodes DirTreeSafe DirTree \
 	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock \
-	      AsyncFS \
+	      WeakConversion AsyncFS \
 	      #DiskSecDef DiskSecAttacker DiskSecVictim \
 	      #PaperTheorems CopyFile
 

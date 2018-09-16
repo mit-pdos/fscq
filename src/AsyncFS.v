@@ -22,6 +22,7 @@ Require Import DirTreeRep.
 Require Import DirTreePred.
 Require Import DirTreeInodes.
 Require Import DirTreeSafe.
+Require Import WeakConversion.
 
 Set Implicit Arguments.
 Import DirTree.

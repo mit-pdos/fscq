@@ -9,7 +9,7 @@ Set Implicit Arguments.
 
 Definition op_secure pr o :=
   match o with
-  | Sea t' =>  can_access pr t'
+  | Chd t' _ =>  can_access pr t'
   | Uns t' => can_access pr t'
   end.
 
@@ -45,7 +45,7 @@ Qed.
     | op::tr' =>
       match op with
       | Uns t => t = Public
-      | Sea t => t = Public
+      | Chd t _ => t = Public
       end /\ only_public_operations tr'
     end.
 
