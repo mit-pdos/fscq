@@ -429,9 +429,8 @@ Notation "{X<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' ,
           [[ bm c= bm' ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ * [[ @subset addr addr_eq_dec _ hm hm_rec ]] *
-          [[ done'_ = crashdone_ ]] *
-          [[ bm c= bm_rec ]]
+        {{ pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ *
+          [[ done'_ = crashdone_ ]]
         }} rxREC r_ ]]
    )%pred
    (Bind p1 rxOK)%pred

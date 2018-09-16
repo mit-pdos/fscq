@@ -134,6 +134,31 @@ Notation "'{<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' 
     (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
      bm'' at level 0, hm'' at level 0,
       hm at level 0, hm' at level 0,
+      e1 closed binder, e2 closed binder).
+
+Notation "'{!<W' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'XCRASH' : bm'' , hm'' , crash 'W>!}' p1" :=
+  (forall T (rx: _ -> prog T), corr2_weak pr%pred
+   (fun done_ crash_ bm hm =>
+    exists F_,
+    (exis (fun e1 => .. (exis (fun e2 =>
+     F_ * pre *
+     [[ sync_invariant F_ ]] *
+     [[ forall r_ , corr2_weak pr
+        (fun done'_ crash'_ bm' hm' =>
+           post F_ r_ *
+           [[ bm c= bm' ]] * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
+        (rx r_) ]] *
+     [[ forall realcrash bm'' hm'',
+          crash_xform realcrash =p=> crash_xform crash ->
+          (F_ * realcrash * [[ @subset addr addr_eq_dec _ hm hm'' ]] *
+                       [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
+     )) .. ))
+   )%pred
+   (Bind p1 rx)%pred)
+    (at level 0, p1 at level 60, bm at level 0, bm' at level 0,
+     bm'' at level 0, hm'' at level 0,
+      hm at level 0, hm' at level 0,
     e1 closed binder, e2 closed binder).
 
 Theorem corr2_to_corr2_weak:
@@ -239,6 +264,158 @@ Proof.
   intros.
   destruct H2; eauto.
 Qed.
+
+
+
+Definition corr3_weak (TF TR: Type) pr (pre: taggedmem -> domainmem -> donecond TF -> donecond TR -> pred) (p1: prog TF) (p2: prog TR) :=
+  forall done crashdone m tr bm hm out,
+    pre bm hm done crashdone m
+  -> exec_recover pr m bm hm p1 p2 out tr
+  -> ((exists m' bm' hm' v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
+    (exists m' bm' hm' v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))
+/\ trace_secure pr tr.
+
+Notation "'{{W' pr | pre 'W}}' p1 >> p2" := (corr3_weak pr pre%pred p1 p2)
+  (at level 0, p1 at level 60, p2 at level 60).
+
+Definition forall_helper T (p : T -> Prop) :=
+  forall v, p v.
+
+Notation "'{W<<' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'REC' : bm_rec , hm_rec ,  crash '>>W}' p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   exists idemcrash,
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3_weak pr%pred
+   (fun bm hm done_ crashdone_ =>
+     exists F_,
+     F_ * pre * [[ hm 0 = Some Public ]] *
+     [[ sync_invariant F_ ]] *
+     [[ crash_xform F_ =p=> F_ ]] *
+     [[ forall r_,
+        {{W pr | fun done'_ crash'_ bm' hm' => post F_ r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+          [[ done'_ = done_ ]] *
+          [[ bm c= bm' ]] *
+          [[ forall bm_crash hm_crash,
+            crash'_ bm_crash hm_crash * [[ @subset addr addr_eq_dec _ hm hm_crash ]] *
+            [[ bm c= bm_crash ]] 
+            =p=> F_ * idemcrash bm_crash hm_crash ]]
+        W}} rxOK r_ ]] *
+     [[ forall r_,
+        {{W pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ * [[ @subset addr addr_eq_dec _ hm hm_rec ]] *
+          [[ done'_ = crashdone_ ]] *
+          [[ bm c= bm_rec ]] *
+          [[ forall bm_crash hm_crash,
+            crash'_ bm_crash hm_crash * [[ subset hm hm_crash ]] *
+            [[ bm c= bm_crash ]]
+            =p=> F_ * idemcrash bm_crash hm_crash ]]
+        W}} rxREC r_ ]]
+   )%pred
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   bm at level 0, bm' at level 0, hm at level 0,
+   hm' at level 0, bm_rec at level 0, hm_rec at level 0,
+   post at level 1, crash at level 1).
+
+Notation "'{WX<<' e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'REC' : bm_rec , hm_rec , crash '>>XW}' p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3_weak pr%pred
+   (fun bm hm done_ crashdone_ =>
+     exists F_,
+     F_ * pre * [[ hm 0 = Some Public ]] *
+     [[ sync_invariant F_ ]] *
+     [[ crash_xform F_ =p=> F_ ]] *
+     [[ forall r_,
+        {{W pr | fun done'_ crash'_ bm' hm' => post F_ r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+          [[ done'_ = done_ ]] *
+          [[ bm c= bm' ]]
+        W}} rxOK r_ ]] *
+     [[ forall r_,
+        {{W pr | fun done'_ crash'_ bm_rec hm_rec => crash F_ r_ *
+          [[ done'_ = crashdone_ ]]
+        W}} rxREC r_ ]]
+   )%pred
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   bm at level 0, bm' at level 0, hm at level 0, hm' at level 0,
+   bm_rec at level 0, hm_rec at level 0,
+   post at level 1, crash at level 1).
+
+
+Theorem pimpl_ok3_weak:
+  forall TF TR pr pre pre' (p: prog TF) (r: prog TR),
+  {{W pr | pre' W}} p >> r ->
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> pre' vm hm done crashdone) ->
+  {{W pr|pre W}} p >> r.
+Proof.
+  unfold corr3_weak; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
+
+Theorem pimpl_ok3_cont_weak :
+  forall TF TR pr pre pre' A (k : A -> prog TF) x y (r: prog TR),
+  {{W pr|pre' W}} k y >> r ->
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> pre' vm hm done crashdone) ->
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> exists F, F * [[x = y]]) ->
+  {{W pr|pre W}} k x >> r.
+Proof.
+  unfold corr3_weak, pimpl; intros.
+  edestruct H1; eauto.
+  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
+  unfold lift in *; subst; eauto.
+  firstorder.
+Qed.
+
+
+Theorem pimpl_pre3_weak:
+  forall TF TR pr pre pre' (p: prog TF) (r: prog TR),
+  (forall vm hm done crashdone, pre vm hm done crashdone =p=> [{{W pr|pre' vm hm done crashdone W}} p >> r])
+  -> (forall vm hm done crashdone, pre vm hm done crashdone =p=> pre' vm hm done crashdone vm hm done crashdone)
+  -> {{W pr|pre W}} p >> r.
+Proof.
+  unfold corr3_weak; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
+
+Theorem pre_false3_weak:
+  forall TF TR pr pre (p: prog TF) (r: prog TR),
+  (forall bm hm done crashdone, pre bm hm done crashdone =p=> [False])
+  -> {{W pr| pre W}} p >> r.
+Proof.
+  unfold corr3_weak; intros; exfalso.
+  eapply H; eauto.
+Qed.
+
+
+Theorem corr3_exists_weak:
+  forall T RF RR pr pre (p: prog RF) (r: prog RR),
+  (forall (a:T), {{W pr|fun bm hm done crashdone => pre bm hm done crashdone a W}} p >> r)
+  -> {{W pr|fun bm hm done crashdone => exists a:T, pre bm hm done crashdone a W}} p >> r.
+Proof.
+  unfold corr3_weak; intros.
+  destruct H0.
+  eapply H; eauto.
+Qed.
+
+
+Theorem corr3_forall_weak: forall T RF RR pr pre (p: prog RF) (r: prog RR),
+  {{W pr|fun bm hm done crashdone => exists a:T, pre bm hm done crashdone a W}} p >> r
+  -> forall (a:T), {{W pr|fun bm hm done crashdone => pre bm hm done crashdone a W}} p >> r.
+Proof.
+  unfold corr3_weak; intros.
+  eapply H; eauto.
+  exists a; eauto.
+Qed.
+
+
 
 Ltac monad_simpl_one_weak :=
   match goal with

@@ -1,4 +1,4 @@
-Require Import Log.
+Require Import Mem Log.
 Require Import BFile.
 Require Import Word.
 Require Import Omega.
@@ -44,8 +44,6 @@ Module AFS_RECOVER.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
-
-
 
     Ltac eassign_idempred :=
     match goal with
@@ -97,7 +95,83 @@ Module AFS_RECOVER.
       repeat xform_dist;
       repeat rewrite crash_xform_idem.
 
+  Opaque corr2_weak corr3_weak.
 
+  Theorem recover_weak_ok :
+    forall cachesize pr,
+    {!<W fsxp cs ds,
+     PERM:pr   
+     PRE:bm, hm,
+       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs bm hm *
+       [[ bm = empty_mem ]] *
+       [[ hm = empty_mem ]] *
+       [[ cachesize <> 0 ]]
+     POST:bm', hm', RET:r exists ms fsxp',
+       [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
+       exists d n sm, [[ n <= length (snd ds) ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
+       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
+       [[ BFILE.MSinitial ms ]] *
+       [[ hm' 0 = Some Public ]]
+     XCRASH:bm', hm',
+       LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds bm' hm'
+     W>!} recover cachesize.
+  Proof. Admitted.
+
+  Theorem read_fblock_recover_ok : forall fsxp inum off mscs pr,
+   {WX<< ds sm Fm Ftop tree pathname f Fd vs ilist frees,
+    PERM:pr                                  
+    PRE:bm, hm, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+           [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs sm hm)]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
+    POST:bm', hm',  RET:^(mscs', r)
+           LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
+           ([[ r = OK (snd (fst vs)) \/ (isError r) ]])
+    REC:bm',hm', RET:r exists mscs fsxp,
+         exists d sm' n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' bm' hm' *
+         [[ n <= length (snd ds) ]] *
+         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+    >>XW} read_fblock fsxp inum off mscs >> recover cachesize.
+  Proof.
+    unfold HoareWeak.forall_helper.
+    recover_ro_ok.
+    eapply recover_weak_ok.    
+    destruct v.
+    norml.
+    repeat (apply pimpl_exists_r; eexists).
+    unfold stars; simpl.
+    apply sep_star_lift_r; split.
+    pred_apply; repeat (apply pimpl_exists_r; eexists).
+    safecancel.
+    cancel; eauto.
+    eauto.
+    eauto.
+    weakstep.
+
+    instantiate (1 := (fun bm' hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, l) v0 bm' hm' * F_) ]])%pred));
+      try (cancel; xform_norm; cancel).
+    intros bm' hm'.
+    
+    simpl_idempred_l.
+    xform_norml; rewrite SB.crash_xform_rep;
+      (* (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs); *)
+      try eassumption.
+    safecancel.
+    rewrite H3; eauto.
+    eauto.
+
+    weakstep.
+    erewrite Nat.min_l; eauto.
+
+    cancel.
+    simpl_idempred_r.
+    simpl_idempred_r.
+    rewrite <- LOG.before_crash_idempred.
+    cancel.
+  Qed.
+
+  
   Theorem file_getattr_recover_ok : forall pr fsxp inum mscs,
   {X<< ds sm pathname Fm Ftop tree f ilist frees,
   PERM:pr     
@@ -130,11 +204,9 @@ Module AFS_RECOVER.
 
     simpl_idempred_l.  
     xform_norml.
-    rewrite LOG.notxn_after_crash_diskIs.
     rewrite SB.crash_xform_rep.
     rewrite H3.
     safecancel.
-    unfold LOG.after_crash.
     eauto.
     eauto.
 
@@ -143,63 +215,13 @@ Module AFS_RECOVER.
     erewrite Nat.min_l; eauto.
 
     simpl_idempred_r.
-    eauto.
     simpl_idempred_r.
     rewrite <- LOG.before_crash_idempred.
-    cancel. eauto.
-    simpl; auto.
+    cancel.
   Qed.
 
 
-  Theorem read_fblock_recover_ok : forall fsxp inum off mscs,
-    {X<< ds sm Fm Ftop tree pathname f Fd vs ilist frees,
-    PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm hm *
-           [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs sm)]]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm' RET:^(mscs', r)
-           LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) (MSLL mscs') sm hm' *
-           [[ r = fst vs ]]
-    REC:vm',hm' RET:r exists mscs fsxp,
-         exists d sm' n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) sm' hm' *
-         [[ n <= length (snd ds) ]] *
-         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-    >>X} read_fblock fsxp inum off mscs >> recover cachesize.
-  Proof.
-    unfold forall_helper.
-    recover_ro_ok.
-    destruct v.
-    cancel.
-    eauto.
-    eauto.
-    step.
-
-    eassign_idempred.
-
-    simpl_idempred_l.
-    xform_norml;
-      rewrite SB.crash_xform_rep;
-      (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs);
-      try eassumption.
-    cancel.
-    safestep; subst. 2: eauto.
-    simpl_idempred_r.
-    eassumption.
-    simpl_idempred_r.
-    rewrite <- LOG.before_crash_idempred.
-
-    cancel. auto.
-
-    cancel.
-    safestep; subst. 2:eassumption.
-    simpl_idempred_r.
-    eauto.
-    simpl_idempred_r.
-    rewrite <- LOG.before_crash_idempred.
-    cancel. auto.
-  Qed.
-
-
+(*
   Lemma instantiate_crash : forall idemcrash (F_ : rawpred) (hm_crash : hashmap),
     (fun hm => F_ * idemcrash hm) hm_crash =p=> F_ * idemcrash hm_crash.
   Proof.
@@ -644,5 +666,6 @@ Module AFS_RECOVER.
       cancel; cancel.
   Qed.
 *)
-
+*)
+  
 End AFS_RECOVER.
