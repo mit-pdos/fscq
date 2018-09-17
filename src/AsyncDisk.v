@@ -84,7 +84,6 @@ Parameter owner_dec : forall (a b : owner), {a=b}+{a<>b}.
 Definition block := valu.
 
 Inductive tag :=
-(* | Nothing : tag *)
 | Public : tag
 | Private : owner -> tag.
 

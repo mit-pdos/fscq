@@ -12,15 +12,15 @@ Set Implicit Arguments.
 (** ** Hoare logic *)
 
 Definition donecond (T: Type) := taggeddisk -> taggedmem -> domainmem -> T -> Prop.
-Definition crashcond :=  taggedmem -> domainmem -> @pred addr addr_eq_dec valuset .
+Definition crashcond :=  taggedmem -> domainmem -> @pred addr addr_eq_dec valuset.
 
 Definition corr2 (T: Type) pr (pre: donecond T -> crashcond -> taggedmem -> domainmem ->  @pred addr addr_eq_dec valuset) (p: prog T) :=
   forall (d: taggeddisk) bm hm tr donec crashc out,
     pre donec crashc bm hm d
   -> exec pr d bm hm p out tr
-  -> ((exists d' bm' hm' v, out = Finished d' bm' hm' v /\
-                  donec d' bm' hm' v) \/
-      (exists d' bm' hm', out = Crashed d' bm' hm' /\ crashc bm' hm' d'))/\
+  -> (exists d' bm' hm',
+      ((exists v, out = Finished d' bm' hm' v /\ donec d' bm' hm' v) \/
+       (out = Crashed d' bm' hm' /\ crashc bm' hm' d'))) /\
     only_public_operations tr.
 
 
@@ -367,10 +367,11 @@ Qed.
 Definition corr3 (TF TR: Type) pr (pre: taggedmem -> domainmem -> donecond TF -> donecond TR -> pred) (p1: prog TF) (p2: prog TR) :=
   forall done crashdone m tr bm hm out,
     pre bm hm done crashdone m
-  -> exec_recover pr m bm hm p1 p2 out tr
-  -> ((exists m' bm' hm' v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
-    (exists m' bm' hm' v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))
-/\ only_public_operations tr.
+  -> exec_recover pr m bm hm p1 p2 out tr              
+  -> (exists m' bm' hm',
+        ((exists v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
+         (exists v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))) /\
+    only_public_operations tr.
 
 Notation "{{ pr | pre }} p1 >> p2" := (corr3 pr pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
@@ -463,7 +464,7 @@ Theorem pimpl_ok3_cont :
 Proof.
   unfold corr3, pimpl; intros.
   edestruct H1; eauto.
-  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
+  eapply sep_star_lift_l in H5; [|instantiate (1:=([x=y])%pred)].
   unfold lift in *; subst; eauto.
   firstorder.
 Qed.

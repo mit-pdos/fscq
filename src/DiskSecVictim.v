@@ -25,26 +25,23 @@ Set Implicit Arguments.
   Lemma exec_same_except_finished:
   forall T (p: prog T) pr d d' bm bm' hm t d1 bm1 hm1 r1 tr,
     exec pr d bm hm p (Finished d1 bm1 hm1 r1) tr ->
-    same_except t d d' ->
-    blockmem_same_except t bm bm' ->
+    same_except t d d' hm ->
+    blockmem_same_except t bm bm' hm ->
     only_public_operations tr ->
     t <> Public ->
     exists d2 bm2,
       exec pr d' bm' hm p (Finished d2 bm2 hm1 r1) tr /\
-      same_except t d1 d2 /\
-      blockmem_same_except t bm1 bm2.
+      same_except t d1 d2 hm1 /\
+      blockmem_same_except t bm1 bm2 hm1.
   Proof.
     induction p; intros; inv_exec_perm;
     try solve [do 2 eexists; split; try econstructor; eauto].
     { (** Read **)
       specialize (H1 r1) as Hx; split_ors; cleanup; try congruence.
       specialize (H0 n) as Hx; split_ors; cleanup; try congruence.
-      destruct x0.
+      destruct x, x0, t0, t1.
       do 2 eexists; split; try econstructor; eauto.
-      destruct tb, t0; unfold vsmerge in *;  simpl in *.
-      inversion H7; subst; simpl in *; clear H7; subst.
-      inversion H8; subst; simpl in *; clear H8; subst.
-      destruct (tag_dec t0 t); subst.
+      destruct (addr_eq_dec t0 t1); subst.
       apply blockmem_same_except_upd_same; auto.
       rewrite H10; eauto.
       apply blockmem_same_except_upd_eq; auto.

@@ -15,9 +15,9 @@ Definition corr2_weak (T: Type) pr (pre: donecond T -> crashcond -> taggedmem ->
   forall d bm hm tr donec crashc out,
     pre donec crashc bm hm d
   -> exec pr d bm hm p out tr
-  -> ((exists d' bm' hm' v, out = Finished d' bm' hm' v /\
-                  donec d' bm' hm' v) \/
-      (exists d' bm' hm', out = Crashed d' bm' hm' /\ crashc bm' hm' d'))/\
+  -> (exists d' bm' hm',
+      ((exists v, out = Finished d' bm' hm' v /\ donec d' bm' hm' v) \/
+       (out = Crashed d' bm' hm' /\ crashc bm' hm' d'))) /\
     trace_secure pr tr.
 
 Notation "'{{W' pr | pre 'W}}' p" := (corr2_weak pr pre p)
@@ -313,10 +313,10 @@ Qed.
 Definition corr3_weak (TF TR: Type) pr (pre: taggedmem -> domainmem -> donecond TF -> donecond TR -> pred) (p1: prog TF) (p2: prog TR) :=
   forall done crashdone m tr bm hm out,
     pre bm hm done crashdone m
-  -> exec_recover pr m bm hm p1 p2 out tr
-  -> ((exists m' bm' hm' v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
-    (exists m' bm' hm' v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))
-/\ trace_secure pr tr.
+  -> exec_recover pr m bm hm p1 p2 out tr            
+  -> (exists m' bm' hm',
+        ((exists v, out = RFinished TR m' bm' hm' v /\ done m' bm' hm' v) \/
+         (exists v, out = RRecovered TF m' bm' hm' v /\ crashdone m' bm' hm' v))) /\ trace_secure pr tr.
 
 Notation "'{{W' pr | pre 'W}}' p1 >> p2" := (corr3_weak pr pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).

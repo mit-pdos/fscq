@@ -31,15 +31,6 @@ Defined.
 
 Definition trace := list op.
 
-(*
-  Definition blockset:= (block * list block)%type.
-  Definition blockdisk:= @Mem.mem addr addr_eq_dec blockset.
-  Definition blockmem:= @Mem.mem handle handle_eq_dec block.
-
-  Definition tagset:= (tag * list tag)%type.
-  Definition tagdisk:= @Mem.mem addr addr_eq_dec tagset.
- *)
-
 Definition domainmem:= @Mem.mem addr addr_eq_dec tag.
 Definition taggeddisk:= rawdisk.
 Definition taggedmem:= @Mem.mem handle handle_eq_dec tagged_block.
@@ -61,6 +52,12 @@ Inductive prog : Type -> Type :=
 | ChDom : addr -> tag -> prog unit
 | Ret : forall T, T -> prog T
 | Bind: forall T T', prog T  -> (T -> prog T') -> prog T'.
+
+Fixpoint domainmem0 size : domainmem :=
+  match size with
+  | O => empty_mem
+  | S n => upd (domainmem0 n) n Public
+  end.
 
 Definition vsmerge {T} (vs: T * list T) := fst vs :: snd vs.
 
@@ -90,6 +87,7 @@ Inductive exec:
                        
 | ExecSeal : forall pr d bm dm i t b,
                bm i = None ->
+               dm t <> None ->
                exec pr d bm dm (Seal t b) (Finished d (upd bm i (t,b)) dm i) nil
                     
 | ExecUnseal : forall pr d bm dm i b t,
@@ -108,11 +106,7 @@ Inductive exec:
                ~can_access pr t ->
                exec pr d bm dm (Auth t) (Finished d bm dm false) nil
 
-| ExecChDomNone : forall pr d bm dm t a,
-               dm a = None ->
-               exec pr d bm dm (ChDom a t) (Finished d bm (upd dm a t) tt) nil
-
-| ExecChDomSome : forall pr d bm dm t t' a,
+| ExecChDom : forall pr d bm dm t t' a,
                dm a = Some t' ->
                exec pr d bm dm (ChDom a t) (Finished d bm (upd dm a t) tt) [Chd t' t]
                     
@@ -149,6 +143,10 @@ Inductive exec:
                  bm i = None \/ (exists b, bm i = Some b /\ dm (fst b) = None) ->
                  exec pr d bm dm (Unseal i) Failed nil
 
+| FailChDom : forall pr d bm dm t a,
+               dm a = None ->
+               exec pr d bm dm (ChDom a t) Failed nil
+
 | FailBind : forall T T' pr (p1 : prog T) (p2: T -> prog T') d bm dm tr',
                 exec pr d bm dm p1 (@Failed T) tr' ->
                 exec pr d bm dm (Bind p1 p2) (@Failed T') tr'.
@@ -169,12 +167,12 @@ Inductive exec_recover (TF TR: Type):
 | XRCrashedFinished : forall pr tr' tr'' d dm bm bm' dm' p1 p2 d' d'r d'' dm'' bm'' (v: TR),
     exec pr d bm dm p1 (@Crashed TF d' bm' dm') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r empty_mem empty_mem p2 p2 (RFinished TR d'' bm'' dm'' v) tr''
+    -> @exec_recover TR TR pr d'r empty_mem dm' p2 p2 (RFinished TR d'' bm'' dm'' v) tr''
     -> exec_recover pr d bm dm p1 p2 (RRecovered TF d'' bm'' dm'' v) (tr''++tr')
 | XRCrashedRecovered :  forall pr tr' tr'' d dm bm bm' dm' p1 p2 d' d'r d'' dm'' bm'' (v: TR),
     exec pr d bm dm p1 (@Crashed TF d' bm' dm') tr'
     -> possible_crash d' d'r
-    -> @exec_recover TR TR pr d'r empty_mem empty_mem p2 p2 (RRecovered TR d'' bm'' dm'' v) tr''
+    -> @exec_recover TR TR pr d'r empty_mem dm' p2 p2 (RRecovered TR d'' bm'' dm'' v) tr''
     -> exec_recover pr d bm dm p1 p2 (RRecovered TF d'' bm'' dm'' v) (tr''++tr').
 
 

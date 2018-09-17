@@ -175,12 +175,12 @@ Module AFS.
 
 
   (** For debugging purposes **)
-  Definition getowner fsxp inum ams:=
+ (* Definition getowner fsxp inum ams:=
     let^ (ams, t) <- DIRTREE.getowner fsxp inum ams;;
     match t with
     | Public => Ret ^(ams, dummy_owner)
     | Private n =>  Ret ^(ams, n)
-    end.  
+    end. *)  
 
   Definition file_get_attr fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
@@ -554,7 +554,7 @@ Module AFS.
     Qed.
 
 
-    Theorem changeowner_ok :
+  Theorem changeowner_ok :
     forall fsxp inum tag mscs pr,
   {~< ds sm pathname Fm Ftop tree f ilist frees,
   PERM:pr     
