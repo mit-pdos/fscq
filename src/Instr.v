@@ -21,7 +21,7 @@ Lemma chdom_secure:
     {~!< F,
        PERM: pr
        PRE: bm, hm,
-         F * [[ forall t', hm i = Some t' -> t' = Public ]]
+         F * [[ hm i = Some Public ]]
        POST: bm', hm',
           RET : tt
           F * [[ hm' = upd hm i t]]
@@ -38,27 +38,13 @@ Proof.
     split; auto.
     apply only_public_operations_app_merge; simpl; auto.
   }
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
   split_ors; cleanup; inv_exec_perm.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
+    cleanup; split_ors; cleanup; try congruence.
     split.
-    right; do 3 eexists; intuition.
-    apply only_public_operations_app_merge; simpl; auto.
-  }
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
+    do 3 eexists; right; intuition.
     apply only_public_operations_app_merge; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm; try congruence.
@@ -67,21 +53,17 @@ Proof.
     pred_apply; cancel; eauto.  
     split; auto.
     apply only_public_operations_app_merge; simpl; auto.
-  }
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply only_public_operations_app_merge; simpl; auto.
+    cleanup; eauto.
   }
 Qed.
 
 Lemma chdom_secure_weak:
   forall pr i t,
-    {~!<W F,
+    {~!<W F t',
        PERM: pr
        PRE: bm, hm,
-         F * [[ forall t', hm i = Some t' -> can_access pr t' ]]
+          F * [[ hm i = Some t']] *
+          [[can_access pr t' ]]
        POST: bm', hm',
           RET : tt
           F * [[ hm' = upd hm i t ]]
@@ -98,27 +80,13 @@ Proof.
     split; auto.
     apply trace_secure_app; simpl; auto.
   }
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply trace_secure_app; simpl; auto.
-  }
   split_ors; cleanup; inv_exec_perm.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
+    cleanup; split_ors; cleanup; try congruence.
     split.
-    right; do 3 eexists; intuition.
-    apply trace_secure_app; simpl; auto.
-  }
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
+    do 3 eexists; right; intuition.
     apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm; try congruence.
@@ -127,15 +95,9 @@ Proof.
     pred_apply; cancel; eauto.  
     split; auto.
     apply trace_secure_app; simpl; auto.
-  }
-  {
-    edestruct H4; eauto.
-    pred_apply; cancel; eauto.  
-    split; auto.
-    apply trace_secure_app; simpl; auto.
+    cleanup; eauto.
   }
 Qed.
-
 
 
 Lemma auth_secure:
