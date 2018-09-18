@@ -180,7 +180,7 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; do 3 eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
     apply H3.
     pred_apply; cancel; eauto.
@@ -188,13 +188,12 @@ Proof.
   }
   {
     split.
-    right; eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
     apply ptsto_subset_valid' in H; cleanup; eauto.
-    split_ors; cleanup; try congruence.
-    do 2 eexists; intuition eauto.
+    repeat deex; congruence.
     inv_exec_perm; cleanup; auto.
     try rewrite app_nil_r.
     edestruct H4; eauto.
@@ -243,16 +242,15 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
-    do 2 eexists; intuition eauto.
     apply H3.
     pred_apply; cancel; eauto.
     inv_exec_perm; cleanup; simpl; auto.
   }
   {
     split.
-    right; eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
     edestruct H4; eauto.
     apply ptsto_subset_valid' in H as Hx; cleanup; eauto.
@@ -260,8 +258,7 @@ Proof.
     pred_apply' Hy; cancel; eauto.
     unfold vsmerge; simpl;
     apply ListUtils.incl_cons2; auto.
-    split_ors; cleanup; try congruence.
-    do 2 eexists; intuition eauto.
+    repeat deex; congruence.
     inv_exec_perm; cleanup; simpl; auto.
     try rewrite app_nil_r.
     edestruct H4; eauto.
@@ -317,9 +314,9 @@ Proof.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
+    repeat deex; try congruence.
+    do 3 eexists; right; intuition.
+    congruence.
     apply only_public_operations_app_merge; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm.
@@ -359,9 +356,9 @@ Proof.
   {
     edestruct H4; eauto.
     pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
+    repeat deex; try congruence.
+    do 3 eexists; right; intuition.
+    congruence.
     apply trace_secure_app; simpl; auto.
   }
   split_ors; cleanup; inv_exec_perm.
@@ -402,11 +399,13 @@ Proof.
     edestruct H4; eauto.
     cleanup.
     pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
+    repeat deex; try congruence.
+    do 3 eexists; right; intuition.
+    congruence.
+    inversion H0; subst.
     apply only_public_operations_app_merge; simpl; auto.
-    simpl in *; cleanup; eauto.
+    intuition.
+    cleanup; simpl in *; congruence.
   }
   repeat split_ors; cleanup; inv_exec_perm; try congruence.
   split_ors; cleanup; simpl in *; try congruence.
@@ -451,11 +450,11 @@ Proof.
     edestruct H4; eauto.
     cleanup.
     pred_apply; cancel; eauto.
-    split_ors; cleanup; try congruence.
-    split.
-    right; do 3 eexists; intuition.
+    repeat deex; try congruence.
+    do 3 eexists; right; intuition.
+    congruence.
     apply trace_secure_app; simpl; auto.
-    simpl in *; cleanup; eauto.
+    cleanup; simpl in *; cleanup; eauto.
   }
   split_ors; cleanup; inv_exec_perm; try congruence.
   split_ors; cleanup; simpl in *; try congruence.
