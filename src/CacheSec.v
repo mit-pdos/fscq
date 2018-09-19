@@ -22,6 +22,7 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
+Hint Resolve dummy_handle.
 
   Theorem writeback_ok' :
     forall a cs pr,
@@ -45,32 +46,19 @@ Set Implicit Arguments.
     unfold writeback; intros.
     prestep.
     norml.
-    edestruct H5; eauto; cleanup; simpl in *.
-    unfold stars; norm.
-    unfold stars; cancel.
-    eassign F_.
-    eassign (vs0_cur, vs0_old).
+    edestruct H6; eauto; cleanup; simpl in *.
+    cancel; eauto; try cancel.
+    hoare.
+
     cancel.
-    intuition; eauto.
     hoare.
-    eexists; eapply hashmap_subset_trans; eauto.
-
-    norml.
-    edestruct H5; eauto; cleanup; simpl in *.
-    unfold stars; norm.
-    unfold stars; cancel.
-    intuition; eauto.
-    step.
-    rewrite <- H1; cancel; eauto.
-
-    norm.
-    unfold stars; cancel.
-    intuition; eauto.
+    cancel.
+    cancel.
     hoare.
-    rewrite <- H1; cancel; eauto.
+    cancel.
+
     Unshelve.
     all:eauto.
-    exact dummy_handle.
   Qed.
 
   
@@ -103,7 +91,7 @@ Proof.
         apply MapFacts.in_find_iff.
         intuition; congruence.
       }
-      specialize (H6 _ A) as Hx.
+      specialize (H7 _ A) as Hx.
       destruct (d a) eqn: D0; try congruence; clear Hx.
       unfold stars; simpl. rewrite mem_pred_extract'; eauto.
       unfold mem_pred_one, cachepred at 2; simpl; cleanup.
@@ -111,7 +99,7 @@ Proof.
 
       norm.
       unfold stars; simpl; cancel.
-      eassign (tb0, l); cancel.
+      eassign tb0; eassign l; cancel.
       intuition; eauto.
 
       hoare.
@@ -129,18 +117,15 @@ Proof.
       eapply incl_cons; eauto.
 
       unfold size_valid in *; simpl; auto.
-      repeat rewrite map_add_dup_cardinal; auto.      
+      repeat rewrite map_add_dup_cardinal; auto.
+      admit.
+
       destruct (Nat.eq_dec a a0); subst; try congruence.
-      apply add_neq_in_iff in H5; eauto.
-        
-      destruct (addr_eq_dec a a0); subst.
-      congruence.
       rewrite add_neq_o; auto.
       
       unfold addr_clean.
       right; eexists; apply add_eq_o; eauto.
       apply add_in_iff; intuition.
-      eexists; eapply hashmap_subset_trans; eauto.
 
       rewrite <- H1.
       cancel; eauto.
@@ -152,7 +137,7 @@ Proof.
     unfold addr_clean; hoare.
   }
   unfold addr_clean; hoare.
-Qed.
+Admitted.
 
 Hint Extern 1 (corr2 _ _ (Bind (writeback _ _) _)) => apply writeback_ok : prog.
 
@@ -195,7 +180,6 @@ Theorem evict_ok :
 
       eapply remove_1; eauto.
       eapply size_valid_remove_cardinal_ok; eauto.
-      eexists; eapply hashmap_subset_trans; eauto.
     }
     
     {
@@ -212,7 +196,6 @@ Theorem evict_ok :
       
       eapply remove_1; eauto.
       eapply size_valid_remove_cardinal_ok; eauto.
-      eexists; eapply hashmap_subset_trans; eauto.
     }
 Qed.
 
@@ -238,13 +221,13 @@ Proof.
   unfold maybe_evict; step. step_r.
   unfold rep, size_valid in *; destruct_lift H; cleanup; auto.
   step.
-  apply H9; apply in_find_iff; intuition; congruence.
+  apply H10; apply in_find_iff; intuition; congruence.
   step_r.
   unfold rep, size_valid in *; destruct_lift H; cleanup; auto.
   rewrite cardinal_1 in *; cleanup; rewrite Heql in *; simpl in *; omega.
   step.
   apply find_elements_hd in Heql;
-  apply H9; apply in_find_iff; intuition; congruence.  
+  apply H10; apply in_find_iff; intuition; congruence.
 Qed.
 
 Hint Extern 1 (corr2 _ _ (Bind (maybe_evict _) _)) => apply maybe_evict_ok : prog.
@@ -273,7 +256,7 @@ Proof.
   repeat destruct_branch.
   {
     safestep; eauto.
-    eapply ptsto_subset_valid' in H5 as Hx; cleanup; simpl in *.
+    eapply ptsto_subset_valid' in H6 as Hx; cleanup; simpl in *.
     step_r.
     unfold rep in *; erewrite mem_pred_extract with (a := a) in H1; eauto; 
     unfold cachepred at 2 in H1; rewrite Heqo in H1.
@@ -282,18 +265,17 @@ Proof.
   }
   {
     safestep.
-    eapply ptsto_subset_valid' in H4 as Hx; cleanup; simpl in *.    
+    eapply ptsto_subset_valid' in H5 as Hx; cleanup; simpl in *.
     unfold rep; safestep_r.
-    specialize (H14 _ Heqo).
+    specialize (H15 _ Heqo).
     unfold rep in *; erewrite mem_pred_extract with (a := a); eauto; 
-    unfold cachepred at 2; rewrite H14.
-    eassign (tbs_cur, x).
+    unfold cachepred at 2; rewrite H15.
+    eassign tbs_1; eassign x.
     eassign (F_ * [[ size_valid r_ ]] *
              [[ addr_valid d (CSMap r_) ]] *
              mem_pred (HighAEQ:=addr_eq_dec)
                       (cachepred (CSMap r_) bm) (mem_except d a))%pred.
     cancel.
-    eauto.
     unfold rep in *; hoare.
     
     rewrite sep_star_comm.
@@ -302,13 +284,10 @@ Proof.
     eapply addr_valid_add; eauto.       
     apply upd_eq; auto.
     
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
-    
     rewrite <- H1; unfold rep; cancel; eauto.
     (eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto]);
-    unfold cachepred at 3; rewrite H14; eauto;
+    unfold cachepred at 3; rewrite H15; eauto;
     cancel; eauto.
-    eexists; eapply hashmap_subset_trans; eauto.
   }
 Qed.
 
@@ -333,7 +312,7 @@ Proof.
     unfold write; intros.
     safestep; eauto.
     
-    eapply ptsto_subset_valid' in H0 as Hx; cleanup; simpl in *.
+    eapply ptsto_subset_valid' in H as Hx; cleanup; simpl in *.
     hoare.
     {
       unfold rep; simpl;
@@ -346,11 +325,12 @@ Proof.
       rewrite MapFacts.add_eq_o by reflexivity.
       destruct p_2.
       cancel.
-      eassign (tb, vsmerge(tb0_cur, tb0_old)).
+      eassign tb0.
+      eassign (tb, vsmerge (tb0_1, tb0_2)); simpl.
       erewrite ptsto_subset_pimpl; eauto.
       simpl; apply incl_tl; auto.
       simpl; auto.
-      simpl; right; eapply In_incl; eauto.
+      simpl; auto.
 
       cancel.
       erewrite ptsto_subset_pimpl; eauto.
@@ -360,8 +340,7 @@ Proof.
       eapply addr_valid_upd_add; eauto.        
     }
     eapply ptsto_subset_upd; eauto; apply incl_refl.
-    eexists; eapply hashmap_subset_trans; eauto.
-    
+
     {
       unfold rep; simpl;
       erewrite mem_pred_extract with (a := a) at 1; eauto.
