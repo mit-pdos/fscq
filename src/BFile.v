@@ -1901,60 +1901,15 @@ Qed.
   Hint Resolve freepred_bfile0.
 
  (*** specification ***)
-
-  Theorem getowner_ok :
-    forall lxp bxp ixp inum ms pr,
-    {< F Fm Fi m0 sm m flist ilist allocc frees f,
-    PERM:pr   
-    PRE:bm, hm,
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
-           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:bm', hm', RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
-           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
-           [[ r = BFOwner f ]] *
-           [[ MSAllocC ms = MSAllocC ms' ]] *
-           [[ MSAlloc ms = MSAlloc ms' ]] *
-           [[ MSIAllocC ms = MSIAllocC ms' ]] *
-           [[ MSCache ms = MSCache ms' ]] *
-           [[ MSDBlocks ms = MSDBlocks ms' ]]
-    CRASH:bm', hm',  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
-    >} getowner lxp ixp inum ms.
-  Proof. 
-    unfold getowner, rep.
-    safestep.
-    sepauto.
-
-    safestep.
-    safestep.
-
-    eauto.
-    cancel.
-    subst; simpl; eauto.
-    rewrite listmatch_extract with (i:=inum) in H.
-    unfold file_match at 2 in H; destruct_lift H; cleanup.
-    erewrite <- H22, <- list2nmem_sel; eauto.
-    eapply list2nmem_inbound; eauto.
-    solve_blockmem_subset.
-
-    cancel.
-    rewrite <- H1; cancel; eauto.
-    Unshelve.
-    exact bfile0.
-    Grab Existential Variables.
-    exact INODE.inode0.
-  Qed.
-
-    Theorem setowner_ok :
+  Theorem setowner_ok :
     forall lxp bxps ixp inum tag ms pr,
-    {~< F Fm Ff m0 sm m flist ilist allocc frees f,
+    {~<W F Fm Ff m0 sm m flist ilist allocc frees f,
     PERM:pr
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
            [[[ m ::: (Fm * rep bxps sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
-           [[[ flist ::: (Ff * inum |-> f) ]]]
+           [[[ flist ::: (Ff * inum |-> f) ]]] *
+           [[ can_access pr (BFOwner f) ]]
     POST:bm', hm', RET:ms'  exists m' flist' f' ilist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxps sm ixp flist' ilist' frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
@@ -1970,24 +1925,32 @@ Qed.
             ilist_safe ilist free ilist' free ]] *
            [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
-    >~} setowner lxp ixp inum tag ms.
+    W>~} setowner lxp ixp inum tag ms.
   Proof. 
     unfold setowner, rep.
-    step.
+    weakstep.
     sepauto.
+    
     denote listmatch as Hx;
     rewrite listmatch_length_pimpl in Hx.
     destruct_lift Hx.
     assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
     assert (A0:inum < length ilist). { match goal with [H: length _ = ?x |- _ < ?x ] => rewrite <- H; eauto end. }
-    step.
-    safestep.
+    rewrite listmatch_isolate with (i:=inum) in H by auto.
+    unfold file_match in H; destruct_lift H; eauto.
+    rewrite <- H18; erewrite <- list2nmem_sel; eauto.
+    
+    denote listmatch as Hx;
+    rewrite listmatch_length_pimpl in Hx.
+    destruct_lift Hx.
+    assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
+    assert (A0:inum < length ilist). { match goal with [H: length _ = ?x |- _ < ?x ] => rewrite <- H; eauto end. }
+    weakstep.
+    weaksafestep.
 
     6: eauto.
     5: eapply list2nmem_updN; eauto.
     
-    erewrite INODE.rep_domainmem_subset; eauto; cancel.
-         
     denote arrayN_ex as Hx;
     apply list2nmem_array_updN in Hx; auto.
     rewrite Hx.
@@ -2051,7 +2014,54 @@ Qed.
    Unshelve.
    all: eauto.
    exact INODE.inode0.
-Qed.  
+  Qed.  
+
+
+  
+  Theorem getowner_ok :
+    forall lxp bxp ixp inum ms pr,
+    {< F Fm Fi m0 sm m flist ilist allocc frees f,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:bm', hm', RET:^(ms',r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[ r = BFOwner f ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSDBlocks ms = MSDBlocks ms' ]]
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
+    >} getowner lxp ixp inum ms.
+  Proof. 
+    unfold getowner, rep.
+    safestep.
+    sepauto.
+
+    safestep.
+    safestep.
+
+    eauto.
+    cancel.
+    subst; simpl; eauto.
+    rewrite listmatch_extract with (i:=inum) in H.
+    unfold file_match at 2 in H; destruct_lift H; cleanup.
+    erewrite <- H22, <- list2nmem_sel; eauto.
+    eapply list2nmem_inbound; eauto.
+    solve_blockmem_subset.
+
+    cancel.
+    rewrite <- H1; cancel; eauto.
+    Unshelve.
+    exact bfile0.
+    Grab Existential Variables.
+    exact INODE.inode0.
+  Qed.
   
   Theorem shuffle_allocs_ok :
     forall lxp bxps ms cms pr,
@@ -3616,7 +3626,7 @@ Qed.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (updattr _ _ _ _ _) _) => apply updattr_ok : prog. 

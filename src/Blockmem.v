@@ -1217,4 +1217,5 @@ Ltac solve_blockmem_subset:=
   | [|- subset _ _ ] =>
     auto; eapply subset_trans;
     eauto; solve_blockmem_subset
+  | [|- _] => idtac
   end.

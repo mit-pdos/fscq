@@ -663,7 +663,7 @@ Qed.
     W>~} setowner lxp xp inum t cache ms.
   Proof.
     unfold setowner, rep.
-    safestep.
+    weaksafestep.
     denote listmatch as Hm;
     rewrite listmatch_length_pimpl in Hm.
     destruct_lift Hm.
@@ -675,7 +675,7 @@ Qed.
     rewrite listmatch_length_pimpl in Hm.
     destruct_lift Hm.
     rewrite combine_length_eq in *; [ |eauto].
-    step.
+    weakstep.
     irec_wf.
     sepauto.
 
@@ -683,11 +683,11 @@ Qed.
       eapply list2nmem_inbound; eauto.
     }
 
-    step.
-    repeat (eapply subset_extract_some; eauto).
+    weakstep.
+    erewrite <- list2nmem_sel; eauto.
 
-    safestep.
-    safestep.
+    weaksafestep.
+    weaksafestep.
 
     rewrite LOG.rep_blockmem_subset; eauto.
     3: eauto.
@@ -720,10 +720,6 @@ Qed.
     rewrite length_updN in *; eauto.
     simplen.
     simplen.
-
-    eapply subset_extract_some; [|eauto].
-    rewrite upd_ne; try omega.
-    repeat (eapply subset_extract_some; eauto).
 
     cancel.
     rewrite <- H1; cancel.
@@ -1512,7 +1508,7 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _ _) _) => apply getowner_ok : prog.
-  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ _ _ _) (rep _ _ _ _ _ _)) => constructor : okToUnify.
 

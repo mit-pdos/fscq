@@ -556,7 +556,7 @@ Module AFS.
 
   Theorem changeowner_ok :
     forall fsxp inum tag mscs pr,
-  {~< ds sm pathname Fm Ftop tree f ilist frees,
+  {~<W ds sm pathname Fm Ftop tree f ilist frees,
   PERM:pr     
   PRE:bm, hm,
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
@@ -593,7 +593,7 @@ Module AFS.
     [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                     ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
     [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
-  >~} changeowner fsxp inum tag mscs.
+  W>~} changeowner fsxp inum tag mscs.
   Proof. 
     unfold changeowner; intros.
     step.

@@ -5,6 +5,7 @@ Require Import FMapAVL FMapMem.
 Require Import MapUtils.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
+Require Import WeakConversion.
 Require Export Log.
 Import ListNotations.
 
@@ -287,7 +288,6 @@ Module LogRecArray (RA : RASig).
 
     rewrite <- H1; cancel.
     apply LOG.active_intact.
-    solve_hashmap_subset.
 
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.    
@@ -317,16 +317,16 @@ Module LogRecArray (RA : RASig).
     rewrite repeat_length; auto.
     cleanup.
     unfold items_valid in *; intuition; cleanup.
-    setoid_rewrite H4.
+    setoid_rewrite H5.
     rewrite divup_mul; auto.
     apply repeat_length.
 
     step.
-    rewrite H13 in H4.
-    rewrite synced_list_map_fst in H4.
-    rewrite <- firstn_map_comm in H4.
-    setoid_rewrite map_fst_combine in H4; auto.
-    apply in_firstn_in in H4; apply repeat_spec in H4; auto.
+    rewrite H14 in H0.
+    rewrite synced_list_map_fst in H0.
+    rewrite <- firstn_map_comm in H0.
+    setoid_rewrite map_fst_combine in H0; auto.
+    apply in_firstn_in in H0; apply repeat_spec in H0; auto.
     apply repeat_length.
 
     step.
@@ -341,7 +341,6 @@ Module LogRecArray (RA : RASig).
     unfold items_valid in *; intuition.
     eapply iunpack_ipack_firstn; eauto.
     apply repeat_length.
-    solve_hashmap_subset.
 
     Unshelve.
     unfold EqDec; apply handle_eq_dec.
@@ -365,11 +364,9 @@ Module LogRecArray (RA : RASig).
     unfold write, rep.
     step.
     apply repeat_length.
-    apply repeat_spec in H; auto.
 
     safestep.
-    rewrite LOG.rep_blockmem_subset; [|eauto].
-    rewrite LOG.rep_hashmap_subset; eauto.    
+    rewrite LOG.rep_blockmem_subset; eauto.
     cleanup.
     rewrite map_fst_combine by apply repeat_length.
     rewrite Forall_forall; intros x Hin.
@@ -393,7 +390,7 @@ Module LogRecArray (RA : RASig).
     step.
     step.
 
-    subst; clear H16.
+    subst; clear H10.
     cancel.
     rewrite vsupsyn_range_synced_list; auto.
     erewrite <- extract_blocks_subset_trans; eauto.
@@ -404,7 +401,7 @@ Module LogRecArray (RA : RASig).
     rewrite synced_list_length.
     setoid_rewrite combine_length_eq; auto.
     cleanup; repeat rewrite ipack_length.
-    setoid_rewrite H14. setoid_rewrite H16; eauto.
+    setoid_rewrite H7. setoid_rewrite H10; eauto.
     apply repeat_length.
     apply repeat_length.
     solve_hashmap_subset.
@@ -436,11 +433,8 @@ Module LogRecArray (RA : RASig).
     step.
     
     repeat rewrite repeat_length; omega.
-    apply repeat_spec in H; cleanup; auto.
-
     safestep.
-    rewrite LOG.rep_blockmem_subset; [|eauto].
-    rewrite LOG.rep_hashmap_subset; eauto.
+    rewrite LOG.rep_blockmem_subset; eauto.
     
     cleanup.
     rewrite map_fst_combine by (repeat rewrite repeat_length; auto).
@@ -516,6 +510,7 @@ Module LogRecArray (RA : RASig).
     pred_apply; cancel.
     solve_hashmap_subset.
     eauto.
+    eauto.
 
     safestep.
     safestep.
@@ -529,19 +524,20 @@ Module LogRecArray (RA : RASig).
     rewrite synced_list_length.
     setoid_rewrite combine_length_eq; auto.
     cleanup; rewrite repeat_length, ipack_length.
-    setoid_rewrite H9; rewrite divup_mul; auto.
+    setoid_rewrite H8; rewrite divup_mul; auto.
     apply repeat_length.
 
     safestep.
+    eauto.
     pose proof Forall_can_access_public as Hx.
-    auto.
+    eauto.
     
     cleanup.
     subst; setoid_rewrite synced_list_selN; simpl.
     setoid_rewrite selN_combine; eauto.
     rewrite repeat_selN; eauto.
     cleanup; rewrite ipack_length.
-    setoid_rewrite H9; rewrite divup_mul; auto.
+    setoid_rewrite H8; rewrite divup_mul; auto.
     apply repeat_length.
 
     step.
@@ -624,7 +620,6 @@ Module LogRecArray (RA : RASig).
 
     subst; apply eq_sym.
     eapply list2nmem_sel; eauto.
-    solve_hashmap_subset.
   Qed.
 
 
@@ -654,7 +649,6 @@ Module LogRecArray (RA : RASig).
     step.
 
     eapply list2nmem_updN; eauto.
-    solve_hashmap_subset.
   Qed.
 
 
@@ -717,7 +711,6 @@ Module LogRecArray (RA : RASig).
     eapply read_array_length_ok; eauto.
 
     subst; eapply read_array_list_ok; eauto.
-    solve_hashmap_subset.
   Qed.
 
   Theorem ifind_array_ok :
@@ -741,7 +734,6 @@ Module LogRecArray (RA : RASig).
     solve_hashmap_subset.
     or_r; cancel.
     apply list2nmem_ptsto_cancel; auto.
-    solve_hashmap_subset.
   Qed.
   
   Fact eq_rect_eq : forall (a : nat) (f : nat -> Type) v1 v2 c H,
@@ -1182,6 +1174,86 @@ Module LogRecArrayCache (RA : RASig).
     all: eauto using cache_rep_some, cache_rep_add.
   Qed.
 
+  Theorem get_array_ok' :
+    forall lxp xp ix cache ms pr,
+      {< e,
+       PERM:pr   
+       PRE:bm, hm,
+          let '(F, Fm, m0, sm, m, items) := e in       
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ ix < length items ]] *
+          [[[ m ::: Fm * rep xp items cache ]]]
+       POST:bm', hm', RET:^(cache', ms', r)
+          let '(F, Fm, m0, sm, m, items) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+          [[[ m ::: Fm * rep xp items cache' ]]] *
+          [[ r = selN items ix item0 ]]
+       CRASH:bm', hm', exists ms',
+          let '(F, Fm, m0, sm, m, items) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    >} get_array lxp xp ix cache ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply get_array_ok.
+    intros; norml.
+    unfold stars; simpl; cancel.
+    eauto.
+    apply sep_star_comm.
+  Qed.
+
+  Opaque get_array.
+  Theorem get_array_ok_weak' :
+    forall lxp xp ix cache ms pr,
+      {<W e,
+       PERM:pr   
+       PRE:bm, hm,
+          let '(F, Fm, m0, sm, m, items) := e in       
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ ix < length items ]] *
+          [[[ m ::: Fm * rep xp items cache ]]]
+       POST:bm', hm', RET:^(cache', ms', r)
+          let '(F, Fm, m0, sm, m, items) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+          [[[ m ::: Fm * rep xp items cache' ]]] *
+          [[ r = selN items ix item0 ]]
+       CRASH:bm', hm', exists ms',
+          let '(F, Fm, m0, sm, m, items) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    W>} get_array lxp xp ix cache ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    intros; eapply get_array_ok'.
+  Qed.
+
+  Theorem get_array_ok_weak :
+    forall lxp xp ix cache ms pr,
+    {<W F Fm m0 sm m items,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ ix < length items ]] *
+          [[[ m ::: Fm * rep xp items cache ]]]
+    POST:bm', hm', RET:^(cache', ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+          [[[ m ::: Fm * rep xp items cache' ]]] *
+          [[ r = selN items ix item0 ]]
+    CRASH:bm', hm', exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    W>} get_array lxp xp ix cache ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply get_array_ok_weak'.
+    intros; norml.
+    unfold stars; simpl; safecancel.
+    cancel.
+    eauto.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a1, b, (a0, b1)))); simpl in *.
+    eauto.
+    eauto.
+  Qed.
+
   Theorem put_array_ok :
     forall lxp xp ix e cache ms pr,
     {< F Fm Fi m0 sm m items e0,
@@ -1206,11 +1278,97 @@ Module LogRecArrayCache (RA : RASig).
     eapply cache_rep_updN; eauto.
     eapply list2nmem_ptsto_bound; eauto.
     eapply list2nmem_updN; eauto.
-    solve_hashmap_subset.
+  Qed.
+
+  Theorem put_array_ok' :
+    forall lxp xp ix e cache ms pr,
+    {< x,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] 
+    POST:bm', hm', RET:^(cache', ms') exists m' items',
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] 
+    CRASH:bm', hm',
+       let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+       LOG.intact lxp F m0 sm bm' hm'
+    >} put_array lxp xp ix e cache ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply put_array_ok.
+    intros; norml.
+    unfold stars; simpl; cancel.
+    eauto.
+    apply sep_star_comm.
+    eauto.
+  Qed.
+
+  Theorem put_array_ok_weak' :
+    forall lxp xp ix e cache ms pr,
+    {<W x,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] 
+    POST:bm', hm', RET:^(cache', ms') exists m' items',
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] 
+    CRASH:bm', hm',
+       let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+       LOG.intact lxp F m0 sm bm' hm'
+    W>} put_array lxp xp ix e cache ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    intros; eapply put_array_ok'.
+  Qed.
+
+  Theorem put_array_ok_weak :
+    forall lxp xp ix e cache ms pr,
+    {<W F Fm Fi m0 sm m items e0,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] 
+    POST:bm', hm', RET:^(cache', ms') exists m' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] 
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    W>} put_array lxp xp ix e cache ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply put_array_ok_weak'.
+    intros; norml.
+    unfold stars; simpl; safecancel.
+    cancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, (a1, b, b0))); simpl in *.
+    eauto.
+    eauto.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (put_array _ _ _ _ _ _) _) => apply put_array_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok_weak : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (put_array _ _ _ _ _ _) _) => apply put_array_ok_weak : prog.
 
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
