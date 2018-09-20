@@ -61,6 +61,7 @@ for fn in os.listdir("fscq/src/coqbuild"):
 html = open("checkproofs-errors.html", "w", encoding="utf-8")
 total_errors = sum(len(errors[fn]) for fn in errors)
 total_admits = sum(admits[fn] for fn in admits)
+html.write("<h1>Build: %s</h1>\n" % build_name)
 html.write("<h1>Total: %d errors, %d admits</h1>\n" % (total_errors, total_admits))
 
 for fn in sorted({**errors, **admits}):
