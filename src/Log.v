@@ -87,10 +87,9 @@ Module LOG.
   | RecoveringTxn (old : diskstate)
   .
 
-  Definition rep_inner xp st ms sm bm hm :=
+  Definition rep_inner xp st ms sm bm (hm: domainmem) :=
   let '(cm, mm) := (MSTxn ms, MSGLog ms) in
-  ([[ Forall (fun t => t = 0)
-            (map fst (extract_blocks bm (map snd (Map.elements cm)))) ]] *  
+  (
   match st with
     | NoTxn ds =>
       [[ Map.Empty cm ]] *
@@ -216,8 +215,7 @@ Hint Resolve Forall_nil.
   Qed.
 
   Lemma rep_inner_domainmem_subset : forall xp ms hm sm hm' bm,
-    subset hm hm'
-    -> forall st, rep_inner xp st ms sm bm hm
+    forall st, rep_inner xp st ms sm bm hm
         =p=> rep_inner xp st ms sm bm hm'.
   Proof.
     intros.
@@ -229,12 +227,12 @@ Hint Resolve Forall_nil.
   Qed.
 
   Lemma Forall_public_subset_trans:
-    forall A (bm bm': block_mem tagged_block) (hl: list (A * handle)),
-      Forall (fun t => t = 0)
+    forall A (bm bm': block_mem tagged_block) (hl: list (A * handle)) hm,
+      Forall (fun t => hm t = Some Public)
              (map fst (extract_blocks bm (map snd hl))) ->
       handles_valid_list bm hl ->
       bm c= bm' ->
-      Forall (fun t => t = 0)
+      Forall (fun t => hm t = Some Public)
              (map fst (extract_blocks bm' (map snd hl))).
   Proof.
     unfold handles_valid_list; intros.
@@ -243,19 +241,16 @@ Hint Resolve Forall_nil.
   Qed.
   
   Lemma rep_inner_blockmem_subset : forall xp ms hm sm bm bm',
-    bm c= bm'
-    -> forall st, rep_inner xp st ms sm bm hm
+      bm c= bm' ->
+      forall st, rep_inner xp st ms sm bm hm
         =p=> rep_inner xp st ms sm bm' hm.
   Proof.
     intros.
     destruct st; unfold rep_inner, GLog.would_recover_any.
     cancel.
     erewrite GLog.rep_blockmem_subset; eauto.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; auto.
     erewrite GLog.rep_blockmem_subset; eauto.
     cancel.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     unfold map_replay.
     erewrite <- extract_blocks_map_subset_trans; eauto.
@@ -263,17 +258,13 @@ Hint Resolve Forall_nil.
     eassign ds'; eassign n; eassign ms0; cancel.
     erewrite GLog.rep_blockmem_subset; eauto.
     intuition.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     cancel.
     erewrite GLog.rep_blockmem_subset; eauto.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; auto.
   Qed.
 
   Lemma rep_domainmem_subset : forall xp F ms hm sm bm hm',
-    subset hm hm'
-    -> forall st, rep xp F st ms sm bm hm
+     forall st, rep xp F st ms sm bm hm
         =p=> rep xp F st ms sm bm hm'.
   Proof.
     unfold rep; intros; cancel.
@@ -291,8 +282,7 @@ Hint Resolve Forall_nil.
   
 
   Lemma intact_domainmem_subset : forall xp F ds hm sm hm' bm,
-    subset hm hm'
-    -> intact xp F ds sm bm hm
+    intact xp F ds sm bm hm
         =p=> intact xp F ds sm bm hm'.
   Proof.
     unfold intact; intros; cancel;
@@ -376,6 +366,14 @@ Hint Resolve Forall_nil.
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     Ret (mk_memstate (Map.add a v cm) mm).
 
+  Definition write_if_can_commit (xp : log_xparams) a v ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    If (le_dec (length (Map.elements (Map.add a v cm))) (LogLen xp)) {
+      Ret ^(mk_memstate (Map.add a v cm) mm, true)
+    } else {
+      Ret ^(ms, false)
+    }.
+      
   Definition read xp a ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     match Map.find a cm with
@@ -704,7 +702,6 @@ Hint Resolve Forall_nil.
 
     step.
     step.
-    eapply Forall_public_subset_trans; eauto.
     match goal with
     | [H: ?x c= ?x |- _ ] =>
       clear H
@@ -717,7 +714,6 @@ Hint Resolve Forall_nil.
     rewrite <- H1; cancel.
     eassign (mk_mstate (MSTxn ms_1) ms'_1).
     intuition; pred_apply; cancel; simpl; eauto.
-    simpl; eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
     erewrite mapeq_elements; eauto.
@@ -749,13 +745,13 @@ Hint Resolve Forall_nil.
     Qed.
     
     Lemma add_forall_public:
-      forall a h (bm: block_mem tagged_block) v hmap,
-        Forall (fun t => t = 0)
+      forall a h (bm: block_mem tagged_block) v hmap hm,
+        Forall (fun t => hm t = Some Public)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
         bm h = Some v ->
-        fst v = 0 ->
-        Forall (fun t => t = 0)
+        hm (fst v) = Some Public ->
+        Forall (fun t => hm t = Some Public)
                (map fst (extract_blocks bm (map snd (Map.elements (Map.add a h hmap))))).
     Proof.
       intros.
@@ -793,7 +789,6 @@ Hint Resolve Forall_nil.
       rep xp F (ActiveTxn ds m) ms sm bm hm *
       [[ a <> 0 ]] *
       [[ bm h = Some v ]] *
-      [[ fst v = 0 ]] *
       [[[ m ::: (Fm * a |-> vs) ]]]
     POST:bm', hm', RET:ms'
       exists m', rep xp F (ActiveTxn ds m') ms' sm bm' hm' *
@@ -804,7 +799,6 @@ Hint Resolve Forall_nil.
   Proof.
     unfold write.
     hoare using dems.
-    eapply add_forall_public; eauto.
     eapply handles_valid_map_add; eauto.
     apply map_valid_add; eauto.
     erewrite <- replay_disk_length.
@@ -815,14 +809,46 @@ Hint Resolve Forall_nil.
     eapply list2nmem_updN. eauto.
   Qed.
 
+  Theorem write_if_can_commit_ok :
+    forall xp ms a h pr,
+    {< F Fm ds m sm v vs,
+    PERM:pr   
+    PRE:bm, hm,
+      rep xp F (ActiveTxn ds m) ms sm bm hm *
+      [[ a <> 0 ]] *
+      [[ bm h = Some v ]] *
+      [[[ m ::: (Fm * a |-> vs) ]]]
+    POST:bm', hm', RET:^(ms', ok)
+      ([[ ok = false ]] * rep xp F (ActiveTxn ds m) ms' sm bm' hm') \/
+      ([[ ok = true ]] * exists m', rep xp F (ActiveTxn ds m') ms' sm bm' hm' *
+      [[[ m' ::: (Fm * a |-> (v, nil)) ]]] *
+      [[ length (Map.elements (MSTxn (fst ms'))) <= (LogLen xp) ]])
+    CRASH:bm', hm',
+      exists m' ms', rep xp F (ActiveTxn ds m') ms' sm bm' hm'
+    >} write_if_can_commit xp a h ms.
+  Proof.
+    unfold write_if_can_commit.
+    hoare using dems.
+    or_r; cancel.
+    eapply handles_valid_map_add; eauto.
+    apply map_valid_add; eauto.
+    erewrite <- replay_disk_length.
+    eapply list2nmem_ptsto_bound; eauto.
+    
+    erewrite replay_disk_extract_blocks_map_add; eauto.
+    erewrite replay_disk_extract_blocks_map_add; eauto.
+    eapply list2nmem_updN. eauto.
+    
+  Qed.
+  
   Set Regular Subst Tactic.
 
   Lemma remove_forall_public:
-      forall a (bm: block_mem tagged_block) hmap,
-        Forall (fun t => t = 0)
+      forall a (bm: block_mem tagged_block) hmap hm,
+        Forall (fun t => hm t = Some Public)
                (map fst (extract_blocks bm (map snd (Map.elements hmap)))) ->
         handles_valid_map bm hmap ->
-        Forall (fun t => t = 0)
+        Forall (fun t => hm t = Some Public)
                (map fst (extract_blocks bm (map snd (Map.elements (Map.remove a hmap))))).
     Proof.
       intros.
@@ -875,8 +901,6 @@ Hint Resolve Forall_nil.
     step.
     step.
     safestep; subst.
-    eapply remove_forall_public; eauto.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_subset_trans; eauto.
     apply handles_valid_map_remove.
     match goal with
@@ -917,16 +941,13 @@ Hint Resolve Forall_nil.
     solve_hashmap_subset.
     xcrash.
     or_l; cancel; xform_normr; cancel.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
 
     or_r; cancel.
     xform_normr; cancel.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
-    Unshelve.
   Qed.
 
 
@@ -951,7 +972,6 @@ Hint Resolve Forall_nil.
     step.
     step.
     safestep; subst.
-    eapply Forall_public_subset_trans; eauto.
     match goal with
     | [H: ?x c= ?x |- _ ] =>
       clear H
@@ -964,7 +984,6 @@ Hint Resolve Forall_nil.
     all: eauto.
     solve_hashmap_subset.
     rewrite <- H1; cancel.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
   Qed.
@@ -984,16 +1003,10 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushall, recover_any.
     hoare.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; eauto.
-    solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
-    eapply handles_valid_map_empty; eauto.
-
   Qed.
 
 
@@ -1012,14 +1025,9 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushsync, recover_any.
     hoare.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; eauto.
-    solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
   Qed.
 
@@ -1038,14 +1046,9 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushall_noop, recover_any.
     hoare.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; eauto.
-    solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
   Qed.
 
@@ -1064,14 +1067,9 @@ Hint Resolve Forall_nil.
   Proof.
     unfold flushsync_noop, recover_any.
     hoare.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; eauto.
-    solve_hashmap_subset.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     xcrash.
-    eapply Forall_public_subset_trans; eauto.
-    eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
   Qed.
 
@@ -1111,7 +1109,6 @@ Hint Resolve Forall_nil.
     unfold GLog.would_recover_any.
     cancel.
     constructor; auto.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
 
@@ -1140,7 +1137,6 @@ Hint Resolve Forall_nil.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
 
@@ -1170,7 +1166,6 @@ Hint Resolve Forall_nil.
     unfold GLog.would_recover_any.
     cancel.
     constructor; auto.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.
@@ -1314,7 +1309,7 @@ Hint Resolve Forall_nil.
 
     Lemma crash_xform_before_crash : forall xp F ds bm hm,
     crash_xform (before_crash xp F ds bm hm) =p=>
-      exists cs, after_crash xp (crash_xform F) ds cs empty_mem empty_mem.
+      exists cs, after_crash xp (crash_xform F) ds cs empty_mem hm.
   Proof.
     unfold before_crash, after_crash, rep_inner; intros.
     xform_norm.
@@ -1334,7 +1329,7 @@ Hint Resolve Forall_nil.
 
   Lemma crash_xform_any : forall xp F ds sm bm hm,
     crash_xform (recover_any xp F ds sm bm hm) =p=>
-      exists cs, after_crash xp (crash_xform F) ds cs empty_mem empty_mem.
+      exists cs, after_crash xp (crash_xform F) ds cs empty_mem hm.
   Proof.
     unfold recover_any, after_crash, rep, rep_inner; intros.
     xform_norm.
@@ -1373,7 +1368,7 @@ Hint Resolve Forall_nil.
 
   Lemma after_crash_idem : forall xp F ds cs bm hm,
     crash_xform (after_crash xp F ds cs bm hm) =p=>
-     exists cs', after_crash xp (crash_xform F) ds cs' empty_mem empty_mem.
+     exists cs', after_crash xp (crash_xform F) ds cs' empty_mem hm.
   Proof.
     unfold after_crash, rep_inner; intros.
     xform_norm.
@@ -1474,7 +1469,7 @@ Hint Resolve Forall_nil.
 
   Theorem idempred_idem : forall xp F ds sm bm hm,
     crash_xform (idempred xp F ds sm bm hm) =p=>
-      exists cs, after_crash xp (crash_xform F) ds cs empty_mem empty_mem.
+      exists cs, after_crash xp (crash_xform F) ds cs empty_mem hm.
   Proof.
     unfold idempred; intros.
     xform_norm.
@@ -1555,7 +1550,7 @@ Hint Resolve Forall_nil.
 
   Theorem crash_xform_intact : forall xp F ds sm bm hm,
     crash_xform (intact xp F ds sm bm hm) =p=>
-      exists cs, after_crash xp (crash_xform F) ds cs empty_mem empty_mem.
+      exists cs, after_crash xp (crash_xform F) ds cs empty_mem hm.
   Proof.
     unfold intact, rep, rep_inner, after_crash; intros.
     xform_norm;
@@ -1576,7 +1571,7 @@ Hint Resolve Forall_nil.
   Theorem crash_xform_idempred :
   forall xp F ds sm bm hm,
     crash_xform (idempred xp F ds sm bm hm) =p=>
-      exists cs, after_crash xp (crash_xform F) ds cs empty_mem empty_mem.
+      exists cs, after_crash xp (crash_xform F) ds cs empty_mem hm.
   Proof.
     apply idempred_idem.
   Qed.
@@ -1637,6 +1632,7 @@ Hint Resolve Forall_nil.
   Hint Extern 1 ({{W _|_ W}} Bind (abort _ _) _) => apply abort_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (write_if_can_commit _ _ _ _) _) => apply write_if_can_commit_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (commit _ _) _) => apply commit_ok : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (commit _ _) _) => apply commit_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (commit_ro _ _) _) => apply commit_ro_ok : prog.
@@ -1654,6 +1650,10 @@ Hint Resolve Forall_nil.
   Definition write_array xp a i v ms :=
     ms <- write xp (a + i) v ms;;
     Ret ms.
+
+  Definition write_array_if_can_commit xp a i v ms :=
+    r <- write_if_can_commit xp (a + i) v ms;;
+    Ret r.
 
   Notation arrayP := (arrayN (@ptsto _ addr_eq_dec _)).
 
@@ -1675,17 +1675,9 @@ Hint Resolve Forall_nil.
   Proof.
     unfold read_array.
     hoare.
-    unfold rep_inner; cancel.
-    eauto.
     subst; pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto.
     cancel.
-    solve_hashmap_subset.
-    unfold rep_inner in *.
-    destruct_lift H11.
-    rewrite <- H1; cancel; eauto.
-    Unshelve.
-    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
 
@@ -1696,7 +1688,6 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
         rep xp F (ActiveTxn ds m) ms sm bm hm *
         [[ bm h = Some v ]] *
-        [[ fst v = 0 ]] *
         [[[ m ::: Fm * arrayP a vs ]]] *
         [[ i < length vs /\ a <> 0 ]]
     POST:bm', hm', RET:ms' exists m',
@@ -1730,8 +1721,52 @@ Hint Resolve Forall_nil.
     
   Qed.
 
+  Theorem write_array_if_can_commit_ok :
+    forall xp a i h ms pr,
+    {< F Fm ds sm m v vs,
+    PERM:pr   
+    PRE:bm, hm,
+        rep xp F (ActiveTxn ds m) ms sm bm hm *
+        [[ bm h = Some v ]] *
+        [[[ m ::: Fm * arrayP a vs ]]] *
+        [[ i < length vs /\ a <> 0 ]]
+    POST:bm', hm', RET:^(ms', ok)
+       ([[ ok = false ]] * rep xp F (ActiveTxn ds m) ms' sm bm' hm') \/
+        ([[ ok = true ]] * exists m',
+        rep xp F (ActiveTxn ds m') ms' sm bm' hm' *
+        [[[ m' ::: Fm * arrayP a (updN vs i (v, nil)) ]]] *
+        [[ length (Map.elements (MSTxn (fst ms'))) <= (LogLen xp) ]])
+    CRASH:bm', hm', exists m' ms',
+          rep xp F (ActiveTxn ds m') ms' sm bm' hm'
+    >} write_array_if_can_commit xp a i h ms.
+  Proof.
+    unfold write_array.
+    prestep. norm. cancel.
+    unfold rep_inner; intuition.
+    pred_apply; cancel.
+    eauto.
+    eauto.
+    eauto.
+    subst; pred_apply.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    cancel.
+
+    step.
+    step.
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+    solve_hashmap_subset.
+
+    rewrite <- H1; cancel.
+    Unshelve.
+    exact valuset0.
+    all: unfold EqDec; apply handle_eq_dec.
+    
+  Qed.
+
   Hint Extern 1 ({{_|_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (write_array_if_can_commit _ _ _ _ _) _) => apply write_array_if_can_commit_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ ?a _ _ _) (rep _ _ _ ?a _ _ _)) => constructor : okToUnify.
 
@@ -1928,7 +1963,6 @@ Hint Resolve Forall_nil.
     PRE:bm, hm,
       rep xp F (ActiveTxn ds m) ms sm bm hm *
       [[ handles_valid bm l ]] *
-      [[ Forall (fun t => t = 0) (map fst (extract_blocks bm l)) ]] * 
       [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ a <> 0 /\ length l <= length vs ]]
     POST:bm', hm', RET:ms'
@@ -1946,7 +1980,7 @@ Hint Resolve Forall_nil.
     safestep.
     unfold rep_inner; cancel. eauto.
     eapply extract_blocks_selN; eauto.
-    denote (Forall (fun t => t = 0) (map fst (extract_blocks bm l))) as Hf;
+    denote (Forall (fun t => hm t = Some Public) (map fst (extract_blocks bm l))) as Hf;
     rewrite Forall_forall in Hf; eapply Hf.
     apply in_map.
     erewrite <- extract_blocks_subset_trans; [| |eauto]; eauto.

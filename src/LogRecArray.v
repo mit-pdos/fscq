@@ -75,6 +75,15 @@ Module LogRecArray (RA : RASig).
     ms <- LOG.write_array lxp (RAStart xp) bn h' ms;;
     Ret ms.
 
+  Definition put_if_can_commit lxp xp ix item ms :=
+    let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
+    let^ (ms, h) <- LOG.read_array lxp (RAStart xp) bn ms;;
+    v <- Unseal h;;           
+    let v' := block2val_updN_val2block v off item in
+    h' <- Seal 0 v';;
+    r <- LOG.write_array_if_can_commit lxp (RAStart xp) bn h' ms;;
+    Ret r.
+
   (** read n blocks starting from the beginning *)
   Definition read lxp xp nblocks ms :=
     let^ (ms, r) <- LOG.read_range lxp (RAStart xp) nblocks ms;;
@@ -293,6 +302,90 @@ Module LogRecArray (RA : RASig).
     all: unfold EqDec; apply handle_eq_dec.    
   Qed.
 
+  Theorem put_if_can_commit_ok :
+    forall lxp xp ix e ms pr,
+    {< F Fm m0 sm m items,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ ix < length items /\ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items ]]]
+    POST:bm', hm', RET:^(ms', ok)
+          ([[ ok = false ]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm') \/
+          ([[ ok = true ]] * exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[[ m' ::: Fm * rep xp (updN items ix e) ]]] *
+          [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms'))) <= (FSLayout.LogLen lxp) ]])
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    >} put_if_can_commit lxp xp ix e ms.
+  Proof.
+    unfold put_if_can_commit, rep.
+    step.
+    rewrite synced_list_length.
+    setoid_rewrite combine_length_eq; auto.
+    cleanup; rewrite ipack_length.
+    rewrite repeat_length; apply div_lt_divup; auto.
+    apply repeat_length.
+
+    safestep.
+    eauto.
+    cleanup.
+    subst; setoid_rewrite synced_list_selN; simpl.
+    setoid_rewrite selN_combine; eauto.
+    rewrite repeat_selN; eauto.
+    rewrite ipack_length.
+    apply div_lt_divup; auto.
+    apply repeat_length.
+
+    step.
+    safestep.
+    erewrite LOG.rep_blockmem_subset; eauto.
+
+
+    eassign F_; eassign F; eassign m0; eassign m; cancel.
+    rewrite upd_eq; eauto.
+    eauto.
+    eauto.
+    rewrite synced_list_length.
+    setoid_rewrite combine_length_eq; auto.
+    rewrite ipack_length.
+    rewrite repeat_length; apply div_lt_divup; auto.
+    apply repeat_length.
+    unfold items_valid in *; intuition.
+    eauto.
+
+    step.
+    step.
+    step.
+    or_r; cancel.
+    rewrite synced_list_updN; f_equal; simpl.
+    rewrite block2val_updN_val2block_equiv.
+    setoid_rewrite <- combine_updN.
+    rewrite ipack_updN_divmod; auto.
+    repeat rewrite ipack_length.
+    setoid_rewrite length_updN.
+    rewrite repeat_updN_noop; eauto.
+    apply list_chunk_wellformed.
+    unfold items_valid in *; intuition; auto.
+    apply Nat.mod_upper_bound; auto.
+    apply items_valid_updN; auto.
+    solve_hashmap_subset.
+
+    rewrite <- H1; safecancel.
+    apply LOG.active_intact.
+    solve_hashmap_subset.
+    solve_blockmem_subset.
+    cancel.
+
+    rewrite <- H1; cancel.
+    apply LOG.active_intact.
+
+    Unshelve.
+    all: unfold EqDec; apply handle_eq_dec.    
+  Qed.
+
+
 
   Theorem read_ok :
     forall lxp xp nblocks ms pr,
@@ -371,6 +464,7 @@ Module LogRecArray (RA : RASig).
     rewrite map_fst_combine by apply repeat_length.
     rewrite Forall_forall; intros x Hin.
     apply repeat_spec in Hin; auto.
+    rewrite Hin; eauto.
     
     eauto.
     unfold items_valid in *; intuition; auto.
@@ -414,6 +508,8 @@ Module LogRecArray (RA : RASig).
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
+  
+
 
   Theorem init_ok :
     forall lxp xp ms pr,
@@ -440,6 +536,7 @@ Module LogRecArray (RA : RASig).
     rewrite map_fst_combine by (repeat rewrite repeat_length; auto).
     rewrite Forall_forall; intros x Hin.
     apply repeat_spec in Hin; auto.
+    rewrite Hin; eauto.
     eauto.
     cleanup.
     erewrite <- extract_blocks_length; eauto.
@@ -576,6 +673,7 @@ Module LogRecArray (RA : RASig).
   
   Hint Extern 1 ({{_|_}} Bind (get _ _ _ _) _) => apply get_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (put _ _ _ _ _) _) => apply put_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (put_if_can_commit _ _ _ _ _) _) => apply put_if_can_commit_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (read _ _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (init _ _ _) _) => apply init_ok : prog.
@@ -925,6 +1023,15 @@ Module LogRecArrayCache (RA : RASig).
     ms <- LRA.put lxp xp ix item ms;;
     Ret ^(Cache.add ix item cache, ms).
 
+  Definition put_if_can_commit lxp xp ix item cache ms :=
+    let^ (ms, ok) <- LRA.put_if_can_commit lxp xp ix item ms;;
+    match ok with
+    | true =>              
+      Ret ^(Cache.add ix item cache, ms, true)
+    | false =>
+      Ret ^(cache, ms, false)
+    end.
+
   Definition read := LRA.read.
   Definition write := LRA.write.
   Definition init := LRA.init.
@@ -938,6 +1045,10 @@ Module LogRecArrayCache (RA : RASig).
     r <- put lxp xp ix item cache ms;;
     Ret r.
 
+  Definition put_array_if_can_commit lxp xp ix item cache ms :=
+    r <- put_if_can_commit lxp xp ix item cache ms;;
+    Ret r.
+  
   Definition read_array lxp xp nblocks ms :=
     r <- read lxp xp nblocks ms;;
     Ret r.
@@ -1365,11 +1476,147 @@ Module LogRecArrayCache (RA : RASig).
     eauto.
   Qed.
 
+  Theorem put_array_if_can_commit_ok :
+    forall lxp xp ix e cache ms pr,
+    {< F Fm Fi m0 sm m items e0,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] 
+    POST:bm', hm', RET:^(cache', ms', ok)
+          ([[ ok = false ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+           [[[ m ::: Fm * rep xp items cache' ]]]) \/
+          ([[ ok = true ]] * exists m' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] *
+          [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms'))) <= (FSLayout.LogLen lxp) ]])
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    >} put_array_if_can_commit lxp xp ix e cache ms.
+  Proof.
+    unfold put_array_if_can_commit, put_if_can_commit, rep.
+    hoare.
+    eapply list2nmem_ptsto_bound; eauto.
+    or_r; cancel.
+    eapply cache_rep_updN; eauto.
+    eapply list2nmem_ptsto_bound; eauto.
+    eapply list2nmem_updN; eauto.
+  Qed.
+
+  Theorem put_array_if_can_commit_ok' :
+    forall lxp xp ix e cache ms pr,
+    {< x,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] 
+    POST:bm', hm', RET:^(cache', ms', ok)
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          ([[ ok = false ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+           [[[ m ::: Fm * rep xp items cache' ]]]) \/
+          ([[ ok = true ]] * exists m' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] *
+          [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms'))) <= (FSLayout.LogLen lxp) ]])
+    CRASH:bm', hm',
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.intact lxp F m0 sm bm' hm'
+    >} put_array_if_can_commit lxp xp ix e cache ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply put_array_if_can_commit_ok.
+    intros; norml.
+    unfold stars; simpl; cancel.
+    eauto.
+    apply sep_star_comm.
+    eauto.
+  Qed.
+
+
+  Theorem put_array_if_can_commit_ok_weak' :
+    forall lxp xp ix e cache ms pr,
+    {<W x,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] 
+    POST:bm', hm', RET:^(cache', ms', ok)
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          ([[ ok = false ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+           [[[ m ::: Fm * rep xp items cache' ]]]) \/
+          ([[ ok = true ]] * exists m' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] *
+          [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms'))) <= (FSLayout.LogLen lxp) ]])
+    CRASH:bm', hm',
+          let '(F, Fm, Fi, m0, sm, m, items, e0) := x in
+          LOG.intact lxp F m0 sm bm' hm'
+    W>} put_array_if_can_commit lxp xp ix e cache ms.
+    Proof.
+      intros; eapply weak_conversion'.
+      intros; eapply put_array_if_can_commit_ok'.
+    Qed.
+
+
+  Theorem put_array_if_can_commit_ok_weak :
+    forall lxp xp ix e cache ms pr,
+    {<W F Fm Fi m0 sm m items e0,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items cache ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]] 
+    POST:bm', hm', RET:^(cache', ms', ok)
+          ([[ ok = false ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+           [[[ m ::: Fm * rep xp items cache' ]]]) \/
+          ([[ ok = true ]] * exists m' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' cache' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]] *
+          [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms'))) <= (FSLayout.LogLen lxp) ]])
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    W>} put_array_if_can_commit lxp xp ix e cache ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply put_array_if_can_commit_ok_weak'.
+    intros; norml.
+    unfold stars; simpl; safecancel.
+    cancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, (a1, b, (a0, b1)))); simpl in *.
+    eauto.
+    eauto.
+  Qed.
+
+    
   Hint Extern 1 ({{_|_}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (put_array _ _ _ _ _ _) _) => apply put_array_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (put_array_if_can_commit _ _ _ _ _ _) _) => apply put_array_if_can_commit_ok : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok_weak : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (put_array _ _ _ _ _ _) _) => apply put_array_ok_weak : prog.
-
+  Hint Extern 1 ({{W _|_ W}} Bind (put_array_if_can_commit _ _ _ _ _ _) _) => apply put_array_if_can_commit_ok_weak : prog.
+  
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
 End LogRecArrayCache.

@@ -90,8 +90,8 @@ Module BFILE.
 
  Definition setowner lxp ixp inum tag fms :=
   let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
-  let^ (icache, ms) <- INODE.setowner lxp ixp inum tag icache ms;;
-  Ret (mk_memstate al ms alc ialc icache cache dblocks).    
+  let^ (icache, ms, ok) <- INODE.setowner lxp ixp inum tag icache ms;;
+  Ret ^(mk_memstate al ms alc ialc icache cache dblocks, ok).    
   
   Definition getlen lxp ixp inum fms :=
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
@@ -473,17 +473,18 @@ Module BFILE.
     }.
 
   (* inlined version of reset' that calls Inode.reset *)
-  Definition reset lxp bxp xp inum ms :=
+  Definition reset lxp bxp xp inum ms := 
     let^ (fms, sz) <- getlen lxp xp inum ms;;
     let '(al, ms, alc, ialc, icache, cache, dblocks) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms, MSDBlocks fms) in
     let^ (icache, ms, bns) <- INODE.getallbnum lxp xp inum icache ms;;
     let l := map (@wordToNat _) bns in
     cms <- BALLOCC.freevec lxp (pick_balloc bxp (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));;
     let^ (icache, cms) <- INODE.reset lxp (pick_balloc bxp (negb al)) xp inum sz attr0 icache cms;;
-    let^ (icache, ms) <- INODE.setowner lxp xp inum Public icache (BALLOCC.MSLog cms);;          
+    let^ (icache, ms, ok) <- INODE.setowner lxp xp inum Public icache (BALLOCC.MSLog cms);;          
     let dblocks := clear_dirty inum dblocks in
     Ret (mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache) dblocks).
-
+  
+  
   Definition reset' lxp bxp xp inum ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;;
     ms <- shrink lxp bxp xp inum sz ms;;
@@ -1910,7 +1911,17 @@ Qed.
            [[[ m ::: (Fm * rep bxps sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
            [[[ flist ::: (Ff * inum |-> f) ]]] *
            [[ can_access pr (BFOwner f) ]]
-    POST:bm', hm', RET:ms'  exists m' flist' f' ilist',
+    POST:bm', hm', RET:^(ms', ok)
+           ([[ ok = false ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           [[[ m ::: (Fm * rep bxps sm ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[ hm' = hm ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSDBlocks ms = MSDBlocks ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]]) \/
+                   
+           ([[ ok = true ]] * exists m' flist' f' ilist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxps sm ixp flist' ilist' frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
            [[[ flist' ::: (Ff * inum |-> f') ]]] *
@@ -1923,7 +1934,8 @@ Qed.
            [[ MSAlloc ms = MSAlloc ms' /\
             let free := pick_balloc frees (MSAlloc ms') in
             ilist_safe ilist free ilist' free ]] *
-           [[ treeseq_ilist_safe inum ilist ilist' ]]
+           [[ treeseq_ilist_safe inum ilist ilist' ]] *
+           [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst (MSLL ms')))) <= (LogLen lxp) ]])
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     W>~} setowner lxp ixp inum tag ms.
   Proof. 
@@ -1947,6 +1959,11 @@ Qed.
     assert (A0:inum < length ilist). { match goal with [H: length _ = ?x |- _ < ?x ] => rewrite <- H; eauto end. }
     weakstep.
     weaksafestep.
+
+    or_l; cancel.
+
+    weaksafestep.
+    or_r; safecancel.
 
     6: eauto.
     5: eapply list2nmem_updN; eauto.

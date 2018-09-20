@@ -1506,7 +1506,7 @@ Proof.
 Qed.
 
 Lemma xform_rep_synced : forall xp l hm,
-  crash_xform (rep xp (Synced l) hm) =p=> rep xp (Synced l) empty_mem.
+  crash_xform (rep xp (Synced l) hm) =p=> rep xp (Synced l) hm.
 Proof.
   unfold rep; simpl; unfold rep_contents; intros.
   xform.
@@ -1523,7 +1523,7 @@ Qed.
 
 Lemma xform_rep_truncated : forall xp l hm,
 crash_xform (rep xp (Truncated l) hm) =p=>
-rep xp (Synced l) empty_mem \/ rep xp (Synced nil) empty_mem.
+rep xp (Synced l) hm \/ rep xp (Synced nil) hm.
 Proof.
   unfold rep; simpl; unfold rep_contents; intros.
   xform; cancel.

@@ -2,6 +2,7 @@ Require Import Arith.
 Require Import Mem Pred.
 Require Import Word.
 Require Import Omega.
+Require Import FMapAVL FMapMem.
 Require Import List ListUtils.
 Require Import Bool.
 Require Import Eqdep_dec.
@@ -272,10 +273,15 @@ Module INODE.
     Ret ^(cache, ms, decode_tag (i :-> "attrs" :-> "owner")).
 
   Definition setowner lxp xp inum t cache ms := Eval compute_rec in
-    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;
-    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (i :-> "attrs" :=> "owner" := encode_tag t)) cache ms;;
-    _ <- ChDom (S inum) t;;                                              
-    Ret ^(cache, ms).
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;;                                      
+    let^ (cache, ms, ok) <- IRec.put_array_if_can_commit lxp xp inum (i :=> "attrs" := (i :-> "attrs" :=> "owner" := encode_tag t)) cache ms;;
+    match ok with
+    | true =>
+      _ <- ChDom (S inum) t;;  
+      Ret ^(cache, ms, true)
+    | false =>
+      Ret ^(cache, ms, false)
+    end.
        
   Definition getbnum lxp xp inum off cache ms :=
     let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;;
@@ -644,7 +650,7 @@ Qed.
 
   Theorem setowner_ok :
     forall lxp bxp xp inum t cache ms pr,
-    {~<W F Fm Fi Fs m0 sm m IFs ilist ino,
+    {~<W F Fm Fi Fs m0 m sm IFs ilist ino,
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
@@ -652,13 +658,19 @@ Qed.
            [[[ ilist ::: (Fi * inum |-> ino) ]]] *
            [[ (Fs * IFs)%pred sm ]] *
            [[ can_access pr (IOwner ino) ]]
-    POST:bm', hm', RET:^(cache',ms) exists m' ilist' ino' IFs',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
+   POST:bm', hm', RET:^(cache', ms', ok)
+           ([[ ok = false ]] *
+            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+            [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
+            [[ hm' = hm ]]) \/                  
+           ([[ ok = true ]] *  exists m' ilist' ino' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs')%pred sm ]] *
            [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t ]] *
-           [[ hm' = upd hm (S inum) t ]]
+           [[ hm' = upd hm (S inum) t ]] *
+           [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst ms'))) <= (LogLen lxp) ]])
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     W>~} setowner lxp xp inum t cache ms.
   Proof.
@@ -690,9 +702,10 @@ Qed.
     weaksafestep.
 
     rewrite LOG.rep_blockmem_subset; eauto.
+    or_r; cancel.
     3: eauto.
-    2: eapply list2nmem_updN; eauto.
-    pred_apply.
+    4: eapply list2nmem_updN; eauto.
+
     rewrite listmatch_isolate with (i:= inum); eauto.
     cancel; eauto.
     setoid_rewrite listmatch_isolate with (i:= inum) at 2; eauto.
@@ -708,6 +721,7 @@ Qed.
     simplen.
     simplen.
     simplen.
+    simplen.
 
     destruct (addr_eq_dec inum i); subst.
     rewrite selN_updN_eq; eauto; simpl.
@@ -719,9 +733,12 @@ Qed.
     rewrite upd_ne; eauto.
     rewrite length_updN in *; eauto.
     simplen.
-    simplen.
 
     cancel.
+
+    weaksafestep.
+    or_l; cancel.
+
     rewrite <- H1; cancel.
     eauto.
     rewrite <- H1; cancel; eauto.
