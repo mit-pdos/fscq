@@ -1491,12 +1491,11 @@ Hint Resolve Forall_nil.
   
   Theorem recover_ok:
     forall xp cs pr,
-    {!< F ds,
+    {< F ds,
     PERM:pr   
     PRE:bm, hm,
       after_crash xp F ds cs bm hm *
       [[ bm = empty_mem ]] *
-      [[ hm = empty_mem ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:ms'
       exists d sm n, [[ n <= length (snd ds) ]] *
@@ -1506,7 +1505,7 @@ Hint Resolve Forall_nil.
       [[ hm' 0 = Some Public ]]
     XCRASH:bm', hm',
       exists cs, after_crash xp F ds cs bm' hm'
-    >!} recover xp cs.
+    >} recover xp cs.
   Proof.
     unfold recover, after_crash, before_crash, rep, rep_inner.
     safestep.

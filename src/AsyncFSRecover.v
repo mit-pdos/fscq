@@ -99,23 +99,21 @@ Module AFS_RECOVER.
 
   Theorem recover_weak_ok :
     forall cachesize pr,
-    {!<W fsxp cs ds,
+    {<W fsxp cs ds,
      PERM:pr   
      PRE:bm, hm,
        LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs bm hm *
        [[ bm = empty_mem ]] *
-       [[ hm = empty_mem ]] *
        [[ cachesize <> 0 ]]
      POST:bm', hm', RET:r exists ms fsxp',
        [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
        exists d n sm, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
-       [[ BFILE.MSinitial ms ]] *
-       [[ hm' 0 = Some Public ]]
+       [[ BFILE.MSinitial ms ]]
      XCRASH:bm', hm',
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds bm' hm'
-     W>!} recover cachesize.
+     W>} recover cachesize.
   Proof. Admitted.
 
   Theorem read_fblock_recover_ok : forall fsxp inum off mscs pr,
@@ -149,7 +147,7 @@ Module AFS_RECOVER.
     eauto.
     weakstep.
 
-    instantiate (1 := (fun bm' hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, l) v0 bm' hm' * F_) ]])%pred));
+    instantiate (1 := (fun bm' hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, l) v0 bm' hm' * F_ * [[ subset hm hm' ]]) ]])%pred));
       try (cancel; xform_norm; cancel).
     intros bm' hm'.
     
@@ -158,7 +156,8 @@ Module AFS_RECOVER.
       (* (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs); *)
       try eassumption.
     safecancel.
-    rewrite H3; eauto.
+    rewrite H3; eauto.    
+    eauto.
     eauto.
 
     weakstep.
@@ -169,6 +168,7 @@ Module AFS_RECOVER.
     simpl_idempred_r.
     rewrite <- LOG.before_crash_idempred.
     cancel.
+    eauto.
   Qed.
 
   

@@ -19,7 +19,6 @@ Require Import Balloc.
 Require Import FSLayout.
 Require Import BlockPtr.
 
-
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -310,8 +309,7 @@ Module INODE.
         let^ (cache, lms) <- IRec.put_array lxp xp inum ir' cache (BALLOCC.MSLog ms);;
         Ret ^(cache, (BALLOCC.upd_memstate lms ms), OK tt)
     end.
-
-
+           
   (************** rep invariant *)
 
   Record inode := mk_inode {
@@ -643,7 +641,7 @@ Qed.
       apply in_updN in H3; intuition; subst; try congruence.
       apply filter_In; intuition.
     Qed.
-    
+
   Theorem setowner_ok :
     forall lxp bxp xp inum t cache ms pr,
     {~<W F Fm Fi Fs m0 sm m IFs ilist ino,
@@ -660,7 +658,7 @@ Qed.
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ (Fs * IFs')%pred sm ]] *
            [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t ]] *
-           [[ hm' 0  = Some Public ]]
+           [[ hm' = upd hm (S inum) t ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     W>~} setowner lxp xp inum t cache ms.
   Proof.

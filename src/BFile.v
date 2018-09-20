@@ -1961,7 +1961,7 @@ Qed.
            [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (BFAttr f) tag (BFCache f) ]] *
            [[ INODE.IOwner (selN ilist' inum INODE.inode0) = tag ]] *
-           [[ hm' 0 = Some Public ]] *
+           [[ hm' = upd hm (S inum) tag ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSDBlocks ms = MSDBlocks ms' ]] *

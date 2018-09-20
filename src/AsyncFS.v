@@ -570,7 +570,7 @@ Module AFS.
        [[ MSAllocC mscs' = MSAllocC mscs ]] *
        [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
        [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
-        [[ hm' 0 = Some Public ]]) \/
+        [[ hm' = hm ]]) \/
        ([[ ok = OK tt  ]] *
         [[ MSAlloc mscs' = MSAlloc mscs ]] *
         exists d tree' f' ilist',
@@ -581,7 +581,7 @@ Module AFS.
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                         ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
         [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
-        [[ hm' 0 = Some Public ]])) 
+        [[ hm' = upd hm (S inum) tag]])) 
   XCRASH:bm', hm',
     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm' \/
     exists d tree' f' ilist' mscs',
@@ -2180,23 +2180,21 @@ Module AFS.
   
   Theorem recover_ok :
     forall cachesize pr,
-    {!< fsxp cs ds,
+    {< fsxp cs ds,
      PERM:pr   
      PRE:bm, hm,
        LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs bm hm *
        [[ bm = empty_mem ]] *
-       [[ hm = empty_mem ]] *
        [[ cachesize <> 0 ]]
      POST:bm', hm', RET:r exists ms fsxp',
        [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
        exists d n sm, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) sm bm' hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
-       [[ BFILE.MSinitial ms ]] *
-       [[ hm' 0 = Some Public ]]
+       [[ BFILE.MSinitial ms ]]
      XCRASH:bm', hm',
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds bm' hm'
-     >!} recover cachesize.
+     >} recover cachesize.
   Proof. 
     unfold recover, LOG.after_crash; intros.
     eapply pimpl_ok2; monad_simpl.

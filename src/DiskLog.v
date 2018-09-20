@@ -141,13 +141,12 @@ Definition rep xp st hm :=
   (** Specs **)
   Definition recover_ok :
     forall xp cs pr,
-    {!< F nr l d,
+    {< F nr l d,
     PERM:pr   
     PRE:bm, hm,
           CacheDef.rep cs d bm * (
           [[ (F * rep xp (Synced nr l) hm)%pred d ]]) *
           [[ bm = empty_mem ]] *
-          [[ hm = empty_mem ]] *
           [[ sync_invariant F ]]
     POST:bm', hm', RET:cs'
           CacheDef.rep cs' d bm' *
@@ -156,7 +155,7 @@ Definition rep xp st hm :=
     XCRASH:bm'', hm'', exists cs',
           CacheDef.rep cs' d bm'' * (
           [[ (F * rep xp (Synced nr l) hm'')%pred d ]])
-    >!} recover xp cs.
+    >} recover xp cs.
   Proof.
     unfold recover.
     prestep. norm. cancel.

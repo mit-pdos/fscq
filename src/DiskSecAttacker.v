@@ -14,8 +14,6 @@ Require Import Lia.
 Require Import FunctionalExtensionality.
 Require Import FMapAVL.
 Require Import FMapFacts.
-Require Import DirTree.
-Require Import AsyncFS.
 Require Import Prog ProgLoop ProgList.
 Require Import ProgAuto.
 Require Import DestructPair.
@@ -496,8 +494,379 @@ Proof.
   }
 Qed.
 
+Definition same_for_domainid_disk domid (d1 d2: rawdisk) :=
+  forall a tbs1 tbs2,
+    d1 a = Some tbs1 ->
+    d2 a = Some tbs2 ->
+    Forall2 (fun tb1 tb2 => fst tb1 = domid -> fst tb2 = domid -> snd tb1 = snd tb2) (vsmerge tbs1) (vsmerge tbs2).
 
-  Lemma exec_equivalent_for_viewer_finished:
+Definition same_for_domainid_mem domid (bm1 bm2: taggedmem) :=
+  forall a tb1 tb2,
+    bm1 a = Some tb1 ->
+    bm2 a = Some tb2 ->
+    fst tb1 = domid ->
+    fst tb2 = domid ->
+    snd tb1 = snd tb2.
+
+Definition same_for_domainid domid d1 bm1 d2 bm2 :=
+  same_for_domainid_disk domid d1 d2 /\
+  same_for_domainid_mem domid bm1 bm2.
+
+
+  Lemma exec_equivalent_for_viewer_same_for_domain_id_finished:
+  forall T (p: prog T) caller viewer d d' bm bm' hm d1 bm1 hm1 r1 tr domid,
+    exec caller d bm hm p (Finished d1 bm1 hm1 r1) tr ->
+    (forall tag, can_access viewer tag -> equivalent_for tag d d' hm) ->
+    (forall tag, can_access viewer tag -> blockmem_equivalent_for tag bm bm' hm) ->
+    only_public_operations tr ->
+    same_for_domainid domid d bm d' bm' ->
+    exists d2 bm2 tr2,
+      exec caller d' bm' hm p (Finished d2 bm2 hm1 r1) tr2 /\
+      (forall tag, can_access viewer tag -> equivalent_for tag d1 d2 hm1) /\
+      (forall tag, can_access viewer tag -> blockmem_equivalent_for tag bm1 bm2 hm1) /\
+      same_for_domainid domid d1 bm1 d2 bm2.
+  Proof.
+  induction p; intros;  
+  inv_exec_perm; cleanup; simpl in *;
+    try solve [do 3 eexists; split; [econstructor; eauto|
+                                     split; [eauto | split; eauto ]
+                                    ]
+              ].
+  { (** Read **)
+    destruct bs.
+    specialize H1 with (1:= can_access_public viewer) as Hx;
+    specialize (Hx r1); intuition; cleanup; try congruence.
+    specialize H0 with (1:= can_access_public viewer) as Hx;
+    specialize (Hx n); intuition; cleanup; try congruence.
+    destruct x0, t0.
+    unfold vsmerge in *; simpl in *.
+    repeat (denote (Forall2 _ (_::_)(_::_)) as Hf; inversion Hf; clear Hf; subst).
+    do 3 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+    split; eauto.
+    unfold blockmem_equivalent_for; intros.
+    destruct (handle_eq_dec a r1); subst.
+    right.
+    repeat rewrite Mem.upd_eq; eauto.
+    do 2 eexists; eauto.
+    split; eauto.
+    split; eauto.
+    split; eauto.
+    intros.
+    simpl in *; eauto.
+    specialize H0 with (1:= H) as Hx;
+    specialize (Hx n); intuition; cleanup; try congruence.
+    unfold vsmerge in *; simpl in *.
+    repeat (denote (Forall2 _ (_::_)(_::_)) as Hf; inversion Hf; clear Hf; subst).
+    eauto.
+    repeat rewrite Mem.upd_ne; eauto.
+    eapply H1; eauto.
+
+    unfold same_for_domainid in *; cleanup.
+    split; eauto.
+    unfold same_for_domainid_disk, same_for_domainid_mem in *.
+    intro a.
+    specialize (H _ _ _ H15 H4).
+    specialize (H3 a).
+    destruct (handle_eq_dec r1 a); subst.    
+    {
+      repeat rewrite Mem.upd_eq; eauto.
+      intros; cleanup. 
+      unfold vsmerge in *; simpl in *.
+      inversion H; subst; eauto.
+    }
+    {
+      repeat rewrite Mem.upd_ne; eauto.
+    }
+  }
+  { (** Write **)
+    destruct b, bs, t; simpl in *.
+    destruct (hm1 n0) eqn: D.    
+    destruct (can_access_dec viewer t).
+    { (** can access **)
+      specialize H0 with (1:= can_access_public viewer) as Hx;
+      specialize (Hx n); intuition; cleanup; try congruence.
+      specialize H1 with (1:= c) as Hx;
+      specialize (Hx h); intuition; cleanup; try congruence.
+      destruct x0, x1; simpl in *; cleanup.
+      do 3 eexists; split.
+      econstructor; eauto.
+      split; eauto.
+      unfold equivalent_for; intros.
+      specialize H0 with (1:= H) as Hx;
+      specialize (Hx n); destruct Hx; cleanup; try congruence.
+      destruct (addr_eq_dec a n); subst.
+      right.
+      repeat rewrite Mem.upd_eq; eauto.
+      do 2 eexists; eauto.
+      split; eauto.
+      split; eauto.
+      split.
+      unfold vsmerge in *; simpl in *; eauto.
+      unfold vsmerge in *; simpl in *; eauto.
+      repeat rewrite Mem.upd_ne; eauto.
+      eapply H0; eauto.
+      split; eauto.
+
+      unfold same_for_domainid in *; cleanup.
+      split; eauto.
+      unfold same_for_domainid_disk, same_for_domainid_mem in *.
+      intro a.
+      destruct (addr_eq_dec n a); subst.    
+      {
+        specialize (H _ _ _ H16 H4).
+        specialize (H3 _ _ _ H15 H7).
+        repeat rewrite Mem.upd_eq; eauto.
+        intros; cleanup. 
+        unfold vsmerge in *; simpl in *.
+        inversion H; subst; eauto.
+      }
+      {
+        repeat rewrite Mem.upd_ne; eauto.
+      } 
+    }
+    { (** can't access **)
+      specialize H0 with (1:= can_access_public viewer) as Hx;
+      specialize (Hx n); intuition; cleanup; try congruence.
+      specialize H1 with (1:= can_access_public viewer) as Hx;
+      specialize (Hx h); intuition; cleanup; try congruence.
+      destruct x0, x1; simpl in *; cleanup.
+      do 3 eexists; split.
+      econstructor; eauto.
+      split; eauto.
+      unfold equivalent_for; intros.
+      destruct (tag_dec t tag); subst; intuition.
+      specialize H0 with (1:= H) as Hx;
+      specialize (Hx n); destruct Hx; cleanup; try congruence.
+      destruct (addr_eq_dec a n); subst.
+      right.
+      repeat rewrite Mem.upd_eq; eauto.
+      do 2 eexists; eauto.
+      split; eauto.
+      split; eauto.
+      split.
+      unfold vsmerge in *; simpl in *; eauto.
+      unfold vsmerge in *; simpl in *; eauto.
+      econstructor.
+      simpl; intros; cleanup; intuition.
+      eauto.
+      repeat rewrite Mem.upd_ne; eauto.
+      eapply H0; eauto.
+      split; eauto.
+
+      unfold same_for_domainid in *; cleanup.
+      split; eauto.
+      unfold same_for_domainid_disk, same_for_domainid_mem in *.
+      intro a.
+      destruct (addr_eq_dec n a); subst.    
+      {
+        specialize (H _ _ _ H16 H4).
+        specialize (H3 _ _ _ H15 H7).
+        repeat rewrite Mem.upd_eq; eauto.
+        intros; cleanup. 
+        unfold vsmerge in *; simpl in *.
+        inversion H; subst; eauto.
+      }
+      {
+        repeat rewrite Mem.upd_ne; eauto.
+      }
+    }
+    { (** inconsistent **)
+      specialize H0 with (1:= can_access_public viewer) as Hx;
+      specialize (Hx n); intuition; cleanup; try congruence.
+      specialize H1 with (1:= can_access_public viewer) as Hx;
+      specialize (Hx h); intuition; cleanup; try congruence.
+      destruct x0, x1; simpl in *; cleanup.
+      do 3 eexists; split.
+      econstructor; eauto.
+      split; eauto.
+      unfold equivalent_for; intros.
+      specialize H0 with (1:= H) as Hx;
+      specialize (Hx n); destruct Hx; cleanup; try congruence.
+      destruct (addr_eq_dec a n); subst.
+      right.
+      repeat rewrite Mem.upd_eq; eauto.
+      do 2 eexists; eauto.
+      split; eauto.
+      split; eauto.
+      split.
+      unfold vsmerge in *; simpl in *; eauto.
+      unfold vsmerge in *; simpl in *; eauto.
+      econstructor.
+      simpl; intros; congruence.
+      eauto.
+      repeat rewrite Mem.upd_ne; eauto.
+      eapply H0; eauto.
+      split; eauto.
+
+      unfold same_for_domainid in *; cleanup.
+      split; eauto.
+      unfold same_for_domainid_disk, same_for_domainid_mem in *.
+      intro a.
+      destruct (addr_eq_dec n a); subst.    
+      {
+        specialize (H _ _ _ H16 H4).
+        specialize (H3 _ _ _ H15 H7).
+        repeat rewrite Mem.upd_eq; eauto.
+        intros; cleanup. 
+        unfold vsmerge in *; simpl in *.
+        inversion H; subst; eauto.
+      }
+      {
+        repeat rewrite Mem.upd_ne; eauto.
+      }
+    }
+  }
+  { (** Seal **)
+    specialize H1 with (1:= can_access_public viewer) as Hx;
+    specialize (Hx r1); intuition; cleanup; try congruence.
+    do 3 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+    split; eauto.
+    unfold blockmem_equivalent_for; intros.
+    destruct (handle_eq_dec a r1); subst.
+    right.
+    repeat rewrite Mem.upd_eq; eauto.
+    do 2 eexists; eauto.
+    repeat rewrite Mem.upd_ne; eauto.
+    eapply H1; eauto.
+
+    unfold same_for_domainid in *; cleanup.
+    split; eauto.
+    unfold same_for_domainid_disk, same_for_domainid_mem in *.
+    intro a.
+    destruct (handle_eq_dec r1 a); subst.    
+    {
+      repeat rewrite Mem.upd_eq; eauto.
+      intros; cleanup; simpl; eauto. 
+    }
+    {
+      repeat rewrite Mem.upd_ne; eauto.
+    }    
+  }
+  { (** Unseal **)
+    intuition.
+    destruct b; simpl in *.
+    specialize H1 with (1:= can_access_public viewer) as Hx;
+    specialize (Hx h); intuition; cleanup; try congruence.
+    simpl in *; intuition; subst.
+    do 3 eexists; split.
+    econstructor; eauto.
+    split; eauto.
+  }
+  { (** Sync **)
+    do 3 eexists; split; [econstructor; eauto|].
+    split; eauto.
+    unfold equivalent_for in *; intros.
+    specialize H0 with (1:= H) as Hx.
+    unfold sync_mem.
+    specialize (Hx a); intuition; cleanup; eauto.
+    repeat match goal with
+           | [H: ?x = _ |- context [?x] ] => rewrite H
+           end; eauto.
+    repeat match goal with
+           | [H: ?x = _ |- context [?x] ] => rewrite H
+           end; eauto.
+    destruct x, x0.
+    unfold vsmerge in *; simpl in *; eauto.
+    repeat (denote (Forall2 _ (_::_)(_::_)) as Hf; inversion Hf; clear Hf; subst).
+    right; repeat eexists; simpl; eauto.
+    split; eauto.
+
+    unfold same_for_domainid in *; cleanup.
+    split; eauto.
+    unfold same_for_domainid_disk, same_for_domainid_mem in *.
+    intro a.
+    specialize H0 with (1:= can_access_public viewer) as Hx; cleanup.
+    unfold sync_mem.
+    specialize (Hx a); intuition; cleanup; eauto; try congruence.
+    specialize (H _ _ _ D1 D).
+    unfold vsmerge in *; simpl in *; eauto.
+    constructor; eauto.
+    repeat (denote (Forall2 _ (_::_)(_::_)) as Hf; inversion Hf; clear Hf; subst).
+    intros; cleanup; eauto. 
+  }
+  { (** ChDom **)
+    cleanup.
+    specialize H0 with (1:= can_access_public viewer) as Hdt'.
+    specialize H1 with (1:= can_access_public viewer) as Hbt'.
+    do 3 eexists; split; [econstructor; eauto|].
+    split; eauto.
+    {
+      unfold equivalent_for in *; intros.
+      specialize (Hdt' a); intuition; cleanup; eauto.
+      specialize H0 with (1:= H) as Hx.
+      specialize (Hx a); intuition; cleanup; eauto.
+      repeat match goal with
+             | [H: ?x = _ |- context [?x] ] => rewrite H
+             end; eauto.
+      destruct x1, x2.
+      right; repeat eexists; eauto.
+      unfold vsmerge in *; simpl in *; eauto.
+      repeat (denote (Forall2 _ (_::_)(_::_)) as Hf; inversion Hf; clear Hf; subst).
+      destruct (addr_eq_dec n (fst t0)); subst.
+      - econstructor; eauto.
+        eapply forall_forall2.
+        rewrite Forall_forall; intros.
+        destruct (addr_eq_dec (fst t0) (fst (fst x))); subst.
+        + cleanup.
+          rewrite Mem.upd_eq in *; eauto.
+          cleanup.
+          eapply forall2_forall in H17; rewrite Forall_forall in H17; eauto.
+          eapply H17; eauto.
+          setoid_rewrite <- H11; eauto.
+        + rewrite Mem.upd_ne in *; eauto.
+          cleanup.
+          eapply forall2_forall in H14; rewrite Forall_forall in H14; eauto.
+        + eapply forall2_length; eauto.
+      - cleanup.
+        econstructor; eauto.
+        rewrite Mem.upd_ne; eauto.
+        eapply forall_forall2.
+        rewrite Forall_forall; intros.
+        destruct (addr_eq_dec n (fst (fst x))); subst.
+        + rewrite Mem.upd_eq in *; eauto.
+          cleanup.
+          eapply forall2_forall in H17; rewrite Forall_forall in H17; eauto.
+        + rewrite Mem.upd_ne in *; eauto.
+          cleanup.
+          eapply forall2_forall in H14; rewrite Forall_forall in H14; eauto.
+        + eapply forall2_length; eauto.
+    }
+    split; eauto.
+    {
+      unfold blockmem_equivalent_for in *; intros.
+      specialize (Hbt' a); intuition; cleanup; eauto.
+      specialize H1 with (1:= H) as Hx.
+      specialize (Hx a); intuition; cleanup; eauto.
+      repeat match goal with
+             | [H: ?x = _ |- context [?x] ] => rewrite H
+             end; eauto.
+      destruct x1, x2.
+      right; repeat eexists; eauto.
+      simpl in *; eauto.
+      destruct (addr_eq_dec n n0); subst.
+      rewrite Mem.upd_eq; eauto.
+      rewrite Mem.upd_ne; eauto.
+    }
+  }
+  { (** Bind **)
+    apply only_public_operations_app in H3; cleanup.
+    specialize IHp with (1:=H0)(2:=H1)(3:=H2)(4:=H6)(5:=H4); cleanup.
+    specialize H with (1:=H5)(2:=H8)(3:=H9)(4:=H3)(5:= H10); cleanup.
+    do 3 eexists; split; [econstructor; eauto|].
+    split; eauto.
+  }
+
+  Unshelve.
+  all: try exact addr; eauto.
+  all: try exact nil.
+  all: try exact eq.
+Qed.
+
+Lemma exec_equivalent_for_viewer_finished:
   forall T (p: prog T) caller viewer d d' bm bm' hm d1 bm1 hm1 r1 tr,
     exec caller d bm hm p (Finished d1 bm1 hm1 r1) tr ->
     (forall tag, can_access viewer tag -> equivalent_for tag d d' hm) ->
@@ -508,9 +877,10 @@ Qed.
       (forall tag, can_access viewer tag -> equivalent_for tag d1 d2 hm1) /\
       (forall tag, can_access viewer tag -> blockmem_equivalent_for tag bm1 bm2 hm1).
   Proof.
-     induction p; intros;  
+  induction p; intros;  
   inv_exec_perm; cleanup; simpl in *;
-  try solve [repeat eexists; [econstructor; eauto|eauto|eauto] ].
+    try solve [do 3 eexists; split; [econstructor; eauto|
+                                     split; eauto ] ].
   { (** Read **)
     destruct bs.
     specialize H1 with (1:= can_access_public viewer) as Hx;
@@ -561,7 +931,6 @@ Qed.
       right.
       repeat rewrite Mem.upd_eq; eauto.
       do 2 eexists; eauto.
-      split; eauto.
       split; eauto.
       split.
       unfold vsmerge in *; simpl in *; eauto.
@@ -741,7 +1110,7 @@ Qed.
   all: try exact eq.
 Qed.
 
-
+  
   Lemma exec_equivalent_for_viewer_failed:
   forall T (p: prog T) caller viewer d d' bm bm' hm tr,
     exec caller d bm hm p Failed tr ->

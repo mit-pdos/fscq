@@ -337,7 +337,7 @@ Module DIRTREE.
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                            ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
            [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
-           [[ hm' 0 = Some Public ]]
+           [[ hm' = Mem.upd hm (S inum) tag ]]
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
     >~} changeowner fsxp inum tag mscs.

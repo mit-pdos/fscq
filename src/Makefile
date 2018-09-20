@@ -28,7 +28,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock \
 	      WeakConversion AsyncFS \
 	      DiskSecDef DiskSecAttacker DiskSecVictim \
-	      #PaperTheorems CopyFile
+	      PaperTheorems ChownNoninterference WriteConfidentiality \
+	      #CopyFile
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

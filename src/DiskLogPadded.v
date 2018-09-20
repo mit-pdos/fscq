@@ -249,7 +249,6 @@ Definition extend xp (log: input_contents) cs :=
     }.
 
 Definition recover xp cs :=
-  _ <- ChDom 0 Public;;
   let^ (cs, header) <- DiskLogHdr.read xp cs;;
   let '(ndesc, ndata) := header in
   let^ (cs, wal) <- Desc.read_all xp ndesc cs;;
@@ -2709,21 +2708,19 @@ Qed.
 
 Definition recover_ok :
   forall xp cs pr,
-    {!< F F_ l d,
+    {< F F_ l d,
      PERM:pr
      PRE:bm, hm,
          F_ * CacheDef.rep cs d bm *
          [[ bm = empty_mem ]] *
-         [[ hm = empty_mem ]] *
          [[ (F * rep xp (Synced l) hm)%pred d ]]
     POST:bm', hm', RET:cs'
           F_ * CacheDef.rep cs' d bm' *
-          [[ (F * rep xp (Synced l) hm')%pred d ]] *
-          [[ hm' 0 = Some Public ]]             
+          [[ (F * rep xp (Synced l) hm')%pred d ]]       
     CRASH:bm'', hm_crash, exists cs',
           F_ * CacheDef.rep cs' d bm'' *
           [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
-    >!} recover xp cs.
+    >} recover xp cs.
   Proof. 
     unfold recover.
     step.

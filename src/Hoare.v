@@ -58,10 +58,10 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
      [[ forall r_ , corr2 pr
         (fun done'_ crash'_ bm' hm' =>
            post F_ r_ *
-           [[ bm c= bm' ]] * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+           [[ bm c= bm' ]] * [[ hm = hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
-     [[ forall bm'' hm'' , (F_ * crash * [[  @subset addr addr_eq_dec _ hm hm'' ]] *
+     [[ forall bm'' hm'' , (F_ * crash * [[  hm = hm'' ]] *
                        [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
@@ -104,10 +104,10 @@ Notation "{< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH'
      [[ sync_invariant F_ ]] *
      [[ forall r_ , corr2 pr
         (fun done'_ crash'_ bm' hm' =>
-           post F_ r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+           post F_ r_ * [[ hm = hm' ]] *
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
-     [[ forall bm'' hm'' , (F_ * crash * [[ @subset addr addr_eq_dec _ hm hm'' ]] *
+     [[ forall bm'' hm'' , (F_ * crash * [[ hm = hm'' ]] *
                       [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
    )%pred
    (Bind p1 rx)%pred)
@@ -122,10 +122,10 @@ Notation "{!< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
      pre *
      [[ forall r_ , corr2 pr
         (fun done'_ crash'_ bm' hm' =>
-           post emp r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+           post emp r_ * [[ hm = hm' ]] *
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
-     [[ forall bm'' hm'' , (crash * [[ @subset addr addr_eq_dec _ hm hm'' ]] *
+     [[ forall bm'' hm'' , (crash * [[ hm = hm'' ]] *
                       [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
@@ -164,10 +164,10 @@ Notation "{!< 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , post 'CRASH
      pre *
      [[ forall r_ , corr2 pr
         (fun done'_ crash'_ bm' hm' =>
-           post emp r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+           post emp r_ * [[ hm = hm' ]] *
            [[ bm c= bm' ]] * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
-     [[ forall bm'' hm'' , (crash * [[ @subset addr addr_eq_dec _ hm hm'' ]] *
+     [[ forall bm'' hm'' , (crash * [[ hm = hm'' ]] *
                       [[ bm c= bm'' ]]) =p=> crash_ bm'' hm'' ]]
    )%pred
    (Bind p1 rx)%pred)
@@ -204,13 +204,13 @@ Notation "{< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , p
      [[ sync_invariant F_ ]] *
      [[ forall r_ , corr2 pr
         (fun done'_ crash'_ bm' hm' =>
-           post F_ r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+           post F_ r_ * [[ hm = hm' ]] *
            [[ bm c= bm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall realcrash bm'' hm'',
           crash_xform realcrash =p=> crash_xform crash ->
-          (F_ * realcrash * [[ @subset addr addr_eq_dec _ hm hm'' ]] *
+          (F_ * realcrash * [[ hm = hm'' ]] *
                        [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
@@ -229,13 +229,13 @@ Notation "{!< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
      [[ sync_invariant F_ ]] *
      [[ forall r_ , corr2 pr
         (fun done'_ crash'_ bm' hm' =>
-           post F_ r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+           post F_ r_ * [[ hm = hm' ]] *
            [[ bm c= bm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]])
         (rx r_) ]] *
      [[ forall realcrash bm'' hm'',
           crash_xform realcrash =p=> crash_xform crash ->
-          (F_ * realcrash * [[ @subset addr addr_eq_dec _ hm hm'' ]] *
+          (F_ * realcrash * [[ hm = hm'' ]] *
                        [[ bm c= bm'' ]] ) =p=> crash_ bm'' hm'' ]]
      )) .. ))
    )%pred
@@ -390,7 +390,7 @@ Notation "{<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' , 
      [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ pr | fun done'_ crash'_ bm' hm' => post F_ r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+        {{ pr | fun done'_ crash'_ bm' hm' => post F_ r_ * [[ hm = hm' ]] *
           [[ done'_ = done_ ]] *
           [[ bm c= bm' ]] *
           [[ forall bm_crash hm_crash,
@@ -425,7 +425,7 @@ Notation "{X<< e1 .. e2 , 'PERM' : pr 'PRE' : bm , hm , pre 'POST' : bm' , hm' ,
      [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ pr | fun done'_ crash'_ bm' hm' => post F_ r_ * [[ @subset addr addr_eq_dec _ hm hm' ]] *
+        {{ pr | fun done'_ crash'_ bm' hm' => post F_ r_ * [[ hm = hm' ]] *
           [[ done'_ = done_ ]] *
           [[ bm c= bm' ]]
         }} rxOK r_ ]] *

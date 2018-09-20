@@ -2419,25 +2419,23 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
 
   Theorem recover_ok:
     forall xp cs pr,
-    {!< F raw ds,
+    {< F raw ds,
     PERM:pr   
     PRE:bm, hm,
       CacheDef.rep cs raw bm *
       [[ (F * recover_any_pred xp ds hm)%pred raw ]] *
       [[ bm = empty_mem ]] *
-      [[ hm = empty_mem ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:ms' exists raw',
       CacheDef.rep (MSCache ms') raw' bm' *
       [[ (exists d n, [[ n <= length (snd  ds) ]] *
           F * rep xp (Cached (d, nil)) (fst ms') bm' hm' *
           [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-         )%pred raw' ]] *
-      [[ hm' 0 = Some Public ]]
+         )%pred raw' ]]
     XCRASH:bm', hm',
       exists raw' cs', CacheDef.rep cs' raw' bm' *
       [[ (F * recover_any_pred xp ds hm')%pred raw' ]]
-    >!} recover xp cs.
+    >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
     prestep. norm'l.
