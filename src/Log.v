@@ -18,6 +18,7 @@ Require Import FSLayout.
 Require Import MapUtils.
 Require Import RelationClasses.
 Require Import Morphisms.
+Require Import WeakConversion.
 
 Require Export GroupLog.
 
@@ -568,8 +569,6 @@ Hint Resolve Forall_nil.
     apply list2nmem_array.
     apply list2nmem_array.
     autorewrite with lists. auto.
-    Unshelve.
-    unfold EqDec. apply handle_eq_dec.
   Qed.
 
 
@@ -589,6 +588,28 @@ Hint Resolve Forall_nil.
     unfold begin.
     hoare using dems.
     eapply handles_valid_map_empty; auto.
+    rewrite replay_disk_empty; auto.
+    apply empty_extract_blocks_map; auto.
+  Qed.
+
+  Theorem begin_ok_weak:
+    forall xp ms pr,
+    {<W F sm ds,
+    PERM:pr   
+    PRE:bm, hm,
+      rep xp F (NoTxn ds) ms sm bm hm
+    POST:bm', hm', RET:r
+      rep xp F (ActiveTxn ds ds!!) r sm bm' hm' *
+      [[ readOnly ms r ]]
+    CRASH:bm', hm',
+      exists ms', rep xp F (NoTxn ds) ms' sm bm' hm'
+    W>} begin xp ms.
+  Proof.
+    unfold begin.
+    weakstep.
+    weakstep.
+    eapply handles_valid_map_empty; auto.
+    dems.
     rewrite replay_disk_empty; auto.
     apply empty_extract_blocks_map; auto.
   Qed.
@@ -704,7 +725,6 @@ Hint Resolve Forall_nil.
  
     Unshelve.
     exact valuset0.
-    unfold EqDec. apply handle_eq_dec.
   Qed.
 
   Lemma replay_disk_extract_blocks_map_add :
@@ -907,7 +927,6 @@ Hint Resolve Forall_nil.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
     Unshelve.
-    unfold EqDec; apply handle_eq_dec.
   Qed.
 
 
@@ -948,8 +967,6 @@ Hint Resolve Forall_nil.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_subset_trans; eauto.
     eauto.
-    Unshelve.
-    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Theorem flushall_ok :
@@ -976,8 +993,7 @@ Hint Resolve Forall_nil.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
-    Unshelve.
-    unfold EqDec; apply handle_eq_dec.
+
   Qed.
 
 
@@ -1005,8 +1021,6 @@ Hint Resolve Forall_nil.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
-    Unshelve.
-    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Theorem flushall_noop_ok :
@@ -1033,8 +1047,6 @@ Hint Resolve Forall_nil.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
-    Unshelve.
-    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Theorem flushsync_noop_ok :
@@ -1061,8 +1073,6 @@ Hint Resolve Forall_nil.
     eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_map_empty; eauto.
     eapply handles_valid_map_empty; eauto.
-    Unshelve.
-    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (flushall_noop _ _) _) => apply flushall_noop_ok : prog.
@@ -1164,6 +1174,88 @@ Hint Resolve Forall_nil.
     eapply handles_valid_map_subset_trans; eauto.
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.
+  Qed.
+
+  Theorem commit_ok' :
+    forall xp ms pr,
+    {< e,
+     PERM:pr  
+     PRE:bm, hm,
+         let '(F, sm, ds, m) := e in
+          rep xp F (ActiveTxn ds m) ms sm bm hm *
+          [[ sync_invariant F ]]
+     POST:bm', hm', RET:^(ms',r)
+          let '(F, sm, ds, m) := e in 
+          ([[ r = true ]] *
+            rep xp F (NoTxn (pushd m ds)) ms' sm bm' hm') \/
+          ([[ r = false ]] *
+            [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
+            rep xp F (NoTxn ds) ms' sm bm' hm')
+      XCRASH:bm', hm',
+             let '(F, sm, ds, m) := e in
+             recover_any xp F (pushd m ds) sm bm' hm'
+    >} commit xp ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply commit_ok.
+    intros; norml; simpl.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a0, b0, (a, b1))); simpl in *; eauto.
+    eauto.
+  Qed.
+
+  
+  Theorem commit_ok_weak' :
+    forall xp ms pr,
+    {<W e,
+     PERM:pr  
+     PRE:bm, hm,
+         let '(F, sm, ds, m) := e in
+          rep xp F (ActiveTxn ds m) ms sm bm hm *
+          [[ sync_invariant F ]]
+     POST:bm', hm', RET:^(ms',r)
+          let '(F, sm, ds, m) := e in 
+          ([[ r = true ]] *
+            rep xp F (NoTxn (pushd m ds)) ms' sm bm' hm') \/
+          ([[ r = false ]] *
+            [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
+            rep xp F (NoTxn ds) ms' sm bm' hm')
+      XCRASH:bm', hm',
+             let '(F, sm, ds, m) := e in
+             recover_any xp F (pushd m ds) sm bm' hm'
+    W>} commit xp ms.
+  Proof.
+    intros; eapply weak_conversion_xcrash'.
+    apply commit_ok'.
+  Qed.
+
+  Theorem commit_ok_weak :
+    forall xp ms pr,
+    {<W F sm ds m,
+     PERM:pr  
+     PRE:bm, hm,
+          rep xp F (ActiveTxn ds m) ms sm bm hm *
+          [[ sync_invariant F ]]
+     POST:bm', hm', RET:^(ms',r)
+          ([[ r = true ]] *
+            rep xp F (NoTxn (pushd m ds)) ms' sm bm' hm') \/
+          ([[ r = false ]] *
+            [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
+            rep xp F (NoTxn ds) ms' sm bm' hm')
+     XCRASH:bm', hm', recover_any xp F (pushd m ds) sm bm' hm'
+    W>} commit xp ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply commit_ok_weak'.
+    intros; norml; simpl.
+    safecancel.
+    safecancel; eauto.
+    eauto.
+    specialize (H2 (a0, b0, (a, b1))); simpl in *; eauto.
+    eauto.
   Qed.
  
 
@@ -1540,11 +1632,13 @@ Hint Resolve Forall_nil.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (begin _ _) _) => apply begin_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (begin _ _) _) => apply begin_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (abort _ _) _) => apply abort_ok : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (abort _ _) _) => apply abort_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (commit _ _) _) => apply commit_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (commit _ _) _) => apply commit_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (commit_ro _ _) _) => apply commit_ro_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.

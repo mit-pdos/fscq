@@ -23,6 +23,7 @@ Require Import DirTreeRep.
 Require Import DirTreeSafe.
 Require Import DirTreeNames.
 Require Import DirTreeInodes.
+Require Import WeakConversion.
 
 Set Implicit Arguments.
 
@@ -262,6 +263,289 @@ Module DIRTREE.
 
   Local Hint Unfold SDIR.rep_macro rep : hoare_unfold.
 
+   Theorem authenticate_ok :
+    forall fsxp inum mscs pr,
+  {< F ds d sm pathname Fm Ftop tree f ilist frees,
+  PERM:pr    
+  PRE:bm, hm,
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+  POST:bm', hm', RET:^(mscs',r)
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ MSCache mscs' = MSCache mscs ]] *
+         [[ MSAllocC mscs' = MSAllocC mscs ]] *
+         [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
+  CRASH:bm', hm',
+         LOG.intact (FSXPLog fsxp) F ds sm bm' hm'
+  >} authenticate fsxp inum mscs.
+  Proof.
+    unfold authenticate, rep.
+    intros. prestep.
+    intros m Hm; destruct_lift Hm.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    intuition.      
+    pred_apply; cancel.
+    pred_apply; cancel.
+    
+    simpl.
+    step.
+    step.
+    step.
+    erewrite LOG.rep_blockmem_subset; eauto; cancel.
+    or_l; cancel.
+    msalloc_eq; cancel.
+    eauto.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+
+    step.
+    erewrite LOG.rep_blockmem_subset; eauto; cancel.
+    or_r; cancel.
+    msalloc_eq; cancel.
+    eauto.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+    
+    rewrite <- H2; cancel; eauto.
+    Unshelve.
+    all: eauto.
+  Qed.
+
+  Theorem authenticate_ok' :
+    forall fsxp inum mscs pr,
+  {< e,
+  PERM:pr    
+  PRE:bm, hm,
+         let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+  POST:bm', hm', RET:^(mscs',r)
+         let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ MSCache mscs' = MSCache mscs ]] *
+         [[ MSAllocC mscs' = MSAllocC mscs ]] *
+         [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
+  CRASH:bm', hm',
+        let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+        LOG.intact (FSXPLog fsxp) F ds sm bm' hm'
+  >} authenticate fsxp inum mscs.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply authenticate_ok.
+    intros; norml; simpl.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+  Qed.
+
+  
+  
+  Theorem authenticate_ok_weak' :
+    forall fsxp inum mscs pr,
+  {<W e,
+  PERM:pr    
+  PRE:bm, hm,
+         let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+  POST:bm', hm', RET:^(mscs',r)
+         let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ MSCache mscs' = MSCache mscs ]] *
+         [[ MSAllocC mscs' = MSAllocC mscs ]] *
+         [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
+  CRASH:bm', hm',
+        let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+        LOG.intact (FSXPLog fsxp) F ds sm bm' hm'
+  W>} authenticate fsxp inum mscs.
+  Proof.
+    intros; eapply weak_conversion'.
+    intros; apply authenticate_ok'.
+  Qed.
+  
+   Theorem authenticate_ok_weak :
+    forall fsxp inum mscs pr,
+  {<W F ds d sm pathname Fm Ftop tree f ilist frees,
+  PERM:pr    
+  PRE:bm, hm,
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+  POST:bm', hm', RET:^(mscs',r)
+         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ MSCache mscs' = MSCache mscs ]] *
+         [[ MSAllocC mscs' = MSAllocC mscs ]] *
+         [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
+          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
+  CRASH:bm', hm',
+         LOG.intact (FSXPLog fsxp) F ds sm bm' hm'
+  W>} authenticate fsxp inum mscs.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply authenticate_ok_weak'.
+    intros; norml; simpl.
+    safecancel.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed.
+  
+    
+  Hint Extern 1 ({{_|_}} Bind (authenticate _ _ _) _) => apply authenticate_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (authenticate _ _ _) _) => apply authenticate_ok_weak : prog.
+
+  Theorem getowner_ok :
+    forall fsxp inum mscs pr,
+    {< F ds sm d pathname Fm Ftop tree f ilist frees,
+    PERM:pr   
+    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm hm ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm hm' ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           [[ r = DFOwner f ]]
+    CRASH:bm', hm',
+           LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
+    >} getowner fsxp inum mscs.
+  Proof. 
+    unfold getowner, rep.
+    intros. prestep.
+    intros m Hm; destruct_lift Hm.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    repeat eexists; pred_apply; norm.
+    cancel.
+    intuition.      
+    pred_apply; cancel.
+    pred_apply; cancel.
+
+    step.
+    step.
+    msalloc_eq; cancel.
+    eauto.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+    rewrite<- H2; cancel; eauto.
+  Qed.
+
+  Theorem getowner_ok' :
+    forall fsxp inum mscs pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+           let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm hm ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm hm' ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           [[ r = DFOwner f ]]
+    CRASH:bm', hm',
+           let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+           LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
+    >} getowner fsxp inum mscs.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply getowner_ok.
+    intros; norml; simpl.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+  Qed.
+
+  Theorem getowner_ok_weak' :
+    forall fsxp inum mscs pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+           let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm hm ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm hm' ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           [[ r = DFOwner f ]]
+    CRASH:bm', hm',
+           let '(F, ds, d, sm, pathname, Fm, Ftop, tree, f, ilist, frees) := e in
+           LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
+    W>} getowner fsxp inum mscs.
+  Proof.
+    intros; eapply weak_conversion'.
+    intros; apply getowner_ok'.
+  Qed.
+
+  Theorem getowner_ok_weak :
+    forall fsxp inum mscs pr,
+    {<W F ds sm d pathname Fm Ftop tree f ilist frees,
+    PERM:pr   
+    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm hm ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm hm' ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSCache mscs' = MSCache mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           [[ r = DFOwner f ]]
+    CRASH:bm', hm',
+           LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
+    W>} getowner fsxp inum mscs.
+  Proof. 
+    intros; eapply pimpl_ok2_weak.
+    apply getowner_ok_weak'.
+    intros; norml; simpl.
+    safecancel.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed.
+  
+
   Theorem changeowner_ok :
     forall fsxp inum tag mscs pr,
     {~<W F mbase sm m pathname Fm Ftop tree f ilist frees,
@@ -314,103 +598,7 @@ Module DIRTREE.
   Qed.
        
 
-  Theorem authenticate_ok :
-    forall fsxp inum mscs pr,
-  {< F ds d sm pathname Fm Ftop tree f ilist frees,
-  PERM:pr    
-  PRE:bm, hm,
-         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
-         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
-         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-  POST:bm', hm', RET:^(mscs',r)
-         LOG.rep (FSXPLog fsxp) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
-         [[[ d ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
-         [[ MSAlloc mscs' = MSAlloc mscs ]] *
-         [[ MSCache mscs' = MSCache mscs ]] *
-         [[ MSAllocC mscs' = MSAllocC mscs ]] *
-         [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-         (([[ r = true ]] * [[ can_access pr (DFOwner f) ]]) \/
-          ([[ r = false ]] * [[ ~can_access pr (DFOwner f) ]]))
-  CRASH:bm', hm',
-         LOG.intact (FSXPLog fsxp) F ds sm bm' hm'
-  >} authenticate fsxp inum mscs.
-  Proof.
-    unfold authenticate, rep.
-    intros. prestep.
-    intros m Hm; destruct_lift Hm.
-    rewrite subtree_extract in * by eauto.
-    cbn [tree_pred] in *. destruct_lifts.
-    repeat eexists; pred_apply; norm.
-    cancel.
-    intuition.      
-    pred_apply; cancel.
-    pred_apply; cancel.
-    
-    simpl.
-    step.
-    step.
-    step.
-    erewrite LOG.rep_blockmem_subset; eauto.
-    erewrite LOG.rep_domainmem_subset; eauto; cancel.
-    or_l; cancel.
-    msalloc_eq; cancel.
-    eauto.
-    rewrite <- subtree_fold by eauto. pred_apply; cancel.
-
-    step.
-    erewrite LOG.rep_blockmem_subset; eauto.
-    erewrite LOG.rep_domainmem_subset; eauto; cancel.
-    or_r; cancel.
-    msalloc_eq; cancel.
-    eauto.
-    rewrite <- subtree_fold by eauto. pred_apply; cancel.
-    
-    rewrite <- H2; cancel; eauto.
-    Unshelve.
-    all: eauto.
-  Qed.
-
-  Hint Extern 1 ({{_|_}} Bind (authenticate _ _ _) _) => apply authenticate_ok : prog.
-
-  Theorem getowner_ok :
-    forall fsxp inum mscs pr,
-    {< F ds sm d pathname Fm Ftop tree f ilist frees,
-    PERM:pr   
-    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs) sm bm hm *
-           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs sm hm ]]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-    POST:bm', hm', RET:^(mscs',r)
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') sm bm' hm' *
-           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' sm hm' ]]] *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           [[ MSCache mscs' = MSCache mscs ]] *
-           [[ MSAllocC mscs' = MSAllocC mscs ]] *
-           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-           [[ r = DFOwner f ]]
-    CRASH:bm', hm',
-           LOG.intact fsxp.(FSXPLog) F ds sm bm' hm'
-    >} getowner fsxp inum mscs.
-  Proof. 
-    unfold getowner, rep.
-    intros. prestep.
-    intros m Hm; destruct_lift Hm.
-    rewrite subtree_extract in * by eauto.
-    cbn [tree_pred] in *. destruct_lifts.
-    repeat eexists; pred_apply; norm.
-    cancel.
-    intuition.      
-    pred_apply; cancel.
-    pred_apply; cancel.
-
-    step.
-    step.
-    msalloc_eq; cancel.
-    eauto.
-    rewrite <- subtree_fold by eauto. pred_apply; cancel.
-    rewrite<- H2; cancel; eauto.
-    Unshelve.
-    eauto.
-  Qed.
+  
 
   Theorem namei_ok :
     forall fsxp dnum fnlist mscs pr,
@@ -1484,6 +1672,7 @@ Module DIRTREE.
   Hint Extern 1 ({{_|_}} Bind (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getattr _ _ _) _) => apply getattr_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _) _) => apply getowner_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (getowner _ _ _) _) => apply getowner_ok_weak : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (changeowner _ _ _ _) _) => apply changeowner_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setattr _ _ _ _) _) => apply setattr_ok : prog. 
 

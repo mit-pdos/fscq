@@ -118,7 +118,8 @@ Proof.
 
       unfold size_valid in *; simpl; auto.
       repeat rewrite map_add_dup_cardinal; auto.
-      admit.
+      apply add_in_iff in H.
+      split_ors; try congruence; eauto.
 
       destruct (Nat.eq_dec a a0); subst; try congruence.
       rewrite add_neq_o; auto.
@@ -137,7 +138,9 @@ Proof.
     unfold addr_clean; hoare.
   }
   unfold addr_clean; hoare.
-Admitted.
+  Unshelve.
+  unfold EqDec; apply handle_eq_dec.
+Qed.
 
 Hint Extern 1 (corr2 _ _ (Bind (writeback _ _) _)) => apply writeback_ok : prog.
 

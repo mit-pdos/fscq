@@ -16,7 +16,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ProgMonad Hoare HoareWeak SepAuto \
 	      Idempotent MemPred \
 	      Instr ProgLoop ProgList \
-              CacheDef CacheLemmas CacheSec CacheRangeSec \
+              WriteConfidentiality CacheDef CacheLemmas \
+	      CacheSec CacheRangeSec \
 	      DiskLogHdr DiskLogPadded DiskLog \
 	      GenSepN LogReplay MemLog DiskSet \
 	      GroupLog Log LogRecArray \
@@ -28,7 +29,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      TreeCrash DirSep DirSepCrash TreeUtils SuperBlock \
 	      WeakConversion AsyncFS \
 	      DiskSecDef DiskSecAttacker DiskSecVictim \
-	      PaperTheorems ChownNoninterference WriteConfidentiality \
+	      PaperTheorems ChownNoninterference  \
 	      #CopyFile
 
 VS         := $(MODULES:%=%.v)

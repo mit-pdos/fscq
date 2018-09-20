@@ -16,6 +16,180 @@ Require Import Instr.
 
 Transparent corr2 corr2_weak.
 
+Theorem weak_conversion_xcrash':
+    forall T A1 (p1: prog T) pr
+      pre post crash,
+      
+      {< (e1: A1),
+         PERM: pr
+         PRE: bm, hm, pre e1 bm hm
+         POST: bm', hm', (fun F r => F * post F r e1 bm' hm')
+         XCRASH: bm'', hm'', crash e1 bm'' hm'' >} p1 ->
+                           
+      {<W (e1: A1),
+          PERM: pr
+          PRE: bm, hm, pre e1 bm hm 
+          POST: bm', hm', (fun F r => F * post F r e1 bm' hm')
+          XCRASH: bm'', hm'', crash e1 bm'' hm'' W>} p1.
+  Proof.
+    intros.
+    monad_simpl_weak.
+    unfold corr2_weak; intros.
+    inv_exec_perm.
+    - destruct_lift H0.
+      edestruct H.
+      2: repeat econstructor; eauto.
+      {
+        pred_apply; safecancel.
+        eassign dummy; cancel.
+        eauto.
+        {
+          unfold corr2; intros.
+          denote Ret as Hret.
+          inv_exec'' Hret.
+          instantiate (2:= fun d1 bm0 hm0 r => (dummy * post dummy r dummy0 bm0 hm0 *
+                                    [[ hm = hm0 ]] *
+                                    [[ bm c= bm0 ]])%pred d1) in H3.
+          denote sep_star as Hstar;
+            destruct_lift Hstar.
+          eassign crashc.
+          split; auto.
+           do 3 eexists; left; eexists; repeat (split; eauto).         
+          simpl; pred_apply; cancel.
+        }
+        eauto.
+      }
+      
+      simpl in *; cleanup; split_ors; cleanup; try congruence.
+      edestruct H6.
+      2: repeat econstructor; eauto.
+      pred_apply; cancel; eauto.
+      simpl in *; cleanup; split_ors; cleanup; try congruence.
+      split.
+      do 3 eexists; left; repeat eexists; eauto.
+      repeat (apply trace_secure_app; eauto).
+      apply only_public_operations_to_trace_secure; auto.
+
+    - split_ors; cleanup.
+      + destruct_lift H0.
+        edestruct H with (rx:=@Ret T).
+        2: eapply CrashBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          {
+            unfold corr2; intros.
+            denote Ret as Hret.
+            inv_exec'' Hret.
+            instantiate (2:= fun d1 bm0 hm0 r => (dummy * post dummy r dummy0 bm0 hm0 *
+                                               [[ hm = hm0 ]] *
+                                               [[ bm c= bm0 ]])%pred d1) in H2.
+            denote sep_star as Hstar;
+              destruct_lift Hstar.
+            eassign crashc.
+            split; auto.
+            do 3 eexists; left; eexists; repeat (split; eauto).         
+            simpl; pred_apply; cancel.
+          }
+          eauto.
+        }
+        simpl in *; cleanup; split_ors; cleanup; try congruence.
+        split.
+        do 3 eexists; right; repeat eexists; eauto.
+        apply only_public_operations_to_trace_secure; auto.
+        
+      + destruct_lift H0.
+        edestruct H.
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          eauto.
+          {
+            unfold corr2; intros.
+            denote Ret as Hret.
+            inv_exec'' Hret.
+            instantiate (2:= fun d1 bm0 hm0 r => (dummy * post dummy r dummy0 bm0 hm0 *
+                                               [[ hm = hm0 ]] *
+                                               [[ bm c= bm0 ]])%pred d1) in H3.
+            denote sep_star as Hstar;
+              destruct_lift Hstar.
+            eassign crashc.
+            split; auto.
+            do 3 eexists; left; eexists; repeat (split; eauto).         
+            simpl; pred_apply; cancel.
+          }
+          eauto.
+        }
+        simpl in *; cleanup; split_ors; cleanup; try congruence.
+        edestruct H6; eauto.
+        pred_apply; cancel.
+        simpl in *; cleanup; split_ors; cleanup; try congruence.
+        split.
+        do 3 eexists; right; repeat eexists; eauto.
+        apply trace_secure_app; auto.
+        apply only_public_operations_to_trace_secure; auto.
+
+    - split_ors; cleanup.
+      + destruct_lift H0.
+        edestruct H with (rx:=@Ret T).
+        2: eapply FailBind; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          {
+            unfold corr2; intros.
+            denote Ret as Hret.
+            inv_exec'' Hret.
+            instantiate (2:= fun d1 bm0 hm0 r => (dummy * post dummy r dummy0 bm0 hm0 *
+                                               [[ hm = hm0 ]] *
+                                               [[ bm c= bm0 ]])%pred d1) in H2.
+            denote sep_star as Hstar;
+              destruct_lift Hstar.
+            eassign crashc.
+            split; auto.
+            do 3 eexists; left; eexists; repeat (split; eauto).         
+            simpl; pred_apply; cancel.
+          }
+          eauto.
+        }
+        simpl in *; cleanup; split_ors; cleanup; try congruence.
+      + destruct_lift H0.
+        edestruct H with (rx:=@Ret T).
+        2: repeat econstructor; eauto.
+        {
+          pred_apply; safecancel.
+          eassign dummy; cancel.
+          auto.
+          {
+            unfold corr2; intros.
+            denote Ret as Hret.
+            inv_exec'' Hret.
+            instantiate (2:= fun d1 bm0 hm0 r => (dummy * post dummy r dummy0 bm0 hm0 *
+                                               [[ hm = hm0 ]] *
+                                               [[ bm c= bm0 ]])%pred d1) in H3.
+            denote sep_star as Hstar;
+              destruct_lift Hstar.
+            eassign crashc.
+            split; auto.
+            do 3 eexists; left; eexists; repeat (split; eauto).         
+            simpl; pred_apply; cancel.
+          }
+          eauto.
+        }
+        simpl in *; cleanup; split_ors; cleanup; try congruence.
+        edestruct H6; eauto.
+        pred_apply; cancel.
+        simpl in *; cleanup; split_ors; cleanup; try congruence.
+        Unshelve.
+        all: try exact handle.
+        all: unfold Mem.EqDec; apply handle_eq_dec.
+  Qed.
+
+
+
 Theorem weak_conversion':
     forall T A1 (p1: prog T) pr
       pre post crash,
