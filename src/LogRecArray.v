@@ -420,6 +420,7 @@ Module LogRecArray (RA : RASig).
     rewrite <- firstn_map_comm in H0.
     setoid_rewrite map_fst_combine in H0; auto.
     apply in_firstn_in in H0; apply repeat_spec in H0; auto.
+    rewrite H0; eauto.
     apply repeat_length.
 
     step.
@@ -460,11 +461,6 @@ Module LogRecArray (RA : RASig).
 
     safestep.
     rewrite LOG.rep_blockmem_subset; eauto.
-    cleanup.
-    rewrite map_fst_combine by apply repeat_length.
-    rewrite Forall_forall; intros x Hin.
-    apply repeat_spec in Hin; auto.
-    rewrite Hin; eauto.
     
     eauto.
     unfold items_valid in *; intuition; auto.
@@ -531,12 +527,7 @@ Module LogRecArray (RA : RASig).
     repeat rewrite repeat_length; omega.
     safestep.
     rewrite LOG.rep_blockmem_subset; eauto.
-    
-    cleanup.
-    rewrite map_fst_combine by (repeat rewrite repeat_length; auto).
-    rewrite Forall_forall; intros x Hin.
-    apply repeat_spec in Hin; auto.
-    rewrite Hin; eauto.
+
     eauto.
     cleanup.
     erewrite <- extract_blocks_length; eauto.

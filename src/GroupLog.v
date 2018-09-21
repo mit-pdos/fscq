@@ -1020,10 +1020,6 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
   Lemma cached_dssync_vecs_latest_recover_any : forall xp ds al ms hm bm ms0,
     handles_valid_nested bm ms0 ->
     dset_match xp (effective ds (length ms0)) (extract_blocks_nested bm ms0) ->
-    Forall
-    (fun ents : list (addr * handle) =>
-     Forall (fun t => hm t = Some Public)
-       (map fst (extract_blocks bm (map snd ents)))) ms0 ->
     rep xp (Cached ((dssync_vecs ds al) !!, nil)) ms bm hm =p=>
     would_recover_any xp (dssync_vecs ds al) bm hm.
   Proof.
@@ -1034,16 +1030,11 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     apply H.
     rewrite effective_dssync_vecs_comm.
     eapply dset_match_dssync_vecs; eauto.
-    auto.
   Qed.
 
   Lemma cached_latest_recover_any : forall xp ds ms hm ms0 bm,
     handles_valid_nested bm ms0 ->
     dset_match xp (effective ds (length ms0)) (extract_blocks_nested bm ms0) ->
-    Forall
-    (fun ents : list (addr * handle) =>
-     Forall (fun t => hm t = Some Public)
-       (map fst (extract_blocks bm (map snd ents)))) ms0 ->
     rep xp (Cached (ds !!, nil)) ms bm hm =p=>
     would_recover_any xp ds bm hm.
   Proof.
@@ -1053,7 +1044,6 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     rewrite synced_recover_any; auto.
     apply H.
     eauto.
-    auto.
   Qed.
 
   Lemma vmap_match_notin : forall V ts vm a (bm: block_mem V),
@@ -1462,7 +1452,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
         apply in_map; auto.
       Qed.
     
-
+(*
     Lemma vmap_match_tags_public:
       forall ts vm (bm: block_mem tagged_block) hm,
       handles_valid_nested bm ts ->
@@ -1504,7 +1494,7 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
       apply MLog.handles_valid_replay_mem2; auto.
       apply handles_valid_nested_handles_valid_map_fold_right; auto.
     Qed.
-
+*)
   
   Theorem flushall_ok:
     forall xp ms pr,
@@ -2099,8 +2089,6 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     unfold effective; rewrite popn_oob.
     apply dset_match_nil.
     omega.
-    substl (MSTxns a); simpl.
-    apply Forall_nil.
     
     rewrite <- H1; cancel.
     solve_hashmap_subset.
@@ -2354,12 +2342,10 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     step.
     safestep.
 
-    apply Forall_nil.
     apply handles_valid_nested_empty.
     apply dset_match_nil.
     eassumption.
 
-    apply Forall_nil.
     apply handles_valid_nested_empty.
     apply dset_match_nil.
     eassign (nil: list (addr * tagged_block)); cancel.

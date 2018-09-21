@@ -16,6 +16,7 @@ Require Import FMapFacts.
 Require Import Lock.
 
 Require Export LogReplay.
+Require Import DiskLogRecovery.
 
 Import ListNotations.
 
@@ -242,7 +243,6 @@ Module MLog.
   Hint Extern 0 (okToUnify (DiskLog.rep _ _ _) (DiskLog.rep _ _ _)) => constructor : okToUnify.
 
 
-
   (****** auxiliary lemmas *)
 
 
@@ -268,9 +268,8 @@ Qed.
 
   
 
-  Lemma rep_domainmem_subset : forall xp mm bm hm hm',
-    subset hm hm'
-    -> forall st, rep xp st mm bm hm
+  Lemma rep_domainmem_subset : forall xp mm bm hm hm',    
+      forall st, rep xp st mm bm hm
         =p=> rep xp st mm bm hm'.
   Proof.
     unfold rep; intros.
@@ -335,8 +334,7 @@ Qed.
   Qed.
 
   Lemma would_recover_either_domainmem_subset : forall xp d ents bm hm hm',
-    subset hm hm'
-    -> would_recover_either xp d ents bm hm
+      would_recover_either xp d ents bm hm
         =p=> would_recover_either xp d ents bm hm'.
   Proof.
     unfold would_recover_either; intros; cancel.
@@ -1040,7 +1038,7 @@ Qed.
   Proof.
     unfold crash_rep, rep, synced_rep, unsync_rep, map_replay; intros.
     xform_norml.
-    - rewrite DiskLog.xform_rep_synced.
+    - rewrite xform_rep_synced.
       rewrite crash_xform_arrayN_subset.
       cancel.
       simplen.
@@ -1058,7 +1056,7 @@ Qed.
       erewrite mapeq_elements; eauto.
       unfold diskIs; auto.
 
-    - rewrite DiskLog.xform_rep_truncated.
+    - rewrite xform_rep_truncated.
       rewrite crash_xform_arrayN_subset.
       norml.
       cancel; eauto; try solve [simplen].
@@ -1104,7 +1102,7 @@ Qed.
     intros.
     unfold crash_rep, rep, synced_rep, unsync_rep, map_replay; intros.
     xform_norml.
-    - rewrite DiskLog.xform_rep_synced.
+    - rewrite xform_rep_synced.
       rewrite crash_xform_arrayN_subset.
       cancel; eauto. simplen.
       rewrite <- H2; auto.
@@ -1127,7 +1125,7 @@ Qed.
     xform_norml.
 
     - rewrite crash_xform_arrayN_subset.
-      rewrite DiskLog.xform_rep_synced.
+      rewrite xform_rep_synced.
       cancel.
       clear H2 H4.
       or_l; cancel; eauto; try solve [simplen].
@@ -1139,7 +1137,7 @@ Qed.
       eapply map_valid_replay_mem_synced_list; eauto.
 
     - rewrite crash_xform_arrayN_subset.
-      rewrite DiskLog.xform_rep_extended.
+      rewrite xform_rep_extended.
       cancel.
       clear H2 H4.
       or_l. cancel; eauto; try solve [simplen].
@@ -1170,7 +1168,7 @@ Qed.
   Proof.
     unfold crash_rep, rep, synced_rep, map_replay; intros.
     xform_norml.
-    rewrite DiskLog.xform_rep_synced, crash_xform_arrayN_subset.
+    rewrite xform_rep_synced, crash_xform_arrayN_subset.
     cancel; eauto.
     simplen; rewrite <- H2; auto.
     eapply map_valid_replay_mem_synced_list; eauto.
@@ -1245,7 +1243,7 @@ Qed.
     intros.
     unfold crash_rep, synced_rep.
     xform_norm.
-    rewrite DiskLog.xform_rep_synced, crash_xform_arrayN_subset.
+    rewrite xform_rep_synced, crash_xform_arrayN_subset.
     safecancel.
     simplen; rewrite <- H2; auto.
     eapply map_valid_replay_mem_synced_list; eauto.
@@ -1331,7 +1329,7 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
 
   Theorem recover_ok:
     forall xp cs pr,
-    {!< F raw d ents,
+    {< F raw d ents,
     PERM:pr   
     PRE:bm, hm,
        CacheDef.rep cs raw bm *
@@ -1351,7 +1349,7 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
          [[ (F * crash_rep xp nr d' hm')%pred raw' ]] *
          ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])
-    >!} recover xp cs.
+    >} recover xp cs.
   Proof.
     unfold recover, recover_either_pred, crash_rep, rep.
     prestep. norm'l. unfold stars; cbn.
@@ -1530,7 +1528,6 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
     apply map_valid_map0.
 
     Unshelve.
-    unfold EqDec; apply handle_eq_dec.
     exact tagged_block.
     all: eauto.
     apply bmap0.
@@ -1623,7 +1620,6 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
     apply extract_blocks_map_subset_trans; eauto.
     Unshelve.
     apply valuset0.
-    unfold EqDec; apply handle_eq_dec.
   Qed.
 
   End UnfoldProof1.
@@ -1914,7 +1910,6 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
         (l:= Map.elements (extract_blocks_map bm tagged_block0 ms_1)).
     rewrite apply_unsync_applying_ok.
     or_l; safecancel.
-    erewrite DiskLog.rep_domainmem_subset.
     or_l; cancel.
     erewrite unsync_rep_equal; eauto.
     apply extract_blocks_map_subset_trans; auto;
@@ -1951,7 +1946,6 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
     setoid_rewrite apply_unsync_applying_ok.
     xcrash.
     or_l; safecancel.
-    erewrite DiskLog.rep_domainmem_subset.
     or_l; cancel.
     erewrite unsync_rep_equal; eauto.
     apply extract_blocks_map_subset_trans; auto;
@@ -2060,8 +2054,7 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
 
     step.
     or_r; cancel.
-    erewrite mapeq_elements.
-    erewrite rep_domainmem_subset; eauto.
+    erewrite mapeq_elements; eauto.
     apply MapFacts.Equal_sym.
     eapply extract_blocks_map_subset_trans; auto.
     solve_blockmem_subset.
@@ -2500,13 +2493,14 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
 
     step.
     eapply handles_valid_subset_trans; eauto.
-    rewrite replay_disk_length in H8; auto.
+    rewrite replay_disk_length in H9; auto.
 
     step.
     step.
     unfold rep, synced_rep, map_replay; cancel.
     solve_hashmap_subset.
-    clear H24; eapply handles_valid_map_subset_trans; eauto.
+    denote block_mem_subset as Hss; clear Hss.
+    eapply handles_valid_map_subset_trans; eauto.
     eapply MapFacts.Equal_trans; eauto.
     apply MapFacts.Equal_sym.
     apply extract_blocks_map_subset_trans; eauto.
@@ -2578,7 +2572,7 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     rewrite extract_blocks_list_map_fst; auto.
     rewrite overlap_extract_blocks_map; auto.
     apply not_true_is_false; auto.
-    clear H20; eapply handles_valid_list_subset_trans; eauto.
+    denote block_mem_subset as Hss; clear Hss; eapply handles_valid_list_subset_trans; eauto.
     
     apply extract_blocks_map_subset_trans; eauto.
     solve_hashmap_subset.
@@ -2610,6 +2604,7 @@ Remove Hints extract_blocks_map_empty handles_valid_map_hmap0.
     eapply handles_valid_list_subset_trans; eauto.    
 
     Unshelve.
+    all: eauto.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
