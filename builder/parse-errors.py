@@ -32,7 +32,7 @@ current_error = []
 for l in f.readlines():
   if any(l.startswith(prefix) for prefix in ignore_prefixes):
     continue
-  if l.startswith("File "):
+  if l.startswith("File \""):
     err_file = l.split(" ")[1].split(":")[0]
     if err_file.startswith('"'):
       err_file = err_file.split('"')[1]
@@ -40,10 +40,6 @@ for l in f.readlines():
       err_file = err_file[2:]
     if err_file.endswith(".v"):
       err_file = err_file[:-2]
-    current_error = []
-    errors[err_file].append(current_error)
-  if l.startswith("Error: File ") or l.startswith("Warning: File "):
-    err_file = l.split(" ")[2].split(":")[0]
     current_error = []
     errors[err_file].append(current_error)
   current_error.append(l)
