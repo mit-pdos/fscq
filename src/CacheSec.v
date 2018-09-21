@@ -21,8 +21,28 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-
 Hint Resolve dummy_handle.
+
+Ltac solve_sync_invariant:=
+  match goal with
+  | [|- forall _, _ ] =>
+    intros; eauto
+  | [|- sync_invariant( _ * _ )] =>
+    apply sync_invariant_sep_star; eauto
+  | [|- sync_invariant( _ /\ _ )] =>
+    apply sync_invariant_and; eauto
+  | [|- sync_invariant( _ \/ _ )] =>
+    apply sync_invariant_or; eauto
+  | [|- sync_invariant(exists _, _ )] =>
+    apply sync_invariant_exists; eauto
+  | [|- sync_invariant([[ _ ]])] =>
+    apply sync_invariant_lift_empty; eauto
+  | [|- sync_invariant(mem_pred _ _)] =>
+    apply sync_invariant_mem_pred; eauto
+  end.
+
+Hint Extern 0 (sync_invariant _) => solve_sync_invariant; eauto.
+
 
   Theorem writeback_ok' :
     forall a cs pr,
@@ -403,7 +423,7 @@ Theorem end_sync_ok :
   Proof.
     unfold end_sync; intros.
     hoare.
-    apply sync_invariant_sep_star; eauto.
+
     unfold rep, synrep, synrep', mem_pred, mem_pred_one; simpl.
 
     rewrite sync_xform_sep_star_dist, sync_xform_and_dist. rewrite pimpl_r_and.
@@ -497,7 +517,6 @@ Theorem end_sync_ok :
         unfold ptsto_subset; cancel; eauto.
         rewrite mem_pred_pimpl_except.
         2: intros; apply synpred_add_invariant; eassumption.
-        eassign (v, old); simpl.
         cancel.
         simpl; auto.
         simpl; auto.
@@ -505,7 +524,6 @@ Theorem end_sync_ok :
         eapply addr_valid_add; eauto.
         rewrite upd_eq; auto.
         apply addr_valid_upd; auto.
-      + eexists; eapply hashmap_subset_trans; eauto.
       + (* crash *)
         rewrite <- H1; safecancel; eauto.
         repeat cleanup.
@@ -532,7 +550,7 @@ Theorem end_sync_ok :
       norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       safecancel; simpl in *; cleanup.
-      eassign (x0_cur, l0).
+      eassign x0_1; eassign l0.
       unfold ptsto_subset;
       cancel; simpl; eauto.
       auto.
@@ -554,11 +572,8 @@ Theorem end_sync_ok :
         unfold synpred at 3.
         rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
-        eassign (x0_cur, old); cancel.
-        simpl; auto.
-        simpl; auto.
         apply addr_valid_upd; auto.
-      + eexists; eapply hashmap_subset_trans; eauto.
+        
       + rewrite <- H1; safecancel; eauto.
         repeat cleanup.
         rewrite sep_star_and_distr, pimpl_l_and.
@@ -584,7 +599,7 @@ Theorem end_sync_ok :
       norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       safecancel; simpl in *; cleanup.
-      eassign (x0_cur, l0).
+      eassign x0_1; eassign l0.
       unfold ptsto_subset;
       cancel; simpl; eauto.
       auto.
@@ -605,10 +620,8 @@ Theorem end_sync_ok :
         unfold synpred at 3.
         rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
-        eassign (x0_cur, old); cancel.
-        simpl; auto.
         apply addr_valid_upd; auto.
-      + eexists; eapply hashmap_subset_trans; eauto.
+
       +
         rewrite <- H1; safecancel; eauto.
         repeat cleanup.
@@ -617,7 +630,9 @@ Theorem end_sync_ok :
         eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
         unfold cachepred at 3; rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
-    Unshelve. all: eauto.
+        Unshelve.
+        all: eauto.
+        all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
 
@@ -644,14 +659,13 @@ Theorem end_sync_ok :
     rewrite sync_synrep_helper_2 by eauto.
     safecancel.
     eassign F_; cancel.
-    apply H5.
+    apply H6.
     eauto.
     eauto.
     eauto.
     step.
     rewrite <- H1.
     cancel.
-    eexists; eapply hashmap_subset_trans; eauto.
   Qed.
 
 
@@ -682,24 +696,22 @@ Theorem init_load_ok :
     simpl; intros.
 
     unfold pimpl; intros.
-    destruct_lift H0; subst.
+    destruct_lift H; subst.
 
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     exists m.
-    inversion H13; subst.
+    inversion H12; subst.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm.
     apply sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
-    inversion H13; subst.
-    apply sync_xform_arrayS in H0.
+    inversion H12; subst.
+    apply sync_xform_arrayS in H.
     eapply mem_pred_cachepred_refl_arrayS; eauto.
     apply size_valid_cache0; eauto.
     apply addr_valid_empty.
-    apply sync_xform_arrayS in H0; eauto.
-    cleanup.
-    eexists; eapply hashmap_subset_trans; eauto.
+    apply sync_xform_arrayS in H; eauto.
   Qed.
 
 
@@ -733,7 +745,6 @@ Theorem init_load_ok :
     unfold addr_valid in *; intuition.
     eapply MapFacts.empty_in_iff; eauto.
     unfold crash_xform; eexists; eauto.
-    eexists; eapply hashmap_subset_trans; eauto.
     cancel; eauto.
     rewrite <- H1; cancel; eauto.
   Qed.
@@ -758,8 +769,9 @@ Theorem init_load_ok :
     intros.
     eapply pimpl_ok2; monad_simpl.
     apply write_ok'.
-    cancel; auto.
-    cancel.
+    cancel; eauto.
+    apply sep_star_comm.
+    step.
     rewrite <- H1.
     eassign ((exists cs' : cachestate, rep cs' d bm'')%pred).
     cancel; eauto.
@@ -831,7 +843,7 @@ Theorem init_load_ok :
     rewrite isolateN_fwd with (i:=i) by auto.
     eassign (F * arrayS a (firstn i vs) *  arrayS (a + i + 1) (skipn (S i) vs))%pred.
     cancel.
-    eexists; eapply hashmap_subset_trans; eauto. 
+    rewrite <- surjective_pairing; eauto.
   Qed.
 
 
@@ -861,11 +873,14 @@ Theorem init_load_ok :
 
     rewrite isolateN_fwd with (i:=i) by auto.
     eassign (arrayS a (firstn i vs) * arrayS (a + i + 1) (skipn (S i) vs) * F)%pred; cancel.
-    
+    rewrite <- surjective_pairing; eauto.
     hoare.
     rewrite <- isolateN_bwd_upd by auto.
+    rewrite <- surjective_pairing; eauto.
+    rewrite sep_star_assoc.
+    setoid_rewrite sep_star_comm at 2.
+    rewrite <- sep_star_assoc; eauto.
     cancel.
-    eexists; eapply hashmap_subset_trans; eauto.
 
     xcrash.
     rewrite <- H1.
@@ -896,12 +911,12 @@ Theorem init_load_ok :
     pred_apply;
     rewrite isolateN_fwd with (i:=i) by auto.
     eassign (arrayS a (firstn i vs) * arrayS (a + i + 1) (skipn (S i) vs) * F)%pred; cancel.
+    rewrite <- surjective_pairing; eauto.
     repeat apply sync_invariant_sep_star; eauto; apply sync_invariant_arrayS.
   
     hoare.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
-     eexists; eapply hashmap_subset_trans; eauto.
 
     xcrash.
     rewrite <- H1.

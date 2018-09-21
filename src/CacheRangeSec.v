@@ -53,8 +53,9 @@ Set Implicit Arguments.
     erewrite selN_map; auto.
     rewrite extract_blocks_app; simpl.
     rewrite H18.
-    clear H17; erewrite <- extract_blocks_subset_trans; eauto.
-    rewrite H13; auto.
+    match goal with | [H: ?x c= ?x |- _] => clear H end.
+    erewrite <- extract_blocks_subset_trans; eauto.
+    rewrite H14; auto.
     apply handles_valid_rev_eq; auto.
     eapply le_trans; [| eauto].
     omega.
@@ -106,14 +107,15 @@ Set Implicit Arguments.
     subst.
 
     erewrite extract_blocks_selN.
-    rewrite <- H15; eauto.
+    rewrite <- H16; eauto.
     eapply handles_valid_subset_trans; eauto.
     auto.
 
     rewrite vsupd_range_length; try omega.
+    eapply Nat.lt_le_trans; eauto.
     rewrite firstn_length_l; try omega.
-    apply extract_blocks_length in H5;
-    rewrite H5; apply Nat.lt_le_incl; auto.
+    eapply Nat.le_trans; [|eauto]; omega.
+    erewrite extract_blocks_length; eauto; omega.
 
     step.
     prestep; unfold rep; cancel.
@@ -122,7 +124,7 @@ Set Implicit Arguments.
 
     
     cancel.
-    all: apply extract_blocks_length in H5; try rewrite H5; auto.
+    all: apply extract_blocks_length in H6; try rewrite H6; auto.
     solve_hashmap_subset.
     
     rewrite <- H1; cancel; eauto.
@@ -132,11 +134,11 @@ Set Implicit Arguments.
     rewrite <- firstn_plusone_selN.
 
     apply vsupd_range_xcrash_firstn; auto.
-    all: try rewrite H5; auto.
+    all: try rewrite H6; auto.
 
     step. step.
     rewrite firstn_oob; auto.
-    rewrite H5; auto.
+    rewrite H6; auto.
     solve_hashmap_subset.
     eassign (false_pred (AT:= addr)(AEQ:= addr_eq_dec)(V:= valuset))%pred.
     unfold false_pred; cancel.
@@ -170,12 +172,16 @@ Set Implicit Arguments.
     safestep.
     eassign F_; cancel.
     eauto.
-    rewrite vssync_range_length; omega.
+    rewrite vssync_range_length; try omega.
+    eapply Nat.lt_le_trans; eauto.
+    eapply Nat.le_trans; [|eauto]; omega.
+
     all: auto.
 
     step. step.
     apply arrayN_unify.
-    apply vssync_range_progress; omega.
+    apply vssync_range_progress; try omega.
+    eapply Nat.lt_le_trans; eauto.
     solve_hashmap_subset.
     rewrite <- H1; cancel; eauto.
     solve_hashmap_subset.
@@ -309,7 +315,7 @@ Set Implicit Arguments.
     
     prestep; norml.
     unfold handles_valid_list, handles_valid in *;
-    pose proof H6 as Hy.
+    pose proof H7 as Hy.
     rewrite Forall_forall in Hy.
     edestruct Hy.
     apply in_map.
@@ -317,7 +323,7 @@ Set Implicit Arguments.
     norm. cancel.
     intuition eauto.
     rewrite vsupd_vecs_length.
-    pose proof H5 as Hx.
+    pose proof H6 as Hx.
     apply forall_app_l in Hx.
     inversion Hx; simpl in *; eauto.
     step.
@@ -330,9 +336,10 @@ Set Implicit Arguments.
     erewrite block_mem_subset_extract_some; eauto.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
-    rewrite map_app in H6;
-    apply forall_app_r in H6; eauto.
-    clear H18; eapply handles_valid_subset_trans; eauto.
+    rewrite map_app in H7;
+    apply forall_app_r in H7; eauto.
+    denote block_mem_subset as Hss; clear Hss;
+      eapply handles_valid_subset_trans; eauto.
     solve_hashmap_subset.
 
     cancel; rewrite <- H1; cancel.
@@ -357,8 +364,8 @@ Set Implicit Arguments.
     xcrash.
 
     erewrite extract_blocks_subset_trans; eauto.
-    rewrite map_app in H6;
-    apply forall_app_r in H6; eauto.
+    rewrite map_app in H7;
+    apply forall_app_r in H7; eauto.
     eapply handles_valid_subset_trans; eauto.
     rewrite app_length; simpl.
     rewrite combine_length_eq.
@@ -366,8 +373,8 @@ Set Implicit Arguments.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
-    rewrite map_app in H6;
-    apply forall_app_r in H6; eauto.
+    rewrite map_app in H7;
+    apply forall_app_r in H7; eauto.
     eapply handles_valid_subset_trans; eauto.
     rewrite app_length; simpl.
     rewrite combine_length_eq.
@@ -375,14 +382,14 @@ Set Implicit Arguments.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
-    rewrite map_app in H6;
-    apply forall_app_r in H6; eauto.
+    rewrite map_app in H7;
+    apply forall_app_r in H7; eauto.
     eapply handles_valid_subset_trans; eauto.
     erewrite extract_blocks_length; auto.
     repeat rewrite map_length; auto.
     eapply handles_valid_subset_trans; eauto.
-    rewrite map_app in H6;
-    apply forall_app_r in H6; eauto.
+    rewrite map_app in H7;
+    apply forall_app_r in H7; eauto.
     eapply handles_valid_subset_trans; eauto.  
     apply Forall_extract_blocks_list_length_le; auto.
     eapply handles_valid_subset_trans; eauto.
@@ -397,7 +404,7 @@ Set Implicit Arguments.
     Unshelve.
     all: auto.
     exact tt.
-    unfold EqDec; apply handle_eq_dec.
+    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
 
@@ -479,8 +486,6 @@ Set Implicit Arguments.
     rewrite <- H1; cancel.
     solve_hashmap_subset.
     solve_blockmem_subset.
-    rewrite <- H1; cancel.
-    solve_hashmap_subset.
     Unshelve.
     unfold EqDec; apply handle_eq_dec.
   Qed.
