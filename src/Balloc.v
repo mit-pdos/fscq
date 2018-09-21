@@ -848,7 +848,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     eauto.
     apply in_seq; intuition.
     apply arrayN_listpred_seq_fp; auto.
-    solve_hashmap_subset.
+    
   Qed.
 
   Lemma full_eq_repeat : full = rep_bit Defs.itemsz inuse.
@@ -902,10 +902,10 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     rewrite selN_to_bits in * by auto.
     rewrite full_eq_repeat, repeat_selN', bits_rep_bit, repeat_selN' in Hx.
     cbv in Hx. congruence.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
     
     Unshelve.
@@ -937,11 +937,11 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     apply itemlist_to_freelist_nodup.
     rewrite firstn_oob by (erewrite Bmp.items_length_ok; eauto).
     apply freelist_bmap_equiv_itemlist_to_freelist_spec; eauto.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
     auto.
-    solve_hashmap_subset.
+    
   Qed.   
     
 Hint Resolve can_access_repeat_public_selN.
@@ -998,16 +998,16 @@ Hint Resolve can_access_repeat_public_selN.
     assert (~ (y |->? * y |->?)%pred m'0) as Hc by apply ptsto_conflict.
     contradict Hc; pred_apply; cancel.
     auto.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
     
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
     
     rewrite <- H1; cancel.
     auto.
-    solve_hashmap_subset.
+    
 
   Unshelve.
     all: try exact unit.
@@ -1082,25 +1082,25 @@ Hint Resolve can_access_repeat_public_selN.
     rewrite to_bits_length; apply bound_offset; auto.
     denote (ifind_byte _ = Some _) as Hb.
     apply ifind_byte_inb in Hb as Hc; auto.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
 
     step.
     step.
     step.
 
-    solve_hashmap_subset.
+    
 
     step.
     step.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
     auto.
-    solve_hashmap_subset.
+    
     
     Unshelve.
     all : try solve [auto | exact full].
@@ -1149,15 +1149,15 @@ Hint Resolve can_access_repeat_public_selN.
     eauto.
     denote (freepred <=p=> _) as Hfp. rewrite Hfp.
     cancel.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
 
     rewrite <- H1; cancel.
     auto.
-    solve_hashmap_subset.
+    
 
     Unshelve.
     all: eauto.
@@ -1415,9 +1415,6 @@ Module BmapAllocCache (Sig : AllocSig).
     step.
     step.
     safestep.
-    auto.
-    eauto.
-    solve_hashmap_subset.
   Qed.
 
   Theorem init_nofree_ok :
@@ -1438,7 +1435,7 @@ Module BmapAllocCache (Sig : AllocSig).
     safestep.
     step.
     step.
-    solve_hashmap_subset.
+    
   Qed.
 
   Theorem get_free_blocks_ok :
@@ -1463,7 +1460,7 @@ Module BmapAllocCache (Sig : AllocSig).
     unfold cache_rep.
     intros ? Hs. inversion Hs; intuition subst; auto.
     auto using permutation_comm.
-    solve_hashmap_subset.
+    
   Qed.
 
   Hint Extern 0 ({{_|_}} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok : prog.
@@ -1493,7 +1490,7 @@ Module BmapAllocCache (Sig : AllocSig).
     safestep.
     or_l; cancel.
 
-    solve_hashmap_subset.
+    
     cancel.
     eassign Fm; cancel.
     apply_cache_rep.
@@ -1514,10 +1511,10 @@ Module BmapAllocCache (Sig : AllocSig).
     eapply remove_still_In.
     eapply permutation_in; eauto using permutation_comm.
     cbn; auto.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
 
     Unshelve.
@@ -1554,7 +1551,7 @@ Module BmapAllocCache (Sig : AllocSig).
     assert (NoDup (bn :: freelist)) as Hd by (eauto using Alloc.rep_impl_NoDup).
     inversion Hd; subst.
     erewrite <- cache_rep_in by eauto. auto.
-    solve_hashmap_subset.
+    
   Qed.
 
   Theorem steal_ok :
@@ -1578,10 +1575,9 @@ Module BmapAllocCache (Sig : AllocSig).
     eauto.
     eauto.
     eauto.
+    eauto.
     step.
     step.
-
-    solve_hashmap_subset.
     eauto.
   Qed.
 
@@ -1616,8 +1612,8 @@ Module BmapAllocCache (Sig : AllocSig).
     assumption.
     denote (_ <=p=> _) as Hp. rewrite Hp.
     rewrite xform_listpred_ptsto_fp; auto.
-  Unshelve.
-    all: eauto.
+    Unshelve.
+    all: try exact handle; try exact emp; unfold EqDec; apply handle_eq_dec.  
   Qed.
 
   Lemma rep_clear_mscache_ok : forall V FP bxps frees freepred lms cm,
@@ -1735,12 +1731,12 @@ Module BALLOC.
     unfold Sig.BMPStart; cancel.
     auto.
     safestep.
-    erewrite listpred_seq_smrep in H7; eauto.
+    erewrite listpred_seq_smrep in H8; eauto.
     step.
 
     subst.
-    erewrite H13; eauto.
-    solve_hashmap_subset.
+    erewrite H14; eauto.
+    
     cancel.
   Qed.
 
@@ -1765,9 +1761,6 @@ Module BALLOC.
     step.
     step.
     step.
-
-    subst.
-    solve_hashmap_subset.
   Qed.
 
   Theorem steal_ok :
@@ -1802,7 +1795,7 @@ Module BALLOC.
     unfold smrep in *.
     rewrite listpred_remove in *|- by eauto using ptsto_conflict.
     pred_apply; cancel.
-    solve_hashmap_subset.
+    
     Unshelve. all: try exact addr_eq_dec; auto.
   Qed.
 
@@ -1829,7 +1822,7 @@ Module BALLOC.
     unfold alloc, rep, bn_valid.
     hoare.
 
-    solve_hashmap_subset.
+    
     match goal with
     | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
     end.
@@ -1842,7 +1835,7 @@ Module BALLOC.
     pred_apply; unfold smrep.
     rewrite listpred_remove; eauto using ptsto_conflict.
     cancel.
-    solve_hashmap_subset.
+    
   Qed.
 
   Theorem free_ok :
@@ -1869,9 +1862,8 @@ Module BALLOC.
     unfold FP in *; eauto.
     rewrite sep_star_assoc with (p1:= Fm).
     rewrite sep_star_comm with (p1:= dummy0).
-    specialize (H13 (dummy0_cur, dummy0_old) I).
-    eassign freepred'. rewrite H13; cancel.
-    solve_hashmap_subset.
+    specialize (H14 (dummy0_cur, dummy0_old) I).
+    eassign freepred'. rewrite H14; cancel.    
   Qed.
 
 
@@ -1950,7 +1942,7 @@ Module BALLOC.
     safecancel.
     rewrite selN_cons_fold; apply Forall_selN; auto.
     eassign (listpred (fun a : addr => a |->?) (removeN (skipn m1 (n :: l)) 0) ✶ Fm)%pred;
-    eassign (t, l1); cancel.
+    eassign (t, l0); cancel.
     eassign (listpred (fun a : addr => a |->?) (removeN (skipn m1 (n :: l)) 0) ✶ Fs)%pred;
     eassign dummy; cancel.
 
@@ -1970,10 +1962,10 @@ Module BALLOC.
     rewrite app_comm_cons, <- rev_unit.
     rewrite <- firstn_S_selN by auto.
     cancel.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
 
     step.
@@ -1984,7 +1976,7 @@ Module BALLOC.
     rewrite firstn_oob by auto.
     rewrite skipn_oob by auto.
     cancel.
-    solve_hashmap_subset.
+    
     eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
     unfold false_pred; cancel.
     Unshelve. all: eauto; try exact tt.
@@ -2079,9 +2071,9 @@ Module BALLOC.
   Proof.
     unfold rep; intros.
     xform_norm.
-    rewrite Alloc.xform_rep_rawpred.
+    setoid_rewrite Alloc.xform_rep_rawpred.
     cancel.
-    auto.
+    eauto.
     unfold FP; intros.
     eassign x.
     rewrite H2; cancel.
@@ -2207,9 +2199,8 @@ Module BALLOCC.
     unfold Sig.BMPStart; cancel.
     auto.
     safestep.
-    erewrite listpred_seq_smrep in H7; eauto.
-    step.
-    solve_hashmap_subset.
+    erewrite listpred_seq_smrep in H8; eauto.
+    step.    
     cancel.
   Qed.
 
@@ -2234,9 +2225,6 @@ Module BALLOCC.
     step.
     step.
     step.
-
-    subst.
-    solve_hashmap_subset.
   Qed.
 
   Theorem steal_ok :
@@ -2268,7 +2256,7 @@ Module BALLOCC.
     pred_apply; unfold smrep.
     rewrite listpred_remove; eauto using ptsto_conflict.
     cancel.
-    solve_hashmap_subset.
+    
     Unshelve . all: try exact addr_eq_dec; auto.
   Qed.
 
@@ -2296,7 +2284,7 @@ Module BALLOCC.
     unfold alloc, rep, bn_valid, MSLog.
     hoare.
 
-    solve_hashmap_subset.
+    
     match goal with
     | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
     end.
@@ -2308,7 +2296,7 @@ Module BALLOCC.
     pred_apply; unfold smrep.
     rewrite listpred_remove; eauto using ptsto_conflict.
     cancel.
-    solve_hashmap_subset.
+    
   Qed.
 
   Theorem free_ok :
@@ -2332,7 +2320,7 @@ Module BALLOCC.
     exists (list2nmem m); pred_apply; cancel.
 
     unfold FP in *; eauto.
-    solve_hashmap_subset.
+    
   Qed.
 
 
@@ -2412,7 +2400,7 @@ Module BALLOCC.
     safecancel.
     rewrite selN_cons_fold; apply Forall_selN; auto.
     eassign (listpred (fun a : addr => a |->?) (removeN (skipn m1 (n :: l)) 0) ✶ Fm)%pred;
-    eassign (t, l1); cancel.
+    eassign (t, l0); cancel.
     eassign (listpred (fun a : addr => a |->?) (removeN (skipn m1 (n :: l)) 0) ✶ Fs)%pred;
     eassign dummy; cancel.
 
@@ -2432,10 +2420,10 @@ Module BALLOCC.
     rewrite app_comm_cons, <- rev_unit.
     rewrite <- firstn_S_selN by auto.
     cancel.
-    solve_hashmap_subset.
+    
 
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
+    
     solve_blockmem_subset.
 
     step.
@@ -2447,7 +2435,7 @@ Module BALLOCC.
     rewrite firstn_oob by auto.
     rewrite skipn_oob by auto.
     cancel.
-    solve_hashmap_subset.
+    
     eassign (false_pred (AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)).
     unfold false_pred; cancel.
     Unshelve. all: eauto; try exact tt.
@@ -2542,7 +2530,7 @@ Module BALLOCC.
   Proof.
     unfold Alloc.rep, rep; intros.
     xform_norm.
-    rewrite Alloc.xform_rep_rawpred.
+    setoid_rewrite Alloc.xform_rep_rawpred.
     cancel.
     auto.
     unfold FP; intros.

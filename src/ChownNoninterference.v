@@ -90,69 +90,157 @@ Import INODE.
 
        destruct_lifts.
        inv_exec_perm.
-        pose proof (@IRec.put_array_if_can_commit_ok lxp xp inum ^( x1_2_2_1_1,
+       {
+         pose proof (@IRec.put_array_if_can_commit_ok lxp xp inum ^( x1_2_2_1_1,
             ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
             encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) x1_1 
             (x1_2_1_1, x1_2_1_2) caller) as Hspec.
-       specialize (Hspec _ (fun r => Ret r)).
-       unfold corr2 in *.
-       destruct_lifts.
-       edestruct Hspec with (d:= x5).
-       2: repeat econstructor; eauto.
-       { (** extract postcondition from LOG.begin **)
-         clear Hspec; 
-           repeat eexists; pred_apply; cancel; eauto.
-         irec_wf.
-         
-         denote listmatch as Hm;
-           rewrite listmatch_length_pimpl in Hm.
-         destruct_lift Hm.
-         rewrite combine_length_eq in *; [ |eauto].
-         sepauto.
-         match goal with
-           [H: context [ donec = _ ] |- _ ] =>
-           rename H into Hpc;
-           instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem)
-                    (r: IRec.Cache_type * (LOG.mstate * cachestate *  unit)) =>
-                    let cache' := fst r in let ms' := fst (snd r) in
+         specialize (Hspec _ (fun r => Ret r)).
+         unfold corr2 in *.
+         destruct_lifts.
+         edestruct Hspec with (d:= x5).
+         2: repeat econstructor; eauto.
+         { (** extract postcondition from LOG.begin **)
+           clear Hspec; 
+             repeat eexists; pred_apply; cancel; eauto.
+           irec_wf.
+           
+           denote listmatch as Hm;
+             rewrite listmatch_length_pimpl in Hm.
+           destruct_lift Hm.
+           rewrite combine_length_eq in *; [ |eauto].
+           sepauto.
+           
+           match goal with
+             [H: context [ [[ donec = _ ]]%pred ] |- _ ] =>
+             rename H into Hpc;
+               instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) r =>
+                    let cache' := fst r in let ms' := fst (snd r) in let ok := fst (snd (snd r)) in
                     let e := ^( x1_2_2_1_1,
                ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
                encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) in
                     let items' := dummy ⟦ inum := e ⟧ in
-                    exists m',
-                    (Fr * [[ x7 = hm' ]] *
-                    LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
-                    [[[ m' ::: (Fm ✶ listmatch (inode_match bxp) (combine ilist dummy0) dummy)
-                        * IRec.rep xp items' cache' ]]] *
-                    [[[ items' ::: (arrayN_ex (ptsto (V:=IRec.LRA.Defs.item)) dummy inum) * (inum |-> e) ]]])%pred d) in Hpc
-         end.
-         destruct_lift Hpc.
-         denote Ret as Hret; inv_exec'' Hret.
-         do 3 eexists; left; repeat eexists; eauto.
+                    (Fr * [[ x7 = hm' ]] * [[ x6 c= bm' ]] *
+                     (([[ ok = false ]] *
+                     LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+                     [[[ m ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                     ✶ IRec.rep xp dummy cache' ]]]) \/
+                    ([[ ok = true ]] * exists m',
+                        LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+                        [[[ m' ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                              ✶ IRec.rep xp items' cache' ]]] *
+                        [[[ items' ::: arrayN_ex (ptsto (V:=IRec.LRA.Defs.item)) dummy inum * (inum |-> e) ]]] *
+                        [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms')))
+                           <= (FSLayout.LogLen lxp) ]])))%pred d) in Hpc
+           end.
+           destruct_lift Hpc.
+           denote Ret as Hret; inv_exec'' Hret.
+           do 3 eexists; left; repeat eexists; eauto.
+           
+           simpl ;auto.
+           pred_apply; cancel.
+           or_l; cancel.
+           or_r; cancel.
+           denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+           eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+             intros mx Hmx; simpl; auto.
+         }
+         simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+         eapply exec_equivalent_for_viewer_finished in H3; eauto; cleanup.
+         unfold pair_args_helper in *; simpl in *.
          
-         simpl ;auto.
-         pred_apply; cancel.
-         denote Ret as Hret; inv_exec'' Hret; simpl; auto.
-         eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
-           intros mx Hmx; simpl; auto.
+         denote lift_empty as Hemp; destruct_lift Hemp.
+         denote or as Hor;
+           apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+             split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *;
+               cleanup; try congruence.
+
+         inv_exec_perm.
+         denote ChDom as Hdom; eapply chdom_equivalent_for_viewer in Hdom; eauto.
+         2: unfold equivalent_for_principal; intuition eauto.
+         simpl in *; cleanup; try congruence.
+         inv_exec_perm.
+         denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+         do 3 eexists; split; eauto.
+         repeat (econstructor; [eauto| simpl]);
+           econstructor; eauto.
+         split; eauto.
+         unfold equivalent_for_principal in *; eauto.
        }
-       simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-       eapply exec_equivalent_for_viewer_finished in H3; eauto; cleanup.
-       unfold pair_args_helper in *; simpl in *.
-
-       inv_exec_perm.
-       denote ChDom as Hdom; eapply chdom_equivalent_for_viewer in Hdom; eauto.
-       2: unfold equivalent_for_principal; intuition eauto.
-       simpl in *; cleanup; try congruence.
-       inv_exec_perm.
-       denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
-       do 3 eexists; split; eauto.
-       repeat (econstructor; [eauto| simpl]);
-         econstructor; eauto.
-       split; eauto.
-       denote lift_empty as Hemp; destruct_lift Hemp; eauto.
-       unfold equivalent_for_principal in *; eauto.
-
+       
+       {   
+         pose proof (@IRec.put_array_if_can_commit_ok lxp xp inum ^( x1_2_2_1_1,
+            ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
+            encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) x1_1 
+            (x1_2_1_1, x1_2_1_2) caller) as Hspec.
+         specialize (Hspec _ (fun r => Ret r)).
+         unfold corr2 in *.
+         destruct_lifts.
+         edestruct Hspec with (d:= x5).
+         2: repeat econstructor; eauto.
+         { (** extract postcondition from LOG.begin **)
+           clear Hspec; 
+             repeat eexists; pred_apply; cancel; eauto.
+           irec_wf.
+           
+           denote listmatch as Hm;
+             rewrite listmatch_length_pimpl in Hm.
+           destruct_lift Hm.
+           rewrite combine_length_eq in *; [ |eauto].
+           sepauto.
+           
+           match goal with
+             [H: context [ [[ donec = _ ]]%pred ] |- _ ] =>
+             rename H into Hpc;
+               instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) r =>
+                    let cache' := fst r in let ms' := fst (snd r) in let ok := fst (snd (snd r)) in
+                    let e := ^( x1_2_2_1_1,
+               ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
+               encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) in
+                    let items' := dummy ⟦ inum := e ⟧ in
+                    (Fr * [[ x7 = hm' ]] * [[ x6 c= bm' ]] *
+                     (([[ ok = false ]] *
+                     LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+                     [[[ m ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                     ✶ IRec.rep xp dummy cache' ]]]) \/
+                    ([[ ok = true ]] * exists m',
+                        LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+                        [[[ m' ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                              ✶ IRec.rep xp items' cache' ]]] *
+                        [[[ items' ::: arrayN_ex (ptsto (V:=IRec.LRA.Defs.item)) dummy inum * (inum |-> e) ]]] *
+                        [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms')))
+                           <= (FSLayout.LogLen lxp) ]])))%pred d) in Hpc
+           end.
+           destruct_lift Hpc.
+           denote Ret as Hret; inv_exec'' Hret.
+           do 3 eexists; left; repeat eexists; eauto.
+           
+           simpl ;auto.
+           pred_apply; cancel.
+           or_l; cancel.
+           or_r; cancel.
+           denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+           eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+             intros mx Hmx; simpl; auto.
+         }
+         simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+         eapply exec_equivalent_for_viewer_finished in H3; eauto; cleanup.
+         unfold pair_args_helper in *; simpl in *.
+         
+         denote lift_empty as Hemp; destruct_lift Hemp.
+         denote or as Hor;
+           apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+             split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *;
+               cleanup; try congruence.
+         
+         inv_exec_perm.
+         denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+         do 3 eexists; split; eauto.
+         repeat (econstructor; [eauto| simpl]);
+           econstructor; eauto.
+         split; eauto.
+       }
+       
        Unshelve.
        all: try exact addr; try exact nil; try exact IRec.LRA.Defs.item0; eauto.
     Qed.
@@ -222,65 +310,154 @@ Import INODE.
        
        destruct_lifts.
        inv_exec_perm.
-        pose proof (@IRec.put_array_ok lxp xp inum ^( x1_2_2_1_1,
+       inv_exec_perm.
+       {
+         pose proof (@IRec.put_array_if_can_commit_ok lxp xp inum ^( x1_2_2_1_1,
             ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
             encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) x1_1 
             (x1_2_1_1, x1_2_1_2) caller) as Hspec.
-       specialize (Hspec _ (fun r => Ret r)).
-       unfold corr2 in *.
-       destruct_lifts.
-       edestruct Hspec with (d:= x5).
-       2: repeat econstructor; eauto.
-       { (** extract postcondition from LOG.begin **)
-         clear Hspec; 
-           repeat eexists; pred_apply; cancel; eauto.
-         irec_wf.
-         
-         denote listmatch as Hm;
-           rewrite listmatch_length_pimpl in Hm.
-         destruct_lift Hm.
-         rewrite combine_length_eq in *; [ |eauto].
-         sepauto.
-         match goal with
-           [H: context [ donec = _ ] |- _ ] =>
-           rename H into Hpc;
-           instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem)
-                    (r: IRec.Cache_type * (LOG.mstate * cachestate *  unit)) =>
-                    let cache' := fst r in let ms' := fst (snd r) in
+         specialize (Hspec _ (fun r => Ret r)).
+         unfold corr2 in *.
+         destruct_lifts.
+         edestruct Hspec with (d:= x5).
+         2: repeat econstructor; eauto.
+         { (** extract postcondition from LOG.begin **)
+           clear Hspec; 
+             repeat eexists; pred_apply; cancel; eauto.
+           irec_wf.
+           
+           denote listmatch as Hm;
+             rewrite listmatch_length_pimpl in Hm.
+           destruct_lift Hm.
+           rewrite combine_length_eq in *; [ |eauto].
+           sepauto.
+           
+           match goal with
+             [H: context [ [[ donec = _ ]]%pred ] |- _ ] =>
+             rename H into Hpc;
+               instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) r =>
+                    let cache' := fst r in let ms' := fst (snd r) in let ok := fst (snd (snd r)) in
                     let e := ^( x1_2_2_1_1,
                ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
                encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) in
                     let items' := dummy ⟦ inum := e ⟧ in
-                    exists m',
-                    (Fr * [[ x7 = hm' ]] *
-                    LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
-                    [[[ m' ::: (Fm ✶ listmatch (inode_match bxp) (combine ilist dummy0) dummy)
-                        * IRec.rep xp items' cache' ]]] *
-                    [[[ items' ::: (arrayN_ex (ptsto (V:=IRec.LRA.Defs.item)) dummy inum) * (inum |-> e) ]]])%pred d) in Hpc
-         end.
-         destruct_lift Hpc.
-         denote Ret as Hret; inv_exec'' Hret.
-         do 3 eexists; left; repeat eexists; eauto.
-         simpl ;auto.
-         pred_apply; cancel.
-         denote Ret as Hret; inv_exec'' Hret; simpl; auto.
-         eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
-           intros mx Hmx; simpl; auto.
+                    (Fr * [[ x7 = hm' ]] * [[ x6 c= bm' ]] *
+                     (([[ ok = false ]] *
+                     LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+                     [[[ m ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                     ✶ IRec.rep xp dummy cache' ]]]) \/
+                    ([[ ok = true ]] * exists m',
+                        LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+                        [[[ m' ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                              ✶ IRec.rep xp items' cache' ]]] *
+                        [[[ items' ::: arrayN_ex (ptsto (V:=IRec.LRA.Defs.item)) dummy inum * (inum |-> e) ]]] *
+                        [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms')))
+                           <= (FSLayout.LogLen lxp) ]])))%pred d) in Hpc
+           end.
+           destruct_lift Hpc.
+           denote Ret as Hret; inv_exec'' Hret.
+           do 3 eexists; left; repeat eexists; eauto.
+           
+           simpl ;auto.
+           pred_apply; cancel.
+           or_l; cancel.
+           or_r; cancel.
+           denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+           eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+             intros mx Hmx; simpl; auto.
+         }
+         simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+         eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H3; eauto; cleanup.
+         unfold pair_args_helper in *; simpl in *.
+         
+         denote lift_empty as Hemp; destruct_lift Hemp.
+         denote or as Hor;
+           apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+             split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *;
+               cleanup; try congruence.
+
+         denote ChDom as Hdom; eapply chdom_equivalent_for_viewer in Hdom; eauto.
+         2: unfold equivalent_for_principal; intuition eauto.
+         simpl in *; cleanup; try congruence.
+         inv_exec_perm.
+         denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+         do 3 eexists; split; eauto.
+         repeat (econstructor; [eauto| simpl]);
+           econstructor; eauto.
        }
-       simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-       eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H3; eauto; cleanup.
-       unfold pair_args_helper in *; simpl in *.
-
-       inv_exec_perm.
-       denote ChDom as Hdom; eapply chdom_equivalent_for_viewer in Hdom; eauto.
-       2: unfold equivalent_for_principal; intuition eauto.
-       simpl in *; cleanup; try congruence.
-       inv_exec_perm.
-       denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
-       do 3 eexists; split; eauto.
-       repeat (econstructor; [eauto| simpl]);
-         econstructor; eauto.
-
+       
+       {   
+         pose proof (@IRec.put_array_if_can_commit_ok lxp xp inum ^( x1_2_2_1_1,
+            ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
+            encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) x1_1 
+            (x1_2_1_1, x1_2_1_2) caller) as Hspec.
+         specialize (Hspec _ (fun r => Ret r)).
+         unfold corr2 in *.
+         destruct_lifts.
+         edestruct Hspec with (d:= x5).
+         2: repeat econstructor; eauto.
+         { (** extract postcondition from LOG.begin **)
+           clear Hspec; 
+             repeat eexists; pred_apply; cancel; eauto.
+           irec_wf.
+           
+           denote listmatch as Hm;
+             rewrite listmatch_length_pimpl in Hm.
+           destruct_lift Hm.
+           rewrite combine_length_eq in *; [ |eauto].
+           sepauto.
+           
+           match goal with
+             [H: context [ [[ donec = _ ]]%pred ] |- _ ] =>
+             rename H into Hpc;
+               instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) r =>
+                    let cache' := fst r in let ms' := fst (snd r) in let ok := fst (snd (snd r)) in
+                    let e := ^( x1_2_2_1_1,
+               ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
+               encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) in
+                    let items' := dummy ⟦ inum := e ⟧ in
+                    (Fr * [[ x7 = hm' ]] * [[ x6 c= bm' ]] *
+                     (([[ ok = false ]] *
+                     LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+                     [[[ m ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                     ✶ IRec.rep xp dummy cache' ]]]) \/
+                    ([[ ok = true ]] * exists m',
+                        LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+                        [[[ m' ::: (Fm * listmatch (inode_match bxp) (combine ilist dummy0) dummy)
+                              ✶ IRec.rep xp items' cache' ]]] *
+                        [[[ items' ::: arrayN_ex (ptsto (V:=IRec.LRA.Defs.item)) dummy inum * (inum |-> e) ]]] *
+                        [[ length (AddrMap.Map.elements (LOG.MSTxn (fst ms')))
+                           <= (FSLayout.LogLen lxp) ]])))%pred d) in Hpc
+           end.
+           destruct_lift Hpc.
+           denote Ret as Hret; inv_exec'' Hret.
+           do 3 eexists; left; repeat eexists; eauto.
+           
+           simpl ;auto.
+           pred_apply; cancel.
+           or_l; cancel.
+           or_r; cancel.
+           denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+           eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+             intros mx Hmx; simpl; auto.
+         }
+         simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+         eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H3; eauto; cleanup.
+         unfold pair_args_helper in *; simpl in *.
+         
+         denote lift_empty as Hemp; destruct_lift Hemp.
+         denote or as Hor;
+           apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+             split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *;
+               cleanup; try congruence.
+         
+         inv_exec_perm.
+         denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+         do 3 eexists; split; eauto.
+         repeat (econstructor; [eauto| simpl]);
+           econstructor; eauto.
+       }
+       
        Unshelve.
        all: try exact addr; try exact nil; try exact IRec.LRA.Defs.item0; eauto.
     Qed.
@@ -312,6 +489,8 @@ Import INODE.
       cleanup.
       unfold pair_args_helper in *; simpl in *.
       inv_exec_perm.
+      denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+
       do 3 eexists; split; eauto.
        repeat (econstructor; [eauto| simpl]);
          econstructor; eauto.
@@ -330,7 +509,7 @@ Import INODE.
       erewrite <- list2nmem_sel; eauto.
 
       Unshelve.
-      exact bfile0.
+      all: eauto.
       Grab Existential Variables.
       exact inode0.
     Qed.
@@ -361,6 +540,7 @@ Import INODE.
       cleanup.
       unfold pair_args_helper in *; simpl in *.
       inv_exec_perm.
+      denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
       do 3 eexists; split; eauto.
        repeat (econstructor; [eauto| simpl]);
          econstructor; eauto.
@@ -379,7 +559,7 @@ Import INODE.
       erewrite <- list2nmem_sel; eauto.
 
       Unshelve.
-      exact bfile0.
+      all: eauto.
       Grab Existential Variables.
       exact inode0.
     Qed.
@@ -421,10 +601,13 @@ Import INODE.
       cleanup.
       unfold pair_args_helper in *; simpl in *.
       inv_exec_perm.
+      denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
       do 3 eexists; split; eauto.
        repeat (econstructor; [eauto| simpl]);
          econstructor; eauto.
        pred_apply; cancel.
+       Unshelve.
+       all: eauto.
     Qed.
 
 
@@ -456,10 +639,15 @@ Import INODE.
       cleanup.
       unfold pair_args_helper in *; simpl in *.
       inv_exec_perm.
+      denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+
       do 3 eexists; split; eauto.
        repeat (econstructor; [eauto| simpl]);
          econstructor; eauto.
        pred_apply; cancel.
+
+       Unshelve.
+       all: eauto.
     Qed.
 
     Require Import SuperBlock AsyncFS.

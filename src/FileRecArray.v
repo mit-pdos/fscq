@@ -222,10 +222,6 @@ Module FileRecArray (FRA : FileRASig).
     setoid_rewrite synced_list_selN.
     setoid_rewrite selN_combine; eauto.
     rewrite repeat_selN; simpl; eauto.
-
-    
-    
-    
     rewrite ipack_length; eauto.
     apply div_lt_divup; auto.
     apply repeat_length.

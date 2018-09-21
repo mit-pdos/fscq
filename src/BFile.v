@@ -2062,13 +2062,10 @@ Qed.
 
     safestep.
     safestep.
-
-    eauto.
-    cancel.
-    subst; simpl; eauto.
+    subst.
     rewrite listmatch_extract with (i:=inum) in H.
     unfold file_match at 2 in H; destruct_lift H; cleanup.
-    erewrite <- H22, <- list2nmem_sel; eauto.
+    erewrite <- H20, <- list2nmem_sel; eauto.
     eapply list2nmem_inbound; eauto.
     solve_blockmem_subset.
 
@@ -2253,6 +2250,7 @@ Qed.
     eapply add_nonzero_exfalso_helper2 with (b := 0).
     rewrite Nat.add_0_r; eauto.
     auto.
+    
     eauto.
       
     (* shuffle_allocs *)
