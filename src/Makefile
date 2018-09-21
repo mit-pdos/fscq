@@ -18,7 +18,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Instr ProgLoop ProgList \
               WriteConfidentiality CacheDef CacheLemmas \
 	      CacheSec CacheRangeSec \
-	      DiskLogHdr DiskLogPadded DiskLog \
+	      DiskLogHdr DiskLogPadded DiskLogPaddedRecovery \
+	      DiskLog DiskLogRecovery \
 	      GenSepN LogReplay MemLog DiskSet \
 	      GroupLog Log LogRecArray \
 	      Balloc BlockPtr Inode \
