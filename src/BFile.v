@@ -2147,6 +2147,7 @@ Qed.
     PERM:pr
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[ forall i, i < IXLen ixp * INODE.IRecSig.items_per_val -> hm (S i) = Some Public ]] *
            [[[ m ::: (Fm * arrayN (@ptsto _ _ _) 0 l) ]]] *
            [[ (Fs * arrayN (@ptsto _ _ _) 0 sl)%pred sm ]] *
            [[ length sl = length l ]] *
@@ -2259,9 +2260,6 @@ Qed.
 
     (* post condition *)
     prestep; unfold IAlloc.rep; cancel.
-    do 2 (rewrite INODE.rep_domainmem_subset; eauto).
-    cancel.
-
     apply file_match_init_ok.
 
     rewrite repeat_selN; unfold bfile0;
@@ -2296,7 +2294,7 @@ Qed.
     solve_blockmem_subset.
     
     all: rewrite <- H1; cancel; eauto.
-    solve_blockmem_subset.
+
     Unshelve. all: eauto.
   Qed.
 
@@ -2327,8 +2325,6 @@ Qed.
 
     safestep.
     safestep.
-    eauto.
-    cancel.
 
     extract; seprewrite; subst.
     denote (_ (list2nmem m)) as Hx.
@@ -2369,9 +2365,7 @@ Qed.
 
     safestep.
     safestep.
-    eauto.
-    cancel.
-    
+
     extract; seprewrite.
     denote (BFAttr _ = _) as Hx; rewrite Hx; eauto.
     solve_blockmem_subset.
@@ -2415,15 +2409,10 @@ Qed.
 
     6: eauto.
     5: sepauto.
-    
+    seprewrite.
     erewrite <- listmatch_updN_selN; try omega.
-    erewrite <- list2nmem_array_updN; eauto.
-    cancel; eauto.
-    simplen.
-    simplen.
-    simplen.
-
-    erewrite <- list2nmem_sel; eauto.
+    cancel.
+    rewrite  length_updN in *; auto.
     unfold file_match; cancel; eauto.
 
     rewrite length_updN in *.
@@ -2465,10 +2454,8 @@ Qed.
       apply arrayN_except_upd in Ha; auto.
       apply list2nmem_array_eq in Ha; subst.
       rewrite selN_updN_ne; auto.
-    - solve_blockmem_subset.
+
     - cancel.
-      Unshelve.
-      all: eauto.
   Qed.
 
   Theorem updattr_ok :
@@ -2501,14 +2488,10 @@ Qed.
 
     6: eauto.
     5: sepauto.
-    erewrite <- listmatch_updN_selN; try omega.
-    erewrite <- list2nmem_array_updN; eauto.
-    cancel; eauto.
-    simplen.
-    simplen.
+    seprewrite.
+    erewrite <- listmatch_updN_selN; try omega; eauto.
     simplen.
 
-    erewrite <- list2nmem_sel; eauto.
     unfold file_match; cancel; eauto.
 
     rewrite length_updN in *.
@@ -2538,10 +2521,7 @@ Qed.
       all: erewrite selN_updN_eq in * by eauto; simpl; eauto.
     - unfold block_belong_to_file in *; intuition.
       all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-    - solve_blockmem_subset.
     - cancel.
-      Unshelve.
-      all: auto.
   Qed.
 
   Theorem read_ok :
@@ -2606,14 +2586,6 @@ Qed.
     all: try solve [rewrite <- H2; cancel; eauto].
     extract; seprewrite; subst.
      denote (_ (list2nmem dummy6)) as Hx.
-    setoid_rewrite listmatch_length_pimpl in Hx at 2.
-    rewrite map_length in *.
-    destruct_lift Hx; eauto.
-    cancel.
-    repeat (rewrite INODE.rep_domainmem_subset; eauto).
-    simplen.
-    cancel.
-    solve_blockmem_subset.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
     rewrite map_length in *.
     destruct_lift Hx; eauto.
@@ -2700,7 +2672,11 @@ Qed.
     rewrite removeN_updN, selN_updN_eq by simplen.
     erewrite selN_map by simplen.
     cancel.
+    rewrite length_updN in *.
+    destruct (addr_eq_dec inum i); subst.
+    rewrite selN_updN_eq; eauto; simpl.
     apply Forall_updN; eauto.
+    rewrite selN_updN_ne; eauto.
     
     eauto.
     eauto.
@@ -2766,8 +2742,7 @@ Qed.
       sepauto.
       step.
       safestep.
-      erewrite LOG.rep_blockmem_subset; [|eauto].
-      erewrite LOG.rep_hashmap_subset; eauto.
+      erewrite LOG.rep_blockmem_subset; eauto.
       eapply BALLOCC.bn_valid_facts; eauto.
       apply upd_eq; eauto.
       auto.
@@ -2777,7 +2752,9 @@ Qed.
       step.
       
       or_r; safecancel.
-
+      4: eauto.
+      2: sepauto.
+      
       rewrite rep_alt_equiv with (msalloc := MSAlloc ms); unfold rep_alt.
       erewrite pick_upd_balloc_lift with (new := freelist') (flag := MSAlloc ms) (p := (frees_1, frees_2)) at 1.
       rewrite pick_negb_upd_balloc with (new := freelist') (flag := MSAlloc ms) at 1.
@@ -2792,8 +2769,7 @@ Qed.
 
       cancel.
 
-      4: sepauto.
-      5: eauto.
+      
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
       unfold file_match; cancel.
@@ -2804,9 +2780,12 @@ Qed.
       rewrite map_length; omega.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOCC.bn_valid_goodSize; eauto.
+      eauto.
+      rewrite length_updN in *.
+      destruct (addr_eq_dec inum i); subst.
+      rewrite selN_updN_eq; eauto; simpl.
       apply Forall_app; eauto.
-      seprewrite.
-      eapply bfcache_upd; eauto.
+      rewrite selN_updN_ne; eauto.
       eauto.
       rewrite <- smrep_upd_add; eauto.
       cancel.
@@ -3100,7 +3079,6 @@ Qed.
       denote Forall as Hv; specialize (Hv inum); subst.
       rewrite <- Forall_map.
       apply forall_skipn; apply Hv; eauto.
-      rewrite <- H8; eapply list2nmem_ptsto_bound; eauto.
       erewrite <- listmatch_ptsto_listpred.
       rewrite listmatch_extract with (i := inum) (a := flist).
       unfold file_match at 2.
@@ -3121,7 +3099,6 @@ Qed.
 
       pred_apply.
       erewrite INODE.rep_bxp_switch by eassumption. cancel.
-      erewrite INODE.rep_domainmem_subset; eauto.
       sepauto.
       pred_apply. cancel.
       eauto.
@@ -3150,14 +3127,21 @@ Qed.
 
       seprewrite.
       rewrite listmatch_updN_removeN.
-      (* setoid_rewrite Heq. *)
+      setoid_rewrite Heq. 
       unfold file_match, cuttail; cancel; eauto.
       seprewrite.
       unfold cuttail.
-      rewrite firstn_map_comm.
+      rewrite firstn_map_comm.      
       cancel.
+      simplen.
+      simplen.
+      eauto.
+      rewrite length_updN in *.
+      destruct (addr_eq_dec inum i); subst.
+      rewrite selN_updN_eq; eauto; simpl.
       eapply forall_firstn; eauto.
-      eapply bfcache_upd; eauto.
+      rewrite selN_updN_ne; eauto.
+
       unfold smrep.
       seprewrite.
       rewrite arrayN_except_upd.
@@ -3191,7 +3175,6 @@ Qed.
         apply arrayN_except_upd in Hilist'; eauto.
         apply list2nmem_array_eq in Hilist'; subst.
         rewrite selN_updN_eq; auto.
-      + eauto.
       + eauto.
       + rewrite <- H1; cancel; eauto.
       + rewrite <- H1; cancel; eauto.
@@ -3317,8 +3300,7 @@ Qed.
 
     step.
     prestep. norm.
-    unfold stars; simpl.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    unfold stars; simpl; cancel.
     intuition simpl.
     2: sepauto. 2: sepauto.
     simpl.
