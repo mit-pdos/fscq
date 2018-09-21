@@ -1740,7 +1740,7 @@ Hint Resolve Forall_nil.
           rep xp F (ActiveTxn ds m') ms' sm bm' hm'
     >} write_array_if_can_commit xp a i h ms.
   Proof.
-    unfold write_array.
+    unfold write_array_if_can_commit.
     prestep. norm. cancel.
     unfold rep_inner; intuition.
     pred_apply; cancel.
@@ -1753,6 +1753,8 @@ Hint Resolve Forall_nil.
 
     step.
     step.
+    step.
+    or_r; cancel.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     solve_hashmap_subset.
@@ -1760,8 +1762,6 @@ Hint Resolve Forall_nil.
     rewrite <- H1; cancel.
     Unshelve.
     exact valuset0.
-    all: unfold EqDec; apply handle_eq_dec.
-    
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
@@ -1980,12 +1980,6 @@ Hint Resolve Forall_nil.
     safestep.
     unfold rep_inner; cancel. eauto.
     eapply extract_blocks_selN; eauto.
-    denote (Forall (fun t => hm t = Some Public) (map fst (extract_blocks bm l))) as Hf;
-    rewrite Forall_forall in Hf; eapply Hf.
-    apply in_map.
-    erewrite <- extract_blocks_subset_trans; [| |eauto]; eauto.
-    apply in_selN.
-    rewrite extract_blocks_length; auto.
     eauto.
     rewrite vsupsyn_range_length; auto.
     eapply lt_le_trans; eauto.
@@ -2277,7 +2271,6 @@ Hint Resolve Forall_nil.
 
     step.
     safestep; subst; try rewrite dssync_vecs_latest.
-    eapply Forall_public_subset_trans; eauto.
     match goal with
     | [H: ?x c= ?x |- _] =>
       clear H
@@ -2298,7 +2291,6 @@ Hint Resolve Forall_nil.
     solve_blockmem_subset.
 
     rewrite <- H1; cancel.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_list_subset_trans; eauto.
     denote sm_ds_valid as Hsm;
     inversion Hsm; eauto.
@@ -2373,7 +2365,6 @@ Hint Resolve Forall_nil.
 
     step.
     safestep; subst; try rewrite dssync_vecs_latest.
-    eapply Forall_public_subset_trans; eauto.
     match goal with
     | [H: ?x c= ?x |- _] =>
       clear H
@@ -2404,7 +2395,6 @@ Hint Resolve Forall_nil.
     solve_blockmem_subset.
 
     rewrite <- H1; cancel.
-    eapply Forall_public_subset_trans; eauto.
     eapply handles_valid_list_subset_trans; eauto.
     denote sm_ds_valid as Hsm;
     inversion Hsm; eauto.

@@ -714,7 +714,7 @@ Module DIR.
     
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    or_r; cancel.
     auto.
     eexists; split; eauto.
     unfold Dent.RA.RAData in *; eauto.
@@ -745,12 +745,12 @@ Module DIR.
 
     step.
     intros mz Hmz; pose proof Hmz as Htemp; pred_apply.
-    erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    or_r; cancel.
 
     rewrite BFILE.rep_length_pimpl in *.
-    destruct_lift H5.
-    destruct_lift H28.
-    apply list2nmem_ptsto_bound in H34.
+    destruct_lift H6.
+    destruct_lift H27.
+    apply list2nmem_ptsto_bound in H33.
 
     eexists; split; eauto.
     eapply listpred_dmatch_ext_mem_upd; eauto.
@@ -817,7 +817,7 @@ Module DIR.
     erewrite Dent.items_length_ok with (xp := dummy9) (m := (list2nmem (BFILE.BFData dummy9))).
     unfold Dent.RA.RALen. auto.
     pred_apply; cancel.
-    eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); cancel.
+    pred_apply; cancel.
     eauto.
     eauto.
     eauto.
@@ -841,7 +841,7 @@ Module DIR.
     step; msalloc_eq.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    or_r; cancel.
     auto.
     eexists; split; eauto.
     rewrite <- upd_mem_except; auto.
@@ -858,15 +858,14 @@ Module DIR.
     erewrite Dent.items_length_ok with (xp := dummy9) (m := (list2nmem (BFILE.BFData dummy9))).
     unfold Dent.RA.RALen. auto.
     pred_apply; cancel.
-    eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); cancel.
     cbv; intuition.
-    msalloc_eq; eauto.
+    msalloc_eq; pred_apply; cancel.
     eauto.
     eauto.
 
     step.
     step; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    or_r; cancel.
     eauto.
     eexists; split; eauto.
 
@@ -899,7 +898,7 @@ Module DIR.
     simpl.
 
     step.
-    erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    or_r; cancel.
     eauto.
     eexists; split; eauto.
     rewrite <- upd_mem_except; auto.

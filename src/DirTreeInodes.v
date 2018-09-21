@@ -1540,7 +1540,7 @@ Import ListNotations.
       [[ tree_inodes_distinct tree ]].
   Proof.
     unfold pimpl; intros.
-    assert ((emp * rep fsxp Ftop tree ilist frees ms sm)%pred m) by ( pred_apply; cancel ).
+    assert ((emp * rep fsxp Ftop tree ilist frees ms sm dm)%pred m) by ( pred_apply; cancel ).
     eapply rep_tree_names_distinct in H0 as H0'.
     eapply rep_tree_inodes_distinct in H0 as H0''.
     pred_apply; cancel.
@@ -1663,8 +1663,6 @@ Import ListNotations.
                   IAlloc.Alloc.MSLog := SDIR.MSLL ms;
                   IAlloc.Alloc.MSCache := SDIR.MSIAllocC ms |})%pred;
     pred_apply; cancel.
-    
-    2: simpl; eapply owner_match with (m:=m)(flist := dummy); eauto; pred_apply; cancel.
     cancel.
 
     rewrite subtree_extract in H4; eauto.

@@ -145,6 +145,7 @@ Proof.
   intuition congruence.
 Qed.
 
+(*
 Theorem hash_list_injective : forall l1 l2 hv hm,
   hash_list_rep l1 hv hm -> hash_list_rep l2 hv hm -> l1 = l2.
 Proof.
@@ -155,7 +156,7 @@ Proof.
 
   contradict_hashmap_get_default H6 hm.
 
-  rewrite H8 in H7.
+  rewrite H7 in H4.
   contradict_hashmap_get_default H7 hm.
 
   rewrite H7 in H10.
@@ -164,7 +165,7 @@ Proof.
   intuition.
   subst; apply IHl1 in H8; try congruence.  
 Qed.
-
+*)
 Theorem hash_list_injective2 : forall l h1 h2 hm,
   hash_list_rep l h1 hm -> hash_list_rep l h2 hm -> h1 = h2.
 Proof.

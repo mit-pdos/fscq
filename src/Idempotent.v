@@ -98,13 +98,13 @@ Lemma corr3_from_corr2_recovered:
   exec_recover pr mr bm hm p r out tr
   -> out = RRecovered TF m' bm' hm' v  
   -> TF = TR
-  -> forall m bmr hmr,
+  -> forall m bmr,
     possible_crash m mr
-  -> crash bmr hmr m
-  -> (forall bm' hm' hm'', crash_xform (crash bm' hm')
-      =p=> ppre crashdone_p crash bm hm'')
-  -> (forall bm' hm' hm'', crash_xform (crash bm' hm')
-      =p=> rpre crashdone_r crash empty_mem hm'')
+  -> crash bmr hm m
+  -> (forall bm' hm', crash_xform (crash bm' hm')
+      =p=> ppre crashdone_p crash bm hm')
+  -> (forall bm' hm', crash_xform (crash bm' hm')
+      =p=> rpre crashdone_r crash empty_mem hm')
   -> {{ pr | ppre }} p
   -> {{ pr | rpre }} r
   -> crashdone_r m' bm' hm' v /\ only_public_operations tr.
@@ -138,9 +138,9 @@ Theorem corr3_from_corr2:
   -> {{ pr | rpre }} r                 
   -> {{ pr | fun bm hm done crashdone => exists crash,
         ppre done crash bm hm
-        * [[ forall bm' hm' hm'',
+        * [[ forall bm' hm',
           crash_xform (crash bm' hm')
-          =p=> rpre crashdone crash empty_mem hm'' ]] }} p >> r.
+          =p=> rpre crashdone crash empty_mem hm' ]] }} p >> r.
 Proof.
   unfold corr3; intros.
   destruct H1 as [crash H1].

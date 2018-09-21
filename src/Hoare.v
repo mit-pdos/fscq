@@ -464,7 +464,7 @@ Theorem pimpl_ok3_cont :
 Proof.
   unfold corr3, pimpl; intros.
   edestruct H1; eauto.
-  eapply sep_star_lift_l in H5; [|instantiate (1:=([x=y])%pred)].
+  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
   unfold lift in *; subst; eauto.
   firstorder.
 Qed.

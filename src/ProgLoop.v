@@ -170,7 +170,6 @@ Proof.
       eassign (fun bm hm => (nocrash a0 i li bm hm * a)%pred); simpl; cancel.
       eapply pimpl_ok2. eauto. intros; simpl. safecancel.
       fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
-      intros _ _; eauto.
       unfold false_pred; cancel; eauto.
 
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
@@ -206,8 +205,8 @@ Proof.
       eauto.
 
       subst; eapply H4; eauto.
-      intros; apply H9; clear H9.
-      apply wlt_lt in H12.
+      intros; apply H5; clear H5.
+      apply wlt_lt in H11.
       unfold wlt.
       repeat rewrite wordToN_nat.
       apply Nlt_in.
@@ -234,7 +233,7 @@ Proof.
 
       unfold not; intros; apply H7.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H9; simpl in H9; auto.
+      apply wlt_lt in H5; simpl in H5; auto.
     + cancel; eauto.
 Qed.
 

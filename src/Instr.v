@@ -600,21 +600,21 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; do 3 eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
     apply H3; pred_apply; cancel; eauto.
     inv_exec_perm; cleanup; simpl; auto.
   }
   {
     split.
-    right; do 3 eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
-    split_ors; cleanup; try congruence.
+    cleanup; split_ors; cleanup; try congruence.
     inv_exec_perm; cleanup; auto.
     try rewrite app_nil_r.
     edestruct H4; eauto.
@@ -661,21 +661,21 @@ Proof.
   split_ors; cleanup.
   {
     split.
-    right; do 3 eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
     apply H3; pred_apply; cancel; eauto.
     inv_exec_perm; cleanup; simpl; auto.
   }
   {
     split.
-    right; do 3 eexists; intuition.
+    do 3 eexists; right; intuition.
     inv_exec_perm.
     edestruct H4; eauto.
     repeat rewrite <- sep_star_assoc.
     repeat (apply sep_star_lift_apply'; eauto).
     apply sep_star_comm; apply emp_star_r.
     apply sync_xform_pred_apply; auto.
-    split_ors; cleanup; try congruence.
+    cleanup; split_ors; cleanup; try congruence.
     inv_exec_perm; cleanup; auto.
     try rewrite app_nil_r.
     edestruct H4; eauto.
@@ -708,17 +708,3 @@ Hint Extern 1 (corr2_weak _ _ (Bind (Seal _ _) _)) => apply seal_secure_weak : p
 Hint Extern 1 (corr2_weak _ _ (Bind (Unseal _) _)) => apply unseal_secure_weak : prog.
 Hint Extern 1 (corr2_weak _ _ (Bind (ChDom _ _) _)) => apply chdom_secure_weak : prog.
 Hint Extern 1 (corr2_weak _ _ (Bind (Ret _) _)) => apply ret_secure_weak : prog.
-
-
-
-
-
-
-
-
-
-
-
-
-
-

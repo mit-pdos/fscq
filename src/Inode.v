@@ -775,14 +775,15 @@ Qed.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
            [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (IXStart xp) l) ]]] *
            [[ Fs sm ]] *
-           [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
+           [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]] *
+           [[ forall i, i < ((IXLen xp) * IRecSig.items_per_val) -> hm (S i) = Some Public ]]
     POST:bm', hm', RET:ms exists m' IFs,
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp IFs xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.cache0) hm') ]]] *
            [[ (Fs * IFs)%pred sm ]]
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
     >} init lxp xp ms.
-  Proof. Admitted. (*
+  Proof. 
     unfold init, rep.
     step.
     cbv; auto.
@@ -795,14 +796,14 @@ Qed.
     erewrite combine_repeat.
     apply inode_match_init_ok.
     apply IRec.cache_rep_empty.
-    destruct (lt_dec i (IXLen xp * IRecSig.items_per_val)).
     rewrite repeat_selN; eauto.
-    rewrite selN_oob; eauto.
-    rewrite repeat_length; omega.
+    eapply H6; eauto.
+    rewrite repeat_length in *; omega.
+    rewrite repeat_length in *; omega.
     repeat rewrite repeat_length; auto.
     apply Ind.pred_fold_left_repeat_emp.
   Qed.
-  *)
+
   
   Theorem getlen_ok :
     forall lxp bxp xp inum cache ms pr,
@@ -878,7 +879,7 @@ Qed.
     step.
 
     subst.
-    rewrite H18.
+    denote eq as Heq; rewrite Heq.
     rewrite listmatch_isolate with (i:= inum) in H0 by simplen.
     unfold inode_match at 2 in H0.
     erewrite selN_combine in H0; auto.
@@ -1229,7 +1230,7 @@ Qed.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
     smash_rec_well_formed.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lift H20. auto.
+    destruct_lift H19. auto.
     sepauto.
 
     safestep.
@@ -1264,7 +1265,6 @@ Qed.
     eapply subset_extract_some; eauto.
 
     rewrite selN_updN_ne; eauto.
-    eapply subset_extract_some; eauto.
 
     erewrite pred_fold_left_selN with (l:= updN dummy0 inum IFs').
     rewrite selN_updN_eq.
@@ -1277,7 +1277,10 @@ Qed.
     
     all: rewrite <- H1; cancel; eauto.
 
-    Unshelve. exact IRec.Defs.item0. all: eauto.
+    Unshelve.
+    exact IRec.Defs.item0.
+    all: eauto.
+    exact addr_eq_dec.
   Qed.
 
   Theorem reset_ok : 

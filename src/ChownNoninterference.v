@@ -24,7 +24,7 @@ Import INODE.
 
 
 
-    Opaque IRec.get_array IRec.put_array.
+    Opaque IRec.get_array IRec.put_array_if_can_commit.
     Theorem inode_setowner_exec_equivalent_cant_access:
   forall viewer caller d bm hm d' bm' Fr lxp xp bxp Fi Fs IFs ino m0 m ms cache sm Fm ilist inum F d1 bm1 hm1 r1 tr1 new_tag,
     
@@ -90,7 +90,7 @@ Import INODE.
 
        destruct_lifts.
        inv_exec_perm.
-        pose proof (@IRec.put_array_ok lxp xp inum ^( x1_2_2_1_1,
+        pose proof (@IRec.put_array_if_can_commit_ok lxp xp inum ^( x1_2_2_1_1,
             ^( ^( x1, x7_1, x7_2_1, x7_2_2_1, x7_2_2_2_1, x7_2_2_2_2_1, x7_2_2_2_2_2_1, x7_2_2_2_2_2_2_1),
             encode_tag new_tag, x8_2_1), x9_1, x9_2_1, x9_2_2_1, x9_2_2_2_1) x1_1 
             (x1_2_1_1, x1_2_1_2) caller) as Hspec.

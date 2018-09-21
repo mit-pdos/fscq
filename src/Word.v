@@ -1249,7 +1249,7 @@ Proof.
   rewrite <- IHn; clear IHn.
   case_eq (Npow2 n); intuition.
   rewrite untimes2.
-  replace (Npos p~0) with (Ndouble (Npos p)) by reflexivity.
+  replace (Npos p~0) with (N.double (Npos p)) by reflexivity.
   apply nat_of_Ndouble.
 Qed.
 

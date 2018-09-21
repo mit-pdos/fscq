@@ -29,7 +29,7 @@ Definition rep_common l (padded: contents) : rawpred tagged_block :=
   ([[ l = log_nonzero padded /\
       length padded = roundup (length padded) DescSig.items_per_val ]])%pred.
 
-Definition rep xp st hm :=
+Definition rep xp st (hm: domainmem) :=
   (match st with
    | Synced navail l =>
      exists padded, rep_common l padded *
@@ -83,7 +83,7 @@ Definition rep xp st hm :=
   Hint Resolve DescDefs.items_per_val_gt_0 DescDefs.items_per_val_not_0.
 
   Lemma xform_rep_synced : forall xp na l hm,
-    crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) empty_mem.
+    crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) hm.
   Proof.
     unfold rep, rep_common; intros.
     xform; cancel.
@@ -92,7 +92,7 @@ Definition rep xp st hm :=
 
   Lemma xform_rep_truncated : forall xp l hm,
     crash_xform (rep xp (Truncated l) hm) =p=> exists na,
-      rep xp (Synced na l) empty_mem \/ rep xp (Synced (LogLen xp) nil) empty_mem.
+      rep xp (Synced na l) hm \/ rep xp (Synced (LogLen xp) nil) hm.
   Proof.
     unfold rep, rep_common; intros.
     xform; cancel.
@@ -104,8 +104,7 @@ Definition rep xp st hm :=
 
 
   Lemma rep_domainmem_subset : forall xp hm hm',
-    subset hm hm'
-    -> forall st, rep xp st hm
+     forall st, rep xp st hm
         =p=> rep xp st hm'.
   Proof.
     unfold rep; intros.
@@ -116,8 +115,8 @@ Definition rep xp st hm :=
   
   Lemma xform_rep_extended : forall xp old new hm,
     crash_xform (rep xp (Extended old new) hm) =p=>
-       (exists na, rep xp (Synced na old) empty_mem) \/
-       (exists na, rep xp (Synced na (old ++ new)) empty_mem).
+       (exists na, rep xp (Synced na old) hm) \/
+       (exists na, rep xp (Synced na (old ++ new)) hm).
   Proof.
     unfold rep, rep_common; intros.
     xform.

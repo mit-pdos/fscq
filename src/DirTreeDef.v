@@ -336,11 +336,15 @@ Set Implicit Arguments.
     destruct tree; try congruence.
     induction l; simpl in *; try congruence.
     destruct a0; simpl in *.
+    
     destruct (string_dec s a); subst; simpl in *.
+    
     - destruct (string_dec a a); try congruence.
+      eapply IHpathname.
+      eauto.
       eauto.
     - destruct (string_dec s a); try congruence.
-      apply IHl; eauto.
+      apply IHl; eauto.      
   Qed.
 
   Lemma tree_names_distinct_head_name' : forall  rest name  f,
@@ -928,11 +932,12 @@ Set Implicit Arguments.
     - unfold add_to_list.
       rewrite cons_app.
       erewrite find_subtree_app.
-      Focus 2.
-      erewrite find_subtree_dirlist.
-      unfold find_dirlist.
-      destruct (string_dec name name); try congruence.
-      eauto.
+      2: {
+        erewrite find_subtree_dirlist.
+        unfold find_dirlist.
+        destruct (string_dec name name); try congruence.
+        eauto.
+      }
       f_equal.
     -
       destruct a; simpl in *.
@@ -1296,11 +1301,12 @@ Set Implicit Arguments.
           erewrite find_subtree_app.
           2: eauto.
           erewrite find_subtree_prune_subtree_oob'. 
-          Focus 4.
-          eapply find_subtree_graft_subtree_oob'.
-          3: eauto.
-          eauto.
-          intro; apply H0. apply pathname_prefix_trim. eauto.
+          4: {
+            eapply find_subtree_graft_subtree_oob'.
+            3: eauto.
+            eauto.
+            intro; apply H0. apply pathname_prefix_trim. eauto.
+          }
           all: eauto.
           intro; apply H. apply pathname_prefix_trim. eauto.
     + (* pathname is outside of cwd *)

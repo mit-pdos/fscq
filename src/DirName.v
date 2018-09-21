@@ -738,7 +738,9 @@ Module SDIR.
   Proof. 
     unfold unlink.
     hoare; resolve_valid_preds.
-
+    simpl.
+    unfold DIR.rep, DIR.Dent.rep in *.
+    cleanup. destruct_lift H7; eauto.
     subst; eexists.
     split; [ eauto | split ]; [ intros ? Hx | split; [ intros ? Hx | ] ].
     apply indomain_mem_except_indomain in Hx; auto.
@@ -810,25 +812,14 @@ Module SDIR.
     cancel.
     intuition.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    cancel.
     cancel.
     cancel.
     intuition.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto.
     or_r; resolve_valid_preds; cancel.
-    denote BFILE.rep as Hbr; unfold BFILE.rep in Hbr.
-    destruct_lift Hbr.
-    denote listmatch as Hmatch;
-    erewrite listmatch_isolate with (i:=dnum)(ad:=BFILE.bfile0)(bd:=INODE.inode0) in Hmatch.
-    unfold BFILE.file_match at 2 in Hmatch; destruct_lift Hmatch.
-    denote DIR.rep as Hdr; unfold DIR.rep, DIR.Dent.rep in Hdr;
-    cleanup; auto.
-    denote LOG.arrayP as Hp; destruct_lift Hp; cleanup.
-    eapply list2nmem_sel with (def:=BFILE.bfile0) in H31; cleanup; auto.
-    eapply list2nmem_inbound; eauto.
-    rewrite listmatch_length_pimpl in Hmatch; destruct_lift Hmatch.
-    rewrite <- H39; eapply list2nmem_inbound; eauto.
+    unfold DIR.rep, DIR.Dent.rep in *.
+    cleanup. destruct_lift H17; eauto.
     
     subst; eexists.
     split; [ eauto | split ]; [ intros ? Hx | split; [ intros ? Hx | ] ].
@@ -843,10 +834,8 @@ Module SDIR.
     cancel.
     lightstep.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l; cancel.
     cancel.
-    Unshelve.
-    eauto.
   Qed.
  
 

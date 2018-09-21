@@ -174,7 +174,6 @@ Module SB.
     unfold load, rep.
     hoare.
     apply v_pickle_unpickle_superblock; auto.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
   Qed.
 
   Definition init fsxp cs :=
@@ -209,7 +208,8 @@ Module SB.
     eassign F_; cancel.
     eapply CacheLemmas.block_mem_subset_rep; eauto.
     apply Mem.upd_eq; auto.
-    pred_apply; rewrite ptsto_pimpl_ptsto_subset; cancel.
+    pred_apply.
+    setoid_rewrite ptsto_pimpl_ptsto_subset; cancel.
     eassign F; cancel.
     auto.
     step.
@@ -221,7 +221,7 @@ Module SB.
     all: eauto.
     step.
     step.
-    eexists; repeat (eapply hashmap_subset_trans; eauto).
+
     all: rewrite <- H1; cancel; eauto.
     all: try cancel; try solve [eexists; repeat (eapply hashmap_subset_trans; eauto)].
     xcrash.

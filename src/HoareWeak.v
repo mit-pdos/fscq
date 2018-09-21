@@ -258,7 +258,7 @@ Theorem corr2_to_corr2_weak:
 Proof.
   unfold corr2, corr2_weak; intros.
   specialize H with (1:=H0)(2:=H1); cleanup.
-  split; auto.
+  split; eauto.
   apply only_public_operations_to_trace_secure; eauto.
 Qed.
   

@@ -97,10 +97,10 @@ Theorem unseal_all_ok :
     {!< F tbl,
     PERM: pr                      
     PRE:bm, hm,
-        F * [[ hm 0 = Some Public ]] *
+        F *
         [[ tbl = extract_blocks bm hl ]] *
         [[ handles_valid bm hl ]] *
-        [[ forall t, In t (map fst tbl) -> t = 0 ]]
+        [[ forall t, In t (map fst tbl) -> hm t = Some Public ]]
     POST:bm', hm', RET: r
         F * [[ r = map snd tbl ]]
     CRASH:bm'', hm_crash,
@@ -132,7 +132,7 @@ Theorem unseal_all_ok :
 
     step.
     step.
-    rewrite H12.
+    rewrite H11.
     replace ([selN (map snd (extract_blocks bm hl)) m $0]) with
         (map snd [selN (extract_blocks bm hl) m tagged_block0]).
     rewrite <- map_app.
@@ -152,7 +152,7 @@ Theorem unseal_all_ok :
 
     step.
     step.
-    rewrite H10, firstn_exact.
+    rewrite H9, firstn_exact.
     erewrite <- extract_blocks_subset_trans; eauto.
     solve_hashmap_subset.
     eassign (false_pred (AT:= addr)(AEQ:=addr_eq_dec)(V:=valuset))%pred;
@@ -162,7 +162,6 @@ Theorem unseal_all_ok :
     exact tt.
     all: try exact dummy_handle.
     exact tagged_block0.
-    all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
 

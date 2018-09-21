@@ -198,7 +198,7 @@ Proof.
   destruct a'; [|rewrite Nat.div_0_l]; auto.
   replace 0 with (N.to_nat 0) by auto.
   apply Nneq_out; discriminate.
-  unfold Ndiv, Nat.div.
+  unfold N.div, Nat.div.
   intro a'.
   case_eq (N.to_nat a').
   + intro He.

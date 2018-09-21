@@ -253,8 +253,6 @@ Proof.
   all: eauto.
   step.
   step.
-  rewrite <- H1; cancel; eauto.
-  rewrite <- H1; cancel; eauto.
 Qed.
 
 
@@ -292,8 +290,7 @@ Proof.
   repeat split; apply zero_lt_pow2.
   solve_blockmem_subset.
   all: rewrite <- H1; cancel;
-  [ apply pimpl_any | solve_blockmem_subset |
-    unfold pimpl; intros; eauto ].
+  [ apply pimpl_any | unfold pimpl; intros; eauto ].
 
   Unshelve.
   all: unfold EqDec; apply handle_eq_dec.

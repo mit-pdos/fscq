@@ -354,7 +354,7 @@ Proof.
       unfold cachepred at 3;
       rewrite MapFacts.add_eq_o by reflexivity.
       cancel.
-      eassign (tb, vsmerge(tb0_cur, tb0_old)).
+      eassign (tb, vsmerge(tb0_1, tb0_2)).
       erewrite ptsto_subset_pimpl; eauto.
       simpl; apply incl_tl; auto.
       simpl; auto.
@@ -364,7 +364,6 @@ Proof.
       eapply addr_valid_upd_add; eauto.
     }
     eapply ptsto_subset_upd; eauto; apply incl_refl.
-    eexists; eapply hashmap_subset_trans; eauto.  
 Qed.    
 
 Hint Extern 1 (corr2 _ _ (Bind (write _ _ _) _)) => apply write_ok' : prog.
@@ -404,7 +403,9 @@ Theorem end_sync_ok :
   Proof.
     unfold end_sync; intros.
     hoare.
+    apply sync_invariant_sep_star; eauto.
     unfold rep, synrep, synrep', mem_pred, mem_pred_one; simpl.
+
     rewrite sync_xform_sep_star_dist, sync_xform_and_dist. rewrite pimpl_r_and.
     repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty || rewrite sync_xform_exists_comm).
     norml; unfold stars; simpl.
@@ -413,7 +414,6 @@ Theorem end_sync_ok :
     rewrite sync_xform_listpred_synpred_cachepred; auto.
     rewrite sync_xform_sync_invariant by auto.
     cancel.
-    eexists; eapply hashmap_subset_trans; eauto.
     rewrite <- H1; cancel; eauto.
     unfold synrep.
     rewrite pimpl_l_and.
@@ -468,10 +468,10 @@ Theorem end_sync_ok :
       norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       safecancel; simpl in *; cleanup.
-      eassign (x1_cur, l0).
+      eassign l0; eassign x1_1.
       unfold ptsto_subset;
       cancel; simpl; eauto.
-      auto.
+      eauto.
 
       
       hoare.
