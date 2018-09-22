@@ -219,20 +219,9 @@ Module CacheOneDir.
       BFILE.BFOwner (selN flist dnum def) = Public.
     Proof.
       intros.
-      denote BFILE.rep as Hbr; unfold BFILE.rep in Hbr.
-      destruct_lift Hbr.
-      denote listmatch as Hmatch;
-      erewrite listmatch_isolate with (i:=dnum)(ad:=BFILE.bfile0)(bd:=def) in Hmatch.
-      unfold BFILE.file_match at 2 in Hmatch; destruct_lift Hmatch.
-      denote SDIR.rep as Hdr; unfold SDIR.rep, DIR.rep, DIR.Dent.rep in Hdr;
-      cleanup; auto.
-      denote LOG.arrayP as Hp; destruct_lift Hp; cleanup.
-      eapply list2nmem_sel with (def:=BFILE.bfile0) in H0; cleanup; auto.
-      eapply list2nmem_inbound; eauto.
-      rewrite listmatch_length_pimpl in Hmatch; destruct_lift Hmatch.
-      rewrite <- H11; eapply list2nmem_inbound; eauto.
-      Unshelve.
-      exact nat.
+      unfold SDIR.rep, DIR.rep, DIR.Dent.rep in *.
+      cleanup; destruct_lift H1.
+      erewrite <-list2nmem_sel; eauto.
     Qed.
 
   Theorem init_cache_ok :

@@ -587,7 +587,7 @@ Module BFILE.
     rewrite <- SetFacts.empty_iff; eauto.
   Qed.
 
- 
+
   Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp sm files ilist free allocc mscache icache dblocks m flag bn inum off dm,
     (F * rep fsxp sm Ftop files ilist free allocc mscache icache dblocks dm)%pred m ->
     block_is_unused (pick_balloc free flag) bn ->

@@ -1337,7 +1337,7 @@ Qed.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
     smash_rec_well_formed.
     unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
-    destruct_lift H20. auto.
+    destruct_lift H19. auto.
     sepauto.
     eauto.
 
@@ -1375,7 +1375,6 @@ Qed.
     rewrite selN_updN_eq; eauto; simpl.
     eapply subset_extract_some; eauto.
     rewrite selN_updN_ne; eauto.
-    eapply subset_extract_some; eauto.
 
     erewrite pred_fold_left_selN with (l:= updN dummy0 inum IFs').
     rewrite selN_updN_eq.
@@ -1388,7 +1387,9 @@ Qed.
 
     all: rewrite <- H1; cancel; eauto.
 
-    Unshelve. exact IRec.Defs.item0. all: eauto.
+    Unshelve.
+    exact IRec.Defs.item0. all: eauto.
+    unfold EqDec; apply addr_eq_dec.
   Qed.
 
   Lemma grow_wellformed :
@@ -1475,8 +1476,9 @@ Qed.
     safestep.
     safestep.
 
-    or_r; cancel.
+    or_r; safecancel.
     5: eapply list2nmem_updN; eauto.
+    5: eauto.
     3: eassign (updN dummy0 inum a4)%pred; 
        erewrite pred_fold_left_selN with (l:= updN dummy0 inum a4); 
        [|rewrite length_updN; rewrite <- H15; eauto];
@@ -1486,15 +1488,15 @@ Qed.
     rewrite combine_updN.
     rewrite listmatch_updN_removeN.
     unfold inode_match at 3; simpl.
-    unfold BPtrSig.IRAttrs in H25.
+    denote  BPtrSig.IRAttrs as Hat; unfold BPtrSig.IRAttrs in Hat.
     rewrite listmatch_isolate with (i := inum) in H.
     unfold inode_match, Ind.rep in H; 
     erewrite selN_combine in H; eauto.
-    destruct_lift H; eauto. 
+    destruct_lift H; eauto.
     cancel.
 
-    rewrite H25; eauto.
-    rewrite H25 in *; eauto.
+    rewrite Hat; eauto.
+    rewrite Hat in *; eauto.
     apply Forall_app; auto.
     eapply BALLOCC.bn_valid_roundtrip; eauto.
     rewrite combine_length_eq; auto.
@@ -1505,10 +1507,8 @@ Qed.
     rewrite length_updN in *.
     destruct (addr_eq_dec inum i); subst.
     rewrite selN_updN_eq; eauto; simpl.
-    eapply subset_extract_some; eauto.
     rewrite selN_updN_ne; eauto.
-    eapply subset_extract_some; eauto.
-    solve_blockmem_subset.
+    eauto.
 
     all: try (rewrite <- H1; cancel; eauto).
 

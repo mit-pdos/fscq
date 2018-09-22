@@ -1337,7 +1337,7 @@ Qed.
 
     + repeat safestep; autorewrite with core; try eassumption; clear IHindlvl.
 
-    - erewrite indrep_n_tree_length in H5; eauto. (* by eauto. *)
+    - erewrite indrep_n_tree_length in H6; eauto. (* by eauto. *)
       erewrite indrep_n_tree_repeat_concat; eauto.
       all: rewrite indrep_n_helper_0 in *; destruct_lifts;
       rewrite repeat_length in *; auto.
@@ -1423,7 +1423,7 @@ Theorem indread_ok :
         repeat erewrite concat_hom_skipn by eauto.
         erewrite skipn_selN_skipn with (off := length _).
         reflexivity.
-        rewrite combine_length_eq in H20.
+        rewrite combine_length_eq in H16.
         autorewrite with list in *; cbn [length] in *; omega.
         autorewrite with list; cbn [length]. omega.
       - rewrite <- H1; cancel; eauto.
@@ -1488,7 +1488,7 @@ Theorem indclear_all_ok :
         hoare.
         rewrite indrep_n_helper_0 by auto.
         cancel.
-        rewrite <- H1; cancel; eauto.
+        
       + step.
         psubst.
         (* working around same "conversion anomaly" bug as above *)
@@ -1602,7 +1602,7 @@ Theorem indclear_all_ok :
         - eassign (false_pred(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset));
           unfold false_pred; cancel.
         - rewrite <- H1; cancel.
-          eauto using LOG.intact_hashmap_subset.
+          eauto.
     Grab Existential Variables.
     all: try exact addr_eq_dec.
     all : eauto using tt.
@@ -1659,7 +1659,7 @@ Theorem indclear_all_ok :
           (rewrite firstn_length, skipn_length; indrep_n_tree_bound).
         all: assert (length prefix < length (firstn z (skipn z0 indbns))) by
           (substl (firstn z (skipn z0 indbns)); rewrite app_length; cbn; omega).
-        repeat rewrite <- H5 in *.
+        repeat rewrite <- H6 in *.
         autorewrite with lists; cbn [length].
         repeat rewrite Nat.add_sub.
         rewrite skipn_app.
@@ -1669,7 +1669,7 @@ Theorem indclear_all_ok :
           rewrite listmatch_cons.
           cancel.
           all: omega.
-        + repeat rewrite <- H5 in *.
+        + repeat rewrite <- H6 in *.
           autorewrite with lists; cbn [length].
           rewrite Nat.add_sub.
           erewrite skipn_selN_skipn with (off := length prefix).
@@ -1680,7 +1680,7 @@ Theorem indclear_all_ok :
           prestep; norm.
           cancel.
           repeat split.
-          repeat rewrite <- H5.
+          repeat rewrite <- H6.
           autorewrite with lists. cbn [length].
           repeat match goal with |- context [?b + S ?a - ?a] => replace (b + S a - a) with (b + 1) by omega end.
           rewrite skipn_app_r_ge by omega.
@@ -1688,14 +1688,14 @@ Theorem indclear_all_ok :
           rewrite <- plus_n_Sm, <- plus_n_O.
           pred_apply; rewrite indrep_n_tree_0.
           cancel.
-          pred_apply;  repeat rewrite <- H5.
+          pred_apply;  repeat rewrite <- H6.
           autorewrite with lists. cbn [length].
           repeat match goal with |- context [?b + S ?a - ?a] => replace (b + S a - a) with (b + 1) by omega end.
           rewrite <- plus_n_Sm, <- plus_n_O.
           cancel.
           auto.
-          auto.
           eauto.
+   
         + rewrite <- H1; cancel; eauto.
       - step.
         repeat rewrite upd_range_eq_upd_range' by indrep_n_tree_bound.
@@ -1774,7 +1774,6 @@ Theorem update_block_ok :
       pred_apply; cancel.
       rewrite Hf; cancel.
       auto.
-      eauto.
     + step.
       rewrite indrep_n_helper_valid by auto; eassign indbns; cancel.
       step.
@@ -1784,7 +1783,6 @@ Theorem update_block_ok :
       rewrite indrep_n_helper_valid by auto.
       pred_apply; cancel; eauto.
       rewrite Hf; pred_apply; cancel.
-      auto.
       auto.
   Qed.
 
@@ -2476,8 +2474,8 @@ Theorem indclear_from_aligned_ok :
         {
           denote indrep_n_helper as Hi.
           rewrite indrep_n_helper_0 in Hi. destruct_lift Hi.
-          rewrite listmatch_indrep_n_tree_empty'' in H0.
-          destruct_lift H0.
+          rewrite listmatch_indrep_n_tree_empty'' in H.
+          destruct_lift H.
           erewrite concat_hom_repeat by eauto using Forall_repeat.
           autorewrite with lists; auto.
           rewrite repeat_length in *; auto.
@@ -2513,7 +2511,7 @@ Theorem indclear_from_aligned_ok :
             cancel.
             or_r; cancel.
             assert (dummy = repeat $0 NIndirect).
-            rewrite indrep_n_helper_0 in H9. destruct_lift H9. auto.
+            rewrite indrep_n_helper_0 in H0. destruct_lift H0. auto.
             subst.
             rewrite repeat_selN' in *.
             {
@@ -2643,9 +2641,13 @@ Theorem indclear_from_aligned_ok :
         pred_apply; cancel.
         all: eauto.
         pred_apply; cancel.
-        rewrite <- H1; cancel; eauto.
-        rewrite <- H1; cancel; eauto.
-      - rewrite <- H1; cancel; eauto.
+        rewrite <- H1. norm.
+        cancel. intuition eauto.
+        rewrite <- H1. norm.
+        cancel. intuition eauto.
+      - rewrite <- H1.
+        rewrite LOG.active_intact.
+        norm. cancel. intuition eauto.
     Grab Existential Variables.
     all : eauto.
     all: try constructor; solve [exact $0 | exact emp].
@@ -2711,17 +2713,12 @@ Theorem indclear_from_aligned_ok :
     unfold indrec_write_blind, IndRec.write, IndRec.rep, IndRec.items_valid.
     step.
     apply repeat_length.
-    apply repeat_spec in H; subst; auto.
     safestep.
 
     erewrite LOG.rep_blockmem_subset; eauto.
-    cleanup.
-    rewrite Forall_forall; intros x Hin.
-    rewrite map_fst_combine in Hin by (apply repeat_length).
-    apply repeat_spec in Hin; auto.
     unfold IndSig.RAStart. instantiate (1 := [_]). pred_apply; cancel.
     erewrite <- extract_blocks_length.
-    rewrite H16.
+    rewrite H17.
     setoid_rewrite combine_length_eq.
     rewrite repeat_length.
     rewrite IndRec.Defs.ipack_one. auto.
@@ -2734,10 +2731,10 @@ Theorem indclear_from_aligned_ok :
 
     rewrite vsupsyn_range_synced_list; auto.
     erewrite <- extract_blocks_subset_trans; eauto.
-    rewrite H16.
+    rewrite H17.
     cancel; eauto.
     erewrite <- extract_blocks_subset_trans; eauto.
-    rewrite H16.
+    rewrite H17.
     rewrite IndRec.Defs.ipack_one.
     setoid_rewrite combine_length_eq.
     rewrite repeat_length; simpl; auto.
@@ -2827,7 +2824,7 @@ Proof.
   rewrite indrep_n_helper_0.
   cancel.
 Qed.
-(** Checked up to here **) 
+
 Theorem indput_ok :
   forall indlvl lxp bxp ir off bn ms pr,
     {< F Fm Fs m0 sm m l freelist IFs,
@@ -2855,9 +2852,9 @@ Theorem indput_ok :
       - step.
         prestep; norm; try congruence.
         unfold stars; simpl; eassign F_; cancel.
-        inversion H7; subst.
+        inversion H0; subst.
         intuition.
-          * unfold BALLOCC.bn_valid in *. intuition auto.
+          * unfold BALLOCC.bn_valid in *. intuition eauto.
           * unfold BALLOCC.bn_valid in *. intuition auto.
           * pred_apply;  cancel.
           * step.
@@ -2895,7 +2892,6 @@ Theorem indput_ok :
         rewrite indrep_n_helper_valid in * by omega. cancel.
         match goal with [H : context [?P] |- ?P] => destruct_lift H end. auto.
         match goal with [H : context [?P] |- ?P] => destruct_lift H end. auto.
-        rewrite <- H1; cancel.
 
       + step.
         - step. prestep. norm; try congruence. 
@@ -2934,7 +2930,8 @@ Theorem indput_ok :
           intuition auto.
           unfold BALLOCC.bn_valid in *; intuition auto.
           pred_apply; cancel.
-          auto.
+          eauto.
+          eauto.
           prestep. cancel.
           step.
 
@@ -3031,7 +3028,7 @@ Theorem indput_ok :
           prestep.
           intros mx Hmx.
           destruct_lift Hmx.
-          inversion H17; subst; clear H17.
+          inversion H18; subst; clear H18.
           exists F_, F; eexists; exists m0, sm, m, bxp, dummy, dummy0.
           pred_apply. safecancel.
 
@@ -3048,7 +3045,8 @@ Theorem indput_ok :
             rewrite pred_fold_left_selN_removeN with (i := I);
             unify d (@emp _ addr_eq_dec bool); cancel
           end.
-          auto.
+          eauto.
+          eauto.
           2: intros; rewrite <- H1; cancel; eauto.
           prestep; norm.
           all: try cancel.
