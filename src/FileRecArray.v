@@ -219,24 +219,45 @@ Module FileRecArray (FRA : FileRASig).
 
     safestep.
     2: rewrite <- surjective_pairing; eauto.
-    setoid_rewrite synced_list_selN.
+    denote BFILE.rep as Hbr; unfold BFILE.rep, INODE.rep in Hbr.
+    setoid_rewrite listmatch_length_pimpl in Hbr.
+    destruct_lift Hbr; eauto.
+    eapply list2nmem_ptsto_bound in H8 as Hbound.
+     
+    denote BFILE.file_match as Hbr; 
+    setoid_rewrite listmatch_isolate with (i:=inum) in Hbr; eauto.
+    unfold BFILE.file_match in Hbr; destruct_lift Hbr; eauto.
+    setoid_rewrite synced_list_selN; eauto.
     setoid_rewrite selN_combine; eauto.
     rewrite repeat_selN; simpl; eauto.
+    
+    erewrite <- H13, list2nmem_sel with (x:= dummy7); eauto.
+    rewrite H36; apply H31.
+    omega.
     rewrite ipack_length; eauto.
     apply div_lt_divup; auto.
     apply repeat_length.
+    rewrite combine_length_eq; omega.
+    rewrite <- H32, combine_length_eq; omega.
 
     step.
     safestep; msalloc_eq.
 
     erewrite selN_val2block_equiv.
-    apply ipack_selN_divmod; auto.
+    subst.
+    setoid_rewrite synced_list_selN.
+    setoid_rewrite selN_combine.
+    simpl; rewrite ipack_selN_divmod; auto.
     apply list_chunk_wellformed; auto.
     unfold items_valid in *; intuition; auto.
+    apply repeat_length.
     apply Nat.mod_upper_bound; auto.
-   
+    cancel.
+    
     Unshelve.
     all: eauto.
+    exact (INODE.inode0, emp).
+    exact INODE.irec0.
   Qed.
 
   Theorem put_ok :
@@ -272,7 +293,22 @@ Module FileRecArray (FRA : FileRASig).
     rewrite ipack_length; eauto.
     apply div_lt_divup; auto.
 
-    step.
+    safestep.
+    clear H5.
+    eassign (S inum).
+    denote BFILE.rep as Hbr; unfold BFILE.rep, INODE.rep in Hbr.
+    setoid_rewrite listmatch_length_pimpl in Hbr.
+    destruct_lift Hbr; eauto.
+    eapply list2nmem_ptsto_bound in H8 as Hbound.
+    denote BFILE.file_match as Hbr; 
+    setoid_rewrite listmatch_isolate with (i:=inum) in Hbr; eauto.
+    unfold BFILE.file_match in Hbr; destruct_lift Hbr; eauto.
+    erewrite <- H14, list2nmem_sel with (x:= dummy7); eauto.
+    rewrite H36; apply H31.
+    omega.
+    rewrite combine_length_eq; omega.
+    rewrite <- H32, combine_length_eq; omega.
+
     denote (bm0 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
     setoid_rewrite selN_combine in Hx; eauto.
@@ -297,6 +333,19 @@ Module FileRecArray (FRA : FileRASig).
     apply div_lt_divup; auto.
     eapply upd_eq; eauto.
     simpl; eauto.
+    denote BFILE.rep as Hbr; unfold BFILE.rep, INODE.rep in Hbr.
+    setoid_rewrite listmatch_length_pimpl in Hbr.
+    destruct_lift Hbr; eauto.
+    eapply list2nmem_ptsto_bound in H8 as Hbound.
+    denote BFILE.file_match as Hbr; 
+    setoid_rewrite listmatch_isolate with (i:=inum) in Hbr; eauto.
+    unfold BFILE.file_match in Hbr; destruct_lift Hbr; eauto.
+    erewrite <- H14, list2nmem_sel with (x:= dummy7); eauto.
+    rewrite H41; apply H36.
+    omega.
+    rewrite combine_length_eq; omega.
+    rewrite <- H37, combine_length_eq; omega.
+    eauto.
     simpl; eauto.
     auto.
 
@@ -328,6 +377,8 @@ Module FileRecArray (FRA : FileRASig).
 
     Unshelve.
     all: eauto.
+    all: try exact INODE.irec0.
+    all: exact (INODE.inode0, emp).
   Qed.
 
 
@@ -398,7 +449,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]])
     CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
     >} extend lxp bxp ixp inum e ms.
-  Proof. 
+  Proof.
     unfold extend, rep.
     lightstep.
     Opaque corr2.
@@ -408,9 +459,11 @@ Module FileRecArray (FRA : FileRASig).
     pred_apply; cancel.
     eauto.
     eauto.
-
+    eauto.
+  
     safelightstep.
     msalloc_eq; pred_apply; cancel.
+    eauto.
     eauto.
     eauto.
     eauto.
@@ -418,26 +471,39 @@ Module FileRecArray (FRA : FileRASig).
     intros; destruct_branch; try congruence.
     prestep.
     intros mx Hmx; destruct_lift Hmx.
-    apply sep_star_or_distr in H8.
-    destruct H8; destruct_lift H8; intuition; simpl in *.
-    inversion H14.
+    apply sep_star_or_distr in H9.
+    destruct H9; destruct_lift H9; intuition; simpl in *.
+    inversion H15.
     repeat eexists; pred_apply; cancel.
     simpl; rewrite app_length; simpl; omega.
     do 2 (eapply block_mem_subset_extract_some; eauto).
     apply upd_eq; eauto.
     simpl; eauto.
+    
+    clear H26.
+    denote BFILE.rep as Hbr; unfold BFILE.rep, INODE.rep in Hbr.
+    setoid_rewrite listmatch_length_pimpl in Hbr.
+    destruct_lift Hbr; eauto.
+    eapply list2nmem_ptsto_bound in H8 as Hbound.
+    denote BFILE.file_match as Hbr; 
+    setoid_rewrite listmatch_isolate with (i:=inum) in Hbr; eauto.
+    unfold BFILE.file_match in Hbr; destruct_lift Hbr; eauto.
+    erewrite <- H13, list2nmem_sel with (x:= dummy7); eauto.
+    rewrite H49; apply H44.
+    omega.
+    rewrite combine_length_eq; omega.
+    rewrite <- H45, combine_length_eq; omega.
+    
     simpl; eauto.
 
     step.
     safestep.
-    or_r; cancel.
-
-    msalloc_eq; cancel.
+    or_r; msalloc_eq; cancel.
     eauto.
     simpl;
-    rewrite BFILE.rep_length_pimpl in H19; destruct_lift H19.
+    rewrite BFILE.rep_length_pimpl in H38; destruct_lift H38.
     unfold BFILE.ilist_safe, BFILE.treeseq_ilist_safe in *.
-    apply list2nmem_ptsto_bound in H7.
+    apply list2nmem_ptsto_bound in H8.
     cleanup.
 
     simpl; pred_apply; norm; [ | intuition ].
@@ -467,6 +533,8 @@ Module FileRecArray (FRA : FileRASig).
 
     Unshelve.
     all: eauto.
+    all: try exact INODE.irec0.
+    all: exact (INODE.inode0, emp).
   Qed.
 
 
@@ -510,21 +578,38 @@ Module FileRecArray (FRA : FileRASig).
     cancel.
     Opaque corr2.
     repeat split.
+    msalloc_eq.
+    pred_apply; cancel.
+    pred_apply; cancel.
     eauto. eauto.
     unfold RAData in *.
     eassign (emp(AT:=addr)(AEQ:=addr_eq_dec)(V:=valuset)); pred_apply; cancel.
     setoid_rewrite arrayN_list_eq at 2; eauto.
     unfold RAData; apply list2nmem_array.
     auto.
+    auto.
 
     step.
-    cleanup. rewrite H28 in H9.
+    cleanup. rewrite H29 in H9.
     rewrite synced_list_map_fst, firstn_oob, map_fst_combine in H9; auto.
     apply repeat_spec in H9; subst; auto.
+    denote BFILE.rep as Hbr; unfold BFILE.rep, INODE.rep in Hbr.
+    setoid_rewrite listmatch_length_pimpl in Hbr.
+    destruct_lift Hbr; eauto.
+    eapply list2nmem_ptsto_bound in H8 as Hbound.
+    denote BFILE.file_match as Hbr; 
+    setoid_rewrite listmatch_isolate with (i:=inum) in Hbr; eauto.
+    unfold BFILE.file_match in Hbr; destruct_lift Hbr; eauto.
+    erewrite <- H12, list2nmem_sel with (x:= dummy7); eauto.
+    rewrite H44; apply H39.
+    omega.
+    rewrite combine_length_eq; omega.
+    rewrite <- H40, combine_length_eq; omega.
+    
     apply repeat_length.
     unfold RAData in *.
-    apply list2nmem_array_eq in H6; eauto.
-    rewrite H6;
+    apply list2nmem_array_eq in H7; eauto.
+    rewrite H7;
     rewrite synced_list_length; eauto.
 
     msalloc_eq.
@@ -538,13 +623,15 @@ Module FileRecArray (FRA : FileRASig).
     erewrite iunpack_ipack; eauto.
     apply repeat_length.
     unfold RAData in *.
-    apply list2nmem_array_eq in H6; eauto.
-    rewrite H6;
+    apply list2nmem_array_eq in H7; eauto.
+    rewrite H7;
     rewrite synced_list_length; eauto.
     intros; rewrite <- H2; cancel; eauto.
 
     Unshelve.
     all: eauto.
+    all: try exact INODE.irec0.
+    all: exact (INODE.inode0, emp).
   Qed.
 
 
@@ -677,7 +764,20 @@ Module FileRecArray (FRA : FileRASig).
     unfold RAData; apply list2nmem_array.
 
     safestep.
-    eassign Public; auto.   
+    eassign (S inum); auto.
+    denote BFILE.rep as Hbr; unfold BFILE.rep, INODE.rep in Hbr.
+    setoid_rewrite listmatch_length_pimpl in Hbr.
+    destruct_lift Hbr; eauto.
+    eapply list2nmem_ptsto_bound in H8 as Hbound.
+    denote BFILE.file_match as Hbr; 
+    setoid_rewrite listmatch_isolate with (i:=inum) in Hbr; eauto.
+    unfold BFILE.file_match in Hbr; destruct_lift Hbr; eauto.
+    erewrite <- H12, list2nmem_sel with (x:= dummy7); eauto.
+    rewrite H59; apply H54.
+    omega.
+    rewrite combine_length_eq; omega.
+    rewrite <- H55, combine_length_eq; omega.
+    
     denote (bm2 _ = _) as Hx.    
     setoid_rewrite synced_list_selN in Hx.
     setoid_rewrite selN_combine in Hx.
@@ -727,7 +827,9 @@ Module FileRecArray (FRA : FileRASig).
     unfold items_valid, RALen in *; intuition.
 
     Unshelve.
-    all: try exact tt; eauto; try exact Public.
+    all: try exact tt; eauto; try exact 0.
+    all: try exact INODE.irec0.
+    all: exact (INODE.inode0, emp).
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (get _ _ _ _ _) _) => apply get_ok : prog.
@@ -782,6 +884,7 @@ Module FileRecArray (FRA : FileRASig).
     Opaque corr2.
     safelightstep.
     eapply list2nmem_ptsto_bound; eauto.
+    eauto.
     eauto.
     eauto.
     eauto.
@@ -887,12 +990,9 @@ Module FileRecArray (FRA : FileRASig).
     step.
     step.
 
-
     step.
-    
-
-    rewrite LOG.rep_hashmap_subset; eauto;
-     or_r; cancel.
+ 
+    or_r; cancel.
     rewrite block0_repeat.
     fold Rec.data.
     replace (updN (repeat item0 items_per_val) 0 e) with
