@@ -679,7 +679,7 @@ Module DIRTREE.
     eapply pimpl_trans; [ eapply pimpl_trans | ].
     2: eapply subtree_absorb with
           (xp := fsxp) (fnlist := fndone) (tree := tree)
-          (subtree := TreeDir n l0) (subtree' := TreeDir n l0); eauto.
+          (subtree := TreeDir n l) (subtree' := TreeDir n l); eauto.
     simpl; unfold tree_dir_names_pred; cancel; eauto.
 
     rewrite update_subtree_same; eauto.
@@ -720,7 +720,7 @@ Module DIRTREE.
     eapply pimpl_trans; [ eapply pimpl_trans | ].
     2: eapply subtree_absorb with
           (xp := fsxp) (fnlist := fndone) (tree := tree)
-          (subtree := TreeDir n l0) (subtree' := TreeDir n l0); eauto.
+          (subtree := TreeDir n l) (subtree' := TreeDir n l); eauto.
     simpl; unfold tree_dir_names_pred; cancel; eauto.
 
     rewrite update_subtree_same; eauto.
@@ -759,7 +759,7 @@ Module DIRTREE.
     pred_apply; cancel.
 
     eapply pimpl_trans; [ | eapply pimpl_trans ].
-    2: eapply subtree_absorb with (xp := fsxp) (fnlist := fndone) (tree := tree) (subtree' := TreeDir n l0).
+    2: eapply subtree_absorb with (xp := fsxp) (fnlist := fndone) (tree := tree) (subtree' := TreeDir n l).
     cancel. unfold tree_dir_names_pred. cancel; eauto.
     eauto. eauto. eauto.
 
@@ -770,7 +770,7 @@ Module DIRTREE.
 
     step.
     prestep. norm; msalloc_eq.
-    cancel; erewrite LOG.rep_hashmap_subset; eauto.
+    cancel; eauto.
     intuition idtac.
     rewrite cons_app. rewrite app_assoc. reflexivity.
     all: try solve [ exfalso; congruence ].

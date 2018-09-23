@@ -246,6 +246,7 @@ Module CacheOneDir.
     unfold init_cache, rep_macro.
     lightstep.
     msalloc_eq.
+    erewrite list2nmem_sel with (x:=dummy9); eauto.
     eapply inode_owner_public; eauto.
     lightstep.
     msalloc_eq; lightstep.
@@ -338,6 +339,7 @@ Module CacheOneDir.
     
   Unshelve.
     all: repeat (solve [eauto] || constructor).
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog. 
@@ -363,6 +365,7 @@ Module CacheOneDir.
   Proof. 
     unfold readdir, rep_macro, rep.
     lightstep.
+    erewrite list2nmem_sel with (x:=dummy9); eauto.
     eapply inode_owner_public; eauto.
     lightstep.
     lightstep; msalloc_eq.
@@ -392,6 +395,7 @@ Module CacheOneDir.
     lightstep.
     simpl. destruct_branch.
     safestep.
+    erewrite list2nmem_sel with (x:=f'); eauto.
     eapply inode_owner_public; eauto.
     eauto.    
     lightstep.
@@ -468,6 +472,7 @@ Module CacheOneDir.
     unfold link'.
     lightstep.
     lightstep; try congruence.
+    erewrite list2nmem_sel with (x:=dummy8); eauto.
     eapply inode_owner_public; eauto.
     simpl; destruct_branch.
     prestep.
@@ -485,7 +490,6 @@ Module CacheOneDir.
 
     lightstep.
     lightstep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto.
     
     msalloc_eq. subst_cache.
     or_r. cancel; eauto.
@@ -497,7 +501,7 @@ Module CacheOneDir.
     auto.
     step.
     lightstep; msalloc_eq.
-    erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
+    or_l; cancel.
     auto.
     
   Unshelve.
@@ -544,7 +548,7 @@ Module CacheOneDir.
     cancel.
     intuition.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
+    or_l; cancel.
     cancel.
 
     norml.
@@ -562,10 +566,10 @@ Module CacheOneDir.
     step.
     lightstep.
     simpl.
-    erewrite LOG.rep_hashmap_subset; eauto; or_l; cancel.
+    or_l; cancel.
     msalloc_eq; auto.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto; or_r; cancel.
+    or_r; cancel.
     eauto.
     eauto.
     eauto.

@@ -3499,7 +3499,7 @@ Theorem indput_ok :
     IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
   Proof.
     unfold IndRec.rep; cancel.
-    assert (length (synced_list (combine (repeat Public (length (IndRec.Defs.ipack indrec))) (IndRec.Defs.ipack indrec))) = 1).
+    assert (length (synced_list (combine (repeat 0 (length (IndRec.Defs.ipack indrec))) (IndRec.Defs.ipack indrec))) = 1).
     unfold IndRec.items_valid in *; intuition.
     rewrite synced_list_length; subst.
     setoid_rewrite combine_length.
