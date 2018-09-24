@@ -743,6 +743,8 @@ Module AFS.
     unfold file_get_sz; intros.
     safestep.
     eauto.
+    apply sep_star_comm.
+    eauto.
     step.
     step.
   Qed.
@@ -840,6 +842,106 @@ Module AFS.
     Unshelve. all: eauto. exact BFILE.bfile0. exact INODE.inode0.
   Qed.
 
+  Theorem read_fblock'_ok' :
+    forall fsxp inum off mscs pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees) := e in
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
+    POST:bm', hm', RET:^(mscs', rok)
+          let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees) := e in
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           ([[ isError rok ]] \/
+            exists h, [[ rok = OK h ]] * [[ bm' h = Some (fst vs) ]] *
+            [[ hm' (fst (fst vs)) = Some (DFOwner f) ]] *
+            [[ can_access pr  (DFOwner f) ]])
+    CRASH:bm', hm',
+          let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees) := e in
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
+    >} read_fblock' fsxp inum off mscs.
+    Proof.
+    intros; eapply pimpl_ok2.
+    apply read_fblock'_ok.
+    intros; norml; unfold stars; simpl.
+    intros mx Hmx; destruct_lift Hmx.
+    repeat eexists.
+    pred_apply; safecancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    Qed.
+
+  Theorem read_fblock'_ok_weak' :
+    forall fsxp inum off mscs pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees) := e in
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
+    POST:bm', hm', RET:^(mscs', rok)
+          let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees) := e in
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           ([[ isError rok ]] \/
+            exists h, [[ rok = OK h ]] * [[ bm' h = Some (fst vs) ]] *
+            [[ hm' (fst (fst vs)) = Some (DFOwner f) ]] *
+            [[ can_access pr  (DFOwner f) ]])
+    CRASH:bm', hm',
+          let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees) := e in
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
+    W>} read_fblock' fsxp inum off mscs.
+    Proof.
+      intros; eapply weak_conversion'.
+      apply read_fblock'_ok'.
+    Qed.  
+      
+
+  Theorem read_fblock'_ok_weak :
+    forall fsxp inum off mscs pr,
+    {<W ds sm Fm Ftop tree pathname f Fd vs ilist frees,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[[ (DFData f) ::: (Fd * off |-> vs) ]]]
+    POST:bm', hm', RET:^(mscs', rok)
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           ([[ isError rok ]] \/
+            exists h, [[ rok = OK h ]] * [[ bm' h = Some (fst vs) ]] *
+            [[ hm' (fst (fst vs)) = Some (DFOwner f) ]] *
+            [[ can_access pr  (DFOwner f) ]])
+    CRASH:bm', hm',
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
+    W>} read_fblock' fsxp inum off mscs.
+      Proof.
+        intros; eapply pimpl_ok2_weak.
+        apply read_fblock'_ok_weak'.
+        intros; norml; unfold stars; simpl.
+        safecancel.
+        cancel.
+        apply sep_star_comm.
+        eauto.
+        eauto.
+        eauto.
+        specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+        eauto.
+      Qed.  
+    
+  Hint Extern 1 ({{W _|_ W}} Bind (read_fblock' _ _ _ _) _) => apply read_fblock'_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (read_fblock' _ _ _ _) _) => apply read_fblock'_ok : prog.
 
   Theorem read_fblock_ok :
@@ -862,108 +964,20 @@ Module AFS.
     W>} read_fblock fsxp inum off mscs.
   Proof.
     unfold read_fblock; intros.
-    eapply pimpl_ok2_weak.
-    eapply weak_conversion with
-        (pre :=
-           (fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list INODE.inode) *
-                          (list addr * list addr)))))))))))) bm hm =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (ilist, frees):= x9 in
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-                  (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-           [[[ ds!! :::
-            (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred)
-        
-        (post:= (fun F r (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list INODE.inode) *
-                          (list addr * list addr)))))))))))) bm' hm'  =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (ilist, frees):= x9 in
-              let mscs' := fst r in
-              let rok := fst (snd r) in
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
-           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ isError rok ]] \/
-            exists h, [[ rok = OK h ]] * [[ bm' h = Some (fst vs) ]] *
-                 [[ can_access pr (fst (fst vs)) ]]))%pred)
-
-    (post2:= (fun F r (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list INODE.inode) *
-                          (list addr * list addr)))))))))))) bm' hm'  =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (ilist, frees):= x9 in
-              let mscs' := fst r in
-              let rok := fst (snd r) in
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
-           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ isError rok ]] \/
-            [[ rok = OK (snd (fst vs)) ]]))%pred)
-        
-    (crash1:=(fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list INODE.inode) *
-                          (list addr * list addr)))))))))))) bm' hm' =>
-              let (ds, x1):= e1 in
-              let (sm, _):= x1 in
-              LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm')%pred)
-
-    (crash2:=(fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list INODE.inode) *
-                          (list addr * list addr)))))))))))) bm' hm' =>
-              let (ds, x1):= e1 in
-              let (sm, _):= x1 in
-             LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm')%pred).
-    intros.
-    eapply pimpl_ok2; [solve [ eauto with prog ] |].
-    intros; simpl.
-    norml.
-    unfold stars; simpl; norml.
-    unfold stars; simpl; intros mx Hmx.
-    repeat eexists.
-    pred_apply; cancel; eauto.
-    intros.
-    unfold pair_args_helper; simpl.
+    weaksafestep.
+    apply sep_star_comm.
+    eauto.
+    eauto.
     destruct_branch.
     weakprestep.
     norml.
-    inversion H7.
-    destruct (e1_2_2_2_2_2_2_2_2_1), t; simpl in *.
+    inversion H9.
+    destruct vs, t; simpl in *.
     norm. cancel.
-    intuition eauto.
-    inversion H7; eauto.
+    repeat split.
+    2: inversion H; eauto.
+    eauto.
+    inversion H; eauto.
     weakstep.
     weakstep.
 
@@ -971,14 +985,6 @@ Module AFS.
 
     weakstep.
     weakstep.
-    safecancel.
-    
-    intros; simpl.
-    intros mx Hmx; destruct_lift Hmx.
-    exists dummy.
-    exists (dummy0, (dummy1, (dummy2, (dummy3, (dummy4, (dummy5,
-       (dummy6, (dummy7, (dummy8, (dummy9, (dummy10_1, dummy10_2))))))))))).
-    pred_apply; safecancel; eauto.
   Qed.
 
   Hint Extern 1 ({{W _|_ W}} Bind (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
@@ -1012,14 +1018,9 @@ Module AFS.
     lightstep.
     safestep.
     safelightstep.
-    pred_apply; cancel.
-    eauto.
-    eauto.
     intros; step.
     step.
-    intros; rewrite <- H2; cancel; eauto.
-    rewrite LOG.intact_idempred; eauto.
-
+    
     step.
     prestep; norml; congruence.
 
@@ -1027,6 +1028,7 @@ Module AFS.
     step.
 
     rewrite <- H2; cancel; eauto.
+    rewrite LOG.intact_idempred; eauto.
 
     rewrite <- H2; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred; eauto.
@@ -1035,6 +1037,109 @@ Module AFS.
       all: easy.
   Qed.
 
+  Theorem update_fblock_d'_ok' :
+      forall fsxp inum off mscs pr,
+      {< e,
+    PERM:pr   
+    PRE:bm, hm,
+      let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist) := e in
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+      [[[ (DFData f) ::: (Fd * off |-> vs) ]]] 
+    POST:bm', hm', RET:^(mscs', ok)
+        let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist) := e in
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
+       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *       
+       ([[ isError ok ]] \/
+        [[ ok = OK tt ]] * [[ can_access pr (DFOwner f) ]])
+    XCRASH:bm', hm',
+       let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist) := e in
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
+   >} update_fblock_d' fsxp inum mscs.
+  Proof. 
+    intros; eapply pimpl_ok2.
+    apply update_fblock_d'_ok.
+    intros; norml; unfold stars; simpl.
+    intros mx Hmx; destruct_lift Hmx.
+    repeat eexists.
+    pred_apply; safecancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+  Qed.
+    
+  Theorem update_fblock_d'_ok_weak' :
+      forall fsxp inum off mscs pr,
+      {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+      let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist) := e in
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+      [[[ (DFData f) ::: (Fd * off |-> vs) ]]] 
+    POST:bm', hm', RET:^(mscs', ok)
+        let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist) := e in
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
+       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *       
+       ([[ isError ok ]] \/
+        [[ ok = OK tt ]] * [[ can_access pr (DFOwner f) ]])
+    XCRASH:bm', hm',
+       let '(ds, sm, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist) := e in
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
+   W>} update_fblock_d' fsxp inum mscs.
+  Proof. 
+      intros; eapply weak_conversion_xcrash'.
+      apply update_fblock_d'_ok'.
+    Qed.  
+    
+    
+    Theorem update_fblock_d'_ok_weak :
+      forall fsxp inum off mscs pr,
+      {<W ds sm Fm Ftop tree pathname f Fd vs frees ilist,
+    PERM:pr   
+    PRE:bm, hm,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+      [[[ (DFData f) ::: (Fd * off |-> vs) ]]] 
+    POST:bm', hm', RET:^(mscs', ok)
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
+       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ MSCache mscs' = MSCache mscs ]] *
+       [[ MSAllocC mscs' = MSAllocC mscs ]] *
+       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *       
+       ([[ isError ok ]] \/
+        [[ ok = OK tt ]] * [[ can_access pr (DFOwner f) ]])
+    XCRASH:bm', hm',
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm'
+   W>} update_fblock_d' fsxp inum mscs.
+  Proof. 
+    intros; eapply pimpl_ok2_weak.
+        apply update_fblock_d'_ok_weak'.
+        intros; norml; unfold stars; simpl.
+        safecancel.
+        cancel.
+        apply sep_star_comm.
+        eauto.
+        eauto.
+        eauto.
+        specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+        eauto.
+      Qed.  
+    
+    Hint Extern 1 ({{W _|_ W}} Bind (update_fblock_d' _ _ _) _) => apply update_fblock_d'_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (update_fblock_d' _ _ _) _) => apply update_fblock_d'_ok : prog.
   
   Theorem update_fblock_d_ok :
@@ -1078,263 +1183,17 @@ Module AFS.
    W>} update_fblock_d fsxp inum off v mscs.
   Proof. 
     unfold update_fblock_d; intros.
-    eapply pimpl_ok2_weak.
-    eapply weak_conversion_xcrash with
-        (pre :=
-           (fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                      (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm hm =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-                  (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
-           [[[ ds!! :::
-            (Fm * rep fsxp Ftop tree ilist frees mscs sm) ]]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[[ (DFData f) ::: (Fd * off |-> vs) ]]])%pred)
-        
-        (post:= (fun F r (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm'  =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-              let mscs' := fst r in
-              let ok := fst (snd r) in
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-       [[[ (DFData f) ::: (Fd * off |-> vs) ]]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *       
-       ([[ isError ok ]] \/
-        exists t, [[ ok = OK t ]] * [[ t = DFOwner f ]] * [[ can_access pr t ]]))%pred)
+    weakstep.
 
-    (post2:= (fun F r (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm'  =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-              let mscs' := fst r in
-              let ok := fst (snd r) in
-           ([[ isError ok ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]]) \/       
-     ([[ ok = OK tt ]] *
-       exists tree' f' ds' sm' bn,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' bm' hm' *
-       [[ ds' = dsupd ds bn ((DFOwner f, v), vsmerge vs) ]] *
-       [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-       (* spec about files on the latest diskset *)
-       [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs' sm') ]]] *
-       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-       [[[ (DFData f') ::: (Fd * off |-> ((DFOwner f, v), vsmerge vs)) ]]] *
-       [[ DFAttr f' = DFAttr f ]] *
-       [[ DFOwner f' = DFOwner f ]] *
-       [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
-                       ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]))%pred)
-        
-    (crash1:=(fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm' =>
-              let (ds, x1):= e1 in
-              let (sm, _):= x1 in
-              LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm')%pred)
-
-    (crash2:=(fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm' =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-             LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm' \/
-       exists bn sm', [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn ((DFOwner f, v), vsmerge vs)) sm' bm' hm')%pred).
-
-
-    intros.
-    eapply pimpl_ok2; [solve [ eauto with prog ] |].
-    intros; simpl.
-    norml.
-    unfold stars; simpl; norml.
-    unfold stars; simpl; intros mx Hmx.
-    repeat eexists.
-    pred_apply; cancel; eauto.
-    step.
-    intros.
-    unfold pair_args_helper; simpl.
     destruct_branch.
-
-    eapply pimpl_ok2_weak.
-    eapply weak_conversion_reverse_xcrash with
-        (pre :=
-           (fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                      (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm hm =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
-                  (LOG.ActiveTxn ds ds!!) (MSLL (fst r)) sm bm hm *
-           [[[ ds!! :::
-            (Fm * rep fsxp Ftop tree ilist frees (fst r) sm) ]]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[[ (DFData f) ::: (Fd * off |-> vs) ]]] *
-           [[ MSAlloc (fst r) = MSAlloc mscs ]] *
-           [[ MSCache (fst r) = MSCache mscs ]] *
-           [[ MSAllocC (fst r) = MSAllocC mscs ]] *
-           [[ MSIAllocC (fst r) = MSIAllocC mscs ]] *
-           [[ t = DFOwner f ]] * [[ can_access pr t ]])%pred)
-        
-        (post:= (fun F (r':handle) (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm'  =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL (fst r)) sm bm' hm' *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees (fst r) sm) ]]] *
-       [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-       [[[ (DFData f) ::: (Fd * off |-> vs) ]]] *
-       [[ MSAlloc (fst r) = MSAlloc mscs ]] *
-       [[ MSCache (fst r) = MSCache mscs ]] *
-       [[ MSAllocC (fst r) = MSAllocC mscs ]] *
-       [[ MSIAllocC (fst r) = MSIAllocC mscs ]] *
-       [[ t = DFOwner f ]] * [[ can_access pr t ]] *      
-       [[ bm' r' = Some (t, v) ]])%pred)
-
-    (post2:= (fun F r (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm'  =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-              let mscs' := fst r in
-              let ok := fst (snd r) in
-           ([[ isError ok ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
-       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm) ]]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]]) \/       
-     ([[ ok = OK tt ]] *
-       exists tree' f' ds' sm' bn,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') sm' bm' hm' *
-       [[ ds' = dsupd ds bn ((DFOwner f, v), vsmerge vs) ]] *
-       [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ MSCache mscs' = MSCache mscs ]] *
-       [[ MSAllocC mscs' = MSAllocC mscs ]] *
-       [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-       (* spec about files on the latest diskset *)
-       [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees mscs' sm') ]]] *
-       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-       [[[ (DFData f') ::: (Fd * off |-> ((DFOwner f, v), vsmerge vs)) ]]] *
-       [[ DFAttr f' = DFAttr f ]] *
-       [[ DFOwner f' = DFOwner f ]] *
-       [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
-                       ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]))%pred)
-        
-    (crash1:=(fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm' =>
-              [[ False ]])%pred)
-
-    (crash2:=(fun (e1: (diskset * (Mem.mem * (pred * (pred *
-                          (dirtree * ((list String.string) * (dirfile * 
-                          (pred * (datatype * ((list addr * list addr) *
-                          (list INODE.inode)))))))))))) bm' hm' =>
-              let (ds, x1):= e1 in
-              let (sm, x2):= x1 in
-              let (Fm, x3):= x2 in
-              let (Ftop, x4):= x3 in
-              let (tree, x5):= x4 in
-              let (pathname, x6):= x5 in
-              let (f, x7):= x6 in
-              let (Fd, x8):= x7 in
-              let (vs, x9):= x8 in
-              let (frees, ilist):= x9 in
-             LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm' \/
-       exists bn sm', [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn ((DFOwner f, v), vsmerge vs)) sm' bm' hm')%pred).
-
+    destruct_branch.
     weakprestep; norml.
     unfold stars; simpl; norml.
+    inversion H10.
     cancel.
     weakstep.
     erewrite LOG.rep_blockmem_subset; [| eauto].
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    cancel.
     apply Mem.upd_eq; eauto.
     cancel.
 
@@ -1358,7 +1217,7 @@ Module AFS.
     step.
     
     lightstep.
-    or_r; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_r; cancel.
 
     intros; rewrite <- H2; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred.
@@ -1402,7 +1261,7 @@ Module AFS.
     intuition.
     weakstep.
     weaklightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l; cancel.
 
     rewrite <- H2; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred.
@@ -1481,7 +1340,7 @@ Module AFS.
     step.
     step.
     lightstep.
-    or_r; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_r; cancel.
     step.
     step.
     step.
@@ -1577,7 +1436,6 @@ Module AFS.
     step.
     step.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto.
     or_l; cancel.
     rewrite <- H1; cancel; eauto.
     xcrash.
@@ -1590,8 +1448,7 @@ Module AFS.
     }
     step.
     lightstep.
-
-    erewrite LOG.rep_hashmap_subset; eauto.
+f
     or_l; cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
@@ -1603,7 +1460,6 @@ Module AFS.
     step.
     lightstep.
 
-    erewrite LOG.rep_hashmap_subset; eauto.
     or_l; cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
@@ -1660,7 +1516,6 @@ Module AFS.
     step.
     step.
     prestep; norm. cancel.
-    erewrite LOG.rep_hashmap_subset; eauto.
     or_r; cancel.
     intuition. eauto.
     rewrite <- H1; cancel; eauto.
@@ -1679,7 +1534,6 @@ Module AFS.
     step.
     step.
     lightstep.
-    erewrite LOG.rep_hashmap_subset; eauto.
     or_l; cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
@@ -1849,15 +1703,15 @@ Module AFS.
     step.
     safestep.
     erewrite LOG.rep_blockmem_subset; eauto.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+     cancel.
     auto.
     step.
     step.
     step.
     lightstep.
-    or_r; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_r;  cancel.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash.
     or_r; cancel.
@@ -1868,7 +1722,7 @@ Module AFS.
     pred_apply; cancel.
     step.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. xform_norm. or_l.
     rewrite LOG.notxn_intact, LOG.intact_idempred. cancel.
@@ -1882,7 +1736,7 @@ Module AFS.
     step.
     lightstep.
     erewrite LOG.rep_blockmem_subset; eauto.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l;  cancel.
   Unshelve.
     all: eauto.
   Qed.
@@ -1938,12 +1792,12 @@ Module AFS.
     step.
     step.
     lightstep.
-    or_r; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_r;  cancel.
     eauto.
     eauto.
     eauto.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. or_r. cancel.
     repeat (cancel; progress xform_norm).
@@ -1953,7 +1807,7 @@ Module AFS.
     all: eauto.
     step.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
     rewrite <- H1; cancel; eauto.
@@ -2012,9 +1866,9 @@ Module AFS.
     step.
     step.
     lightstep.
-    or_r; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_r;  cancel.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. or_r.
     repeat (cancel; progress xform_norm).
@@ -2023,7 +1877,7 @@ Module AFS.
     all: eauto.
     step.
     lightstep.
-    or_l; erewrite LOG.rep_hashmap_subset; eauto; cancel.
+    or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
     rewrite <- H1; cancel; eauto.
@@ -2098,7 +1952,7 @@ Module AFS.
     prestep. norm.
     2: intuition idtac.
     unfold stars; simpl.
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+     cancel.
     intuition simpl; eauto.
     intuition simpl; eauto.
     intuition simpl; eauto.
@@ -2304,7 +2158,7 @@ Module AFS.
                 BFILE.MSICache := MSICache r_0;
                 BFILE.MSCache := MSCache r_0;
                 BFILE.MSDBlocks := MSDBlocks r_0 |}).
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+     cancel.
     or_l; cancel.
 
     step.
@@ -2319,7 +2173,7 @@ Module AFS.
                 BFILE.MSICache := MSICache r_0;
                 BFILE.MSCache := MSCache r_0;
                 BFILE.MSDBlocks := MSDBlocks r_0 |}).
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+     cancel.
     or_l; cancel.
     rewrite <- H1; cancel; eauto; apply pimpl_any.
     
@@ -2334,7 +2188,7 @@ Module AFS.
                 BFILE.MSICache := MSICache r_0;
                 BFILE.MSCache := MSCache r_0;
                 BFILE.MSDBlocks := MSDBlocks r_0 |}).
-    erewrite LOG.rep_hashmap_subset; eauto; cancel.
+     cancel.
     or_l; cancel.
     substl (length disk).
     apply gt_Sn_O.
