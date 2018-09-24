@@ -648,6 +648,108 @@ Qed.
       apply filter_In; intuition.
     Qed.
 
+
+    Theorem setowner_ok_public :
+    forall lxp bxp xp inum t cache ms pr,
+    {~< F Fm Fi Fs m0 m sm IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs)%pred sm ]] *
+           [[ (IOwner ino) = Public ]]
+   POST:bm', hm', RET:^(cache', ms', ok)
+           ([[ ok = false ]] *
+            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm' *
+            [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
+            [[ hm' = hm ]]) \/                  
+           ([[ ok = true ]] *  exists m' ilist' ino' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm') ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs')%pred sm ]] *
+           [[ ino' = mk_inode (IBlocks ino) (IAttr ino) t ]] *
+           [[ hm' = upd hm (S inum) t ]] *
+           [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst ms'))) <= (LogLen lxp) ]])
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    >~} setowner lxp xp inum t cache ms.
+  Proof.
+    unfold setowner, rep.
+    safestep.
+    denote listmatch as Hm;
+    rewrite listmatch_length_pimpl in Hm.
+    destruct_lift Hm.
+    rewrite combine_length_eq in *; eauto.
+    denote (length _ = length _) as Hlen;
+    setoid_rewrite <- Hlen.
+    eapply list2nmem_inbound; eauto.
+    denote listmatch as Hm;
+    rewrite listmatch_length_pimpl in Hm.
+    destruct_lift Hm.
+    rewrite combine_length_eq in *; [ |eauto].
+    step.
+    irec_wf.
+    sepauto.
+
+    assert(A: inum < length ilist). {
+      eapply list2nmem_inbound; eauto.
+    }
+
+    step.
+    erewrite <- H6, list2nmem_sel with (x:= ino); eauto.
+
+    safestep.
+    safestep.
+
+    rewrite LOG.rep_blockmem_subset; eauto.
+    or_r; cancel.
+    3: eauto.
+    4: eapply list2nmem_updN; eauto.
+
+    rewrite listmatch_isolate with (i:= inum); eauto.
+    cancel; eauto.
+    setoid_rewrite listmatch_isolate with (i:= inum) at 2; eauto.
+    rewrite removeN_combine.
+    setoid_rewrite removeN_combine.
+    do 2 rewrite removeN_updN.
+    setoid_rewrite selN_combine at 2; auto.
+    repeat rewrite selN_updN_eq; eauto.
+    unfold inode_match; rewrite selN_combine; auto.
+    erewrite <- list2nmem_sel with (x:= ino); eauto.
+    cancel; eauto.
+    rewrite encode_decode_tag; auto.
+    simplen.
+    simplen.
+    simplen.
+    simplen.
+
+    destruct (addr_eq_dec inum i); subst.
+    rewrite selN_updN_eq; eauto; simpl.
+    eapply subset_extract_some; eauto.
+    simpl; apply upd_eq; eauto.
+
+    rewrite selN_updN_ne; eauto.
+    eapply subset_extract_some; [|eauto].
+    rewrite upd_ne; eauto.
+    rewrite length_updN in *; eauto.
+    simplen.
+
+    cancel.
+
+    safestep.
+    or_l; cancel.
+
+    rewrite <- H1; cancel.
+    eauto.
+    rewrite <- H1; cancel; eauto.
+    Unshelve.
+    all: try exact addr; try exact nil; eauto.
+    exact irec0.
+    exact irec0.
+  Qed.
+
+
   Theorem setowner_ok :
     forall lxp bxp xp inum t cache ms pr,
     {~<W F Fm Fi Fs m0 m sm IFs ilist ino,
@@ -751,7 +853,7 @@ Qed.
 
   Lemma inode_match_init_ok : forall bxp n,
     emp =p=> listmatch (inode_match bxp) (repeat (inode0, emp) n) (repeat IRec.Defs.item0 n).
-  Proof. Admitted. (* takes too long
+  Proof. 
     induction n; simpl; intros.
     unfold listmatch; cancel.
     rewrite IHn.
@@ -765,7 +867,6 @@ Qed.
     eapply list_same_repeat.
     setoid_rewrite <- encode_public; rewrite encode_decode; auto.
   Qed.
-  *)
   
   Theorem init_ok :
     forall lxp bxp xp ms pr,
@@ -1529,6 +1630,7 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _ _) _) => apply getowner_ok : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok : prog.
+  Hint Extern 1 ({{ _|_ }} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok_public : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ _ _ _) (rep _ _ _ _ _ _)) => constructor : okToUnify.
 

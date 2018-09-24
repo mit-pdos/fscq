@@ -482,7 +482,7 @@ Module BFILE.
     let^ (icache, cms) <- INODE.reset lxp (pick_balloc bxp (negb al)) xp inum sz attr0 icache cms;;
     let^ (icache, ms, ok) <- INODE.setowner lxp xp inum Public icache (BALLOCC.MSLog cms);;          
     let dblocks := clear_dirty inum dblocks in
-    Ret (mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache) dblocks).
+    Ret ^(mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache) dblocks, ok).
   
   
   Definition reset' lxp bxp xp inum ms :=
@@ -1901,7 +1901,140 @@ Qed.
 
   Hint Resolve freepred_bfile0.
 
- (** specification **)
+  (** specification **)
+
+Theorem setowner_ok_public :
+    forall lxp bxps ixp inum tag ms pr,
+    {~< F Fm Ff m0 sm m flist ilist allocc frees f,
+    PERM:pr
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxps sm ixp flist ilist frees allocc (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
+           [[[ flist ::: (Ff * inum |-> f) ]]] *
+           [[ (BFOwner f) = Public ]]
+    POST:bm', hm', RET:^(ms', ok)
+           ([[ ok = false ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           [[[ m ::: (Fm * rep bxps sm ixp flist ilist frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[ hm' = hm ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSDBlocks ms = MSDBlocks ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]]) \/
+                   
+           ([[ ok = true ]] * exists m' flist' f' ilist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxps sm ixp flist' ilist' frees allocc (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[[ flist' ::: (Ff * inum |-> f') ]]] *
+           [[ f' = mk_bfile (BFData f) (BFAttr f) tag (BFCache f) ]] *
+           [[ INODE.IOwner (selN ilist' inum INODE.inode0) = tag ]] *
+           [[ hm' = upd hm (S inum) tag ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSDBlocks ms = MSDBlocks ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' /\
+            let free := pick_balloc frees (MSAlloc ms') in
+            ilist_safe ilist free ilist' free ]] *
+           [[ treeseq_ilist_safe inum ilist ilist' ]] *
+           [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst (MSLL ms')))) <= (LogLen lxp) ]])
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    >~} setowner lxp ixp inum tag ms.
+  Proof. 
+    unfold setowner, rep.
+    step.
+    sepauto.
+    
+    denote listmatch as Hx;
+    rewrite listmatch_length_pimpl in Hx.
+    destruct_lift Hx.
+    assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
+    assert (A0:inum < length ilist). { match goal with [H: length _ = ?x |- _ < ?x ] => rewrite <- H; eauto end. }
+    rewrite listmatch_isolate with (i:=inum) in H by auto.
+    unfold file_match in H; destruct_lift H; eauto.
+    rewrite <- H18; erewrite <- list2nmem_sel; eauto.
+    
+    denote listmatch as Hx;
+    rewrite listmatch_length_pimpl in Hx.
+    destruct_lift Hx.
+    assert (A:inum < length flist). { eapply list2nmem_inbound; eauto. }
+    assert (A0:inum < length ilist). { match goal with [H: length _ = ?x |- _ < ?x ] => rewrite <- H; eauto end. }
+    step.
+    safestep.
+
+    or_l; cancel.
+
+    safestep.
+    or_r; safecancel.
+
+    6: eauto.
+    5: eapply list2nmem_updN; eauto.
+    
+    denote arrayN_ex as Hx;
+    apply list2nmem_array_updN in Hx; auto.
+    rewrite Hx.
+    rewrite listmatch_isolate with (i:=inum) by auto.
+    rewrite listmatch_isolate with (i:=inum)(b:= updN ilist _ _) by (rewrite length_updN; auto).
+    repeat rewrite removeN_updN.
+    cancel.
+    repeat rewrite selN_updN_eq; auto.
+    unfold file_match; simpl.
+    cancel.
+    eassign bfile0.
+    eassign INODE.inode0.
+    erewrite <- list2nmem_sel with (l:=flist); eauto.
+    erewrite <- list2nmem_sel with (l:=flist) in *; eauto.
+
+    rewrite length_updN in *.
+    destruct (addr_eq_dec inum i); subst.
+    rewrite selN_updN_eq; eauto; simpl.
+    erewrite list2nmem_sel with (x:=f); eauto.
+
+    rewrite selN_updN_ne; eauto.
+    eauto.
+
+    denote arrayN_ex as Hx;
+    apply list2nmem_array_updN in Hx; auto.
+    rewrite Hx.
+    unfold smrep.
+    rewrite arrayN_except with (i:= inum); simpl; auto.
+    rewrite arrayN_except_upd with (i:= inum); simpl; auto.
+    eassign dummy1; cancel.
+    simpl; eauto.
+
+    denote arrayN_ex as Hx;
+    apply list2nmem_array_updN in Hx; auto.
+    rewrite Hx.
+    erewrite selN_updN_eq in * by eauto; simpl; eauto.
+
+    eauto.
+                                          
+    denote arrayN_ex as Hx;
+    apply list2nmem_array_updN in Hx; auto.
+    rewrite Hx.
+    unfold ilist_safe; intuition. left.
+    destruct (addr_eq_dec inum inum0); subst.
+    - unfold block_belong_to_file in *; intuition.
+      all: erewrite selN_updN_eq in * by eauto; simpl; eauto.
+    - unfold block_belong_to_file in *; intuition.
+      all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
+    - unfold treeseq_ilist_safe.
+      split.
+      intros.
+      seprewrite.
+      unfold block_belong_to_file in *.
+      erewrite selN_updN_eq; simpl; eauto.
+
+      intros.
+      denote arrayN_ex as Ha.
+      apply arrayN_except_upd in Ha; auto.
+      apply list2nmem_array_eq in Ha; subst.
+      rewrite selN_updN_ne; auto.
+   Unshelve.
+   all: eauto.
+   exact INODE.inode0.
+  Qed.  
+
+  
   
 Theorem setowner_ok :
     forall lxp bxps ixp inum tag ms pr,
@@ -3649,6 +3782,7 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _) _) => apply getowner_ok : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok : prog.
+  Hint Extern 1 ({{_|_}} Bind (setowner _ _ _ _ _) _) => apply setowner_ok_public : prog.
   Hint Extern 1 ({{_|_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (updattr _ _ _ _ _) _) => apply updattr_ok : prog. 
@@ -4081,7 +4215,7 @@ Qed.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
            [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:bm', hm', RET:ms' exists m' flist' ilist' frees',
+    POST:bm', hm', RET:^(ms', ok) exists m' flist' ilist' frees',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
            [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
                       (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
