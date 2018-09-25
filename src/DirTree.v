@@ -1146,7 +1146,8 @@ Module DIRTREE.
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
             [[ forall inum def', inum <> dnum ->
-                 (In inum (tree_inodes tree') \/ (~ In inum (tree_inodes tree))) -> selN ilist inum def' = selN ilist' inum def' ]])
+                 (In inum (tree_inodes tree') \/ 
+                 (~ In inum (tree_inodes tree))) -> selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
     W>} delete fsxp dnum name mscs.
@@ -1154,7 +1155,7 @@ Module DIRTREE.
     unfold delete, rep.
 
     (* extract some basic facts from rep *)
-    intros; eapply pimpl_ok2; monad_simpl; eauto with prog; intros; norm'l.
+    intros; eapply pimpl_ok2_weak; monad_simpl_weak; eauto with prog; intros; norm'l.
     assert (tree_inodes_distinct (TreeDir dnum tree_elem)) as HiID.
     eapply rep_tree_inodes_distinct with (m := list2nmem m).
     pred_apply; unfold rep; cancel.
@@ -1172,13 +1173,14 @@ Module DIRTREE.
     
 
     denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
-    step.
-    step.
-    step.
-    step.
+    unfold If_.
+    weakstep.
+    weakstep.
+    weakstep.
+    weakstep.
 
     (* unlink *)
-    prestep.
+    weakprestep.
     norm.
     cancel.
     intuition.
@@ -1188,9 +1190,9 @@ Module DIRTREE.
     eauto.
 
     destruct_branch.
-    step.
+    weakstep.
     (* is_file: prepare for reset *)
-    prestep. norml.
+    weakprestep. norml.
     denote dirlist_pred as Hx.
     erewrite dirlist_extract with (inum := a0) in Hx; eauto.
     destruct_lift Hx.
@@ -1199,7 +1201,7 @@ Module DIRTREE.
     cancel.
 
     (* is_file: prepare for free *)
-    prestep. norml; msalloc_eq.
+    weakprestep. norml; msalloc_eq.
     denote dirlist_pred as Hx.
     (*erewrite dirlist_extract with (inum := n) in Hx; eauto. *)
     destruct_lift Hx.
@@ -1210,8 +1212,8 @@ Module DIRTREE.
     end.
 
     (* post conditions *)
-    step.
-    step.
+    weakstep.
+    weakstep.
     or_r; safecancel.
     
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.

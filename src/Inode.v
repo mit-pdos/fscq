@@ -1237,7 +1237,89 @@ Qed.
     Unshelve.
     all: eauto.
   Qed.
+  
+  Theorem getallbnum_ok' :
+    forall lxp bxp xp inum cache ms pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+        let '(F, Fm, Fi, m0, sm, m, IFs, ilist, ino) := e in 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST:bm', hm', RET:^(cache', ms, r)
+        let '(F, Fm, Fi, m0, sm, m, IFs, ilist, ino) := e in 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
+           [[ r = (IBlocks ino) ]]
+    CRASH:bm', hm',  exists ms',
+        let '(F, Fm, Fi, m0, sm, m, IFs, ilist, ino) := e in 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    >} getallbnum lxp xp inum cache ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply getallbnum_ok.
+    intros; norml; simpl in *.
+    intros mx Hmx; destruct_lift Hmx.
+    repeat eexists; pred_apply; safecancel.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a1, b, (a0, b1)))); simpl in *; eauto.
+  Qed.
 
+  Require Import WeakConversion.
+  
+  Theorem getallbnum_ok_weak' :
+    forall lxp bxp xp inum cache ms pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+        let '(F, Fm, Fi, m0, sm, m, IFs, ilist, ino) := e in 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST:bm', hm', RET:^(cache', ms, r)
+        let '(F, Fm, Fi, m0, sm, m, IFs, ilist, ino) := e in 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
+           [[ r = (IBlocks ino) ]]
+    CRASH:bm', hm',  exists ms',
+        let '(F, Fm, Fi, m0, sm, m, IFs, ilist, ino) := e in 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    W>} getallbnum lxp xp inum cache ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply getallbnum_ok'.
+  Qed.
+  
+  Theorem getallbnum_ok_weak :
+    forall lxp bxp xp inum cache ms pr,
+    {<W F Fm Fi m0 sm m IFs ilist ino,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST:bm', hm', RET:^(cache', ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm' hm' *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache' hm') ]]] *
+           [[ r = (IBlocks ino) ]]
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' sm bm' hm'
+    W>} getallbnum lxp xp inum cache ms.
+  Proof. 
+    intros; eapply pimpl_ok2_weak.
+    apply getallbnum_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    cancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, (a1, b, (a0, b1)))); simpl in *; eauto.
+    eauto.
+  Qed.
+  
  Theorem getowner_ok :
     forall lxp bxp xp inum cache ms pr,
     {< F Fm Fi m0 sm m IFs ilist ino,
@@ -1492,7 +1574,105 @@ Qed.
     exact IRec.Defs.item0. all: eauto.
     unfold EqDec; apply addr_eq_dec.
   Qed.
-
+  
+  Theorem reset_ok' : 
+    forall lxp bxp xp inum nr attr cache ms pr,
+    {< e,
+    PERM:pr
+    PRE:bm, hm,
+          let '(F, Fm, Fi, Fs, m0, sm, m, IFs, ilist, ino, freelist) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
+    POST:bm', hm', RET:^(cache', ms) 
+        let '(F, Fm, Fi, Fs, m0, sm, m, IFs, ilist, ino, freelist) := e in
+        exists m' ilist' ino' freelist' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
+           [[ ilist' = updN ilist inum ino' ]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr (IOwner ino)]] *
+           [[ incl freelist freelist' ]]
+    CRASH:bm', hm',  
+          let '(F, Fm, Fi, Fs, m0, sm, m, IFs, ilist, ino, freelist) := e in
+          LOG.intact lxp F m0 sm bm' hm'
+    >} reset lxp bxp xp inum nr attr cache ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply reset_ok.
+    intros; norml; simpl in *.
+    intros mx Hmx; destruct_lift Hmx.
+    repeat eexists; pred_apply; safecancel.
+    apply sep_star_comm.
+    eauto.
+    apply sep_star_comm.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+  Qed.
+  
+  Theorem reset_ok_weak' : 
+    forall lxp bxp xp inum nr attr cache ms pr,
+    {<W e,
+    PERM:pr
+    PRE:bm, hm,
+          let '(F, Fm, Fi, Fs, m0, sm, m, IFs, ilist, ino, freelist) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
+    POST:bm', hm', RET:^(cache', ms) 
+        let '(F, Fm, Fi, Fs, m0, sm, m, IFs, ilist, ino, freelist) := e in
+        exists m' ilist' ino' freelist' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
+           [[ ilist' = updN ilist inum ino' ]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr (IOwner ino)]] *
+           [[ incl freelist freelist' ]]
+    CRASH:bm', hm',  
+          let '(F, Fm, Fi, Fs, m0, sm, m, IFs, ilist, ino, freelist) := e in
+          LOG.intact lxp F m0 sm bm' hm'
+    W>} reset lxp bxp xp inum nr attr cache ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply reset_ok'.
+  Qed. 
+  
+  Theorem reset_ok_weak : 
+    forall lxp bxp xp inum nr attr cache ms pr,
+    {<W F Fm Fi Fs m0 sm m IFs ilist ino freelist,
+    PERM:pr
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp IFs xp ilist cache hm * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]] *
+           [[ (Fs * IFs * BALLOCC.smrep freelist)%pred sm ]]
+    POST:bm', hm', RET:^(cache', ms) exists m' ilist' ino' freelist' IFs',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) sm bm' hm' *
+           [[[ m' ::: (Fm * rep bxp IFs' xp ilist' cache' hm' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ (Fs * IFs' * BALLOCC.smrep freelist')%pred sm ]] *
+           [[ ilist' = updN ilist inum ino' ]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr (IOwner ino)]] *
+           [[ incl freelist freelist' ]]
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    W>} reset lxp bxp xp inum nr attr cache ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply reset_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    cancel.
+    apply sep_star_comm.
+    eauto.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed.
+    
   Lemma grow_wellformed :
     forall (a : BPtrSig.irec) inum reclist cache F1 F2 F3 F4 m xp,
     ((((F1 * IRec.rep xp reclist cache) * F2) * F3) * F4)%pred m ->
@@ -1625,9 +1805,11 @@ Qed.
   Hint Extern 1 ({{_|_}} Bind (updattr _ _ _ _ _ _) _) => apply updattr_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getbnum _ _ _ _ _ _) _) => apply getbnum_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (getallbnum _ _ _ _ _) _) => apply getallbnum_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (getallbnum _ _ _ _ _) _) => apply getallbnum_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (grow _ _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (getowner _ _ _ _ _) _) => apply getowner_ok : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok : prog.
   Hint Extern 1 ({{ _|_ }} Bind (setowner _ _ _ _ _ _) _) => apply setowner_ok_public : prog.

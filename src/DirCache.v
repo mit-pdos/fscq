@@ -12,6 +12,7 @@ Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import StringUtils.
 Require Import MapUtils.
+Require Import WeakConversion.
 Require List.
 
 Require Import DirName.
@@ -341,8 +342,111 @@ Module CacheOneDir.
     all: repeat (solve [eauto] || constructor).
     all: eauto.
   Qed.
-
-  Hint Extern 1 ({{_|_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog. 
+  
+  
+  Theorem lookup_ok' :
+    forall lxp bxp ixp dnum name ms pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r)
+          let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+           exists f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm hm' *
+           [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+         ( [[ r = None /\ notindomain name dmap ]] \/
+           exists inum isdir Fd,
+           [[ r = Some (inum, isdir) /\ inum <> 0 /\
+                   (Fd * name |-> (inum, isdir))%pred dmap ]]) *
+           [[ True ]]
+    CRASH:bm', hm',
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+           LOG.intact lxp F m0 sm bm' hm'
+    >} lookup lxp ixp dnum name ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply lookup_ok.
+    intros; norml; simpl in *.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed.
+  
+  
+  Theorem lookup_ok_weak' :
+    forall lxp bxp ixp dnum name ms pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r)
+          let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+           exists f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm hm' *
+           [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+         ( [[ r = None /\ notindomain name dmap ]] \/
+           exists inum isdir Fd,
+           [[ r = Some (inum, isdir) /\ inum <> 0 /\
+                   (Fd * name |-> (inum, isdir))%pred dmap ]]) *
+           [[ True ]]
+    CRASH:bm', hm',
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+           LOG.intact lxp F m0 sm bm' hm'
+    W>} lookup lxp ixp dnum name ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply lookup_ok'.
+  Qed.  
+  
+  Theorem lookup_ok_weak :
+    forall lxp bxp ixp dnum name ms pr,
+    {<W F Fi Fm m0 sm m dmap ilist frees f,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r)
+           exists f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+           rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f' ms' sm hm' *
+           [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
+         ( [[ r = None /\ notindomain name dmap ]] \/
+           exists inum isdir Fd,
+           [[ r = Some (inum, isdir) /\ inum <> 0 /\
+                   (Fd * name |-> (inum, isdir))%pred dmap ]]) *
+           [[ True ]]
+    CRASH:bm', hm',
+           LOG.intact lxp F m0 sm bm' hm'
+    W>} lookup lxp ixp dnum name ms.
+  Proof. 
+    intros; eapply pimpl_ok2_weak.
+    apply lookup_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    setoid_rewrite sep_star_comm at 2.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed.
+  
+  Hint Extern 1 ({{_|_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok_weak : prog. 
 
   Theorem readdir_ok : 
     forall lxp bxp ixp dnum ms pr,
@@ -371,6 +475,96 @@ Module CacheOneDir.
     lightstep; msalloc_eq.
     cancel.
   Qed.
+  
+  Theorem readdir_ok' : 
+    forall lxp bxp ixp dnum ms pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r)
+    let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms' sm hm' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+             [[ listpred SDIR.readmatch r dmap ]] *
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSCache ms' = MSCache ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
+    CRASH:bm', hm',  
+        let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+        exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
+    >} readdir lxp ixp dnum ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply readdir_ok.
+    intros; norml; simpl in *.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed.
+
+  Theorem readdir_ok_weak' : 
+    forall lxp bxp ixp dnum ms pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r)
+    let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms' sm hm' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+             [[ listpred SDIR.readmatch r dmap ]] *
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSCache ms' = MSCache ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
+    CRASH:bm', hm',  
+        let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+        exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
+    W>} readdir lxp ixp dnum ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply readdir_ok'.
+  Qed.
+  
+  Theorem readdir_ok_weak : 
+    forall lxp bxp ixp dnum ms pr,
+    {<W F Fi Fm m0 sm m dmap ilist frees f,
+    PERM:pr   
+    PRE:bm, hm,
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r)
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms' sm hm' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm' *
+             [[ listpred SDIR.readmatch r dmap ]] *
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSCache ms' = MSCache ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
+    CRASH:bm', hm',  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') sm bm' hm'
+    W>} readdir lxp ixp dnum ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply readdir_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    setoid_rewrite sep_star_comm at 2.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed. 
 
   Theorem unlink_ok :
     forall lxp bxp ixp dnum name ms pr,
@@ -431,6 +625,98 @@ Module CacheOneDir.
   Unshelve.
     all: eauto.
   Qed.
+  
+  Theorem unlink_ok' :
+    forall lxp bxp ixp dnum name ms pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r) 
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+            exists m' dmap' f',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist frees f' ms' sm hm' *
+             [[ dmap' = mem_except dmap name ]] *
+             [[ notindomain name dmap' ]] *
+             [[ r = OK tt -> indomain name dmap ]] *
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
+    CRASH:bm', hm', 
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+            LOG.intact lxp F m0 sm bm' hm'
+    >} unlink lxp ixp dnum name ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply unlink_ok.
+    intros; norml; simpl in *.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed. 
+
+  Theorem unlink_ok_weak' :
+    forall lxp bxp ixp dnum name ms pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r) 
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+            exists m' dmap' f',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist frees f' ms' sm hm' *
+             [[ dmap' = mem_except dmap name ]] *
+             [[ notindomain name dmap' ]] *
+             [[ r = OK tt -> indomain name dmap ]] *
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
+    CRASH:bm', hm', 
+            let '(F, Fi, Fm, m0, sm, m, dmap, ilist, frees, f) := e in
+            LOG.intact lxp F m0 sm bm' hm'
+    W>} unlink lxp ixp dnum name ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply unlink_ok'.
+  Qed.  
+
+  Theorem unlink_ok_weak :
+    forall lxp bxp ixp dnum name ms pr,
+    {<W F Fi Fm m0 sm m dmap ilist frees f,
+    PERM:pr   
+    PRE:bm, hm,
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+             rep_macro Fi Fm m bxp ixp dnum dmap ilist frees f ms sm hm
+    POST:bm', hm', RET:^(ms', r) exists m' dmap' f',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
+             rep_macro Fi Fm m' bxp ixp dnum dmap' ilist frees f' ms' sm hm' *
+             [[ dmap' = mem_except dmap name ]] *
+             [[ notindomain name dmap' ]] *
+             [[ r = OK tt -> indomain name dmap ]] *
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] 
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    W>} unlink lxp ixp dnum name ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply unlink_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    setoid_rewrite sep_star_comm at 2.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+    eauto.
+  Qed. 
 
   Lemma sdir_rep_cache : forall f c m inum,
     SDIR.rep f inum m ->
@@ -583,7 +869,9 @@ Module CacheOneDir.
 
 
   Hint Extern 1 ({{_|_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok_weak : prog.
   Hint Extern 1 ({{_|_}} Bind (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (readdir _ _ _ _) _) => apply readdir_ok_weak : prog.
 
 End CacheOneDir.

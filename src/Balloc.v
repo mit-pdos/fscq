@@ -9,7 +9,7 @@ Require Import Psatz.
 Require Import Rec.
 Require Import NArith.
 Require Import FSLayout.
-Require Import WordAuto.
+Require Import WordAuto WeakConversion.
 Require Import Rounding Rec.
 Require Export ListPred Log LogRecArray.
 
@@ -1164,12 +1164,97 @@ Hint Resolve can_access_repeat_public_selN.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
+  Theorem free_ok' :
+    forall V FP lxp xp bn ms pr,
+    {< e,
+    PERM:pr
+    PRE:bm, hm,
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ bn < (BMPLen xp) * valulen ]] *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
+    POST:bm', hm', RET:ms 
+        let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+        exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
+          [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred') ]]] *
+          [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
+    CRASH:bm', hm', 
+        let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+        LOG.intact lxp F m0 sm bm' hm'
+    >} free lxp xp bn ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply free_ok.
+    intros; norml; simpl in *.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    specialize (H2 (a, b)); simpl in *; eauto.
+  Qed.
+  
+  Theorem free_ok_weak' :
+    forall V FP lxp xp bn ms pr,
+    {<W e,
+    PERM:pr
+    PRE:bm, hm,
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ bn < (BMPLen xp) * valulen ]] *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
+    POST:bm', hm', RET:ms 
+        let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+        exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
+          [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred') ]]] *
+          [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
+    CRASH:bm', hm', 
+        let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+        LOG.intact lxp F m0 sm bm' hm'
+    W>} free lxp xp bn ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply free_ok'.
+  Qed.  
+  
+  Theorem free_ok_weak :
+    forall V FP lxp xp bn ms pr,
+    {<W F Fm m0 sm m freelist freepred,
+    PERM:pr
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms sm bm hm *
+          [[ bn < (BMPLen xp) * valulen ]] *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
+    POST:bm', hm', RET:ms exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms sm bm' hm' *
+          [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred') ]]] *
+          [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    W>} free lxp xp bn ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply free_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    cancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    specialize (H2 (a, b)); simpl in *; eauto.
+    eauto.
+  Qed.
+    
+    
   Hint Extern 1 ({{_|_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (init_nofree _ _ _) _) => apply init_nofree_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (free _ _ _ _) _) => apply free_ok_weak : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
 
@@ -1553,7 +1638,93 @@ Module BmapAllocCache (Sig : AllocSig).
     erewrite <- cache_rep_in by eauto. auto.
     
   Qed.
-
+  
+  Theorem free_ok' :
+    forall V FP lxp xp bn ms pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm bm hm *
+          [[ bn <> 0 ]] *
+          [[ bn < (Sig.BMPLen xp) * valulen ]] *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
+    POST:bm', hm', RET:ms 
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm bm' hm' *
+          [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred' ms) ]]] *
+          [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
+    CRASH:bm', hm', 
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          LOG.intact lxp F m0 sm bm' hm'
+    >} free lxp xp bn ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply free_ok.
+    intros; norml; simpl in *.
+    safecancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+  Qed.
+    
+    Theorem free_ok_weak' :
+    forall V FP lxp xp bn ms pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm bm hm *
+          [[ bn <> 0 ]] *
+          [[ bn < (Sig.BMPLen xp) * valulen ]] *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
+    POST:bm', hm', RET:ms 
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm bm' hm' *
+          [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred' ms) ]]] *
+          [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
+    CRASH:bm', hm', 
+          let '(F, Fm, m0, sm, m, freelist, freepred) := e in
+          LOG.intact lxp F m0 sm bm' hm'
+    W>} free lxp xp bn ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply free_ok'.
+  Qed.
+  
+  Theorem free_ok_weak :
+    forall V FP lxp xp bn ms pr,
+    {<W F Fm m0 sm m freelist freepred,
+    PERM:pr   
+    PRE:bm, hm,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm bm hm *
+          [[ bn <> 0 ]] *
+          [[ bn < (Sig.BMPLen xp) * valulen ]] *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
+    POST:bm', hm', RET:ms exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm bm' hm' *
+          [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred' ms) ]]] *
+          [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
+    CRASH:bm', hm', LOG.intact lxp F m0 sm bm' hm'
+    W>} free lxp xp bn ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply free_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    cancel.
+    apply sep_star_comm.
+    eauto.
+    eauto.
+    eauto.
+    eauto.
+  Qed.
+        
   Theorem steal_ok :
     forall V FP lxp xp bn (ms:memstate) pr,
     {< F Fm m0 sm m freelist freepred,
@@ -1586,6 +1757,7 @@ Module BmapAllocCache (Sig : AllocSig).
   Hint Extern 1 ({{_|_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (free _ _ _ _) _) => apply free_ok_weak : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
   Lemma xform_rep : forall V FP xp l ms p,
@@ -2442,8 +2614,86 @@ Module BALLOCC.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.
 
+  Theorem freevec_ok' :
+    forall lxp xp l ms pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+        let '(F, Fs, Fm, m0, sm, m, freeblocks) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm bm hm *
+           [[ Forall (bn_valid xp) l ]] *
+           [[[ m ::: (Fm * rep xp freeblocks ms * listpred (fun a => a |->?) l ) ]]] *
+           [[ (Fs * listpred (fun a => a |->?) l * smrep freeblocks)%pred sm ]]
+    POST:bm', hm', RET:ms exists m',
+        let '(F, Fs, Fm, m0, sm, m, freeblocks) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm bm' hm' *
+           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks) ms) ]]] *
+           [[ (Fs * smrep (rev l ++ freeblocks))%pred sm ]]
+    CRASH:bm', hm',  
+           let '(F, Fs, Fm, m0, sm, m, freeblocks) := e in
+           LOG.intact lxp F m0 sm bm' hm'
+    >} freevec lxp xp l ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply freevec_ok.
+    intros; norml; simpl in *.
+    intros mx Hmx; destruct_lift Hmx.
+    repeat eexists; pred_apply; safecancel.
+    eauto.
+  Qed.
+  
+  Theorem freevec_ok_weak' :
+    forall lxp xp l ms pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+        let '(F, Fs, Fm, m0, sm, m, freeblocks) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm bm hm *
+           [[ Forall (bn_valid xp) l ]] *
+           [[[ m ::: (Fm * rep xp freeblocks ms * listpred (fun a => a |->?) l ) ]]] *
+           [[ (Fs * listpred (fun a => a |->?) l * smrep freeblocks)%pred sm ]]
+    POST:bm', hm', RET:ms exists m',
+        let '(F, Fs, Fm, m0, sm, m, freeblocks) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm bm' hm' *
+           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks) ms) ]]] *
+           [[ (Fs * smrep (rev l ++ freeblocks))%pred sm ]]
+    CRASH:bm', hm',  
+           let '(F, Fs, Fm, m0, sm, m, freeblocks) := e in
+           LOG.intact lxp F m0 sm bm' hm'
+    W>} freevec lxp xp l ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply freevec_ok'.
+  Qed.
+  
+  Theorem freevec_ok_weak :
+    forall lxp xp l ms pr,
+    {<W F Fs Fm m0 sm m freeblocks,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) sm bm hm *
+           [[ Forall (bn_valid xp) l ]] *
+           [[[ m ::: (Fm * rep xp freeblocks ms * listpred (fun a => a |->?) l ) ]]] *
+           [[ (Fs * listpred (fun a => a |->?) l * smrep freeblocks)%pred sm ]]
+    POST:bm', hm', RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) sm bm' hm' *
+           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks) ms) ]]] *
+           [[ (Fs * smrep (rev l ++ freeblocks))%pred sm ]]
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    W>} freevec lxp xp l ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply freevec_ok_weak'.
+    intros; norml; simpl in *.
+    safecancel.
+    cancel.
+    eauto.
+    eauto.
+    eauto.
+  Qed.
+  
   Hint Extern 1 ({{_|_}} Bind (freevec _ _ _ _) _) => apply freevec_ok : prog.
-
+  Hint Extern 1 ({{W _|_ W}} Bind (freevec _ _ _ _) _) => apply freevec_ok_weak : prog.
 
   Lemma xparams_ok_goodSize : forall xp a,
     Sig.xparams_ok xp ->
@@ -2580,12 +2830,15 @@ Module IAlloc.
   Definition alloc_ok := Alloc.alloc_ok.
 
   Definition free_ok := Alloc.free_ok.
+  
+  Definition free_ok_weak := Alloc.free_ok_weak.
 
   Definition items_per_val := Alloc.Alloc.BmpSig.items_per_val.
 
   Hint Extern 1 ({{_|_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_|_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (free _ _ _ _) _) => apply free_ok_weak : prog.
   Hint Extern 0 (okToUnify (rep _ ?xp _ _ _) (rep _ ?xp _ _ _)) => constructor : okToUnify.
 
   Definition xform_rep := Alloc.xform_rep.
