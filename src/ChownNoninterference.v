@@ -1018,86 +1018,52 @@ Proof.
   denote lift_empty as Hemp; destruct_lift Hemp.
   denote or as Hor;
   apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
-    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *.
-  { (* DIRTREE.authenticate returns true *)
+    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *; try congruence.
+  { 
     inv_exec_perm.
-    pose proof (@DIRTREE.getowner_ok fsxp inum x15_1 caller) as Hspec.
+    pose proof (@DIRTREE.changeowner_ok fsxp inum new_tag x15_1 caller) as Hspec.
     specialize (Hspec _ (fun r => Ret r)).
-    unfold corr2 in *.
+    unfold corr2_weak in *.
     edestruct Hspec with (d:= x0).
     2: econstructor; eauto; repeat econstructor.
-    { (** extract postcondition from DIRTREE.getowner **)
+    { (** extract postcondition from DIRTREE.changeowner **)
       repeat eexists; pred_apply; cancel.
       cancel; apply pimpl_refl.
+      eauto.
       eauto.
 
        match goal with
            [H: context [ donec = _ ] |- _ ] =>
            rename H into Hpc;
-          instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate * (tag * unit)) =>
-               let mscs' := fst r in let r := fst (snd r) in
-               (Fr * ⟦⟦ x14 = hm' ⟧⟧ *
-                LOG.rep fsxp.(FSXPLog) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
-                [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) mscs' sm hm' ]]] *
-                [[ BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ]] *
-                [[ BFILE.MSCache mscs' = BFILE.MSCache mscs ]] *
-                [[ MSAllocC mscs' = MSAllocC mscs ]] *
-                [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-                [[ r = DFOwner f ]])%pred d) in Hpc
-        end.
-         destruct_lift Hpc.
-         denote Ret as Hret; inv_exec'' Hret.
-         do 3 eexists; left; repeat eexists; eauto.
-         simpl ;auto.
-         pred_apply; cancel.
-         denote Ret as Hret; inv_exec'' Hret; simpl; auto.
-         eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
-           intros mx Hmx; simpl; auto.
-  }
-  simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-  eapply exec_equivalent_for_viewer_finished in H9; eauto; cleanup.
-  unfold pair_args_helper in *; simpl in *.
-
-  denote lift_empty as Hemp; destruct_lift Hemp.
-  inv_exec_perm.
-  pose proof (@DIRTREE.changeowner_ok fsxp inum new_tag x21_1 caller) as Hspec.
-    specialize (Hspec _ (fun r => Ret r)).
-    unfold corr2 in *.
-    edestruct Hspec with (d:= x8).
-    2: econstructor; eauto; repeat econstructor.
-    { (** extract postcondition from DIRTREE.getowner **)
-      repeat eexists; pred_apply; cancel.
-      cancel; apply pimpl_refl.
-      eauto.
-
-       match goal with
-           [H: context [ donec = _ ] |- _ ] =>
-           rename H into Hpc;
-          instantiate (2:=fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate) =>
-               let mscs' := r in
-               exists m' tree' f' ilist',
-                 (Fr *               
-           LOG.rep fsxp.(FSXPLog) (SB.rep fsxp) (LOG.ActiveTxn ds m') (MSLL mscs') sm bm' hm' *
+          instantiate (2:=fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate * (bool * unit)) =>
+               let mscs' := fst r in let ok := fst (snd r) in
+           (Fr *               
+           (([[ ok = false ]] *
+            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (AFS.MSLL mscs') sm bm' hm' *
+            [[ (Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) mscs' sm hm')%pred (list2nmem ds!!) ]] *
+            [[ hm' = x14 ]]) \/      
+           ([[ ok = true ]] * exists m' tree' f' ilist',
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds m') (AFS.MSLL mscs') sm bm' hm' *
            [[ (Fm * rep fsxp Ftop tree' ilist' (frees_1, frees_2) mscs' sm hm')%pred (list2nmem m') ]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ f' = mk_dirfile (DFData f) (DFAttr f) new_tag ]] *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ AFS.MSAlloc mscs' = AFS.MSAlloc x15_1 ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc (frees_1, frees_2)  (MSAlloc mscs')) tree
-                           ilist' (BFILE.pick_balloc (frees_1, frees_2)  (MSAlloc mscs')) tree' ]] *
+                           ilist' (BFILE.pick_balloc (frees_1, frees_2) (MSAlloc mscs')) tree' ]] *
            [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
-           [[ hm' = upd x20 (S inum) new_tag ]])%pred d) in Hpc
+           [[ hm' = Mem.upd x14 (S inum) new_tag ]] *
+           [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst (AFS.MSLL mscs')))) 
+                <= (LogLen fsxp.(FSXPLog)) ]])))%pred d) in Hpc
         end.
          destruct_lift Hpc.
          denote Ret as Hret; inv_exec'' Hret.
           do 3 eexists; left; repeat eexists; eauto.
-         simpl ;auto.
-         pred_apply; cancel.
          denote Ret as Hret; inv_exec'' Hret; simpl; auto.
          eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
            intros mx Hmx; simpl; auto.
   }
   simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-  eapply dirtree_changeowner_exec_equivalent_cant_access in H18; eauto.
+  eapply dirtree_changeowner_exec_equivalent_cant_access in H9; eauto.
   3: unfold equivalent_for_principal; intuition eauto.
   2: {
     pred_apply; safecancel.
@@ -1108,104 +1074,190 @@ Proof.
   cleanup.
   
   denote lift_empty as Hemp; destruct_lift Hemp.
-  inv_exec_perm.
-  pose proof (@LOG.commit_ok (FSXPLog fsxp) (AFS.MSLL x27) caller) as Hspec.
-  specialize (Hspec _ (fun r => Ret r)).
-  unfold corr2 in *.
-  edestruct Hspec with (d:= x12).
-  2: econstructor; eauto; repeat econstructor.
-  { (** extract postcondition from LOG.begin **)
-    repeat eexists; pred_apply; cancel.
-    
-     match goal with
-       [H: context [ donec = _ ] |- _ ] =>
-       rename H into Hpc;
-         instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: LOG.memstate * (bool * unit)) =>
-           let ms' := fst r in let r := fst (snd r) in
-             (Fr * ⟦⟦ (upd x20 (S inum) new_tag) = hm' ⟧⟧ *
-              (([[ r = true ]] *  LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn (pushd x28 ds)) ms' sm bm' hm') \/
-               ([[ r = false ]] *
-                [[ MapUtils.AddrMap.Map.cardinal (LOG.MSTxn (fst (AFS.MSLL x27))) > (LogLen (FSXPLog fsxp)) ]] *
-                LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn ds) ms' sm bm' hm')))%pred d) in Hpc
-        end.
-         destruct_lift Hpc.
-         denote Ret as Hret; inv_exec'' Hret.
-    
-         do 3 eexists; left; repeat eexists; eauto.
-         simpl ;auto.
-         pred_apply; cancel.
-         or_l; cancel.
-         or_r; cancel.
-         denote Ret as Hret; inv_exec'' Hret; simpl; auto.
-         eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
-           intros mx Hmx; simpl; auto.
-  }
-  simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-   denote lift_empty as Hemp; destruct_lift Hemp.
   denote or as Hor;
   apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
-    split_ors; denote lift_empty as Hemp; 
-      destruct_lift Hemp; cleanup; simpl in *.
+    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *; try congruence.
   {
-    eapply exec_equivalent_for_viewer_finished in H29; eauto; cleanup.
-    2: intros; edestruct H31; eauto.
-    2: intros; edestruct H31; eauto.
-    unfold pair_args_helper in *; simpl in *.
     inv_exec_perm.
-    denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+    {
+      pose proof (@LOG.commit_ok (FSXPLog fsxp) (AFS.MSLL x21_1) caller) as Hspec.
+      specialize (Hspec _ (fun r => Ret r)).
+      unfold corr2 in *.
+      edestruct Hspec with (d:= x8).
+      2: econstructor; eauto; repeat econstructor.
+      { (** extract postcondition from LOG.commit **)
+        repeat eexists; pred_apply; cancel.
+        
+         match goal with
+           [H: context [ donec = _ ] |- _ ] =>
+           rename H into Hpc;
+             instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: LOG.memstate * (bool * unit)) =>
+               let ms' := fst r in let r := fst (snd r) in
+                 (Fr * ⟦⟦ (upd x14 (S inum) new_tag) = hm' ⟧⟧ *
+                  (([[ r = true ]] *  LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn (pushd dummy ds)) ms' sm bm' hm') \/
+                   ([[ r = false ]] *
+                    [[ MapUtils.AddrMap.Map.cardinal (LOG.MSTxn (fst (AFS.MSLL x21_1))) > (LogLen (FSXPLog fsxp)) ]] *
+                    LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn ds) ms' sm bm' hm')))%pred d) in Hpc
+            end.
+             destruct_lift Hpc.
+             denote Ret as Hret; inv_exec'' Hret.
+        
+             do 3 eexists; left; repeat eexists; eauto.
+             simpl ;auto.
+             pred_apply; cancel.
+             or_l; cancel.
+             or_r; cancel.
+             denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+             eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+               intros mx Hmx; simpl; auto.
+      }
+      simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+       denote lift_empty as Hemp; destruct_lift Hemp.
+      denote or as Hor;
+      apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+        split_ors; denote lift_empty as Hemp; 
+          destruct_lift Hemp; cleanup; simpl in *; try congruence; try omega.
+      {
+        eapply exec_equivalent_for_viewer_finished in H18; eauto; cleanup.
+        2: intros; edestruct H20; eauto.
+        2: intros; edestruct H20; eauto.
+        unfold pair_args_helper in *; simpl in *.
+        inv_exec_perm.
+        denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
 
-    do 3 eexists; split; eauto.
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; eauto.
+        do 3 eexists; split; eauto.
+        econstructor; [eauto| simpl].
+        econstructor; [eauto| simpl].
+        econstructor; [eauto| simpl].
+        econstructor; [eauto| simpl].
+        econstructor; eauto.
+      }
+    }
+    {
+      pose proof (@LOG.commit_ok (FSXPLog fsxp) (AFS.MSLL x21_1) caller) as Hspec.
+      specialize (Hspec _ (fun r => Ret r)).
+      unfold corr2 in *.
+      edestruct Hspec with (d:= x8).
+      2: econstructor; eauto; repeat econstructor.
+      { (** extract postcondition from LOG.commit **)
+        repeat eexists; pred_apply; cancel.
+        
+         match goal with
+           [H: context [ donec = _ ] |- _ ] =>
+           rename H into Hpc;
+             instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: LOG.memstate * (bool * unit)) =>
+               let ms' := fst r in let r := fst (snd r) in
+                 (Fr * ⟦⟦ (upd x14 (S inum) new_tag) = hm' ⟧⟧ *
+                  (([[ r = true ]] *  LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn (pushd dummy ds)) ms' sm bm' hm') \/
+                   ([[ r = false ]] *
+                    [[ MapUtils.AddrMap.Map.cardinal (LOG.MSTxn (fst (AFS.MSLL x21_1))) > (LogLen (FSXPLog fsxp)) ]] *
+                    LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn ds) ms' sm bm' hm')))%pred d) in Hpc
+            end.
+             destruct_lift Hpc.
+             denote Ret as Hret; inv_exec'' Hret.
+        
+             do 3 eexists; left; repeat eexists; eauto.
+             simpl ;auto.
+             pred_apply; cancel.
+             or_l; cancel.
+             or_r; cancel.
+             denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+             eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+               intros mx Hmx; simpl; auto.
+      }
+      simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+       denote lift_empty as Hemp; destruct_lift Hemp.
+      denote or as Hor;
+      apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+        split_ors; denote lift_empty as Hemp; 
+          destruct_lift Hemp; cleanup; simpl in *; try congruence; try omega.
+      rewrite M.Map.cardinal_1 in H41; try omega.
+    }
   }
-  
   {
-    eapply equivalent_no_domain_change_cant_access in H29; eauto; cleanup.
-    unfold pair_args_helper in *; simpl in *.    
+    eapply dirtree_changeowner_exec_equivalent_cant_access in H9; eauto.
+    3: unfold equivalent_for_principal; intuition eauto.
+    2: {
+      pred_apply; safecancel.
+      cancel; apply pimpl_refl.
+      eauto.
+      eauto.
+    }
+    cleanup.
+    Transparent LOG.abort.
+    unfold LOG.abort in *.
     inv_exec_perm.
     inv_exec_perm.    
     denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
-    inv_exec_perm.
-    
+    inv_exec_perm.    
+    denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+    rewrite H24.
     do 3 eexists; split; eauto.
     econstructor; [eauto| simpl].
     econstructor; [eauto| simpl].
     econstructor; [eauto| simpl].
+    rewrite D.
     econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].  
     econstructor; eauto.
     econstructor; eauto.
-    rewrite upd_repeat, upd_nop; eauto.
-    unfold rep in H8; destruct_lift H8.
-    erewrite owner_match; eauto.
-    2: pred_apply' H8; cancel.
-    2: pred_apply; cancel.
-    denote tree_pred as Htp; erewrite subtree_extract in Htp; eauto.
-    unfold tree_pred in Htp; destruct_lift Htp.    
-    denote BFILE.rep as Hbf; unfold BFILE.rep in Hbf; destruct_lift Hbf.
-    denote listmatch as Hlm;
-       erewrite listmatch_length_pimpl in Hlm;
-      erewrite listmatch_isolate with (i:=inum) in Hlm.
-    unfold file_match in Hlm.
-    destruct_lift Hlm.
-    denote INODE.rep as Hbf; unfold INODE.rep in Hbf; destruct_lift Hbf.
-    rewrite H64; apply H69.
-    rewrite <- H62.
-    eapply list2nmem_ptsto_bound; eauto; pred_apply; cancel.
-    eapply list2nmem_ptsto_bound; eauto; pred_apply; cancel.
-    destruct_lift Hlm.
-    rewrite <- H62; eapply list2nmem_ptsto_bound; eauto; pred_apply; cancel.
-    intros; edestruct H38; eauto.
-    intros; edestruct H38; eauto.
-    apply no_domain_change_commit.      
   }
-  }
+}
+
   { (** auth returned false **)
+    pose proof (@DIRTREE.authenticate_ok fsxp inum
+            {|
+            BFILE.MSAlloc := MSAlloc mscs;
+            BFILE.MSLL := (x8_1, x8_2);
+            BFILE.MSAllocC := MSAllocC mscs;
+            BFILE.MSIAllocC := MSIAllocC mscs;
+            BFILE.MSICache := MSICache mscs;
+            BFILE.MSCache := SDIR.MSCache mscs;
+            BFILE.MSDBlocks := MSDBlocks mscs |} caller) as Hspec.
+  specialize (Hspec _ (fun r => Ret r)).
+  unfold corr2 in *.
+  edestruct Hspec with (d:= x5).
+  2: econstructor; eauto; repeat econstructor.
+  { (** extract postcondition from DIRTREE.authenticate **)
+    repeat eexists; pred_apply; cancel.
+    erewrite mscs_same_except_log_rep'.
+    cancel; apply pimpl_refl.
+    unfold BFILE.mscs_same_except_log; simpl; intuition.
+    eauto.
+
+     match goal with
+           [H: context [ donec = _ ] |- _ ] =>
+           rename H into Hpc;
+          instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate * (bool * unit)) =>
+               let mscs' := fst r in let ok := fst (snd r) in
+               (Fr * [[ x7 = hm' ]] *
+                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
+                [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) mscs' sm hm') ]]] *
+                [[ BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ]] *
+                [[ BFILE.MSCache mscs' = BFILE.MSCache mscs ]] *
+                [[ MSAllocC mscs' = MSAllocC mscs ]] *
+                [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+                (([[ ok = true ]] * [[ can_access caller (DFOwner f) ]]) \/
+                 ([[ ok = false ]] * [[ ~can_access caller (DFOwner f) ]])))%pred d) in Hpc
+        end.
+     destruct_lift Hpc.
+     denote Ret as Hret; inv_exec'' Hret.
+      do 3 eexists; left; repeat eexists; eauto.
+      simpl ;auto.
+      pred_apply; cancel.
+      or_l; cancel.
+      or_r; cancel.
+      denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+      eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+      intros mx Hmx; simpl; auto.
+  }
+  simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+  eapply exec_equivalent_for_viewer_finished in H3; eauto; cleanup.
+  unfold pair_args_helper in *; simpl in *.
+
+  denote lift_empty as Hemp; destruct_lift Hemp.
+  denote or as Hor;
+  apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *; try congruence.
     Transparent LOG.abort.
     unfold LOG.abort in *.
     inv_exec_perm.
@@ -1244,6 +1296,7 @@ Qed.
     exec caller d' bm' hm (changeowner fsxp inum new_tag mscs) (Finished d2 bm2 hm1 r1) tr2 /\
     equivalent_for_principal viewer d1 bm1 d2 bm2 hm1.
 Proof.
+  
   unfold changeowner, equivalent_for_principal; intros.
   inv_exec_perm.
   pose proof (@LOG.begin_ok (FSXPLog fsxp) (MSLL mscs) caller) as Hspec.
@@ -1331,86 +1384,52 @@ Proof.
   denote lift_empty as Hemp; destruct_lift Hemp.
   denote or as Hor;
   apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
-    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *.
-  { (* DIRTREE.authenticate returns true *)
+    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *; try congruence.
+  { 
     inv_exec_perm.
-    pose proof (@DIRTREE.getowner_ok fsxp inum x15_1 caller) as Hspec.
+    pose proof (@DIRTREE.changeowner_ok fsxp inum new_tag x15_1 caller) as Hspec.
     specialize (Hspec _ (fun r => Ret r)).
-    unfold corr2 in *.
+    unfold corr2_weak in *.
     edestruct Hspec with (d:= x0).
     2: econstructor; eauto; repeat econstructor.
-    { (** extract postcondition from DIRTREE.getowner **)
+    { (** extract postcondition from DIRTREE.changeowner **)
       repeat eexists; pred_apply; cancel.
       cancel; apply pimpl_refl.
+      eauto.
       eauto.
 
        match goal with
            [H: context [ donec = _ ] |- _ ] =>
            rename H into Hpc;
-          instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate * (tag * unit)) =>
-               let mscs' := fst r in let r := fst (snd r) in
-               (Fr * ⟦⟦ x14 = hm' ⟧⟧ *
-                LOG.rep fsxp.(FSXPLog) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
-                [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) mscs' sm hm' ]]] *
-                [[ BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ]] *
-                [[ BFILE.MSCache mscs' = BFILE.MSCache mscs ]] *
-                [[ MSAllocC mscs' = MSAllocC mscs ]] *
-                [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
-                [[ r = DFOwner f ]])%pred d) in Hpc
-        end.
-         destruct_lift Hpc.
-         denote Ret as Hret; inv_exec'' Hret.
-         do 3 eexists; left; repeat eexists; eauto.
-         simpl ;auto.
-         pred_apply; cancel.
-         denote Ret as Hret; inv_exec'' Hret; simpl; auto.
-         eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
-           intros mx Hmx; simpl; auto.
-  }
-  simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-  eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H10; eauto; cleanup.
-  unfold pair_args_helper in *; simpl in *.
-
-  denote lift_empty as Hemp; destruct_lift Hemp.
-  inv_exec_perm.
-  pose proof (@DIRTREE.changeowner_ok fsxp inum new_tag x21_1 caller) as Hspec.
-    specialize (Hspec _ (fun r => Ret r)).
-    unfold corr2 in *.
-    edestruct Hspec with (d:= x8).
-    2: econstructor; eauto; repeat econstructor.
-    { (** extract postcondition from DIRTREE.getowner **)
-      repeat eexists; pred_apply; cancel.
-      cancel; apply pimpl_refl.
-      eauto.
-
-       match goal with
-           [H: context [ donec = _ ] |- _ ] =>
-           rename H into Hpc;
-          instantiate (2:=fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate) =>
-               let mscs' := r in
-               exists m' tree' f' ilist',
-                 (Fr *               
-           LOG.rep fsxp.(FSXPLog) (SB.rep fsxp) (LOG.ActiveTxn ds m') (MSLL mscs') sm bm' hm' *
+          instantiate (2:=fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate * (bool * unit)) =>
+               let mscs' := fst r in let ok := fst (snd r) in
+           (Fr *               
+           (([[ ok = false ]] *
+            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (AFS.MSLL mscs') sm bm' hm' *
+            [[ (Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) mscs' sm hm')%pred (list2nmem ds!!) ]] *
+            [[ hm' = x14 ]]) \/      
+           ([[ ok = true ]] * exists m' tree' f' ilist',
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds m') (AFS.MSLL mscs') sm bm' hm' *
            [[ (Fm * rep fsxp Ftop tree' ilist' (frees_1, frees_2) mscs' sm hm')%pred (list2nmem m') ]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ f' = mk_dirfile (DFData f) (DFAttr f) new_tag ]] *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ AFS.MSAlloc mscs' = AFS.MSAlloc x15_1 ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc (frees_1, frees_2)  (MSAlloc mscs')) tree
-                           ilist' (BFILE.pick_balloc (frees_1, frees_2)  (MSAlloc mscs')) tree' ]] *
+                           ilist' (BFILE.pick_balloc (frees_1, frees_2) (MSAlloc mscs')) tree' ]] *
            [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] *
-           [[ hm' = upd x20 (S inum) new_tag ]])%pred d) in Hpc
+           [[ hm' = Mem.upd x14 (S inum) new_tag ]] *
+           [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst (AFS.MSLL mscs')))) 
+                <= (LogLen fsxp.(FSXPLog)) ]])))%pred d) in Hpc
         end.
          destruct_lift Hpc.
          denote Ret as Hret; inv_exec'' Hret.
           do 3 eexists; left; repeat eexists; eauto.
-         simpl ;auto.
-         pred_apply; cancel.
          denote Ret as Hret; inv_exec'' Hret; simpl; auto.
          eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
            intros mx Hmx; simpl; auto.
   }
   simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-  eapply dirtree_changeowner_exec_equivalent_same_for_id in H20; eauto.
+  eapply dirtree_changeowner_exec_equivalent_same_for_id in H10; eauto.
   3: unfold equivalent_for_principal; intuition eauto.
   2: {
     pred_apply; safecancel.
@@ -1421,84 +1440,190 @@ Proof.
   cleanup.
   
   denote lift_empty as Hemp; destruct_lift Hemp.
-  inv_exec_perm.
-  pose proof (@LOG.commit_ok (FSXPLog fsxp) (AFS.MSLL x27) caller) as Hspec.
-  specialize (Hspec _ (fun r => Ret r)).
-  unfold corr2 in *.
-  edestruct Hspec with (d:= x12).
-  2: econstructor; eauto; repeat econstructor.
-  { (** extract postcondition from LOG.begin **)
-    repeat eexists; pred_apply; cancel.
-    
-     match goal with
-       [H: context [ donec = _ ] |- _ ] =>
-       rename H into Hpc;
-         instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: LOG.memstate * (bool * unit)) =>
-           let ms' := fst r in let r := fst (snd r) in
-             (Fr * ⟦⟦ (upd x20 (S inum) new_tag) = hm' ⟧⟧ *
-              (([[ r = true ]] *  LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn (pushd x28 ds)) ms' sm bm' hm') \/
-               ([[ r = false ]] *
-                [[ MapUtils.AddrMap.Map.cardinal (LOG.MSTxn (fst (AFS.MSLL x27))) > (LogLen (FSXPLog fsxp)) ]] *
-                LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn ds) ms' sm bm' hm')))%pred d) in Hpc
-        end.
-         destruct_lift Hpc.
-         denote Ret as Hret; inv_exec'' Hret.
-    
-         do 3 eexists; left; repeat eexists; eauto.
-         simpl ;auto.
-         pred_apply; cancel.
-         or_l; cancel.
-         or_r; cancel.
-         denote Ret as Hret; inv_exec'' Hret; simpl; auto.
-         eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
-           intros mx Hmx; simpl; auto.
-  }
-  simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
-   denote lift_empty as Hemp; destruct_lift Hemp.
   denote or as Hor;
   apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
-    split_ors; denote lift_empty as Hemp; 
-      destruct_lift Hemp; cleanup; simpl in *.
+    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *; try congruence.
   {
-    eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H32; eauto; cleanup.
-    2: intros; edestruct H34; eauto.
-    2: intros; edestruct H34; eauto.
-    unfold pair_args_helper in *; simpl in *.
     inv_exec_perm.
-    denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+    {
+      pose proof (@LOG.commit_ok (FSXPLog fsxp) (AFS.MSLL x21_1) caller) as Hspec.
+      specialize (Hspec _ (fun r => Ret r)).
+      unfold corr2 in *.
+      edestruct Hspec with (d:= x8).
+      2: econstructor; eauto; repeat econstructor.
+      { (** extract postcondition from LOG.commit **)
+        repeat eexists; pred_apply; cancel.
+        
+         match goal with
+           [H: context [ donec = _ ] |- _ ] =>
+           rename H into Hpc;
+             instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: LOG.memstate * (bool * unit)) =>
+               let ms' := fst r in let r := fst (snd r) in
+                 (Fr * ⟦⟦ (upd x14 (S inum) new_tag) = hm' ⟧⟧ *
+                  (([[ r = true ]] *  LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn (pushd dummy ds)) ms' sm bm' hm') \/
+                   ([[ r = false ]] *
+                    [[ MapUtils.AddrMap.Map.cardinal (LOG.MSTxn (fst (AFS.MSLL x21_1))) > (LogLen (FSXPLog fsxp)) ]] *
+                    LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn ds) ms' sm bm' hm')))%pred d) in Hpc
+            end.
+             destruct_lift Hpc.
+             denote Ret as Hret; inv_exec'' Hret.
+        
+             do 3 eexists; left; repeat eexists; eauto.
+             simpl ;auto.
+             pred_apply; cancel.
+             or_l; cancel.
+             or_r; cancel.
+             denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+             eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+               intros mx Hmx; simpl; auto.
+      }
+      simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+       denote lift_empty as Hemp; destruct_lift Hemp.
+      denote or as Hor;
+      apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+        split_ors; denote lift_empty as Hemp; 
+          destruct_lift Hemp; cleanup; simpl in *; try congruence; try omega.
+      {
+        eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H20; eauto; cleanup.
+        2: intros; edestruct H22; eauto.
+        2: intros; edestruct H22; eauto.
+        unfold pair_args_helper in *; simpl in *.
+        inv_exec_perm.
+        denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
 
-    do 3 eexists; split; eauto.
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; eauto.
+        do 3 eexists; split; eauto.
+        econstructor; [eauto| simpl].
+        econstructor; [eauto| simpl].
+        econstructor; [eauto| simpl].
+        econstructor; [eauto| simpl].
+        econstructor; eauto.
+      }
+    }
+    {
+      pose proof (@LOG.commit_ok (FSXPLog fsxp) (AFS.MSLL x21_1) caller) as Hspec.
+      specialize (Hspec _ (fun r => Ret r)).
+      unfold corr2 in *.
+      edestruct Hspec with (d:= x8).
+      2: econstructor; eauto; repeat econstructor.
+      { (** extract postcondition from LOG.commit **)
+        repeat eexists; pred_apply; cancel.
+        
+         match goal with
+           [H: context [ donec = _ ] |- _ ] =>
+           rename H into Hpc;
+             instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: LOG.memstate * (bool * unit)) =>
+               let ms' := fst r in let r := fst (snd r) in
+                 (Fr * ⟦⟦ (upd x14 (S inum) new_tag) = hm' ⟧⟧ *
+                  (([[ r = true ]] *  LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn (pushd dummy ds)) ms' sm bm' hm') \/
+                   ([[ r = false ]] *
+                    [[ MapUtils.AddrMap.Map.cardinal (LOG.MSTxn (fst (AFS.MSLL x21_1))) > (LogLen (FSXPLog fsxp)) ]] *
+                    LOG.rep (FSXPLog fsxp) (SB.rep fsxp)  (LOG.NoTxn ds) ms' sm bm' hm')))%pred d) in Hpc
+            end.
+             destruct_lift Hpc.
+             denote Ret as Hret; inv_exec'' Hret.
+        
+             do 3 eexists; left; repeat eexists; eauto.
+             simpl ;auto.
+             pred_apply; cancel.
+             or_l; cancel.
+             or_r; cancel.
+             denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+             eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+               intros mx Hmx; simpl; auto.
+      }
+      simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+       denote lift_empty as Hemp; destruct_lift Hemp.
+      denote or as Hor;
+      apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+        split_ors; denote lift_empty as Hemp; 
+          destruct_lift Hemp; cleanup; simpl in *; try congruence; try omega.
+      rewrite M.Map.cardinal_1 in H43; try omega.
+    }
   }
-  
   {
-    eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H32; eauto; cleanup.
-    2: intros; edestruct H34; eauto.
-    2: intros; edestruct H34; eauto.
-    unfold pair_args_helper in *; simpl in *.    
-    inv_exec_perm.
-    eapply chdom_equivalent_for_viewer in H42; eauto.
+    eapply dirtree_changeowner_exec_equivalent_same_for_id in H10; eauto.
+    3: unfold equivalent_for_principal; intuition eauto.
+    2: {
+      pred_apply; safecancel.
+      cancel; apply pimpl_refl.
+      eauto.
+      eauto.
+    }
     cleanup.
+    Transparent LOG.abort.
+    unfold LOG.abort in *.
+    inv_exec_perm.
     inv_exec_perm.    
     denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
-
+    inv_exec_perm.    
+    denote (_ = _) as Heq; inversion Heq; subst; clear Heq.
+    rewrite H26.
     do 3 eexists; split; eauto.
     econstructor; [eauto| simpl].
     econstructor; [eauto| simpl].
     econstructor; [eauto| simpl].
+    rewrite D.
     econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].
-    econstructor; [eauto| simpl].  
     econstructor; eauto.
-    unfold equivalent_for_principal; intuition eauto.    
+    econstructor; eauto.
   }
-  }
+}
+
   { (** auth returned false **)
+    pose proof (@DIRTREE.authenticate_ok fsxp inum
+            {|
+            BFILE.MSAlloc := MSAlloc mscs;
+            BFILE.MSLL := (x8_1, x8_2);
+            BFILE.MSAllocC := MSAllocC mscs;
+            BFILE.MSIAllocC := MSIAllocC mscs;
+            BFILE.MSICache := MSICache mscs;
+            BFILE.MSCache := SDIR.MSCache mscs;
+            BFILE.MSDBlocks := MSDBlocks mscs |} caller) as Hspec.
+  specialize (Hspec _ (fun r => Ret r)).
+  unfold corr2 in *.
+  edestruct Hspec with (d:= x5).
+  2: econstructor; eauto; repeat econstructor.
+  { (** extract postcondition from DIRTREE.authenticate **)
+    repeat eexists; pred_apply; cancel.
+    erewrite mscs_same_except_log_rep'.
+    cancel; apply pimpl_refl.
+    unfold BFILE.mscs_same_except_log; simpl; intuition.
+    eauto.
+
+     match goal with
+           [H: context [ donec = _ ] |- _ ] =>
+           rename H into Hpc;
+          instantiate (2:= fun (d:rawdisk) (bm' :taggedmem) (hm': domainmem) (r: BFILE.memstate * (bool * unit)) =>
+               let mscs' := fst r in let ok := fst (snd r) in
+               (Fr * [[ x7 = hm' ]] *
+                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.ActiveTxn ds ds!!) (MSLL mscs') sm bm' hm' *
+                [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist (frees_1, frees_2) mscs' sm hm') ]]] *
+                [[ BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ]] *
+                [[ BFILE.MSCache mscs' = BFILE.MSCache mscs ]] *
+                [[ MSAllocC mscs' = MSAllocC mscs ]] *
+                [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+                (([[ ok = true ]] * [[ can_access caller (DFOwner f) ]]) \/
+                 ([[ ok = false ]] * [[ ~can_access caller (DFOwner f) ]])))%pred d) in Hpc
+        end.
+     destruct_lift Hpc.
+     denote Ret as Hret; inv_exec'' Hret.
+      do 3 eexists; left; repeat eexists; eauto.
+      simpl ;auto.
+      pred_apply; cancel.
+      or_l; cancel.
+      or_r; cancel.
+      denote Ret as Hret; inv_exec'' Hret; simpl; auto.
+      eassign (fun (_:taggedmem) (_: domainmem) (_:rawdisk) => True); simpl;
+      intros mx Hmx; simpl; auto.
+  }
+  simpl in *; clear Hspec; cleanup; split_ors; cleanup; try congruence.
+  eapply exec_equivalent_for_viewer_same_for_domain_id_finished in H3; eauto; cleanup.
+  unfold pair_args_helper in *; simpl in *.
+
+  denote lift_empty as Hemp; destruct_lift Hemp.
+  denote or as Hor;
+  apply sep_star_or_distr in Hor; apply pimpl_or_apply in Hor;
+    split_ors; denote lift_empty as Hemp; destruct_lift Hemp; cleanup; simpl in *; try congruence.
     Transparent LOG.abort.
     unfold LOG.abort in *.
     inv_exec_perm.
@@ -1518,6 +1643,8 @@ Proof.
   Unshelve.
   all: try exact addr; eauto.
 Qed.
+
+
 
 Theorem changeowner_state_invariant:
   forall viewer caller d bm hm d' bm' Fr fsxp ds mscs sm Fm Ftop tree ilist frees pathname inum f d1 bm1 hm1 r1 tr1 new_tag,
