@@ -3475,7 +3475,7 @@ Theorem indput_ok :
 
     rewrite rep_piff_direct in Hx; unfold rep_direct in Hx; destruct_lift Hx.
     substl; substl (length l); auto.
-    unfold rep in H0; destruct_lift H0; omega.
+    unfold rep in H; destruct_lift H; omega.
 
     unfold rep, indrep in Hx. destruct_lifts.
     indrep_n_tree_extract_lengths.
@@ -3797,6 +3797,7 @@ Theorem indput_ok :
     pred_apply; cancel.
     omega.
     pred_apply; cancel.
+    auto.
     auto.
 
     step.

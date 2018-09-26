@@ -19,6 +19,7 @@ Require Import Log.
 Require Import Balloc.
 Require Import FSLayout.
 Require Import BlockPtr.
+Require Import WeakConversion.
 
 Import ListNotations.
 
@@ -1266,8 +1267,6 @@ Qed.
     eauto.
     specialize (H2 (a, (a1, b, (a0, b1)))); simpl in *; eauto.
   Qed.
-
-  Require Import WeakConversion.
   
   Theorem getallbnum_ok_weak' :
     forall lxp bxp xp inum cache ms pr,
