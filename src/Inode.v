@@ -865,7 +865,7 @@ Qed.
     rewrite Ind.indrep_0 by (compute; auto). cancel.
     repeat constructor.
     eapply list_same_repeat.
-    setoid_rewrite <- encode_public; rewrite encode_decode; auto.
+    setoid_rewrite <- encode_public. rewrite encode_decode_tag; auto.
   Qed.
   
   Theorem init_ok :

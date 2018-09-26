@@ -20,6 +20,7 @@ Require Import MapUtils.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import StringUtils.
+Require Import WeakConversion.
 
 Require Export Balloc.
 Require Export FSLayout.
@@ -2506,7 +2507,7 @@ Theorem setowner_ok :
     specialize (H2 (a, (a0, b0))); simpl in *; eauto.
   Qed.
   
-  Require Import WeakConversion.
+  
   
   Theorem getlen_ok_weak' :
     forall lxp bxps ixp inum ms pr,
@@ -4110,7 +4111,6 @@ Qed.
     unfold synced_list; simpl; rewrite app_nil_r.
     eassign dummy10; destruct dummy10.
     simpl; eauto.
-    apply ilist_safe_refl.
     eapply treeseq_ilist_safe_refl.
     intuition.
     
