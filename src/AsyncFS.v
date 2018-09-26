@@ -422,18 +422,27 @@ Module AFS.
   (* User can purge all the subtree even without permission? *)   
   Definition delete fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;
-    let^ (ams', ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));;
-    match ok with
-    | OK _ =>
-       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
-       match ok with
-       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
-       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
-       end
-    | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');;
-      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
-    end.
+    let ams:= (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)) in
+    let^ (ams, p) <- DIRTREE.authenticate_with_name fsxp dnum name ams;;
+    If (bool_dec p true) {
+      let^ (ams', ok) <- DIRTREE.delete fsxp dnum name ams;;
+      match ok with
+      | OK _ =>
+         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');;
+         match ok with
+         | true => Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
+         | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
+         end
+      | Err e =>
+        ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');;
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
+      end
+    } else {
+      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);;
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ENOPERMIT)
+    }.
+    
+    
            
   Definition lookup fsxp dnum names ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);;

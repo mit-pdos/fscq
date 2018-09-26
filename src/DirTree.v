@@ -267,7 +267,18 @@ Module DIRTREE.
   Definition authenticate fsxp inum mscs:=
     let^ (ams, t) <- BFILE.getowner (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
     p <- Auth t;;
-    Ret ^(ams, p).  
+    Ret ^(ams, p).
+
+  Definition authenticate_with_name fsxp dnum name mscs :=
+    let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp), fsxp, (FSXPInode fsxp)) in
+      let^ (mscs, oi) <- SDIR.lookup lxp ixp dnum name mscs;;                    
+      match oi with
+      | None => Ret ^(mscs, false)
+      | Some (inum, isdir) =>
+        let^ (ams, t) <- BFILE.getowner (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;;
+        p <- Auth t;;
+        Ret ^(ams, p)
+      end.  
 
   (* Specs and proofs *)
 
@@ -491,6 +502,274 @@ Module DIRTREE.
     
   Hint Extern 1 ({{_|_}} Bind (authenticate _ _ _) _) => apply authenticate_ok : prog.
   Hint Extern 1 ({{W _|_ W}} Bind (authenticate _ _ _) _) => apply authenticate_ok_weak : prog.
+  
+  
+  Theorem authenticate_with_name_ok :
+    forall fsxp dnum name mscs pr,
+    {< F mbase sm m pathname Fm Ftop tree tree_elem ilist frees,
+    PERM:pr   
+    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
+           [[ (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs') sm bm' hm' *
+           [[[ m ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           ([[ r = false ]] \/
+            [[ r = true ]] * 
+            exists inum,
+            ([[ ((exists f, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeFile inum f))  \/
+                (exists elems, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeDir inum elems)))%type ]]
+            * [[ can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)) ]]))
+    CRASH:bm', hm',
+           LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
+    >} authenticate_with_name fsxp dnum name mscs.
+  Proof.
+    unfold authenticate_with_name, rep; intros. 
+    
+    (* extract some basic facts from rep *)
+    intros; eapply pimpl_ok2; monad_simpl; eauto with prog; intros; norm'l.
+    assert (tree_inodes_distinct (TreeDir dnum tree_elem)) as HiID.
+    eapply rep_tree_inodes_distinct with (m := list2nmem m).
+    pred_apply; unfold rep; cancel.
+    assert (tree_names_distinct (TreeDir dnum tree_elem)) as HdID.
+    eapply rep_tree_names_distinct with (m := list2nmem m).
+    pred_apply; unfold rep; cancel.
+
+    rewrite subtree_extract; eauto. simpl. cancel.
+    rewrite subtree_extract; eauto. simpl. cancel.
+
+    (* lookup *)
+    subst; simpl in *.
+    denote tree_pred as Htp;
+    rewrite subtree_extract in Htp; eauto.
+    destruct_lift Htp.
+    denote tree_dir_names_pred as Hx;
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    safecancel. 2: eauto.
+    unfold SDIR.rep_macro.
+    cancel; eauto.
+  
+    destruct_branch.
+    destruct p; simpl in *.
+    intros. prestep.
+    norml; try congruence.
+    inversion H7; subst; clear H7.
+    destruct a1.
+    {
+      pose proof H21 as Hbk.
+      rewrite tree_dir_extract_subdir in H21; eauto.
+      simpl in H21; destruct_lift H21.
+      denote tree_dir_names_pred as Hx;
+      unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+      intros mx Hmx; destruct_lift Hmx.
+      repeat eexists; pred_apply; norml; try congruence.
+      cancel.
+    
+      simpl.
+      step.
+      step.
+      step.
+        erewrite LOG.rep_blockmem_subset; eauto; cancel.
+      or_r; cancel.
+      right; eexists; eauto.
+      denote BFILE.rep as Hrep;
+      unfold BFILE.rep in Hrep;
+      destruct_lift Hrep.
+      denote listmatch as Hrep;
+      erewrite listmatch_length_pimpl in Hrep; destruct_lift Hrep.
+      denote listmatch as Hrep;
+      erewrite listmatch_isolate with (i:= a0) in Hrep; 
+      unfold BFILE.file_match in Hrep; destruct_lift Hrep.
+      erewrite <- H46, <- list2nmem_sel; eauto.
+      pred_apply; cancel.
+      eapply list2nmem_ptsto_bound; pred_apply; cancel.
+      rewrite<- H44; eapply list2nmem_ptsto_bound; pred_apply; cancel.
+      msalloc_eq; apply sep_star_comm.
+      
+      pred_apply' Hbk.
+      erewrite <- subtree_fold; eauto. simpl. cancel.
+      unfold tree_dir_names_pred; cancel; eauto.
+      
+      step.
+       erewrite LOG.rep_blockmem_subset; eauto; cancel.
+      or_l; cancel.
+      msalloc_eq; apply sep_star_comm.
+      
+      pred_apply' Hbk.
+      erewrite <- subtree_fold; eauto. simpl. cancel.
+      unfold tree_dir_names_pred; cancel; eauto.
+      rewrite <- H1; cancel; eauto.
+    }
+    {
+      pose proof H21 as Hbk.
+      rewrite tree_dir_extract_file in H21; eauto.
+      simpl in H21; destruct_lift H21.
+      intros mx Hmx; destruct_lift Hmx.
+      repeat eexists; pred_apply; norml; try congruence.
+      cancel.
+    
+      simpl.
+      step.
+      step.
+      step.
+        erewrite LOG.rep_blockmem_subset; eauto; cancel.
+      or_r; cancel.
+      left; eexists; eauto.
+      denote BFILE.rep as Hrep;
+      unfold BFILE.rep in Hrep;
+      destruct_lift Hrep.
+      denote listmatch as Hrep;
+      erewrite listmatch_length_pimpl in Hrep; destruct_lift Hrep.
+      denote listmatch as Hrep;
+      erewrite listmatch_isolate with (i:= a0) in Hrep; 
+      unfold BFILE.file_match in Hrep; destruct_lift Hrep.
+      erewrite <- H44, <- list2nmem_sel; eauto.
+      2: pred_apply; cancel.
+      simpl; eauto.
+      eapply list2nmem_ptsto_bound; pred_apply; cancel.
+      rewrite<- H42; eapply list2nmem_ptsto_bound; pred_apply; cancel.
+      msalloc_eq; apply sep_star_comm.
+      
+      pred_apply' Hbk.
+      erewrite <- subtree_fold; eauto. simpl. cancel.
+      unfold tree_dir_names_pred; cancel; eauto.
+      
+      step.
+       erewrite LOG.rep_blockmem_subset; eauto; cancel.
+      or_l; cancel.
+      msalloc_eq; apply sep_star_comm.
+      
+      pred_apply' Hbk.
+      erewrite <- subtree_fold; eauto. simpl. cancel.
+      unfold tree_dir_names_pred; cancel; eauto.
+      rewrite <- H1; cancel; eauto.
+    }
+    
+    {
+      step.
+      step.
+      msalloc_eq; eauto.
+
+      erewrite <- subtree_fold; eauto. simpl. cancel.
+      unfold tree_dir_names_pred; cancel; eauto.
+    }
+    rewrite <- H1; cancel; eauto.
+    
+    Unshelve.
+    all: eauto.
+    Qed.
+    
+      
+   Theorem authenticate_with_name_ok' :
+    forall fsxp dnum name mscs pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm, 
+          let '(F, mbase, sm, m, pathname, Fm, Ftop, tree, tree_elem, ilist, frees) := e in
+          LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
+           [[ (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           let '(F, mbase, sm, m, pathname, Fm, Ftop, tree, tree_elem, ilist, frees) := e in
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs') sm bm' hm' *
+           [[[ m ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           ([[ r = false ]] \/
+            [[ r = true ]] * 
+            exists inum,
+            ([[ ((exists f, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeFile inum f))  \/
+                (exists elems, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeDir inum elems)))%type ]]
+            * [[ can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)) ]]))
+    CRASH:bm', hm',
+            let '(F, mbase, sm, m, pathname, Fm, Ftop, tree, tree_elem, ilist, frees) := e in
+           LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
+    >} authenticate_with_name fsxp dnum name mscs.
+  Proof.
+      intros; eapply pimpl_ok2.
+      apply authenticate_with_name_ok.
+      intros; norml; simpl in *.
+      intros mx Hmx;
+      destruct_lift Hmx.
+      repeat eexists ; pred_apply; safecancel.
+      apply sep_star_comm.
+      eauto.
+      specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+  Qed.
+  
+  Theorem authenticate_with_name_ok_weak' :
+    forall fsxp dnum name mscs pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm, 
+          let '(F, mbase, sm, m, pathname, Fm, Ftop, tree, tree_elem, ilist, frees) := e in
+          LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
+           [[ (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           let '(F, mbase, sm, m, pathname, Fm, Ftop, tree, tree_elem, ilist, frees) := e in
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs') sm bm' hm' *
+           [[[ m ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           ([[ r = false ]] \/
+            [[ r = true ]] * 
+            exists inum,
+            ([[ ((exists f, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeFile inum f))  \/
+                (exists elems, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeDir inum elems)))%type ]]
+            * [[ can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)) ]]))
+    CRASH:bm', hm',
+            let '(F, mbase, sm, m, pathname, Fm, Ftop, tree, tree_elem, ilist, frees) := e in
+           LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
+    W>} authenticate_with_name fsxp dnum name mscs.
+  Proof.
+    intros; eapply weak_conversion'.
+    eapply authenticate_with_name_ok'.
+  Qed.
+  
+  
+  Theorem authenticate_with_name_ok_weak :
+    forall fsxp dnum name mscs pr,
+    {<W F mbase sm m pathname Fm Ftop tree tree_elem ilist frees,
+    PERM:pr   
+    PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
+           [[ (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+    POST:bm', hm', RET:^(mscs',r)
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs') sm bm' hm' *
+           [[[ m ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ MSAllocC mscs' = MSAllocC mscs ]] *
+           [[ MSIAllocC mscs' = MSIAllocC mscs ]] *
+           ([[ r = false ]] \/
+            [[ r = true ]] * 
+            exists inum,
+            ([[ ((exists f, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeFile inum f))  \/
+                (exists elems, find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeDir inum elems)))%type ]]
+            * [[ can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)) ]]))
+    CRASH:bm', hm',
+           LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
+    W>} authenticate_with_name fsxp dnum name mscs.
+  Proof.
+      intros; eapply pimpl_ok2_weak.
+      apply authenticate_with_name_ok_weak'.
+      intros; norml; simpl in *.
+      safecancel.
+      cancel.
+      apply sep_star_comm.
+      eauto.
+      eauto.
+      specialize (H2 (a, (a0, b0))); simpl in *; eauto.
+      eauto.
+  Qed.
+  
+  Hint Extern 1 ({{_|_}} Bind (authenticate_with_name _ _ _ _) _) => apply authenticate_with_name_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (authenticate_with_name _ _ _ _) _) => apply authenticate_with_name_ok_weak: prog.
 
   Theorem getowner_ok :
     forall fsxp inum mscs pr,
@@ -1131,14 +1410,18 @@ Module DIRTREE.
 
   Theorem delete_ok' :
     forall fsxp dnum name mscs pr,
-    {<W F mbase sm m Fm Ftop tree tree_elem frees ilist,
+    {~<W F mbase sm m Fm Ftop tree tree_elem frees ilist,
     PERM:pr  
     PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
            [[ (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)%pred (list2nmem m) ]] *
-           [[ tree = TreeDir dnum tree_elem ]]
+           [[ tree = TreeDir dnum tree_elem ]] *
+           [[ forall inum f elems, 
+                ((find_subtree [name] tree = Some (TreeFile inum f)  \/
+                find_subtree [name] tree = Some (TreeDir inum elems)) -> 
+                can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)))%type ]]
     POST:bm', hm', RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') sm bm' hm' *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           (* [[ MSAlloc mscs' = MSAlloc mscs ]] * *)
            ([[ isError r ]] \/
             [[ r = OK tt ]] * exists frees' ilist',
             let tree' := delete_from_dir name tree in
@@ -1150,7 +1433,7 @@ Module DIRTREE.
                  (~ In inum (tree_inodes tree))) -> selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
-    W>} delete fsxp dnum name mscs.
+    W>~} delete fsxp dnum name mscs.
   Proof. 
     unfold delete, rep.
 
@@ -1174,39 +1457,42 @@ Module DIRTREE.
 
     denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
     unfold If_.
-    weakstep.
-    weakstep.
-    weakstep.
+    weakprestep; norml; try congruence.
+    cleanup.
+    norm; [cancel| intuition].
     weakstep.
 
-    (* unlink *)
-    weakprestep.
-    norm.
-    cancel.
-    intuition.
-    eauto.
-    eauto.
-    eauto.
-    eauto.
+    cleanup.
+    weakprestep. norml; try congruence.
+    denote dirlist_pred as Hdp; pose proof Hdp as Hbk;
+    rewrite dirlist_extract in Hdp; eauto; simpl in *;
+    destruct_lift Hdp; destruct dummy4; simpl in *; try congruence.
+    denote sep_star as Ht; destruct_lift Ht.
+    norm; [cancel| intuition].
+    pred_apply; msalloc_eq; cancel.
+    pred_apply; cancel.
 
-    destruct_branch.
+    
+    denote BFILE.rep as Hrep;
+    unfold BFILE.rep in Hrep;
+    destruct_lift Hrep.
+    denote listmatch as Hrep;
+    erewrite listmatch_length_pimpl in Hrep; destruct_lift Hrep.
+    denote listmatch as Hrep;
+    erewrite listmatch_isolate with (i:= n0) in Hrep; 
+    unfold BFILE.file_match in Hrep; destruct_lift Hrep.
+    erewrite <- list2nmem_sel in H42; eauto.
+    2: pred_apply; cancel.
+    simpl in *; rewrite H42.
+    rewrite tree_dir_extract_file in Hbk; eauto; simpl in *;
+    destruct_lift Hbk.
+    eapply H6; eauto.
+    eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    rewrite <- H40; eapply list2nmem_ptsto_bound; pred_apply; cancel.
+ 
     weakstep.
-    (* is_file: prepare for reset *)
-    weakprestep. norml.
-    denote dirlist_pred as Hx.
-    erewrite dirlist_extract with (inum := a0) in Hx; eauto.
-    destruct_lift Hx.
-    destruct dummy4; simpl in *; try congruence; subst.
-    denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
-    cancel.
-
     (* is_file: prepare for free *)
-    weakprestep. norml; msalloc_eq.
-    denote dirlist_pred as Hx.
-    (*erewrite dirlist_extract with (inum := n) in Hx; eauto. *)
-    destruct_lift Hx.
-    denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
-    unfold IAlloc.MSLog in *; cancel.
+    msalloc_eq; cancel.
     match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
       => exists m; solve [pred_apply; cancel]
     end.
@@ -1214,6 +1500,7 @@ Module DIRTREE.
     (* post conditions *)
     weakstep.
     weakstep.
+    unfold IAlloc.MSLog; cancel.
     or_r; safecancel.
     
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
@@ -1244,47 +1531,60 @@ Module DIRTREE.
     eapply find_dirlist_tree_inodes; eauto.
 
     all: try solve[rewrite <- H1; cancel; eauto].
+    weakstep.
     
-    unfold IAlloc.MSLog in *; cancel.
-    step.
-
-    cancel.
-
-    (* case 2: is_dir: check empty *)
-    prestep.
-    intros; norm'l.
-    denote dirlist_pred as Hx; subst_bool.
-    rewrite dirlist_extract_subdir in Hx; eauto; simpl in Hx.
-    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    cancel.
-    eauto.
-
-    step.
-    step.
-    step.
-    Opaque corr2.
-    prestep.
-    intros mx Hmx.
-    destruct_lift Hmx.
-    exists F_, F; do 2 eexists;  exists mbase, sm, m.
-    pred_apply; cancel.
-    eauto.
-    step.
-    step.
     msalloc_eq.
     cancel.
-    exists (list2nmem flist'). eexists.
-    pred_apply. cancel.
+    
+    weakstep.
+    cancel.
+    
+    cleanup; msalloc_eq.
+
+    (* case 2: is_dir: check empty *)
+    destruct a1; try congruence.
+    denote dirlist_pred as Hx; pose proof Hx as Hbk;
+    rewrite dirlist_extract_subdir in Hx; eauto; simpl in Hx.
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    msalloc_eq; cancel.
+    eauto.
+
+    weakstep.
+    weakstep.
+    weakstep.
+    
+    denote BFILE.rep as Hrep;
+    unfold BFILE.rep in Hrep;
+    destruct_lift Hrep.
+    denote listmatch as Hrep;
+    erewrite listmatch_length_pimpl in Hrep; destruct_lift Hrep.
+    denote listmatch as Hrep;
+    erewrite listmatch_isolate with (i:= a0) in Hrep; 
+    unfold BFILE.file_match in Hrep; destruct_lift Hrep.
+    erewrite <- list2nmem_sel in H51; eauto.
+    2: pred_apply; cancel.
+    simpl in *; rewrite H51.
+    rewrite tree_dir_extract_subdir in Hbk; eauto; simpl in *;
+    destruct_lift Hbk.
+    eapply H6; eauto.
+    eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    rewrite <- H49; eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    
+    msalloc_eq; weaksafestep.
+    msalloc_eq; cancel.
+    match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
+      => exists m; solve [pred_apply; cancel]
+    end.
     unfold IAlloc.MSLog in *.
-    step.
-    step.
+    weakstep.
+    weakstep.
 
     (* post conditions *)
     or_r; cancel.
     
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     denote (tree_dir_names_pred' _ _) as Hz.
-    erewrite (@dlist_is_nil _ _ _ _ _ Hz); eauto.
+    erewrite (@dlist_is_nil _ _ _ _ _ _ Hz); eauto.
     rewrite dirlist_pred_except_delete; eauto.
     rewrite dir_names_delete with (dnum := dnum).
     cancel.
@@ -1298,7 +1598,7 @@ Module DIRTREE.
     apply dirlist_safe_delete; auto.
 
     (* inum inside the new modified tree *)
-    eapply find_dirlist_exists in H14 as H14'.
+    eapply find_dirlist_exists in H15 as H14'.
     deex.
     denote dirlist_combine as Hx.
     eapply tree_inodes_distinct_delete in Hx as Hx'; eauto.
@@ -1317,16 +1617,19 @@ Module DIRTREE.
     eassumption.
     all: try solve [intros; rewrite <- H1; cancel; eauto].
 
-    step.
+    weakstep.
 
-    step.
-    step.
-    step.
-    step.
-    step.
+    weakstep.
+    weakstep.
+    weakstep.
+    
+    cancel.
+    weakstep.
+    cancel.
 
     Unshelve.
-    all: try match goal with | [ |- DirTreePred.SDIR.rep _ _ ] => eauto end.
+    all: try match goal with | [ |- DirTreePred.SDIR.rep _ _ _ ] => eauto end.
+    4: unfold Mem.EqDec; apply handle_eq_dec.
     all: try exact unit.
     all: try solve [repeat constructor].
     all: eauto.
@@ -1727,14 +2030,18 @@ Module DIRTREE.
  
   Theorem delete_ok :
     forall fsxp dnum name mscs pr,
-    {< F mbase sm m pathname Fm Ftop tree tree_elem ilist frees,
+    {~<W F mbase sm m pathname Fm Ftop tree tree_elem ilist frees,
     PERM:pr   
     PRE:bm, hm, LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) sm bm hm *
            [[ (Fm * rep fsxp Ftop tree ilist frees mscs sm hm)%pred (list2nmem m) ]] *
-           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]] * 
+           [[ forall inum f elems, 
+                ((find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeFile inum f)  \/
+                find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeDir inum elems)) -> 
+                can_access pr (INODE.IOwner (selN ilist inum INODE.inode0)))%type ]]
     POST:bm', hm', RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') sm bm' hm' *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           (* [[ MSAlloc mscs' = MSAlloc mscs ]] * *)
            ([[ isError r ]] \/
             [[ r = OK tt ]] * exists tree' ilist' frees',
             [[ tree' = update_subtree pathname
@@ -1747,16 +2054,18 @@ Module DIRTREE.
                 selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
-    >} delete fsxp dnum name mscs.
-  Proof. 
-    intros; eapply pimpl_ok2. apply delete_ok'.
+    W>~} delete fsxp dnum name mscs.
+  Proof.
+    intros; eapply pimpl_ok2_weak. apply delete_ok'.
 
     intros; norml; unfold stars; simpl.
     rewrite rep_tree_distinct_impl in *.
     unfold rep in *; cancel.
 
     rewrite subtree_extract; eauto. simpl. instantiate (tree_elem0:=tree_elem). cancel.
-    step.
+    eauto.
+    eauto.
+    weakstep.
     apply pimpl_or_r; right.
     intros mt Hmt; pred_apply.
     cancel.
@@ -1765,10 +2074,11 @@ Module DIRTREE.
     
     eapply dirlist_safe_subtree; eauto.
     denote (dirlist_combine tree_inodes _) as Hx.
-    specialize (Hx inum def' H4).
+    specialize (Hx inum def' H).
     intuition; try congruence.
 
-    destruct_lift H0.
+
+    destruct_lift H5.
     edestruct tree_inodes_pathname_exists. 3: eauto.
     eapply tree_names_distinct_update_subtree; eauto.
     eapply tree_names_distinct_delete_from_list.
@@ -1793,7 +2103,7 @@ Module DIRTREE.
     intuition.
 
     (* case 2: outside the directory *)
-    eapply H10.
+    eapply H11.
     intro.
     edestruct tree_inodes_pathname_exists with (tree := TreeDir dnum tree_elem) (inum := dirtree_inum subtree).
     3: eassumption.
@@ -1804,7 +2114,7 @@ Module DIRTREE.
     destruct H21.
     destruct H21.
 
-    eapply H6.
+    eapply H5.
     exists x0.
 
     edestruct find_subtree_before_prune_general; eauto.
@@ -1818,7 +2128,7 @@ Module DIRTREE.
     (* case B: outside original tree *)
     eapply H13; eauto.
     right.
-    contradict H7; intuition eauto. exfalso; eauto.
+    contradict H8; intuition eauto. exfalso; eauto.
     eapply tree_inodes_find_subtree_incl; eauto.
     simpl; intuition.
     
@@ -1826,7 +2136,7 @@ Module DIRTREE.
     all: eauto.
   Qed.
 
-  Hint Extern 1 ({{_|_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
+  Hint Extern 1 ({{W _|_ W}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
   
   Theorem rename_cwd_ok :
