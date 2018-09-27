@@ -18,7 +18,7 @@ echo "Build name: $BUILDNAME"
 ## Print the Coq version
 coqtop </dev/null
 
-cd ~/builder/runs && ( ls | head -n -15 | xargs rm -rf )
+cd ~/builder/runs && ( ls | head -n -10 | xargs rm -rf )
 cd $D
 git clone -b $BRANCH git://g.csail.mit.edu/fscq-impl fscq
 cd fscq/src
