@@ -329,7 +329,7 @@ Module CacheOneDir.
     assert (fst p <> 0).
       destruct p; cbn in *.
       intro; subst; eauto using SDIR.rep_no_0_inum.
-    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
+    repeat ( denote! (SDIR.rep _ _ _) as Hx; clear Hx ).
     cancel.
     eauto using any_sep_star_ptsto.
     cancel.
@@ -340,7 +340,6 @@ Module CacheOneDir.
     
   Unshelve.
     all: repeat (solve [eauto] || constructor).
-    all: eauto.
   Qed.
   
   

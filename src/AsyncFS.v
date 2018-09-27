@@ -1434,18 +1434,19 @@ Module AFS.
     step.
     step.
     step.
+    prestep.
+    norml; intros mx Hmx.
+    repeat eexists; pred_apply; safecancel.
+    apply sep_star_comm.
+    eauto.
     step.
     step.
     step.
     step.
-    lightstep.
-
     step.
     step.
     step.
     step.
-    lightstep.
-    or_l; cancel.
     rewrite <- H1; cancel; eauto.
     xcrash.
     {
@@ -1456,9 +1457,8 @@ Module AFS.
       eauto.
     }
     step.
-    lightstep.
-f
-    or_l; cancel.
+    step.
+
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
@@ -1467,13 +1467,12 @@ f
     prestep; norml; congruence.
     safestep.
     step.
-    lightstep.
+    step.
 
-    or_l; cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
-    xform_norm. cancel.
+    rewrite LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
   Unshelve.
@@ -1482,6 +1481,45 @@ f
 
   
   Hint Extern 1 ({{_|_}} Bind (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
+  
+
+  Theorem crash_xform_intact : forall xp F ds sm bm hm,
+    crash_xform (LOG.intact xp F ds sm bm hm) =p=>
+      exists cs, LOG.after_crash xp (crash_xform F) ds cs bm hm.
+  Proof.
+    unfold LOG.intact, LOG.rep, LOG.rep_inner, LOG.after_crash; intros.
+    xform_norm;
+    rewrite crash_xform_rep_pred by eauto;
+    xform_norm;
+    denote crash_xform as Hx;
+    apply crash_xform_sep_star_dist in Hx;
+    rewrite GLog.crash_xform_cached in Hx;
+    destruct_lift Hx.
+
+    cancel.
+    cancel.
+    Unshelve.
+    all: try exact handle.
+    all: unfold EqDec; apply handle_eq_dec.
+  Qed.
+    
+    Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F sm ds al hm bm,
+    crash_xform (LOG.intact xp F (dssync_vecs ds al) sm bm hm) =p=>
+    LOG.idempred xp (crash_xform F) ds sm bm hm.
+  Proof.
+    intros.
+    rewrite crash_xform_intact.
+    xform_norm.
+    unfold LOG.idempred, LOG.after_crash, GLog.recover_any_pred.
+    or_r; or_r. norm. cancel.
+    intuition simpl.
+    pred_apply; safecancel.
+    rewrite map_length in *; eauto.
+    rewrite dssync_vecs_nthd.
+    rewrite crash_xform_diskIs_vssync_vecs; eauto.    
+  Qed.
+    
+    
 
 
   Theorem file_sync_ok:
@@ -1521,22 +1559,28 @@ f
     step.
     step.
     step.
+    prestep.
+    norml; intros mx Hmx.
+    repeat eexists; pred_apply; safecancel.
+    apply sep_star_comm.
+    eauto.
     step.
     step.
     step.
-    prestep; norm. cancel.
-    or_r; cancel.
-    intuition. eauto.
+
     rewrite <- H1; cancel; eauto.
-    rewrite <- crash_xform_idem.
+    intros mc Hmc.
+    apply crash_xform_idem with (p:= LOG.rep _ _ _ _ _ _ _) in Hmc.
+    pred_apply;
     rewrite LOG.notxn_intact.
-    rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
+    rewrite crash_xform_intact_dssync_vecs_idempred.
     rewrite SB.crash_xform_rep; auto.
     xform_norm; cancel.
 
     rewrite <- H1; cancel; eauto.
     rewrite LOG.recover_any_idempred.
     xform_norm; cancel.
+    eauto.
     prestep; norml; congruence.
     prestep; norml; congruence.
 
@@ -1547,7 +1591,7 @@ f
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
-    xform_norm. cancel.
+    rewrite LOG.intact_idempred. xform_norm. cancel.
     rewrite <- H1; cancel; eauto.
     rewrite LOG.notxn_intact, LOG.intact_idempred. xform_norm. cancel.
 
@@ -1673,7 +1717,7 @@ f
 
   Theorem create_ok :
     forall fsxp dnum name mscs pr tag,
-    {< ds sm pathname Fm Ftop tree tree_elem ilist frees,
+    {~< ds sm pathname Fm Ftop tree tree_elem ilist frees,
     PERM:pr   
     PRE:bm, hm,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
@@ -1705,7 +1749,7 @@ f
                                               DFAttr:= INODE.iattr0;
                                               DFOwner:= tag |}) tree ]] *
       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs' sm hm') ]]]
-    >} create fsxp dnum name tag mscs.
+    >~} create fsxp dnum name tag mscs.
   Proof.
     unfold create; intros.
     step.
@@ -1714,13 +1758,25 @@ f
     erewrite LOG.rep_blockmem_subset; eauto.
      cancel.
     auto.
-    step.
-    step.
+    prestep.
+    norml; intros mx Hmx.
+    repeat eexists; pred_apply; safecancel.
+    apply sep_star_comm.
+    eauto.
+    prestep;
+    norml; intros my Hmy; 
+    try solve [ denote isError as Herr; inversion Herr ];
+    try congruence;
+    repeat eexists; pred_apply; safecancel.
     step.
     lightstep.
     or_r;  cancel.
-    lightstep.
-    or_l;  cancel.
+    msalloc_eq; eauto.
+    eauto.
+    prestep; norml.
+    rewrite M.Map.cardinal_1 in *; omega.
+
+    norml.
     rewrite <- H1; cancel; eauto.
     xcrash.
     or_r; cancel.
@@ -1728,7 +1784,8 @@ f
     safecancel.
     2: reflexivity. cancel.
     rewrite LOG.recover_any_idempred; cancel.
-    pred_apply; cancel.
+    msalloc_eq; pred_apply; cancel.
+
     step.
     lightstep.
     or_l;  cancel.
@@ -1801,10 +1858,12 @@ f
     step.
     step.
     lightstep.
-    or_r;  cancel.
-    eauto.
-    eauto.
-    eauto.
+    or_r;  safecancel.
+    rewrite mscs_same_except_log_rep.
+    apply pimpl_refl.
+    unfold BFILE.mscs_same_except_log; simpl; intuition.
+    all: eauto.
+
     lightstep.
     or_l;  cancel.
     rewrite <- H1; cancel; eauto.
@@ -1832,18 +1891,18 @@ f
 
   Theorem delete_ok :
     forall fsxp dnum name mscs pr,
-    {< ds sm pathname Fm Ftop tree tree_elem frees ilist,
+    {~<W ds sm pathname Fm Ftop tree tree_elem frees ilist,
     PERM:pr   
     PRE:bm, hm,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) sm bm hm *
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs sm hm) ]]] *
       [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
     POST:bm', hm', RET:^(mscs', ok)
-     ([[ isError ok ]] * [[ MSAlloc mscs' = MSAlloc mscs ]] *
+     ([[ isError ok ]] * (* [[ MSAlloc mscs' = MSAlloc mscs ]] * *)
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp)
               (LOG.NoTxn ds) (MSLL mscs') sm bm' hm' *
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs' sm hm') ]]]) \/
-      ([[ ok = OK tt ]] * [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      ([[ ok = OK tt ]] * (* [[ MSAlloc mscs' = MSAlloc mscs ]] * *)
       exists d tree' ilist' frees',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') sm bm' hm' *
       [[ tree' = update_subtree pathname
@@ -1867,16 +1926,27 @@ f
       [[ forall inum def', inum <> dnum ->
            (In inum (tree_inodes tree') \/ (~ In inum (tree_inodes tree))) ->
           selN ilist inum def' = selN ilist' inum def' ]]
-    >} delete fsxp dnum name mscs.
+    W>~} delete fsxp dnum name mscs.
   Proof.
     unfold delete; intros.
-    step.
-    step.
-    step.
-    step.
-    lightstep.
+    weakstep.
+    weakstep.
+    unfold If_.
+    destruct_branch; cleanup; try congruence.
+    weakprestep; norml; try congruence.
+    safecancel.
+    apply sep_star_comm.
+    all: eauto.
+    cleanup; eauto.
+    cleanup; eauto.
+    weakstep.
+    erewrite H22; eauto.
+    destruct_branch.
+    
+    weakstep.
+    weaklightstep.
     or_r;  cancel.
-    lightstep.
+    weaklightstep.
     or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. or_r.
@@ -1884,8 +1954,8 @@ f
     safecancel. rewrite LOG.recover_any_idempred. cancel.
     3: pred_apply; cancel.
     all: eauto.
-    step.
-    lightstep.
+    weakstep.
+    weaklightstep.
     or_l;  cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
@@ -1930,9 +2000,7 @@ f
     denote ((crash_xform _) d') as Hx.
     apply crash_xform_sep_star_dist in Hx.
     rewrite SB.crash_xform_rep in Hx.
-    rewrite LOG.after_crash_idem' in Hx; eauto.
-    destruct_lift Hx; denote (crash_xform (crash_xform _)) as Hx.
-    apply crash_xform_idem_l in Hx.
+    rewrite GLog.recover_idem in Hx; eauto.
 
     norm. cancel.
     intuition.
@@ -1947,13 +2015,11 @@ f
     unfold stars; simpl.
 
     norm. cancel.
-    rewrite LOG.rep_inner_hashmap_subset.
-    eassign (SB.rep fsxp).
-    cancel.
-    erewrite LOG.rep_inner_blockmem_subset; eauto.
+    apply sep_star_comm.
     auto.
     intuition simpl; eauto.
     intuition.
+    2:{
 
     step.
 
@@ -1973,8 +2039,13 @@ f
     eapply LOG.crash_xform_cached_before; eauto.
 
     rewrite <- H1; cancel; eauto.
+    xcrash.
+    Search LOG.after_crash LOG.before_crash.
+    rewrite LOG.crash_xform_cached_before. eauto.
 
-    denote (SB.rep) as Hsb. rewrite SB.rep_magic_number in Hsb. destruct_lift Hsb.
+    denote (SB.rep) as Hsb. 
+    (* setoid_rewrite SB.rep_magic_number in Hsb. *) 
+    destruct_lift Hsb.
     step.
     
     rewrite <- H1; cancel; eauto.

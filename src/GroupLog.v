@@ -2317,7 +2317,6 @@ Lemma dset_match_grouped : forall ts vmap ds bm xp,
     PRE:bm, hm,
       CacheDef.rep cs raw bm *
       [[ (F * recover_any_pred xp ds hm)%pred raw ]] *
-      [[ bm = empty_mem ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:ms' exists raw',
       CacheDef.rep (MSCache ms') raw' bm' *

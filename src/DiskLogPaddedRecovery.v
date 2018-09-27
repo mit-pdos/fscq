@@ -158,7 +158,6 @@ Definition recover_ok :
      PERM:pr
      PRE:bm, hm,
          CacheDef.rep cs d bm *
-         [[ bm = empty_mem ]] *
          [[ (F * rep xp (Synced l) hm)%pred d ]]
     POST:bm', hm', RET:cs'
           CacheDef.rep cs' d bm' *
@@ -194,11 +193,11 @@ Definition recover_ok :
     step.
     step.
     unfold rep_contents; cancel. apply desc_padding_synced_piff.
-    unfold rep_contents in H0; destruct_lift H0; eauto.
+    unfold rep_contents in H; destruct_lift H; eauto.
     
     all: rewrite <- H1; cancel; unfold padded_log; solve_blockmem_subset.
     unfold rep_contents; cancel; try apply desc_padding_synced_piff.
-    unfold rep_contents in H0; destruct_lift H0; eauto.
+    unfold rep_contents in H; destruct_lift H; eauto.
 
     Unshelve.
     all: unfold Mem.EqDec; apply handle_eq_dec.

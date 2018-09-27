@@ -1582,7 +1582,6 @@ Hint Resolve Forall_nil.
     PERM:pr   
     PRE:bm, hm,
       after_crash xp F ds cs bm hm *
-      [[ bm = empty_mem ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:ms'
       exists d sm n, [[ n <= length (snd ds) ]] *
@@ -1591,7 +1590,7 @@ Hint Resolve Forall_nil.
       [[ arrayN (@ptsto _ _ _) 0 (repeat true (length d)) sm ]] *
       [[ hm' 0 = Some Public ]]
     XCRASH:bm', hm',
-      exists cs, after_crash xp F ds cs bm' hm'
+      before_crash xp F ds bm' hm'
     >} recover xp cs.
   Proof.
     unfold recover, after_crash, before_crash, rep, rep_inner.
@@ -1610,7 +1609,6 @@ Hint Resolve Forall_nil.
 
     norm'l.
     rewrite <- H1; cancel.
-    solve_hashmap_subset.
     repeat xcrash_rewrite.
     xform_norm; cancel.
     xform_norm; cancel.
@@ -1618,6 +1616,11 @@ Hint Resolve Forall_nil.
     norm.
     cancel.
     intuition simpl; eauto.
+    pred_apply; cancel.
+    Search GLog.recover_any_pred GLog.Recovering .
+    unfold  GLog.recover_any_pred.
+    unfold GLog.rep.
+    
     Unshelve.
     all: unfold EqDec; apply handle_eq_dec.
   Qed.

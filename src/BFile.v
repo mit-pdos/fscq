@@ -4317,7 +4317,7 @@ Qed.
            [[ can_access pr (BFOwner f) ]]
     POST:bm', hm', RET:^(ms', ok) exists m' flist' ilist' frees',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
-           ([[ ok = false ]] \/ [[ ok = true ]] *
+           ([[ ok = false ]] * [[ hm' = hm ]] \/ [[ ok = true ]] *
            [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
                       (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
            [[[ flist' ::: (Fi * inum |-> bfile0) ]]] *

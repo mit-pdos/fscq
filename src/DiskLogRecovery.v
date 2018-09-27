@@ -70,7 +70,6 @@ Qed.
     PRE:bm, hm,
           CacheDef.rep cs d bm * (
           [[ (F * rep xp (Synced nr l) hm)%pred d ]]) *
-          [[ bm = empty_mem ]] *
           [[ sync_invariant F ]]
     POST:bm', hm', RET:cs'
           CacheDef.rep cs' d bm' *

@@ -1333,7 +1333,6 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
     PERM:pr   
     PRE:bm, hm,
        CacheDef.rep cs raw bm *
-       [[ bm = empty_mem ]] *
       [[ (F * recover_either_pred xp d ents bm hm)%pred raw ]] *
       [[ sync_invariant F ]]
     POST:bm', hm', RET:ms' exists raw',
@@ -1391,7 +1390,7 @@ Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : o
     unfold ent_handle; auto.
     
     unfold map_replay in *.
-    rewrite H14.
+    rewrite H13.
     erewrite mapeq_elements; eauto.
     eapply MapFacts.Equal_trans; eauto.
     2: eapply extract_blocks_map_replay_mem_comm.
