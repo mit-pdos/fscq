@@ -1916,7 +1916,7 @@ Module AFS.
     XCRASH:bm', hm',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds sm bm' hm' \/
       exists d tree' ilist' frees' mscs',
-      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      (* [[ MSAlloc mscs' = MSAlloc mscs ]] * *)
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) sm bm' hm' *
       [[ tree' = update_subtree pathname
                     (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
@@ -1940,19 +1940,29 @@ Module AFS.
     cleanup; eauto.
     cleanup; eauto.
     weakstep.
-    erewrite H22; eauto.
+    eauto.
+    erewrite H23; eauto.
     destruct_branch.
     
     weakstep.
     weaklightstep.
-    or_r;  cancel.
+    or_r;  safecancel.
+    eauto.
+    erewrite mscs_same_except_log_rep.
+    apply pimpl_refl. 
+    unfold BFILE.mscs_same_except_log ; simpl; intuition.
+    all: eauto.
+    weakstep.
     weaklightstep.
-    or_l;  cancel.
+    or_l;  safecancel.
+    rewrite M.Map.cardinal_1 in *; omega.
+    
     rewrite <- H1; cancel; eauto.
     xcrash. or_r.
     repeat (cancel; progress xform_norm).
     safecancel. rewrite LOG.recover_any_idempred. cancel.
-    3: pred_apply; cancel.
+    eauto.
+    pred_apply; cancel.
     all: eauto.
     weakstep.
     weaklightstep.
@@ -1961,10 +1971,42 @@ Module AFS.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
     rewrite <- H1; cancel; eauto.
     xcrash. or_l. rewrite LOG.intact_idempred. cancel.
+    cancel.
+    destruct H23. rewrite H5 in H24; congruence.
+    destruct H23. rewrite H5 in H24; cleanup; eauto.
+    weakstep.
+    erewrite H23; eauto.
+    weakstep.
+    weakstep.
+    rewrite M.Map.cardinal_1 in *; omega.
+    rewrite <- H1; cancel; eauto.
+    xcrash. or_r. safecancel.
+    repeat (xform_norm; safecancel).
+    rewrite LOG.recover_any_idempred; cancel.
+    eauto.
+    pred_apply; cancel.
+    all: eauto.
+    
+    weakstep.
+    weakstep.
     rewrite <- H1; cancel; eauto.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+    rewrite <- H1; cancel; eauto.
+    xcrash. or_l. rewrite LOG.intact_idempred. cancel.
+    
+    weakstep.
+    weakstep.
+    weakstep.
+    rewrite <- H1; cancel; eauto.
+    xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+    rewrite <- H1; cancel; eauto.
+    xcrash. or_l. rewrite LOG.intact_idempred. cancel.
+    rewrite <- H1; cancel; eauto.
+    xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+
   Unshelve.
     all: eauto.
+    all: repeat constructor.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.

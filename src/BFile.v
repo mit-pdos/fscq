@@ -481,9 +481,9 @@ Module BFILE.
     let l := map (@wordToNat _) bns in
     cms <- BALLOCC.freevec lxp (pick_balloc bxp (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));;
     let^ (icache, cms) <- INODE.reset lxp (pick_balloc bxp (negb al)) xp inum sz attr0 icache cms;;
-    let^ (icache, ms, ok) <- INODE.setowner lxp xp inum Public icache (BALLOCC.MSLog cms);;          
+    (* let^ (icache, ms, ok) <- INODE.setowner lxp xp inum Public icache (BALLOCC.MSLog cms);; *)          
     let dblocks := clear_dirty inum dblocks in
-    Ret ^(mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache) dblocks, ok).
+    Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache) dblocks).
   
   
   Definition reset' lxp bxp xp inum ms :=
@@ -4308,38 +4308,35 @@ Qed.
 
   Theorem reset_ok :
     forall lxp bxp ixp inum ms pr,
-    {~<W F Fm Fi m0 sm m flist ilist frees f,
+    {< F Fm Fi m0 sm m flist ilist frees f,
     PERM:pr   
     PRE:bm, hm,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
            [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[ can_access pr (BFOwner f) ]]
-    POST:bm', hm', RET:^(ms', ok) exists m' flist' ilist' frees',
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:bm', hm', RET:^(ms') exists m' flist' ilist' frees',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
-           ([[ ok = false ]] * [[ hm' = hm ]] \/ [[ ok = true ]] *
-           [[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
+           ([[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
                       (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
-           [[[ flist' ::: (Fi * inum |-> bfile0) ]]] *
+           [[[ flist' ::: (Fi * inum |-> bfile0_owned (BFOwner f)) ]]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
                          ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
            [[ forall inum' def', inum' <> inum -> 
-               selN ilist inum' def' = selN ilist' inum' def' ]] *
-               [[ hm' = upd hm (S inum) Public ]])
+               selN ilist inum' def' = selN ilist' inum' def' ]])
     CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
-    W>~} reset lxp bxp ixp inum ms.
+    >} reset lxp bxp ixp inum ms.
   Proof. 
     unfold reset; intros.
-    weakprestep.
+    prestep.
     intros m Hm; destruct_lift Hm.
     repeat eexists; pred_apply; norm.
     cancel. intuition.
     pred_apply; cancel.
     eauto.
     
-    weakprestep. norml.
+    prestep. norml.
     rewrite rep_alt_equiv with (msalloc := MSAlloc ms) in *.
     unfold rep_alt in *. destruct_lifts.
     intros mx Hmx; repeat eexists; pred_apply; norm; msalloc_eq.
@@ -4349,7 +4346,7 @@ Qed.
 
     denote INODE.rep as Hx;
     rewrite INODE.rep_bxp_switch in Hx by eassumption.
-    weakstep.
+    step.
     denote INODE.rep as Hx;
     rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
     rewrite <- Forall_map; solve [intuition sepauto].
@@ -4384,7 +4381,7 @@ Qed.
     simplen.
 
     Opaque corr2_weak.
-    weaksafelightstep.
+    safelightstep.
     pred_apply.
     erewrite INODE.rep_bxp_switch; eauto.
     cancel.
@@ -4393,30 +4390,19 @@ Qed.
     pred_apply; cancel.
     eauto.
     eauto.
-    weakstep.
+    step.
     
-    rewrite listmatch_isolate with (i:= inum) in H0; eauto.
-    unfold file_match in H0; destruct_lift H0.
-    erewrite <- H30, <- list2nmem_sel; eauto.
-    simplen.
-    simplen.
+    safestep.
     
-    weaksafestep.
-    weaksafestep.
-
-    or_l; cancel.
-    cancel.
-    
-    weaksafestep.
-    or_r; safecancel.
     2: sepauto.
     seprewrite.
     rewrite rep_alt_equiv with (msalloc := MSAlloc a).
     cbv [rep_alt].
     erewrite <- INODE.rep_bxp_switch by eassumption.
-    unfold cuttail. 
-    safecancel.
-    rewrite listmatch_isolate with (i:= inum)(a:= dummy6 ⟦ inum := _ ⟧) .
+    unfold cuttail.
+    eassign INODE.inode0.
+    cancel.
+    rewrite listmatch_isolate with (i:= inum)(a:= dummy6 ⟦ inum := _ ⟧).
     repeat rewrite removeN_updN.
     repeat rewrite selN_updN_eq.
     erewrite <- pick_upd_balloc_lift.
@@ -4435,6 +4421,11 @@ Qed.
     eassign (if MSAlloc a then freelist' else dummy8_2).
     destruct (MSAlloc a); cancel.
     destruct r_0_2_1; simpl in *; eauto.
+    destruct_lift H0.
+    rewrite listmatch_isolate with (i:=inum) in H0.
+    unfold file_match at 2 in H0; destruct_lift H0; eauto.
+    all: simplen.
+    destruct_lift H0.
     rewrite listmatch_isolate with (i:=inum) in H0.
     unfold file_match at 2 in H0; destruct_lift H0; eauto.
     all: simplen.
@@ -4463,12 +4454,12 @@ Qed.
           (q:= (smrep_single_helper (Map.remove inum (MSDBlocks a)))).
       auto.
       intros.
-      rewrite <- H26.
+      rewrite <- H16.
       unfold smrep_single_helper.
       rewrite M.find_remove_ne by omega; eauto.
       intros.
-      rewrite <- H26, Nat.add_0_r.
-      rewrite firstn_length_l in H18 by simplen.
+      rewrite <- H16, Nat.add_0_r.
+      rewrite firstn_length_l in H15 by simplen.
       unfold smrep_single_helper.
       rewrite M.find_remove_ne by omega; eauto.
     }
@@ -4476,11 +4467,12 @@ Qed.
     destruct (MSAlloc a); cancel.
     unfold SS.For_all; intros x Hin; inversion Hin.
     unfold SS.For_all; intros x Hin; inversion Hin.
+    destruct_lift H0.
     rewrite listmatch_isolate with (i:=inum) in H0.
     unfold file_match at 2 in H0;
     rewrite listmatch_length_pimpl with (a:=(BFData dummy6 ⟦ inum ⟧)) in H0;
     destruct_lift H0; rewrite map_length in *.
-    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H40; eauto.
+    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H37; eauto.
     simplen.
     simplen.
     simplen.
@@ -4490,11 +4482,12 @@ Qed.
              length (BFData dummy6 ⟦ inum ⟧)) with 0; simpl.
     destruct (MSAlloc a); simpl;
     auto using ilist_safe_upd_nil.
+    destruct_lift H0.
     rewrite listmatch_isolate with (i:=inum) in H0.
     unfold file_match at 2 in H0;
     rewrite listmatch_length_pimpl with (a:=(BFData dummy6 ⟦ inum ⟧)) in H0;
     destruct_lift H0; rewrite map_length in *.
-    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H38; eauto.
+    symmetry; apply INODE.Ind.sub_le_eq_0; rewrite H36; eauto.
     simplen.
     simplen.
     rewrite selN_updN_ne; auto.
@@ -4505,7 +4498,105 @@ Qed.
   Qed.
 
   Hint Extern 1 ({{_|_}} Bind (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.
-  Hint Extern 1 ({{W _|_ W}} Bind (reset _ _ _ _ _) _) => apply reset_ok : prog.
+  Hint Extern 1 ({{ _|_ }} Bind (reset _ _ _ _ _) _) => apply reset_ok : prog.
+
+  Theorem reset_ok' :
+    forall lxp bxp ixp inum ms pr,
+    {< e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, Fi, m0, sm, m, flist, ilist, frees, f) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:bm', hm', RET:^(ms') 
+          let '(F, Fm, Fi, m0, sm, m, flist, ilist, frees, f) := e in
+          exists m' flist' ilist' frees',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
+           ([[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
+                      (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[[ flist' ::: (Fi * inum |-> bfile0_owned (BFOwner f)) ]]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
+           [[ forall inum' def', inum' <> inum -> 
+               selN ilist inum' def' = selN ilist' inum' def' ]])
+    CRASH:bm', hm',  
+          let '(F, Fm, Fi, m0, sm, m, flist, ilist, frees, f) := e in
+          LOG.intact lxp F m0 sm bm' hm'
+    >} reset lxp bxp ixp inum ms.
+  Proof.
+    intros; eapply pimpl_ok2.
+    apply reset_ok.
+    intros; norml; simpl in *; safecancel.
+    specialize (H2 (a, b)); simpl in *; eauto.
+  Qed.
+  
+  
+  Theorem reset_ok_weak' :
+    forall lxp bxp ixp inum ms pr,
+    {<W e,
+    PERM:pr   
+    PRE:bm, hm,
+          let '(F, Fm, Fi, m0, sm, m, flist, ilist, frees, f) := e in
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:bm', hm', RET:^(ms') 
+          let '(F, Fm, Fi, m0, sm, m, flist, ilist, frees, f) := e in
+          exists m' flist' ilist' frees',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
+           ([[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
+                      (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[[ flist' ::: (Fi * inum |-> bfile0_owned (BFOwner f)) ]]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
+           [[ forall inum' def', inum' <> inum -> 
+               selN ilist inum' def' = selN ilist' inum' def' ]])
+    CRASH:bm', hm',  
+          let '(F, Fm, Fi, m0, sm, m, flist, ilist, frees, f) := e in
+          LOG.intact lxp F m0 sm bm' hm'
+    W>} reset lxp bxp ixp inum ms.
+  Proof.
+    intros; eapply weak_conversion'.
+    apply reset_ok'.
+  Qed.
+  
+  Theorem reset_ok_weak :
+    forall lxp bxp ixp inum ms pr,
+    {<W F Fm Fi m0 sm m flist ilist frees f,
+    PERM:pr   
+    PRE:bm, hm,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) sm bm hm *
+           [[[ m ::: (Fm * rep bxp sm ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms) (MSDBlocks ms) hm) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:bm', hm', RET:^(ms') exists m' flist' ilist' frees',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') sm bm' hm' *
+           ([[[ m' ::: (Fm * rep bxp sm ixp flist' ilist' frees'
+                      (MSAllocC ms') (MSCache ms') (MSICache ms') (MSDBlocks ms') hm') ]]] *
+           [[[ flist' ::: (Fi * inum |-> bfile0_owned (BFOwner f)) ]]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
+           [[ forall inum' def', inum' <> inum -> 
+               selN ilist inum' def' = selN ilist' inum' def' ]])
+    CRASH:bm', hm',  LOG.intact lxp F m0 sm bm' hm'
+    W>} reset lxp bxp ixp inum ms.
+  Proof.
+    intros; eapply pimpl_ok2_weak.
+    apply reset_ok_weak'.
+    intros; norml; simpl in *; safecancel.
+    cancel.
+    eauto.
+    specialize (H2 (a, b)); simpl in *; eauto.
+    eauto.
+  Qed.
+
+  Hint Extern 1 ({{W _|_ W}} Bind (reset _ _ _ _ _) _) => apply reset_ok_weak : prog.
 
 
   Theorem recover_ok :

@@ -162,14 +162,14 @@ Module DIRTREE.
         let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;;
         match ok with
         | OK _ =>
-          let^ (mscs, ok) <- BFILE.reset lxp bxp ixp inum mscs;;
-          match ok with
-          | true =>
+            let^ (mscs) <- BFILE.reset lxp bxp ixp inum mscs;;
             mscs' <- IAlloc.free lxp ibxp inum (IAlloc.mk_memstate (MSLL mscs) (MSIAllocC mscs));;
-            Ret ^(BFILE.mk_memstate (MSAlloc mscs) (IAlloc.MSLog mscs') (MSAllocC mscs) (IAlloc.MSCache mscs') (MSICache mscs) (MSCache mscs) (MSDBlocks mscs), OK tt)
-          | false =>
-            Ret ^(mscs, Err ELOGOVERFLOW)
-          end 
+            let mscs_rel:= BFILE.mk_memstate (MSAlloc mscs) (IAlloc.MSLog mscs') (MSAllocC mscs) (IAlloc.MSCache mscs') (MSICache mscs) (MSCache mscs) (MSDBlocks mscs) in
+            let^ (mscs, ok) <- BFILE.setowner lxp ixp inum Public mscs_rel;;
+            match ok with
+            |true => Ret ^(mscs, OK tt)
+            |false => Ret ^(mscs, Err ELOGOVERFLOW)
+            end
         | Err e =>
           Ret ^(mscs, Err e)
         end
@@ -1422,11 +1422,12 @@ Module DIRTREE.
             [[ forall inum f elems, 
                 ((find_subtree [name] tree = Some (TreeFile inum f)  \/
                 find_subtree [name] tree = Some (TreeDir inum elems)) -> 
-                hm' = Mem.upd hm (S inum) Public)%type ]])
+                hm' = Mem.upd hm (S inum) Public)%type ]] *
+            [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst (BFILE.MSLL mscs')))) <= (LogLen (FSXPLog fsxp)) ]])
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
     W>~} delete fsxp dnum name mscs.
-  Proof. 
+  Proof.
     unfold delete, rep.
 
     (* extract some basic facts from rep *)
@@ -1476,11 +1477,6 @@ Module DIRTREE.
     erewrite <- list2nmem_sel in H42; eauto.
     2: pred_apply; cancel.
     simpl in *; rewrite H42.
-    rewrite tree_dir_extract_file in Hbk; eauto; simpl in *;
-    destruct_lift Hbk.
-    eapply H6; eauto.
-    eapply list2nmem_ptsto_bound; pred_apply; cancel.
-    rewrite <- H40; eapply list2nmem_ptsto_bound; pred_apply; cancel.
  
     weakstep.
     (* is_file: prepare for free *)
@@ -1490,11 +1486,29 @@ Module DIRTREE.
     end.
 
     (* post conditions *)
-    weakstep.
-    weakstep.
+    weakprestep.
+    norml.
     unfold IAlloc.MSLog; cancel.
-    or_r; safecancel.
     
+    rewrite tree_dir_extract_file in Hbk; eauto; simpl in *;
+    destruct_lift Hbk.
+    eapply H6; eauto.
+    
+    weakstep.
+    weakprestep.
+    norml.
+    unfold IAlloc.MSLog; cancel.
+    or_r; norm. safecancel.
+    split.
+    eauto.
+    split.
+    split.
+    split.
+    split.
+    pred_apply; msalloc_eq; cancel.
+    unfold IAlloc.rep.
+    destruct r_; simpl in *; cleanup; cancel.
+
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     rewrite dir_names_delete with (dnum := dnum); eauto.
     rewrite dirlist_pred_except_delete; eauto.
@@ -1502,40 +1516,63 @@ Module DIRTREE.
     unfold BFILE.freepred,  BFILE.bfile0_owned; eauto.
     eauto.
     apply dirlist_safe_delete; auto.
+    msalloc_eq; eauto.
+    eapply BFILE.ilist_safe_trans; eauto.
+    intros.
 
+    destruct (addr_eq_dec n0 inum); subst.
     (* inum inside the new modified tree *)
     denote! (tree_dir_names_pred' _ _) as Hy.
     eapply find_dirlist_exists in Hy as Hy'.
     deex.
+    exfalso; eauto.
     denote dirlist_combine as Hx.
     eapply tree_inodes_distinct_delete in Hx as Hx'; eauto.
-    eassumption.
+    exfalso; eauto.
 
     (* inum outside the original tree *)
     denote! (forall _ _, (_ = _ -> False) -> _ = _) as Hz.
-    eapply Hz.
+    rewrite Hz.
+    denote BFILE.treeseq_ilist_safe as Hzx.
+    eapply Hzx.
     intro; subst.
     denote! (In _ _ -> False) as Hq.
     eapply Hq.
-    denote ((name |-> (_, false))%pred) as Hy.
-    eapply find_dirlist_exists in Hy as Hy'; eauto.
+    denote ((name |-> (_, false))%pred) as Hyz.
+    eapply find_dirlist_exists in Hyz as Hy'; eauto.
     deex.
     eapply find_dirlist_tree_inodes; eauto.
     
+    intro; subst.
+    denote! (In _ _ -> False) as Hq.
+    eapply Hq.
+    denote ((name |-> (_, false))%pred) as Hyz.
+    eapply find_dirlist_exists in Hyz as Hy'; eauto.
+    deex.
+    eapply find_dirlist_tree_inodes; eauto.
+    
+    eauto.
+    denote! (forall _ _, (_ = _ -> False) -> _ = _) as Hz.
+    rewrite Hz; eauto.
+    denote BFILE.treeseq_ilist_safe as Hzx.
+    eapply Hzx; eauto.
+    
+    intros.
     rewrite tree_dir_extract_file in Hbk; eauto; simpl in *;
     destruct_lift Hbk.
-    rewrite H48 in H45; cleanup; eauto.
+    rewrite H65 in H23; cleanup; eauto.
+    split_ors; cleanup; eauto.
+    eauto.
+    eauto.
     
-    rewrite tree_dir_extract_file in Hbk; eauto; simpl in *;
-    destruct_lift Hbk.
-    rewrite H48 in H45; congruence.
-    
-    all: try solve[rewrite <- H1; cancel; eauto].
     weakstep.
     
-    msalloc_eq.
-    cancel.
+    all: try solve[rewrite <- H1; cancel; eauto].
+    eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    rewrite <- H40; eapply list2nmem_ptsto_bound; pred_apply; cancel.
     
+    norml.
+    cancel.
     weakstep.
     cancel.
     
@@ -1551,7 +1588,12 @@ Module DIRTREE.
 
     weakstep.
     weakstep.
-    weakstep.
+    weakprestep; norml; try congruence.
+    cleanup.
+    norm; [cancel| intuition].
+    pred_apply; msalloc_eq; cancel.
+    pred_apply; cancel.
+    
     
     denote BFILE.rep as Hrep;
     unfold BFILE.rep in Hrep;
@@ -1561,14 +1603,9 @@ Module DIRTREE.
     denote listmatch as Hrep;
     erewrite listmatch_isolate with (i:= a0) in Hrep; 
     unfold BFILE.file_match in Hrep; destruct_lift Hrep.
-    erewrite <- list2nmem_sel in H51; eauto.
+    erewrite <- list2nmem_sel in H50; eauto.
     2: pred_apply; cancel.
-    simpl in *; rewrite H51.
-    rewrite tree_dir_extract_subdir in Hbk; eauto; simpl in *;
-    destruct_lift Hbk.
-    eapply H6; eauto.
-    eapply list2nmem_ptsto_bound; pred_apply; cancel.
-    rewrite <- H49; eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    simpl in *; rewrite H50.
     
     msalloc_eq; weaksafestep.
     msalloc_eq; cancel.
@@ -1576,12 +1613,30 @@ Module DIRTREE.
       => exists m; solve [pred_apply; cancel]
     end.
     unfold IAlloc.MSLog in *.
-    weakstep.
-    weakstep.
+    weakprestep.
+    norml.
+    unfold IAlloc.MSLog; cancel.
 
-    (* post conditions *)
-    or_r; cancel.
+    rewrite tree_dir_extract_subdir in Hbk; eauto; simpl in *;
+    destruct_lift Hbk.
+    eapply H6; eauto.
     
+    weakstep.
+    weakprestep.
+    norml.
+    unfold IAlloc.MSLog; cancel.
+    or_r; norm. safecancel.
+    split.
+    eauto.
+    split.
+    split.
+    split.
+    split.
+    pred_apply; msalloc_eq; cancel.
+    unfold IAlloc.rep.
+
+    destruct r_; simpl in *; cleanup; cancel.
+
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     denote (tree_dir_names_pred' _ _) as Hz.
     erewrite (@dlist_is_nil _ _ _ _ _ _ Hz); eauto.
@@ -1596,40 +1651,66 @@ Module DIRTREE.
     pred_apply; cancel.
    
     apply dirlist_safe_delete; auto.
-
-    (* inum inside the new modified tree *)
+    msalloc_eq; eauto.
+    eapply BFILE.ilist_safe_trans; eauto.
+    intros.
+    
     eapply find_dirlist_exists in H15 as H14'.
     deex.
+    exfalso; eauto.
+    
     denote dirlist_combine as Hx.
     eapply tree_inodes_distinct_delete in Hx as Hx'; eauto.
-    eassumption.
+    denote! (forall _ _, (_ = _ -> False) -> _ = _) as Hz.
+    rewrite Hz; eauto.
+    denote BFILE.treeseq_ilist_safe as Hzx.
+    eapply Hzx; eauto.
 
-    (* inum outside the original tree *)
-    denote (selN _ _ _ = selN _ _ _) as Hs.
-    denote (In _ (dirlist_combine _ _)) as Hi.
-    denote (tree_dir_names_pred' tree_elem) as Ht.
-    apply Hs.
+    denote! (forall _ _, (_ = _ -> False) -> _ = _) as Hz.
+    rewrite Hz.
+    denote BFILE.treeseq_ilist_safe as Hzx.
+    eapply Hzx.
     intro; subst.
-    eapply Hi.
-    eapply find_dirlist_exists with (inum := a0) in Ht as Ht'.
+    denote! (In _ _ -> False) as Hq.
+    eapply Hq.
+    denote ((name |-> (_, true))%pred) as Hyz.
+    eapply find_dirlist_exists in Hyz as Hy'; eauto.
     deex.
     eapply find_dirlist_tree_inodes; eauto.
-    eassumption.
-    all: try solve [intros; rewrite <- H1; cancel; eauto].
     
+    intro; subst.
+    denote! (In _ _ -> False) as Hq.
+    eapply Hq.
+    denote ((name |-> (_, true))%pred) as Hyz.
+    eapply find_dirlist_exists in Hyz as Hy'; eauto.
+    deex.
+    eapply find_dirlist_tree_inodes; eauto.
+    eauto.
+    
+    intros.
     rewrite tree_dir_extract_subdir in Hbk; eauto; simpl in *;
     destruct_lift Hbk.
-    rewrite H50 in H28; congruence.
-    rewrite tree_dir_extract_subdir in Hbk; eauto; simpl in *;
-    destruct_lift Hbk.
-    rewrite H50 in H28; cleanup; eauto.
+    rewrite H69 in H20; cleanup; eauto.
+    split_ors; cleanup; eauto.
+    eauto.
+    eauto.
+    
+    weakstep.
+    
+    all: try solve[rewrite <- H1; cancel; eauto].
+    eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    rewrite <- H48; eapply list2nmem_ptsto_bound; pred_apply; cancel.
+    
+    norml.
+    cancel.
+    weakstep.
+    cancel.
+    
+    cleanup; msalloc_eq.
     
     weakstep.
 
     weakstep.
-    weakstep.
-    weakstep.
-    
     cancel.
     weakstep.
     cancel.
@@ -2062,7 +2143,8 @@ Module DIRTREE.
             [[ forall inum f elems, 
                 ((find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeFile inum f)  \/
                 find_subtree [name] (TreeDir dnum tree_elem) = Some (TreeDir inum elems)) -> 
-                hm' = Mem.upd hm (S inum) Public)%type ]])
+                hm' = Mem.upd hm (S inum) Public)%type ]] *
+            [[ length (MapUtils.AddrMap.Map.elements (LOG.MSTxn (fst (BFILE.MSLL mscs')))) <= (LogLen (FSXPLog fsxp)) ]])
     CRASH:bm', hm',
            LOG.intact fsxp.(FSXPLog) F mbase sm bm' hm'
     W>~} delete fsxp dnum name mscs.
