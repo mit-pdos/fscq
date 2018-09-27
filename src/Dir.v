@@ -1,3 +1,4 @@
+Require Import String.
 Require Import Mem.
 Require Import List.
 Require Import Word.

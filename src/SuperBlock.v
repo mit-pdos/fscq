@@ -8,6 +8,7 @@ Require Import CacheDef.
 Require Import Omega.
 Require Import SepAuto.
 Require Import FSLayout.
+Require Import String.
 
 Import ListNotations.
 Set Implicit Arguments.

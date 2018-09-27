@@ -1,3 +1,4 @@
+Require Import String.
 Require Import Arith.
 Require Import Mem Pred.
 Require Import Word.
@@ -22,6 +23,7 @@ Require Import BlockPtr.
 Require Import WeakConversion.
 
 Import ListNotations.
+Open Scope list.
 
 Set Implicit Arguments.
 

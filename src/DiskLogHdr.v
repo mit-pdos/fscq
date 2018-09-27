@@ -11,6 +11,7 @@ Require Import FSLayout.
 Require Import Rounding.
 Require Import List ListUtils.
 Require Import Psatz.
+Require Import String.
 
 Require Export AsyncRecArray.
 
