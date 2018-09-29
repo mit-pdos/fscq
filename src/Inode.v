@@ -1,3 +1,4 @@
+Require Import Coq.Strings.String.
 Require Import Arith.
 Require Import Pred PredCrash.
 Require Import Word.
@@ -28,6 +29,7 @@ Require Import Errno.
 Require Import SyncedMem.
 
 Import ListNotations.
+Open Scope list.
 
 Set Implicit Arguments.
 

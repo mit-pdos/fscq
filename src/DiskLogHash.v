@@ -1,3 +1,4 @@
+Require Import Coq.Strings.String.
 Require Import Arith.
 Require Import Bool.
 Require Import Eqdep_dec.

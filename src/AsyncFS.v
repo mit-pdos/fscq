@@ -1,3 +1,4 @@
+Require Import Coq.Strings.String.
 Require Import Prog ProgMonad.
 Require Import Log.
 Require Import BFile.

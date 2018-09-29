@@ -1,3 +1,4 @@
+Require Import Coq.Strings.String.
 Require Import Prog.
 Require Import Word.
 Require Import Rec.

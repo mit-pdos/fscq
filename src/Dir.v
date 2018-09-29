@@ -1,3 +1,4 @@
+Require Import Coq.Strings.String.
 Require Import Mem.
 Require Import Prog.
 Require Import List.
