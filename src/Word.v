@@ -1136,6 +1136,7 @@ Definition wminusN sz (x y : word sz) : word sz := wplusN x (wnegN y).
 
 (** * Notations *)
 
+Declare Scope word_scope.
 Delimit Scope word_scope with word.
 Bind Scope word_scope with word.
 

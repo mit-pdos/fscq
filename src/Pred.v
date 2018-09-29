@@ -118,6 +118,7 @@ Arguments precise {AT AEQ V} _.
 Hint Unfold pimpl.
 Hint Unfold piff.
 
+Declare Scope pred_scope.
 Infix "|->" := ptsto (at level 35) : pred_scope.
 Bind Scope pred_scope with pred.
 Delimit Scope pred_scope with pred.
