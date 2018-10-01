@@ -24,7 +24,7 @@ To run the fuse fscq:
 
   mkdir /tmp/fscq
   ./mkfs disk.img
-  ./fscq disk.img -f -o big_writes,atomic_o_trunc /tmp/fscq &
+  ./fscq disk.img -f -o big_writes,atomic_o_trunc,use_ino /tmp/fscq &
 
 To use fscq:
 
