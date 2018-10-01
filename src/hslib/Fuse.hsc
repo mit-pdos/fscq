@@ -130,6 +130,7 @@ data FileStat = FileStat { statEntryType :: EntryType
                          , statAccessTime :: EpochTime
                          , statModificationTime :: EpochTime
                          , statStatusChangeTime :: EpochTime
+                         , statInode :: Integer
                          }
     deriving Show
 
@@ -145,6 +146,7 @@ fileStatToCStat stat pStat = do
              `unionFileModes`
                (statFileMode stat `intersectFileModes` accessModes))
     let block_count = (fromIntegral (statBlocks stat) :: (#type blkcnt_t))
+    let inode_number = (fromIntegral (statInode stat) :: (#type ino_t))
     (#poke struct stat, st_mode)   pStat mode
     (#poke struct stat, st_nlink)  pStat (statLinkCount  stat)
     (#poke struct stat, st_uid)    pStat (statFileOwner  stat)
@@ -155,6 +157,7 @@ fileStatToCStat stat pStat = do
     (#poke struct stat, st_atime)  pStat (statAccessTime stat)
     (#poke struct stat, st_mtime)  pStat (statModificationTime stat)
     (#poke struct stat, st_ctime)  pStat (statStatusChangeTime stat)
+    (#poke struct stat, st_ino)    pStat inode_number
 
 
 -- | The Unix type of a node in the filesystem.

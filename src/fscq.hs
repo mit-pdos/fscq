@@ -221,8 +221,8 @@ fscqDestroy ds disk_fn fr m_fsxp  = withMVar m_fsxp $ \fsxp -> do
       materializeCrashes idxref flushgroups
     _ -> return ()
 
-dirStat :: FuseContext -> FileStat
-dirStat ctx = FileStat
+dirStat :: FuseContext -> HT -> FileStat
+dirStat ctx inum = FileStat
   { statEntryType = Directory
   , statFileMode = foldr1 unionFileModes
                      [ ownerReadMode, ownerWriteMode, ownerExecuteMode
@@ -238,6 +238,7 @@ dirStat ctx = FileStat
   , statAccessTime = 0
   , statModificationTime = 0
   , statStatusChangeTime = 0
+  , statInode = inum
   }
 
 attrToType :: INODE__Coq_iattr -> EntryType
@@ -245,8 +246,8 @@ attrToType attr =
   if t == 0 then RegularFile else Socket
   where t = wordToNat 32 $ _INODE__coq_AType attr
 
-fileStat :: FuseContext -> INODE__Coq_iattr -> FileStat
-fileStat ctx attr = FileStat
+fileStat :: FuseContext -> HT -> INODE__Coq_iattr -> FileStat
+fileStat ctx inum attr = FileStat
   { statEntryType = attrToType attr
   , statFileMode = foldr1 unionFileModes
                      [ ownerReadMode, ownerWriteMode, ownerExecuteMode
@@ -262,6 +263,7 @@ fileStat ctx attr = FileStat
   , statAccessTime = 0
   , statModificationTime = fromIntegral $ wordToNat 32 $ _INODE__coq_AMTime attr
   , statStatusChangeTime = 0
+  , statInode = inum
   }
 
 fscqGetFileStat :: IO FuseContext -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
@@ -269,10 +271,10 @@ fscqGetFileStat getctx fr m_fsxp (_:path)
   | (path == "sync") = withMVar m_fsxp $ \fsxp -> do
     ctx <- getctx
     _ <- fr $ AsyncFS._AFS__umount fsxp
-    return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
+    return $ Right $ fileStat ctx 0 $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | path == "stats" = do
     ctx <- getctx
-    return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
+    return $ Right $ fileStat ctx 0 $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
   nameparts <- return $ splitDirectories path
@@ -283,11 +285,11 @@ fscqGetFileStat getctx fr m_fsxp (_:path)
     Errno.OK (inum, isdir)
       | isdir -> do
         ctx <- getctx
-        return $ Right $ dirStat ctx
+        return $ Right $ dirStat ctx inum
       | otherwise -> do
         (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
         ctx <- getctx
-        return $ Right $ fileStat ctx attr
+        return $ Right $ fileStat ctx inum attr
 fscqGetFileStat _ _ _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno HT)
@@ -309,15 +311,15 @@ fscqReadDirectory getctx fr m_fsxp _ dnum = withMVar m_fsxp $ \fsxp -> do
   ctx <- getctx
   (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
   files_stat <- mapM (mkstat fsxp ctx) files
-  return $ Right $ [(".",          dirStat ctx)
-                   ,("..",         dirStat ctx)
+  return $ Right $ [(".",          dirStat ctx dnum)
+                   ,("..",         dirStat ctx 0) -- FIXME: this inode number is wrong
                    ] ++ files_stat
   where
     mkstat fsxp ctx (fn, (inum, isdir))
-      | isdir = return $ (fn, dirStat ctx)
+      | isdir = return $ (fn, dirStat ctx inum)
       | otherwise = do
         (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
-        return $ (fn, fileStat ctx attr)
+        return $ (fn, fileStat ctx inum attr)
 
 fscqOpen :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr m_fsxp (_:path) _ flags
