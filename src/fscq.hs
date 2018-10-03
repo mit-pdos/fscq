@@ -485,6 +485,7 @@ data WriteState =
 
 fscqWrite :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
+  debugStart ("WRITE " ++ show offset) inum
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
@@ -602,11 +603,11 @@ fscqChmod _ _ = do
 
 fscqSyncFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> SyncType -> IO Errno
 fscqSyncFile fr m_fsxp _ inum syncType = withMVar m_fsxp $ \fsxp -> do
-  debugStart "SYNC FILE" inum
   _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
   case syncType of
-    DataSync -> return eOK
+    DataSync -> debugStart "FDATASYNC" inum >> return eOK
     FullSync -> do
+      debugStart "FSYNC" inum
       _ <- fr $ AsyncFS._AFS__tree_sync fsxp
       return eOK
 
