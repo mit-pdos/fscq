@@ -493,20 +493,23 @@ fscqWrite fr m_fsxp _ inum bs offset = withMVar m_fsxp $ \fsxp -> do
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
-  -- NOTE: logged writes are disabled since they are not crash safe
-  -- (the design of DFSCQ should permit them to be crash safe, but the proofs
-  -- don't cover mixing direct and logged writes, and logged writes currently
-  -- are not synced correctly)
   (okspc, do_log) <- if len < endpos then do
     (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
-    --return (ok, True)
-    return (ok, False)
+    -- Appends to a file need to be logged so that the truncate and write
+    -- happen in the log technically these are different transactions but FSCQ
+    -- never breaks up the log.
+    return (ok, True)
   else do
     bslen <- return $ fromIntegral $ BS.length bs
     if ((fromIntegral offset) `mod` 4096 == 0) && (bslen `mod` 4096 == 0) && bslen > 4096 * 5 then
       -- block is large and aligned -> bypass write
       return $ (Errno.OK (), False)
     else
+      -- NOTE: logged overwrites to the middle of the file are disabled since
+      -- they are currently not synced by fdatasync, which is unexpected from a
+      -- user looking at the Linux API.
+      -- Thus, regardless of the offset and length of the write, we always do a
+      -- direct write.
       -- return $ (Errno.OK (), True)
       return $ (Errno.OK (), False)
   case okspc of
