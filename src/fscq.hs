@@ -42,8 +42,11 @@ cachesize = 100000
 -- This controls whether HFuse will use upcalls (FUSE threads entering GHC runtime)
 -- or downcalls (separate FUSE threads using a queue, and GHC accessing this queue
 -- using its own threads).
+-- Disabled by default: seems to be buggy
+-- (1) FSCQ no longer terminates gracefully in response to SIGTERM
+-- (2) More seriously, data doesn't seem to be persisted correctly
 useDowncalls :: Bool
-useDowncalls = True
+useDowncalls = False
 
 debug :: String -> IO ()
 debug msg =
