@@ -38,7 +38,7 @@ ifeq (,$(shell $(GHC) --version 2>/dev/null | grep 'version 8\.' 2>/dev/null))
 endif
 
 J	   ?= 1
-GHCARGS    := -j$(J) -O2 -threaded -rtsopts
+GHCARGS    := -j$(J) -O2 -threaded -rtsopts -optl-no-pie
 		# -ticky -ticky-dyn-thunk -ticky-allocd
 		# -prof -fprof-auto
 		# -eventlog
