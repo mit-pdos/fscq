@@ -109,13 +109,13 @@ hscgen/%.hs: hslib/%.hsc
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -lopfuse -Lhslib -o $@
 
 $(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
-	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )
+	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell.v )
 
 $(VS_ML): $(VS_VIO) coqbuild/ExtractOcaml.v
-	( cd coqbuild && coqc -q -R . Fscq ExtractOcaml )
+	( cd coqbuild && coqc -q -R . Fscq ExtractOcaml.v )
 
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
-	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
+	( cd coqbuild && coqc -q -R . Fscq ExtractJSON.v )
 
 $(VS_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick )
