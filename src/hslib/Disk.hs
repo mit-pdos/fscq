@@ -2,19 +2,21 @@
 
 module Disk where
 
-import System.IO
-import System.Posix.Types
-import System.Posix.IO
-import System.Posix.Unistd
-import System.Posix.Files
-import Word
 import qualified Data.ByteString.Internal as BSI
-import GHC.Exts
-import Foreign.Ptr
-import Foreign.ForeignPtr
-import Foreign.Marshal.Alloc
-import Data.IORef
+import           Data.IORef
+import           Data.List (intercalate)
 import qualified Data.Map.Strict
+import           Data.Word (Word8)
+import           Foreign.ForeignPtr
+import           Foreign.Marshal.Alloc
+import           Foreign.Ptr
+import           GHC.Exts
+import           System.IO
+import           System.Posix.Files
+import           System.Posix.IO
+import           System.Posix.Types
+import           System.Posix.Unistd
+import           Word
 
 verbose :: Bool
 verbose = False
@@ -90,6 +92,15 @@ read_disk (S fd sr _ _) a = do
       do
         error $ "read_disk: short read: " ++ (show cc) ++ " @ " ++ (show a)
 
+sparseBytes :: [Word8] -> [(Int, Word8)]
+sparseBytes l = filter (\(_, n) -> n /= 0) (zip [0..] l)
+
+showByteLocs :: [(Int, Word8)] -> String
+showByteLocs vs = "{" ++ intercalate " " (map (\(i, n) -> show i ++ "->" ++ show n) vs) ++ "}"
+
+showSparseBytes :: [Word8] -> String
+showSparseBytes = showByteLocs . sparseBytes
+
 write_disk :: DiskState -> Integer -> Coq_word -> IO ()
 write_disk _ _ (W64 _) = error "write_disk: short value"
 
@@ -99,7 +110,7 @@ write_disk s a (W w) = do
 
 write_disk (S fd sr fl _) a (WBS bs) = do
   -- maybeCrash
-  debugmsg $ "write(" ++ (show a) ++ ")"
+  debugmsg $ "write(" ++ (show a) ++ ", " ++ (showSparseBytes (BSI.unpackBytes bs)) ++ ")"
   bumpWrite sr
   logWrite fl a (WBS bs)
   _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a

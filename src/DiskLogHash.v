@@ -2263,6 +2263,7 @@ Module PaddedLog.
     If (weq2 addr_checksum h_addr valu_checksum h_valu) {
       Ret cs
     } else {
+      Debug "hash mismatch" 0;;
       let^ (cs, wal) <- Desc.read_all xp prev_ndesc cs;
       let^ (cs, vl) <- Data.read_all xp prev_ndata cs;
       addr_checksum <- hash_list default_hash (DescDefs.ipack wal);
