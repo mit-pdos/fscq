@@ -357,6 +357,9 @@ Module AFS.
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms' (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err ELOGOVERFLOW)
     }.
 
+  (* note that file_set_sz is not the same as ftruncate - it does not allocate
+  new blocks, but merely sets the size in the inode to the specified sz (in
+  bytes) *)
   Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
@@ -377,6 +380,7 @@ Module AFS.
     Debug "read_fblock" (t2-t1) ;;
     Ret r.
 
+  (* note that file_truncate takes sz in blocks *)
   Definition file_truncate fsxp inum sz ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -395,6 +399,34 @@ Module AFS.
     end;
     t2 <- Rdtsc ;
     Debug "truncate" (t2-t1) ;;
+    Ret r.
+
+  (* ftruncate is an _unverified_ implementation of the ftruncate system call
+  (it is similar to the verified file_truncate code, but has some adjustments to
+  work in terms of bytes) *)
+  (* TODO: this code is not verified, although its core (DIRTREE.truncate and
+  DIRTREE.updattr) are, as well as [file_truncate]. *)
+  Definition ftruncate fsxp inum sz ams :=
+    t1 <- Rdtsc ;
+    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
+    let sz_blocks := (sz + valulen - 1) / valulen in
+    let^ (ams', ok) <- DIRTREE.truncate fsxp inum sz_blocks (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams));
+    r <- match ok with
+    | Err e =>
+        ms <- LOG.abort (FSXPLog fsxp) (MSLL ams');
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)), Err e)
+    | OK _ =>
+      ams' <- DIRTREE.updattr fsxp inum (INODE.UBytes (addr2w sz)) (BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams'));
+      let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams');
+      If (bool_dec ok true) {
+        Ret ^((BFILE.mk_memstate (MSAlloc ams') ms (MSAllocC ams') (MSIAllocC ams') (MSICache ams') (MSCache ams') (MSDBlocks ams')), OK tt)
+      } else {
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams) (MSDBlocks ams)),
+              Err ELOGOVERFLOW)
+      }
+    end;
+    t2 <- Rdtsc ;
+    Debug "ftruncate" (t2-t1) ;;
     Ret r.
 
   (* update an existing block of an *existing* file with bypassing the log *)

@@ -573,7 +573,8 @@ fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
     Errno.OK (inum, isdir)
       | isdir -> return eISDIR
       | otherwise -> do
-        (ok, ()) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W64 $ fromIntegral size)
+        -- note that this function is unverified
+        (ok, ()) <- fr $ AsyncFS._AFS__ftruncate fsxp inum (fromIntegral size)
         case ok of
           Errno.OK _ -> return eOK
           Errno.Err e -> return $ errnoToPosix e
