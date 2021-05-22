@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # preprocessor: add extra imports
 # preprocessor: ghc -F -pgmF
