@@ -1,4 +1,13 @@
-To build fscq, use the latest release of Coq (v8.8.1 at the time of last update).
+You'll need Coq 8.13, GHC 8, and the FUSE headers. It's easiest to install Coq
+through opam. On Ubuntu you can get the other dependencies with:
+
+  apt-get install ghc cabal-install libfuse-dev
+  cabal update
+  cabal install rdtsc digest
+
+Then compile with
+
+  make J=4 mkfs fscq
 
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
@@ -10,11 +19,7 @@ the stock version of GHC is sufficiently recent, so just run:
   echo 'library-profiling: True' >> ~/.cabal/config
   cabal user-config update
   cabal update
-  cabal install cryptohash rdtsc digest
-
-You also need to install headers for FUSE:
-
-  apt-get install libfuse-dev
+  cabal install rdtsc digest
 
 To build the Ocaml extracted code, install the following Ocaml libraries:
 
