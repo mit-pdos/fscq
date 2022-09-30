@@ -1296,8 +1296,7 @@ Module BFILE.
     assert (0 < a * valulen + valulen + b).
     apply Nat.add_pos_l.
     apply Nat.add_pos_r.
-    rewrite valulen_is; simpl.
-    apply Nat.lt_0_succ.
+    rewrite valulen_is; apply Nat.ltb_lt; compute; reflexivity.
     omega.
   Qed.
 
@@ -1695,7 +1694,7 @@ Module BFILE.
     eapply forN_ok'.
     cancel.
     step.
-    unfold BALLOCC.bn_valid; split; auto.
+    unfold BALLOCC.bn_valid; split; auto. omega.
     denote (lt m1) as Hm.
     rewrite Nat.sub_add in Hm by omega.
     apply Rounding.lt_div_mul_lt in Hm; omega.
@@ -1706,7 +1705,7 @@ Module BFILE.
     rewrite Nat.sub_add in Hm by omega.
     apply Rounding.lt_div_mul_lt in Hm; omega.
     step.
-    unfold BALLOCC.bn_valid; split; auto.
+    unfold BALLOCC.bn_valid; split; auto. omega.
     substl (BmapNBlocks bxps_2); auto.
     denote (lt m1) as Hm.
     rewrite Nat.sub_add in Hm by omega.
@@ -1786,7 +1785,7 @@ Module BFILE.
     erewrite arrayN_split with (i := BmapStart bxps_2). repeat rewrite Nat.add_0_l.
     erewrite arrayN_split with (i := BmapStart bxps_1) (a := firstn _ _). repeat rewrite Nat.add_0_l.
     erewrite arrayN_split with (i := (BmapNBlocks bxps_1) * valulen) at 1; repeat rewrite Nat.add_0_l.
-    rewrite arrayN_listpred_seq by eauto. rewrite Nat.add_0_r.
+    rewrite arrayN_listpred_seq by eauto.
     repeat rewrite firstn_length.
     substl (length sl).
     cancel.
@@ -1800,7 +1799,7 @@ Module BFILE.
     (* IAlloc.init *)
     prestep. norm. cancel.
     intuition simpl. pred_apply.
-    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
+    erewrite arrayN_split at 1.
     (* inode region is the first chunk, and inode alloc is the second chunk *)
     substl (IAlloc.Sig.BMPStart ibxp).
     eassign (IAlloc.Sig.BMPLen ibxp * valulen / INODE.IRecSig.items_per_val).
@@ -2093,7 +2092,8 @@ Module BFILE.
     rewrite map_length in *.
     destruct_lift Hx.
     safecancel.
-    eauto.
+    match goal with H: _ = length (INODE.IBlocks _) |- _ => rewrite <-H end.
+    now eauto.
 
     sepauto.
     denote (_ (list2nmem m)) as Hx.
@@ -2142,7 +2142,8 @@ Module BFILE.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
     rewrite map_length in *.
     destruct_lift Hx; safecancel.
-    eauto.
+    match goal with H: _ = length _ |- _ => rewrite <-H end.
+    now eauto.
     sepauto.
 
     denote (_ (list2nmem m)) as Hx.
@@ -2292,18 +2293,15 @@ Module BFILE.
       eapply BALLOCC.bn_valid_goodSize; eauto.
       seprewrite.
       eapply bfcache_upd; eauto.
-      eauto.
       rewrite <- smrep_upd_add; eauto.
       cancel.
       unfold smrep. destruct MSAlloc; cancel.
-      eauto.
-      eapply BALLOCC.bn_valid_goodSize; eauto.
+      eapply BALLOCC.bn_valid_goodSize; eauto. omega.
       sepauto.
       cbn; auto.
       apply list2nmem_app; eauto.
 
-      2: eauto using grow_treeseq_ilist_safe.
-
+      2: { eapply grow_treeseq_ilist_safe. omega. eauto. }
       2: cancel.
       2: or_l; cancel.
 
@@ -2380,7 +2378,7 @@ Module BFILE.
       rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
       denote Forall as Hv; specialize (Hv inum); subst.
       rewrite <- Forall_map.
-      apply forall_skipn; apply Hv; eauto.
+      apply forall_skipn; apply Hv; eauto. omega.
       erewrite <- listmatch_ptsto_listpred.
       rewrite listmatch_extract with (i := inum) (a := flist) by omega.
       unfold file_match at 2.
@@ -2601,14 +2599,18 @@ Module BFILE.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
     rewrite map_length in *.
     destruct_lift Hx; cancel; eauto.
+    match goal with H: length _ = length _ |- _ => rewrite <-H end. now eauto.
 
     sepauto.
     denote removeN as Hx.
     setoid_rewrite listmatch_extract with (i := off) (bd := 0) in Hx; try omega.
     destruct_lift Hx.
-    rewrite arrayN_except with (i := inum) in * by eauto.
-    erewrite smrep_single_helper_split_dirty with (off := off) (ino' := INODE.mk_inode _ _) in * by (cbn; eauto).
-
+    rewrite arrayN_except with (i := inum) in * by omega.
+    erewrite smrep_single_helper_split_dirty with (off := off) (ino' := INODE.mk_inode _ _) in *.
+    2: now eauto.
+    2: { match goal with H1: length _ = length (INODE.IBlocks _), H2: _ < length (BFData _) |- _ =>
+                           rewrite H1 in H2 end. eauto. }
+    2: now eauto.
     step.
     rewrite listmatch_extract with (i := off) (b := map _ _) by omega.
     erewrite selN_map by omega; filldef.
@@ -2627,7 +2629,7 @@ Module BFILE.
     cancel.
     eauto.
 
-    erewrite arrayN_except by eauto.
+    erewrite arrayN_except by (substl (length ilist); eauto).
     rewrite arrayN_ex_smrep_single_helper_put_dirty.
     eapply pimpl_trans.
     eapply pimpl_trans.

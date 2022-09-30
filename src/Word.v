@@ -149,9 +149,10 @@ Fixpoint pow2 (n : nat) : nat :=
 Lemma pow2_add_mul: forall a b,
   pow2 (a + b) = (pow2 a) * (pow2 b).
 Proof.
-  induction a; destruct b; firstorder; simpl.
+  induction a; destruct b; try now firstorder; simpl.
   repeat rewrite Nat.add_0_r.
   rewrite Nat.mul_1_r; auto.
+  simpl.
   repeat rewrite Nat.add_0_r.
   rewrite IHa.
   simpl.
@@ -211,7 +212,7 @@ Qed.
 
 Lemma mul2_add : forall n, n * 2 = n + n.
 Proof.
-  induction n; firstorder.
+  induction n; firstorder. omega.
 Qed.
 
 Lemma pow2_le_S : forall sz, (pow2 sz) + 1 <= pow2 (sz + 1).
@@ -294,7 +295,6 @@ Proof.
   induction n using strong; simpl; intuition.
 
   destruct n; simpl in *; intuition.
-    discriminate.
   destruct n; simpl in *; intuition.
   do 2 f_equal.
   replace (div2 n + S (div2 n + 0)) with (S (div2 n + (div2 n + 0))); auto.
@@ -308,7 +308,6 @@ Proof.
 
   destruct n; simpl in *; intuition.
   destruct n; simpl in *; intuition.
-    discriminate.
   f_equal.
   replace (div2 n + S (div2 n + 0)) with (S (div2 n + (div2 n + 0))); auto.
 Qed.
@@ -1248,9 +1247,6 @@ Proof.
   induction n; simpl; intuition.
   rewrite <- IHn; clear IHn.
   case_eq (Npow2 n); intuition.
-  rewrite untimes2.
-  replace (Npos p~0) with (N.double (Npos p)) by reflexivity.
-  apply nat_of_Ndouble.
 Qed.
 
 Theorem pow2_N : forall n, Npow2 n = N.of_nat (pow2 n).

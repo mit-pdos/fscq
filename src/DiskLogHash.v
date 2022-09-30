@@ -44,8 +44,7 @@ Module PaddedLog.
     Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
     Proof.
       unfold items_per_val; simpl.
-      rewrite valulen_is.
-      cbv; auto.
+      rewrite valulen_is. apply Nat.eqb_eq. compute. reflexivity.
     Qed.
 
   End DescSig.
@@ -64,8 +63,7 @@ Module PaddedLog.
     Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
     Proof.
       unfold items_per_val; simpl.
-      rewrite valulen_is.
-      cbv; auto.
+      rewrite valulen_is. apply Nat.eqb_eq. compute; reflexivity.
     Qed.
 
   End DataSig.
@@ -1150,7 +1148,7 @@ Module PaddedLog.
     rewrite helper_sep_star_reorder.
     rewrite Desc.avail_rep_merge by auto.
     rewrite Data.avail_rep_merge by auto.
-    repeat rewrite helper_add_sub_0 by auto.
+    rewrite !le_plus_minus_r by auto.
     cancel.
   Qed.
 
@@ -2994,7 +2992,6 @@ Module DLog.
     eapply goodSize_trans; [ | eauto ]; omega.
     substl (LogData xp); substl (LogDescriptor xp); unfold PaddedLog.DataSig.RALen.
     eapply goodSize_trans; [ | eauto ]; omega.
-    rewrite Nat.mul_comm; auto.
     step.
     rewrite roundup_0; auto.
   Qed.

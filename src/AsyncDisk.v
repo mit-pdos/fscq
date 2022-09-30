@@ -39,9 +39,8 @@ Notation "'valu'" := (word valulen).
 
 Theorem valulen_nonzero : valulen <> 0.
 Proof.
-  rewrite valulen_is.
-  compute.
-  apply Nat.neq_succ_0.
+  rewrite valulen_is. apply Nat.eqb_neq.
+  compute. reflexivity.
 Qed.
 
 Theorem valulen_gt_0 : valulen > 0.
@@ -53,17 +52,15 @@ Qed.
 
 Theorem valulen_wordToNat_natToWord : # (natToWord addrlen valulen) = valulen.
 Proof.
-  rewrite valulen_is.
-  compute.
-  reflexivity.
+  rewrite valulen_is. apply Nat.eqb_eq.
+  compute. reflexivity.
 Qed.
 
 (* tight bound for valulen *)
 Theorem valulen_bound : valulen < pow2 16.
 Proof.
   eapply Nat.lt_le_trans with (m := pow2 15 + 1).
-  rewrite valulen_is.
-  compute; auto.
+  rewrite valulen_is. apply Nat.ltb_lt. compute; reflexivity.
   apply pow2_le_S.
 Qed.
 

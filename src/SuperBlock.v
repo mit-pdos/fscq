@@ -54,7 +54,8 @@ Module SB.
   Theorem superblock_padded_len :
     Rec.len superblock_padded = valulen.
   Proof.
-    simpl. rewrite valulen_is. compute. reflexivity.
+    simpl. rewrite valulen_is. apply Nat.eqb_eq.
+    compute. reflexivity.
   Qed.
 
   Definition superblock0 := @Rec.of_word superblock_type (wzero _).

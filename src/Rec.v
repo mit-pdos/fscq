@@ -504,7 +504,7 @@ Module Rec.
       generalize (word_selN_helper (len ft) l0).
       replace (S l * len ft - len ft - 0 * len ft) with (l * len ft) by lia.
       simpl; intros.
-      erewrite <- eq_rec_eq.
+      erewrite <- eq_rect_eq.
       reflexivity.
 
     - rewrite <- IHl by omega; clear IHl.
@@ -534,21 +534,21 @@ Module Rec.
       intros.
 
       assert (n + n0 = n + (n1 + n2)) as e0' by omega.
-      replace ((eq_rec (n + n0) (fun n => word n) w (n + n1 + n2) e0))
+      replace ((eq_rect (n + n0) (fun n => word n) w (n + n1 + n2) e0))
         with (match plus_assoc _ _ _ in _ = N return word N with
-              | refl_equal => (eq_rec (n+n0) (fun n => word n) w (n+(n1+n2)) e0')
+              | refl_equal => (eq_rect (n+n0) (fun n => word n) w (n+(n1+n2)) e0')
               end).
 
       rewrite <- split2_iter.
       f_equal.
       generalize dependent e0'; clear e0.
       rewrite <- e; intros.
-      repeat rewrite <- eq_rec_eq.
+      repeat rewrite <- eq_rect_eq.
       reflexivity.
 
       destruct (Nat.add_assoc n n1 n2).
       destruct e0.
-      repeat rewrite <- eq_rec_eq.
+      repeat rewrite <- eq_rect_eq.
       reflexivity.
   Qed.
 

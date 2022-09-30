@@ -651,12 +651,14 @@ Module BUFCACHE.
     apply size_valid_remove; auto. eapply MapFacts.in_find_iff. congruence.
     apply addr_valid_remove; auto.
     eapply Map.remove_1; eauto.
+    reflexivity.
     eapply size_valid_remove_cardinal_ok; eauto.
 
     eapply addr_clean_cachepred_remove; eauto.
     apply size_valid_remove_notin; auto. eapply MapFacts.not_find_in_iff. congruence.
     apply addr_valid_remove; auto.
     eapply Map.remove_1; eauto.
+    reflexivity.
     eapply size_valid_remove_cardinal_ok; eauto.
   Qed.
 

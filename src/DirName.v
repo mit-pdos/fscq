@@ -810,6 +810,7 @@ Module SDIR.
 
     eapply mem_ainv_mem_upd; eauto.
     apply ptsto_upd_disjoint; auto.
+    eauto. eauto.
   Qed.
 
 

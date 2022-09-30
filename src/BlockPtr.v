@@ -112,7 +112,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
     Proof.
       unfold items_per_val.
-      rewrite valulen_is; compute; auto.
+      rewrite valulen_is; apply Nat.eqb_eq; compute; reflexivity.
     Qed.
 
   End IndSig.
@@ -3594,14 +3594,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Proof.
     unfold indread_range_helper.
     step; indrep_n_tree_extract_lengths; hoare.
-    substl (length l).
+    match goal with H : length l = _ |- _ => setoid_rewrite <- H end.
     let H := fresh in
     edestruct Min.min_spec as [ [? H]|[? H] ]; rewrite H; clear H.
-    omega.
-    omega.
-    let H := fresh in
-    edestruct Min.min_spec as [ [? H]|[? H] ]; rewrite H; clear H.
-    auto.
+    reflexivity.
     rewrite firstn_oob.
     rewrite firstn_oob; auto.
     autorewrite with core.
@@ -3773,7 +3769,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
       step. unfold rep.
       autorewrite with core. cancel.
       - apply upd_len_direct_indrep.
-      - rewrite min_l by omega. omega.
       - rewrite upd_range_length; eauto.
       - rewrite min_l by omega.
         substl l at 1. rewrite firstn_firstn, min_l by omega.
@@ -3977,7 +3972,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
       rewrite indrep_length_pimpl in *. unfold indrep in *. destruct_lifts.
       indrep_n_tree_extract_lengths.
       hoare.
-      - rewrite mult_1_r. omega.
       - psubst; cancel.
       - rewrite <- skipn_skipn' in *. repeat rewrite firstn_skipn in *.
         indrep_n_tree_extract_lengths.

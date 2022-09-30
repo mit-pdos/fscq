@@ -1299,7 +1299,7 @@ Lemma possible_crash_list_cons : forall vsl vl v vs,
 Proof.
   unfold possible_crash_list; intuition.
   simpl; omega.
-  destruct i, vs, vsl; firstorder.
+  destruct i, vs, vsl; try now firstorder; eauto with arith.
 Qed.
 
 Theorem possible_crash_list_vssync : forall l l' a,

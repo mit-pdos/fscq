@@ -1864,7 +1864,7 @@ Lemma dir2flatmem2_tsupd_updN: forall Ftree pathname inum f f' ts block_off v,
         roundup a b / b = S (a / b).
         Proof.
           intros.
-          rewrite roundup_eq; auto.
+          rewrite roundup_eq; auto; [| omega].
           rewrite <- divmult_plusminus_eq; auto.
           rewrite Nat.div_add; auto.
           rewrite Nat.div_same; auto; omega.

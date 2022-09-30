@@ -136,7 +136,7 @@ Module LogReplay.
     destruct (eq_nat_dec pos a); subst; autorewrite with lists in *.
     rewrite selN_updN_eq by (autorewrite with lists in *; auto).
     apply replay_disk_selN_MapsTo; auto.
-    apply Map.add_1; auto.
+    apply Map.add_1; auto. reflexivity.
 
     rewrite selN_updN_ne by auto.
     case_eq (Map.find pos ds); intros; autorewrite with lists in *.
@@ -634,7 +634,7 @@ Module LogReplay.
     apply not_in_remove_not_in; auto.
 
     rewrite In_map_fst_MapIn.
-    apply Map.remove_1; auto.
+    apply Map.remove_1; now auto.
   Qed.
 
 
@@ -650,8 +650,8 @@ Module LogReplay.
     rewrite <- replay_disk_updN_comm.
     erewrite <- replay_disk_remove_updN_eq; eauto.
 
-    rewrite In_map_fst_MapIn; apply Map.remove_1; auto.
-    rewrite In_map_fst_MapIn; apply Map.remove_1; auto.
+    rewrite In_map_fst_MapIn; apply Map.remove_1; now auto.
+    rewrite In_map_fst_MapIn; apply Map.remove_1; now auto.
   Qed.
 
 
@@ -684,7 +684,7 @@ Module LogReplay.
     apply not_in_remove_not_in; auto.
 
     rewrite In_map_fst_MapIn.
-    apply Map.remove_1; auto.
+    apply Map.remove_1; now auto.
   Qed.
 
 
@@ -829,7 +829,8 @@ Module LogReplay.
   Lemma length_eq_map_valid : forall m a b,
     map_valid m a -> length b = length a -> map_valid m b.
   Proof.
-    unfold map_valid; firstorder.
+    unfold map_valid. intros * Hv Hlen * Hm. split; firstorder.
+    specialize (Hv _ _ Hm) as [? ?]. omega.
   Qed.
 
   Lemma map_valid_vsupd_vecs : forall l d m,
@@ -1101,13 +1102,13 @@ Module LogReplay.
     eapply H2 with (v:=snd a).
     unfold KIn.
     eapply InA_cons_hd.
-    unfold Map.eq_key; eauto.
+    unfold Map.eq_key; now eauto.
 
     unfold log_valid in *; intuition.
     eapply H3 with (v:=snd a).
     unfold KIn.
     eapply InA_cons_hd.
-    unfold Map.eq_key; eauto.
+    unfold Map.eq_key; now eauto.
   Qed.
 
   Lemma crash_xform_replay_disk : forall ents d d',
@@ -1159,7 +1160,7 @@ Module LogReplay.
     overlap (firstn n l) m = true ->
     overlap l m = true.
   Proof.
-    induction n; destruct l; simpl; firstorder.
+    induction n; destruct l; simpl; try congruence; firstorder.
     destruct (MapFacts.In_dec m n0); auto.
     rewrite Map.mem_1; auto.
     apply MapFacts.not_mem_in_iff in n1; rewrite n1 in *; auto.

@@ -323,6 +323,7 @@ Lemma sm_vs_valid_sm_unsynced: forall d,
   sm_vs_valid sm_unsynced d.
 Proof.
   unfold sm_vs_valid; firstorder. discriminate.
+  unfold sm_unsynced in *. congruence.
 Qed.
 Local Hint Resolve sm_vs_valid_sm_unsynced.
 

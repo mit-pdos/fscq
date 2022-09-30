@@ -451,7 +451,6 @@ Module RADefs (RA : RASig).
     apply list_chunk_firstn'; small_t.
     rewrite firstn_oob by nia.
     rewrite firstn_oob; small_t.
-    apply divup_le; nia.
   Qed.
 
   Lemma firstn_list_chunk_app : forall l i pre,
