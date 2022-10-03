@@ -1,0 +1,19 @@
+(library
+ (name fuse)
+ (libraries unix threads bigarray camlidl)
+ (flags -thread)
+ (foreign_stubs
+  (language c)
+  (names Fuse_bindings_stubs Fuse_util Unix_util_stubs)
+  (flags (:include fuse.cflags.sexp)))
+ (c_library_flags ((:include fuse.libs.sexp) (:include camlidl.libs.sexp))))
+
+(rule
+ (targets fuse.libs.sexp fuse.cflags.sexp camlidl.libs.sexp)
+ (deps (:discover config/discover.exe))
+ (action (run %{discover})))
+
+(rule
+ (targets Fuse_bindings.h Fuse_bindings_stubs.c Fuse_bindings.ml Fuse_bindings.mli)
+ (deps Fuse_bindings.idl)
+ (action (run camlidl -header Fuse_bindings.idl)))

@@ -1,0 +1,7 @@
+(library
+ (name fscq)
+ (flags :standard -w -32-33-34-39)
+ (libraries zarith unix extunix checkseum))
+
+(copy_files ../codegen/*.ml)
+(copy_files ../codegen/{AsyncFS,Inode}.mli)

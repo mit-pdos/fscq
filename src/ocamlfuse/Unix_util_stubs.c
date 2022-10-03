@@ -24,10 +24,15 @@
   vincenzo_ml@yahoo.it
 */
 
+#include <unistd.h>
 #include <stddef.h>
 #include <string.h>
 #include <errno.h>
+#if defined(__APPLE__)
+#include <sys/mount.h>
+#else
 #include <sys/vfs.h>
+#endif
 #include <sys/statvfs.h>
 
 #include <caml/mlvalues.h>
@@ -47,17 +52,23 @@ CAMLprim value unix_util_read(value fd,value buf)
 {
   CAMLparam2(fd,buf);
   CAMLlocal1(vres);
-  vres=alloc(1,1); /* Ok result */
   int res;
+  int c_fd = Int_val(fd); /* TODO: unsafe coercion */
+  void * c_data = Data_bigarray_val(buf);
+  int c_dim = Bigarray_val(buf)->dim[0];
+  
   enter_blocking_section();
-  res = read(Int_val(fd), /* TODO: unsafe coercion */
-	     Bigarray_val(buf)->data,Bigarray_val(buf)->dim[0]); 
+  res = read(c_fd, c_data, c_dim); 
   leave_blocking_section();
-  if (res >=0) Field(vres,0)=Val_int(res);
+  if (res >=0)
+    {
+      vres=alloc(1,1); /* Ok result */
+      Store_field(vres,0,Val_int(res));
+    }
   else 
     {
-      Tag_val(vres)=0; /* Bad result */
-      Field(vres,0)=Val_int(c2ml_unix_error(res)); /* TODO: EUNKNOWN x is a block */
+      vres=alloc(1,0); /* Bad result */
+      Store_field(vres,0,Val_int(c2ml_unix_error(res))); /* TODO: EUNKNOWN x is a block */
     }
   CAMLreturn (vres);
 }
@@ -66,17 +77,23 @@ CAMLprim value unix_util_write(value fd,value buf)
 {
   CAMLparam2(fd,buf);
   CAMLlocal1(vres);
-  vres=alloc(1,1); /* Ok result */
   int res;
+  int c_fd = Int_val(fd); /* TODO: unsafe coercion */
+  void * c_data = Data_bigarray_val(buf);
+  int c_dim = Bigarray_val(buf)->dim[0];
+  
   enter_blocking_section();
-  res = write(Int_val(fd), /* TODO: unsafe coercion */
-	      Bigarray_val(buf)->data,Bigarray_val(buf)->dim[0]);
+  res = write(c_fd, c_data, c_dim);
   leave_blocking_section();
-  if (res >=0) Field(vres,0)=Val_int(res);
+  if (res >=0)
+    {
+      vres=alloc(1,1); /* Ok result */
+      Store_field(vres,0,Val_int(res));
+    }
   else 
     {
-      Tag_val(vres)=0; /* Bad result */
-      Field(vres,0)=Val_int(c2ml_unix_error(res)); /* TODO: EUNKNOWN x is a block */
+      vres=alloc(1,0); /* Bad result */
+      Store_field(vres,0,Val_int(c2ml_unix_error(res))); /* TODO: EUNKNOWN x is a block */
     }
   CAMLreturn (vres);
 }
@@ -134,12 +151,12 @@ CAMLprim value unix_util_statvfs (value pathv)
   if (res >=0) 
     {   
       bufv = copy_statvfs (&buf);
-      Field(vres,0)=bufv;
+      Store_field(vres,0,bufv);
     }
   else 
     {
       Tag_val(vres)=0; /* Bad result */
-      Field(vres,0)=Val_int(c2ml_unix_error(res)); /* TODO: EUNKNOWN x is a block */
+      Store_field(vres,0,Val_int(c2ml_unix_error(res))); /* TODO: EUNKNOWN x is a block */
     }
   CAMLreturn (vres);
 }

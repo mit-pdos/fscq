@@ -24,13 +24,23 @@
   vincenzo_ml@yahoo.it
 *)
 
-open Result
+open Fuse_result
 
-external read_noexn : Unix.file_descr -> (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t -> int result = "unix_util_read"
-external write_noexn : Unix.file_descr -> (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t -> int result = "unix_util_write"
+external read_noexn :
+  Unix.file_descr ->
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t ->
+  int result = "unix_util_read"
 
-external int_of_file_descr : Unix.file_descr -> int = "unix_util_int_of_file_descr"
-external file_descr_of_int : int -> Unix.file_descr = "unix_util_file_descr_of_int"
+external write_noexn :
+  Unix.file_descr ->
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t ->
+  int result = "unix_util_write"
+
+external int_of_file_descr : Unix.file_descr -> int
+  = "unix_util_int_of_file_descr"
+
+external file_descr_of_int : int -> Unix.file_descr
+  = "unix_util_file_descr_of_int"
 
 (* Statvfs code inspired by statfs code by Richard Jones and Damien Doligez, see:
 
@@ -57,19 +67,19 @@ type statvfs = {
 
 external statvfs_noexn : string -> statvfs result = "unix_util_statvfs"
 
-let statvfs path = 
+let statvfs path =
   match statvfs_noexn path with
-      Ok res ->  res
-    | Bad err -> raise (Unix.Unix_error (err,"statvfs",""))
+  | Ok res -> res
+  | Bad err -> raise (Unix.Unix_error (err, "statvfs", ""))
 
 external fchdir : Unix.file_descr -> unit = "unix_util_fchdir"
 
 let read fd buf =
   match read_noexn fd buf with
-      Ok res -> res
-    | Bad err -> raise (Unix.Unix_error (err,"read",""))
+  | Ok res -> res
+  | Bad err -> raise (Unix.Unix_error (err, "read", ""))
 
 let write fd buf =
   match write_noexn fd buf with
-      Ok res -> res
-    | Bad err -> raise (Unix.Unix_error (err,"read",""))
+  | Ok res -> res
+  | Bad err -> raise (Unix.Unix_error (err, "read", ""))

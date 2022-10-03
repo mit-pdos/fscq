@@ -1,0 +1,9 @@
+(executable
+ (name mkfs)
+ (libraries fscq zarith)
+ (modules mkfs))
+
+(executable
+ (name fscqfuse)
+ (libraries fscq fuse fpath)
+ (modules fscqfuse))

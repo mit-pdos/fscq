@@ -1,3 +1,4 @@
+Require Import String.
 Require Import Hashmap.
 Require Import Arith.
 Require Import Bool.

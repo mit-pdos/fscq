@@ -1,5 +1,0 @@
-description = "ocaml fuse bindings"
-requires = ""
-version = "2.7.1"
-archive(byte) = "Fuse.cma"
-archive(native) = "Fuse.cmxa"
