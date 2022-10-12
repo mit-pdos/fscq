@@ -62,7 +62,8 @@ Qed.
 Lemma repeat_selN : forall T i n (v def : T),
   i < n -> selN (repeat v n) i def = v.
 Proof.
-  induction i; destruct n; firstorder; inversion H.
+  induction i; destruct n; try now firstorder.
+  intros. eapply IHi. omega.
 Qed.
 
 Lemma repeat_selN' : forall T i n (v : T),
@@ -519,12 +520,14 @@ Lemma forall_app_r : forall A P (a b : list A),
   Forall P (a ++ b) -> Forall P a.
 Proof.
   intros; rewrite Forall_forall in *; firstorder.
+  eauto using in_or_app.
 Qed.
 
 Lemma forall_app_l : forall A P (a b : list A),
   Forall P (a ++ b) -> Forall P b.
 Proof.
   intros; rewrite Forall_forall in *; firstorder.
+  eauto using in_or_app.
 Qed.
 
 Lemma Forall_repeat: forall A (f:A -> Prop) a n,
@@ -753,8 +756,9 @@ Lemma in_selN_map : forall A B (l : list (A*B)) i def1 def2,
   i < length l
   -> In (selN (map fst l) i def1, selN (map snd l) i def2) l.
 Proof.
-  induction l; destruct i; simpl; firstorder.
+  induction l; destruct i; simpl; try now firstorder.
   left; destruct a; auto.
+  intros. right. eapply IHl. omega.
 Qed.
 
 Theorem updN_map_seq_app_eq : forall T (f : nat -> T) len start (v : T) x,
@@ -868,22 +872,24 @@ Lemma selN_oob: forall A n l (def : A),
   length l <= n
   -> selN l n def = def.
 Proof.
-  induction n; destruct l; simpl; firstorder.
-  inversion H.
+  induction n; destruct l; simpl; try now firstorder.
+  eauto with arith.
 Qed.
 
 Lemma selN_inb : forall A (l : list A) n d1 d2,
   n < length l ->
   selN l n d1 = selN l n d2.
 Proof.
-  induction l; destruct n; intros; simpl; firstorder; inversion H.
+  induction l; destruct n; intros; simpl; try now firstorder.
+  eauto with arith.
 Qed.
 
 Lemma selN_app: forall A n l l' (def : A),
   n < length l
   -> selN (l ++ l') n def = selN l n def.
 Proof.
-  induction n; destruct l; simpl; firstorder; inversion H.
+  induction n; destruct l; simpl; try now firstorder.
+  eauto with arith.
 Qed.
 
 
@@ -901,7 +907,7 @@ Lemma skipn_oob: forall T n (l : list T),
 Proof.
   unfold skipn; induction n; destruct l; intros; auto.
   inversion H.
-  apply IHn; firstorder.
+  apply IHn; firstorder. eauto with arith.
 Qed.
 
 Lemma updN_oob: forall T l i (v : T),
@@ -909,15 +915,15 @@ Lemma updN_oob: forall T l i (v : T),
 Proof.
   unfold updN; induction l; destruct i; intros; auto.
   inversion H.
-  rewrite IHl; firstorder.
+  rewrite IHl; firstorder. eauto with arith.
 Qed.
 
 
 Lemma firstn_oob: forall A (l : list A) n,
   n >= length l -> firstn n l = l.
 Proof.
-  unfold firstn; induction l; destruct n; intros; firstorder.
-  rewrite IHl; firstorder.
+  unfold firstn; induction l; destruct n; intros; try now firstorder.
+  rewrite IHl; firstorder. eauto with arith.
 Qed.
 
 Lemma firstn_exact: forall A (l : list A),
@@ -941,8 +947,7 @@ Lemma firstn_plusone_selN : forall A n (l : list A) def,
   n < length l
   -> firstn (n + 1) l = firstn n l ++ (selN l n def :: nil).
 Proof.
-  induction n; destruct l; intros; simpl in *; firstorder.
-  inversion H.
+  induction n; destruct l; intros; simpl in *; try now firstorder.
   rewrite IHn with (def:=def) by omega; auto.
 Qed.
 
@@ -1000,7 +1005,8 @@ Qed.
 Lemma length_not_nil : forall A (l : list A),
   l <> nil <-> length l > 0.
 Proof.
-  split; induction l; simpl; firstorder.
+  split; induction l; simpl; try now firstorder.
+  eauto with arith.
 Qed.
 
 Lemma length_not_nil' : forall A (l : list A),
@@ -1163,8 +1169,8 @@ Proof.
   intros.
   generalize dependent a.
   induction i; intros; firstorder.
-  induction a; simpl; firstorder.
-  inversion H.
+  induction a; simpl; try now firstorder.
+  eauto with arith.
 Qed.
 
 Lemma skipn_app_split: forall T (a b : list T) n,
@@ -1487,7 +1493,7 @@ Proof.
   destruct l; simpl.
   inversion H1. (* impossible *)
   apply IHn; firstorder.
-  eapply Forall_cons2; eassumption.
+  eapply Forall_cons2; eassumption. eauto with arith.
 Qed.
 
 Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: list A),
@@ -1513,7 +1519,7 @@ Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: lis
   destruct l; simpl.
   inversion H1. (* impossible *)
   apply IHn; firstorder.
-  eapply Forall_cons2; eassumption.
+  eapply Forall_cons2; eassumption. eauto with arith.
 Qed.
 
 Fact div_ge_subt : forall a b, b <> 0 -> (a - b) / b = a / b - 1.
@@ -1701,7 +1707,7 @@ Proof.
   intros; unfold removeN.
   rewrite firstn_oob by auto.
   rewrite skipn_oob by auto.
-  firstorder.
+  apply app_nil_r.
 Qed.
 
 Lemma removeN_head: forall A l i (a : A),
@@ -1750,7 +1756,7 @@ Lemma removeN_tail: forall A (l : list A) a,
 Proof.
   intros; unfold removeN.
   rewrite skipn_oob.
-  rewrite firstn_app2; firstorder.
+  rewrite firstn_app2; eauto using app_nil_r.
   rewrite app_length; simpl; omega.
 Qed.
 
@@ -1773,7 +1779,7 @@ Lemma length_removelast : forall A (l : list A),
 Proof.
   induction l using rev_ind; intros; simpl; auto.
   rewrite app_length; simpl.
-  rewrite removelast_app; firstorder.
+  rewrite removelast_app; [| congruence].
   unfold removelast; rewrite app_length; simpl.
   omega.
 Qed.

@@ -93,8 +93,6 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
   Lemma mult_neq_0 : forall m n, m <> 0 -> n <> 0 -> m * n <> 0.
   Proof.
     intros. intuition.
-    apply mult_is_O in H1.
-    destruct H1; auto.
   Qed.
 
   Lemma mul_ge_l : forall m n,

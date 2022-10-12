@@ -51,8 +51,8 @@ Module DIR.
     Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
     Proof.
       unfold items_per_val; simpl.
-      rewrite valulen_is.
-      compute; auto.
+      rewrite valulen_is. apply Nat.eqb_eq.
+      compute; reflexivity.
     Qed.
 
   End DentSig.
@@ -704,6 +704,7 @@ Module DIR.
     or_r. cancel.
     eauto.
     eapply listpred_dmatch_notindomain; eauto.
+    eauto.
     cancel.
 
     (* case 2: use hinted entry *)
@@ -732,6 +733,7 @@ Module DIR.
     or_r. cancel.
     eauto.
     eapply listpred_dmatch_notindomain; eauto.
+    eauto.
     cancel.
   Unshelve.
     all: eauto.

@@ -764,7 +764,7 @@ Proof.
   inversion H0; subst.
   rewrite IHl; auto.
   cancel.
-  replace (length l + 0) with n by omega.
+  replace (length l) with n by omega.
   cancel.
 Qed.
 

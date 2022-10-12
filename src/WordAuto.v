@@ -187,8 +187,6 @@ Proof.
      rewrite Nat.mul_add_distr_r in HN;
      destruct (mult_O_le (S b) d); omega.
   intuition.
-  rewrite H2 in HN.
-  omega.
 Qed.
 
 (* The standard library should really define this... *)
@@ -198,7 +196,7 @@ Proof.
   destruct a'; [|rewrite Nat.div_0_l]; auto.
   replace 0 with (N.to_nat 0) by auto.
   apply Nneq_out; discriminate.
-  unfold Ndiv, Nat.div.
+  unfold N.div, Nat.div.
   intro a'.
   case_eq (N.to_nat a').
   + intro He.

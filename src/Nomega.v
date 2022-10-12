@@ -28,13 +28,12 @@ Theorem Nneq_out : forall n m,
   -> nat_of_N n <> nat_of_N m.
 Proof.
   intuition.
-  apply nat_of_N_eq in H0; tauto.
 Qed.
 
 Theorem Nlt_out : forall n m, n < m
   -> (nat_of_N n < nat_of_N m)%nat.
 Proof.
-  unfold Nlt; intros.
+  unfold N.lt; intros.
   rewrite nat_of_Ncompare in H.
   apply nat_compare_Lt_lt; assumption.
 Qed.
@@ -42,7 +41,7 @@ Qed.
 Theorem Nlt_in : forall n m, (nat_of_N n < nat_of_N m)%nat
   -> n < m.
 Proof.
-  unfold Nlt; intros.
+  unfold N.lt; intros.
   rewrite nat_of_Ncompare.
   apply (proj1 (nat_compare_lt _ _)); assumption.
 Qed.
@@ -50,7 +49,7 @@ Qed.
 Theorem Nge_out : forall n m, n >= m
   -> (nat_of_N n >= nat_of_N m)%nat.
 Proof.
-  unfold Nge; intros.
+  unfold N.ge; intros.
   rewrite nat_of_Ncompare in H.
   apply nat_compare_ge; assumption.
 Qed.
@@ -58,7 +57,7 @@ Qed.
 Theorem Nge_in : forall n m, (nat_of_N n >= nat_of_N m)%nat
   -> n >= m.
 Proof.
-  unfold Nge; intros.
+  unfold N.ge; intros.
   rewrite nat_of_Ncompare.
   apply nat_compare_ge; assumption.
 Qed.

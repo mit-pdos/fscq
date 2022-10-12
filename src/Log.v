@@ -1416,7 +1416,6 @@ Module LOG.
     unfold read_array.
     hoare.
 
-    subst; pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto.
     rewrite <- surjective_pairing.
     cancel.
@@ -1448,7 +1447,6 @@ Module LOG.
     step.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
-    step.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
@@ -1511,9 +1509,8 @@ Module LOG.
     eapply readOnly_refl; eauto.
     eauto.
     safestep.
-    unfold rep_inner; cancel.
-    subst; denote (Map.elements (MSTxn a1)) as Hx; rewrite <- Hx.
-    eauto.
+    reflexivity.
+    subst; denote (Map.elements (MSTxn a1)) as Hx; rewrite <- Hx. eauto.
     eapply lt_le_trans; eauto.
     subst; denote (Map.elements (MSTxn a1)) as Hx; rewrite <- Hx.
     pred_apply; cancel.
@@ -1616,8 +1613,7 @@ Module LOG.
     unfold write_range; intros.
     step.
 
-    safestep.
-    unfold rep_inner; cancel. eauto. eauto.
+    safestep. reflexivity. eauto. eauto.
     rewrite vsupsyn_range_length; auto.
     omega.
     rewrite firstn_length_l; omega.
@@ -1691,12 +1687,8 @@ Module LOG.
     safestep.
     safestep.
 
-    unfold rep_inner; cancel.
-    denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
-    eauto.
-    eapply lt_le_trans; eauto.
-    denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
-    subst; pred_apply; cancel.
+    eauto. eauto.
+    eapply lt_le_trans; eauto. eauto.
 
     step; step.
     apply not_true_is_false; auto.

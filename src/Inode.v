@@ -75,7 +75,7 @@ Module INODE.
 
     Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
     Proof.
-      unfold items_per_val; rewrite valulen_is; compute; auto.
+      unfold items_per_val; rewrite valulen_is; apply Nat.eqb_eq; compute; reflexivity.
     Qed.
 
   End IRecSig.
