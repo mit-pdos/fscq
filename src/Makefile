@@ -1,8 +1,3 @@
-OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
-	      -tag thread -tag debug -use-ocamlfind \
-	      -lib str -lib nums \
-	      -I codegen -I mllib \
-	      -package extunix -package zarith -package ocamlfuse
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 				OperationalSemantics \
@@ -50,10 +45,11 @@ HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
 all: fscq mkfs
 
-%: %.ml $(VS_ML) $(wildcard */*.ml)
-	rm -f $@
-	$(OCAMLBUILD) -no-links $@.native
-	ln -s $(CURDIR)/_build/$@.native $@
+mlbin/mkfs.exe: mlbin/mkfs.ml $(VS_ML) $(wildcard mllib/*.ml)
+	dune build $@
+
+mlbin/fscqfuse.exe: mlbin/fscqfuse.ml $(VS_ML) $(wildcard mllib/*.ml)
+	dune build $@
 
 hscgen/%.hs: hslib/%.hsc
 	@mkdir -p $(@D)
@@ -118,6 +114,7 @@ hslib/libopfuse.a: hslib/opqueue.o hslib/opfuse.o
 clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \
 	       fscq mkfs *.o *.hi \
-	       hslib/*.o hscgen
+	       hslib/*.o hscgen \
+	       mlbin/*.exe
 
 .PRECIOUS: hscgen/%.hs %_stubs.c
