@@ -105,14 +105,15 @@ Module INODE.
     Definition IRBlocks  (x : irec) := Eval compute_rec in ( x :-> "blocks").
     Definition IRAttrs   (x : irec) := Eval compute_rec in ( x :-> "attrs").
 
-    Definition upd_len (x : irec) v  := Eval compute_rec in (x :=> "len" := $ v).
+    Definition upd_len (x : irec) v : irec := Eval compute_rec in (x :=> "len" := $ v).
 
-    Definition upd_irec (x : irec) len ibptr dibptr tibptr dbns := Eval compute_rec in
-      (x :=> "len" := $ len
-         :=> "indptr" := $ ibptr
-         :=> "dindptr" := $ dibptr
-         :=> "tindptr" := $ tibptr
-         :=> "blocks" := dbns).
+    Definition upd_irec (x : irec) len ibptr dibptr tibptr dbns : irec :=
+      Eval compute_rec in
+        (x :=> "len" := $ len
+           :=> "indptr" := $ ibptr
+           :=> "dindptr" := $ dibptr
+           :=> "tindptr" := $ tibptr
+           :=> "blocks" := dbns).
 
     (* getter/setter lemmas *)
     Fact upd_len_get_len : forall ir n,

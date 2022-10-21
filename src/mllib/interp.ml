@@ -1,69 +1,69 @@
-let addrlen = Big.of_int 64
-let blockbytes = 4096
-let blockbits = Big.of_int (blockbytes*8)
-let debug = false
-let really_sync = false
+module Crc32 = Checkseum.Crc32
 
-type disk_state = { disk_fd : Unix.file_descr ref }
+let verbose = false
+let output = false
 
-let addr_to_int a = Big.to_int (Word.wordToNat addrlen a)
+let debugmsg msgf =
+  if verbose then msgf (Printf.kprintf print_endline)
 
-let word_to_block (Word.W w) =
-  let s = Z.to_bits w in
-  let nbytes = String.length s in
-  let res = String.concat "" [ s ; String.make (blockbytes-nbytes) (Char.chr 0) ] in
-  res
+let crc32_word_update c sz w =
+  let bits = Disk.word_to_string_nbits sz w in
+  Crc32.digest_string bits 0 (String.length bits) c
 
-let block_to_word b =
-  let z = Z.of_bits b in
-  Word.W z
+let rec run : type a. Disk.state -> a Prog.prog -> Obj.t =
+  fun ds p ->
+  match p with
+  | Ret x ->
+    debugmsg (fun m -> m "Done");
+    Obj.repr x
+  | Read a ->
+    debugmsg (fun m -> m "Read %s" (Z.to_string a));
+    Obj.repr @@ Disk.read ds (Z.to_int a)
+  | Write (a, v) ->
+    debugmsg (fun m -> m "Write %s" (Z.to_string a));
+    Obj.repr @@ Disk.write ds (Z.to_int a) v
+  | Sync ->
+    debugmsg (fun m -> m "Sync");
+    Obj.repr @@ Disk.sync ds
+  | Trim a ->
+    debugmsg (fun m -> m "Trim %s" (Z.to_string a));
+    Obj.repr @@ Disk.trim ds a
+  | VarAlloc v ->
+    debugmsg (fun m -> m "VarAlloc");
+    Obj.repr @@ Disk.var_alloc ds v
+  | VarDelete i ->
+    debugmsg (fun m -> m "VarDelete %d" i);
+    Obj.repr @@ Disk.var_delete ds i
+  | VarGet i ->
+    debugmsg (fun m -> m "VarGet %d" i);
+    Obj.repr @@ Disk.var_get ds i
+  | VarSet (i, v) ->
+    debugmsg (fun m -> m "VarSet %d" i);
+    Obj.repr @@ Disk.var_set ds i v
+  | AlertModified ->
+    debugmsg (fun m -> m "AlertModified");
+    Obj.repr ()
+  | Debug (s, n) ->
+    if output then
+      Printf.printf "%s %s\n%!"
+        (String.of_seq (List.to_seq s)) (Z.to_string n);
+    Obj.repr ()
+  | Rdtsc ->
+    (* TODO *)
+    Obj.repr Z.zero
+  | Hash (sz, w) ->
+    debugmsg (fun m -> m "Hash %s" (Z.to_string sz));
+    let c = crc32_word_update Crc32.default (Z.to_int sz) w in
+    Obj.repr @@ Z.of_int64 (Optint.to_int64 c)
+  | Hash2 (sz1, sz2, w1, w2) ->
+    debugmsg (fun m -> m "Hash2 %s %s" (Z.to_string sz1) (Z.to_string sz2));
+    let c1 = crc32_word_update Crc32.default (Z.to_int sz1) w1 in
+    let c2 = crc32_word_update c1 (Z.to_int sz2) w2 in
+    Obj.repr @@ Z.of_int64 (Optint.to_int64 c2)
+  | Bind (p1, p2) ->
+    debugmsg (fun m -> m "Bind");
+    let r1 = run ds p1 in
+    run ds (p2 r1)
 
-let init_disk fn =
-  let fd = Unix.openfile fn [ Unix.O_RDWR ; Unix.O_CREAT ] 0o666 in
-  { disk_fd = ref fd }
-
-let close_disk { disk_fd = fd } =
-  Unix.close !fd
-
-let read_disk { disk_fd = fd } b =
-  let s = String.create blockbytes in
-  let cc = ExtUnix.All.pread !fd (b * blockbytes) s 0 blockbytes in
-  if cc != blockbytes then raise (Failure "read_disk");
-  block_to_word s
-
-let write_disk { disk_fd = fd } b v =
-  let s = word_to_block v in
-  let cc = ExtUnix.All.pwrite !fd (b * blockbytes) s 0 blockbytes in
-  if cc != blockbytes then raise (Failure "write_disk")
-
-let sync_disk { disk_fd = fd } b =
-  if really_sync then ExtUnix.All.fsync !fd
-
-let set_size_disk { disk_fd = fd } b =
-  Unix.ftruncate !fd (b*blockbytes)
-
-let rec run_dcode ds = function
-  | Prog.Done t ->
-    if debug then Printf.printf "done()\n%!";
-    t
-  | Prog.Trim (a, rx) ->
-    if debug then Printf.printf "trim(%d)\n%!" (addr_to_int a);
-    run_dcode ds (rx ())
-  | Prog.Sync (a, rx) ->
-    if debug then Printf.printf "sync(%d)\n%!" (addr_to_int a);
-    sync_disk ds (addr_to_int a);
-    run_dcode ds (rx ())
-  | Prog.Read (a, rx) ->
-    if debug then Printf.printf "read(%d)\n%!" (addr_to_int a);
-    let v = read_disk ds (addr_to_int a) in
-    run_dcode ds (rx v)
-  | Prog.Write (a, v, rx) ->
-    if debug then Printf.printf "write(%d)\n%!" (addr_to_int a);
-    write_disk ds (addr_to_int a) v;
-    run_dcode ds (rx ())
-
-let run_prog ds p =
-  try
-    run_dcode ds (p (fun x -> Prog.Done x))
-  with
-    e -> Printf.printf "Exception: %s\n%!" (Printexc.to_string e); raise e
+let run (ds: Disk.state) (p: 'a Prog.prog): 'a =
+  Obj.magic (run ds p)

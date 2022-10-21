@@ -1,0 +1,13 @@
+(executable
+ (name mkfs)
+ (libraries fscq zarith)
+ (modules mkfs)
+ (promote (until-clean))
+)
+
+(executable
+ (name fscqfuse)
+ (libraries fscq fuse fpath)
+ (modules fscqfuse)
+ (promote (until-clean))
+)

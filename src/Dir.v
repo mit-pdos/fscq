@@ -25,6 +25,7 @@ Require Import AsyncDisk.
 Require Import Errno.
 Require Import DestructVarname.
 Import ListNotations.
+Require HexString.
 
 Set Implicit Arguments.
 
@@ -32,7 +33,7 @@ Set Implicit Arguments.
 
 Module DIR.
 
-  Definition filename_len := (1024 - addrlen - addrlen).
+  Definition filename_len := (HexString.to_nat "0x400" (* 1024 *) - addrlen - addrlen).
   Definition filename := word filename_len.
 
 

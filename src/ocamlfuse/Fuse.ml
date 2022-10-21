@@ -25,9 +25,13 @@
 *)
 
 open Fuse_lib
-open Unix_util
+module Unix_util = Unix_util
+module Fuse_bindings = Fuse_bindings
+module Fuse_lib = Fuse_lib
+module Fuse_result = Fuse_result
 
-type buffer = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type buffer =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
 type context = Fuse_bindings.__fuse_context
 
@@ -35,40 +39,54 @@ let get_context : unit -> context = Fuse_bindings.fuse_get_context
 
 type xattr_flags = AUTO | CREATE | REPLACE
 
-type operations =
-    { getattr : string -> Unix.LargeFile.stats;
-      readlink : string -> string;
-      mknod : string -> Unix.file_kind -> Unix.file_perm -> int -> unit;
-      mkdir : string -> int -> unit;
-      unlink : string -> unit;
-      rmdir : string -> unit;
-      symlink : string -> string -> unit;
-      rename : string -> string -> unit;
-      link : string -> string -> unit;
-      chmod : string -> int -> unit;
-      chown : string -> int -> int -> unit;
-      truncate : string -> int64 -> unit;
-      utime : string -> float -> float -> unit;
-      fopen : string -> Unix.open_flag list -> int option; (* TODO: optional arguments missing *)
-      read : string -> buffer -> int64 -> int -> int;  (* TODO: optional arguments missing *)
-      write : string -> buffer -> int64 -> int -> int;  (* TODO: optional arguments missing *)
-      statfs : string -> Unix_util.statvfs;
-      flush : string -> int -> unit; (* TODO: optional arguments missing *)
-      release : string -> Unix.open_flag list -> int -> unit; (* TODO: optional arguments missing *)
-      fsync : string -> bool -> int -> unit; (* TODO: optional arguments missing *)
-      setxattr : string -> string -> string -> xattr_flags -> unit;
-      getxattr : string -> string -> string;
-      listxattr : string -> string list;
-      removexattr : string -> string -> unit;
-      opendir : string -> Unix.open_flag list -> int option; (* TODO: optional arguments missing *)
-      readdir : string -> int -> string list; (* TODO: optional arguments missing *)
-      releasedir : string -> Unix.open_flag list -> int -> unit; (* TODO: optional arguments missing *)
-      fsyncdir : string -> bool -> int -> unit; (* TODO: optional arguments missing *)
-      init : unit -> unit; (* TODO: optional arguments missing and return value missing *)
-    }
-      
+type operations = {
+  getattr : string -> Unix.LargeFile.stats;
+  readlink : string -> string;
+  mknod : string -> Unix.file_kind -> Unix.file_perm -> int -> unit;
+  mkdir : string -> int -> unit;
+  unlink : string -> unit;
+  rmdir : string -> unit;
+  symlink : string -> string -> unit;
+  rename : string -> string -> unit;
+  link : string -> string -> unit;
+  chmod : string -> int -> unit;
+  chown : string -> int -> int -> unit;
+  truncate : string -> int64 -> unit;
+  utime : string -> float -> float -> unit;
+  fopen : string -> Unix.open_flag list -> int option;
+  (* TODO: optional arguments missing *)
+  read : string -> buffer -> int64 -> int -> int;
+  (* TODO: optional arguments missing *)
+  write : string -> buffer -> int64 -> int -> int;
+  (* TODO: optional arguments missing *)
+  statfs : string -> Unix_util.statvfs;
+  flush : string -> int -> unit;
+  (* TODO: optional arguments missing *)
+  release : string -> Unix.open_flag list -> int -> unit;
+  (* TODO: optional arguments missing *)
+  fsync : string -> bool -> int -> unit;
+  (* TODO: optional arguments missing *)
+  setxattr : string -> string -> string -> xattr_flags -> unit;
+  getxattr : string -> string -> string;
+  listxattr : string -> string list;
+  removexattr : string -> string -> unit;
+  opendir : string -> Unix.open_flag list -> int option;
+  (* TODO: optional arguments missing *)
+  readdir : string -> int -> string list;
+  (* TODO: optional arguments missing *)
+  releasedir : string -> Unix.open_flag list -> int -> unit;
+  (* TODO: optional arguments missing *)
+  fsyncdir : string -> bool -> int -> unit;
+  (* TODO: optional arguments missing *)
+  init : unit -> unit;
+      (* TODO: optional arguments missing and return value missing *)
+  destroy : unit -> unit;
+}
+
 let op_names_of_operations ops =
-  { Fuse_bindings.init = Fuse_lib.named_op ops.init;
+  {
+    Fuse_bindings.init = Fuse_lib.named_op ops.init;
+    Fuse_bindings.destroy = Fuse_lib.named_op ops.destroy;
     Fuse_bindings.getattr = Fuse_lib.named_op ops.getattr;
     Fuse_bindings.readlink = Fuse_lib.named_op ops.readlink;
     Fuse_bindings.readdir = Fuse_lib.named_op_2 ops.readdir;
@@ -93,21 +111,19 @@ let op_names_of_operations ops =
     Fuse_bindings.flush = Fuse_lib.named_op_2 ops.flush;
     Fuse_bindings.statfs = Fuse_lib.named_op ops.statfs;
     Fuse_bindings.fsync = Fuse_lib.named_op_3 ops.fsync;
-    Fuse_bindings.listxattr = Fuse_lib.named_op 
-      (fun path ->
-	 let s = ops.listxattr path in 
-	   (s,List.fold_left 
-	      (fun acc s -> 
-		 acc + 1 + (String.length s)) 
-	      0 s));
+    Fuse_bindings.listxattr =
+      Fuse_lib.named_op (fun path ->
+          let s = ops.listxattr path in
+          (s, List.fold_left (fun acc s -> acc + 1 + String.length s) 0 s));
     Fuse_bindings.getxattr = Fuse_lib.named_op_2 ops.getxattr;
     Fuse_bindings.setxattr = Fuse_lib.named_op_4 ops.setxattr;
     Fuse_bindings.removexattr = Fuse_lib.named_op_2 ops.removexattr;
   }
 
-let default_operations = 
+let default_operations =
   {
     init = undefined;
+    destroy = undefined;
     getattr = undefined;
     readdir = undefined;
     opendir = undefined;
@@ -135,7 +151,7 @@ let default_operations =
     listxattr = undefined;
     getxattr = undefined;
     setxattr = undefined;
-    removexattr = undefined; 
+    removexattr = undefined;
   }
 
 let main argv ops =

@@ -12,6 +12,7 @@ Require Import Cache.
 Require Import AsyncDisk.
 Require Import Omega.
 Require Import FSLayout.
+Require HexString.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -20,7 +21,8 @@ Module SB.
 
   Local Hint Resolve goodSize_add_l goodSize_add_r.
 
-  Definition magic_number := # (natToWord addrlen 3932).  (* 0xF5C = FSC in C *)
+  Definition magic_number :=
+    # (natToWord addrlen (HexString.to_nat "0xF5C")).  (* 0xF5C = FSC in C *)
 
   Definition superblock_type : Rec.type := Rec.RecF ([
       ("data_start",  Rec.WordF addrlen);
